@@ -239,20 +239,27 @@ export default function MarketingRadar() {
       {/* Toolbar: สลับมุมมอง + กรองประเภทงาน (แบบ Notion) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 4, background: 'var(--payi-surface-muted)', padding: 3, borderRadius: 9 }}>
-          {[['board', 'บอร์ด'], ['list', 'รายการ']].map(([id, label]) => (
+          {[['board', 'บอร์ด'], ['list', 'รายการ'], ['basket', 'จัดคู่สินค้า']].map(([id, label]) => (
             <button key={id} onClick={() => setView(id)} style={segStyle(view === id)}>{label}</button>
           ))}
         </div>
-        <div style={{ width: 1, height: 20, background: 'var(--payi-border)' }} />
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--payi-text-muted)' }}>ประเภทงาน:</span>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          <button onClick={() => setTypeFilter('all')} style={typePill(typeFilter === 'all')}>ทั้งหมด</button>
-          {EVENT_TYPES.map(([id, label]) => (
-            <button key={id} onClick={() => setTypeFilter(id)} style={typePill(typeFilter === id)}>{label}</button>
-          ))}
-        </div>
+        {view !== 'basket' && (
+          <>
+            <div style={{ width: 1, height: 20, background: 'var(--payi-border)' }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--payi-text-muted)' }}>ประเภทงาน:</span>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <button onClick={() => setTypeFilter('all')} style={typePill(typeFilter === 'all')}>ทั้งหมด</button>
+              {EVENT_TYPES.map(([id, label]) => (
+                <button key={id} onClick={() => setTypeFilter(id)} style={typePill(typeFilter === id)}>{label}</button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
+      {view === 'basket' ? (
+        <BasketAnalysis />
+      ) : (
       <div className="app-two-col-fixed" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 16, alignItems: 'start' }}>
         {view === 'board' ? (
           <section style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(160px, 1fr))', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
@@ -318,7 +325,9 @@ export default function MarketingRadar() {
           </div>
         </aside>
       </div>
+      )}
 
+      {view !== 'basket' && (
       <section className="payi-glass-card" style={{ padding: 16, borderRadius: 8 }}>
         <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)', marginBottom: 12 }}>Event History</div>
         <div style={{ overflowX: 'auto' }}>
@@ -328,6 +337,7 @@ export default function MarketingRadar() {
           </div>
         </div>
       </section>
+      )}
     </div>
   )
 }
@@ -762,6 +772,248 @@ function typePill(active) {
 }
 const lTh = { padding: '10px 12px', fontWeight: 700, whiteSpace: 'nowrap' }
 const lTd = { padding: '10px 12px', verticalAlign: 'middle' }
+
+// "ออเดอร์ที่ซื้อพ่วง" — สินค้ากลุ่มไหนถูกซื้อคู่กับกลุ่มไหนบ่อยสุด แยกตามแพลตฟอร์ม
+// เดิมเจ้าของทำมือใน Google Sheet ต่อแพลตฟอร์ม — ย้ายมาคำนวณสดจาก raw_orders (api/_lib/marketingBasket.js)
+const monthLabel = (ym) => {
+  const [y, m] = ym.split('-').map(Number)
+  return new Intl.DateTimeFormat('th-TH', { month: 'long', year: 'numeric' }).format(new Date(y, m - 1, 1))
+}
+const bucketLabel = (bucket) => (bucket === 'all' ? 'ทุกแพลตฟอร์ม' : bucket)
+
+function BasketAnalysis() {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [platform, setPlatform] = useState('')
+  const [month, setMonth] = useState('all')
+  const [productKey, setProductKey] = useState('')
+  const [productData, setProductData] = useState(null)
+  const [productLoading, setProductLoading] = useState(false)
+  const [pairDetail, setPairDetail] = useState(null) // { a, b, examples, loading } | null
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    setError('')
+    fetch(`/api/marketing?kind=basket&month=${month}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!active) return
+        if (!d.success) throw new Error(d.error || 'โหลดข้อมูลไม่สำเร็จ')
+        setData(d)
+        const order = d.bucketOrder || []
+        const plats = order.filter((p) => d.platforms?.[p])
+        setPlatform((cur) => (cur && plats.includes(cur) ? cur : plats[0] || ''))
+      })
+      .catch((e) => active && setError(e.message))
+      .finally(() => active && setLoading(false))
+    return () => { active = false }
+  }, [month])
+
+  // ดูรายสินค้าเดียว — โหลดใหม่ทุกครั้งที่เปลี่ยนสินค้า/บัคเก็ต/เดือน
+  useEffect(() => {
+    if (!productKey || !platform) { setProductData(null); return }
+    let active = true
+    setProductLoading(true)
+    fetch(`/api/marketing?kind=basket&action=product&month=${month}&bucket=${encodeURIComponent(platform)}&product=${encodeURIComponent(productKey)}`)
+      .then((r) => r.json())
+      .then((d) => { if (active && d.success) setProductData(d) })
+      .finally(() => active && setProductLoading(false))
+    return () => { active = false }
+  }, [productKey, platform, month])
+
+  const openPairDetail = (pair) => {
+    setPairDetail({ a: pair.a, b: pair.b, examples: [], loading: true })
+    fetch(`/api/marketing?kind=basket&action=pair-detail&month=${month}&bucket=${encodeURIComponent(platform)}&a=${encodeURIComponent(pair.keyA)}&b=${encodeURIComponent(pair.keyB)}`)
+      .then((r) => r.json())
+      .then((d) => setPairDetail({ a: pair.a, b: pair.b, examples: d.success ? d.examples : [], loading: false }))
+      .catch(() => setPairDetail({ a: pair.a, b: pair.b, examples: [], loading: false }))
+  }
+
+  if (error) return <div style={{ padding: '10px 12px', background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', border: '1px solid var(--payi-danger)', borderRadius: 8, fontSize: 13 }}>{error}</div>
+
+  const bucketOrder = data?.bucketOrder || []
+  const platforms = bucketOrder.filter((p) => data?.platforms?.[p])
+  const current = data?.platforms?.[platform]
+  const groupOptions = data?.groupOptions || []
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select
+          value={month}
+          onChange={(e) => setMonth(e.target.value)}
+          style={{ minHeight: 36, border: '1px solid var(--payi-border)', borderRadius: 9, padding: '6px 11px', background: 'var(--payi-surface)', color: 'var(--payi-text-strong)', fontWeight: 700, fontSize: 12.5 }}
+        >
+          <option value="all">ทั้งหมด (ทุกเดือน)</option>
+          {(data?.months || []).slice().reverse().map((ym) => (
+            <option key={ym} value={ym}>{monthLabel(ym)}</option>
+          ))}
+        </select>
+        <div style={{ width: 1, height: 20, background: 'var(--payi-border)' }} />
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {platforms.map((p) => (
+            <button key={p} onClick={() => setPlatform(p)} style={typePill(platform === p)}>
+              {bucketLabel(p)} ({fmt(data.platforms[p].totalOrders)} ออเดอร์)
+            </button>
+          ))}
+        </div>
+        <div style={{ width: 1, height: 20, background: 'var(--payi-border)' }} />
+        <select
+          value={productKey}
+          onChange={(e) => setProductKey(e.target.value)}
+          style={{ minHeight: 36, border: '1px solid var(--payi-border)', borderRadius: 9, padding: '6px 11px', background: 'var(--payi-surface)', color: 'var(--payi-text-strong)', fontWeight: 700, fontSize: 12.5, maxWidth: 260 }}
+        >
+          <option value="">เลือกสินค้า — ดูว่าขายคู่กับอะไร</option>
+          {groupOptions.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
+        </select>
+        {productKey && (
+          <button onClick={() => setProductKey('')} style={{ border: 'none', background: 'transparent', color: 'var(--payi-text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>ล้าง</button>
+        )}
+      </div>
+
+      {loading ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>กำลังโหลด...</div>
+      ) : productKey ? (
+        <section className="payi-glass-card" style={{ padding: 16, borderRadius: 8 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)', marginBottom: 4 }}>
+            {productData?.product || '...'} ขายคู่กับอะไรมากที่สุด ({bucketLabel(platform)})
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)', marginBottom: 12 }}>
+            {productLoading ? 'กำลังโหลด...' : productData
+              ? `จากทั้งหมด ${fmt(productData.totalOrders)} ออเดอร์ที่มีสินค้านี้ — ${fmt(productData.soloOrders)} ออเดอร์ (${productData.totalOrders ? Math.round(productData.soloOrders / productData.totalOrders * 1000) / 10 : 0}%) ซื้อเดี่ยวไม่พ่วงอะไรเลย`
+              : ''}
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: 'var(--payi-text-muted)', fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase' }}>
+                  <th style={lTh}>#</th>
+                  <th style={lTh}>ขายคู่กับ</th>
+                  <th style={{ ...lTh, textAlign: 'right' }}>จำนวนออเดอร์</th>
+                  <th style={{ ...lTh, textAlign: 'right' }}>% ของออเดอร์ที่มีสินค้านี้</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(productData?.pairs || []).map((p, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid var(--payi-border)' }}>
+                    <td style={lTd}>{i + 1}</td>
+                    <td style={{ ...lTd, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{p.label}</td>
+                    <td style={{ ...lTd, textAlign: 'right', fontWeight: 800 }}>{fmt(p.orders)}</td>
+                    <td style={{ ...lTd, textAlign: 'right', color: 'var(--payi-text-muted)' }}>{p.percentOfProductOrders}%</td>
+                  </tr>
+                ))}
+                {!productLoading && !(productData?.pairs || []).length && (
+                  <tr><td colSpan={4} style={{ padding: 20, textAlign: 'center', color: 'var(--payi-text-faint)' }}>ไม่พบว่าซื้อคู่กับสินค้าอื่นในช่วงนี้</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : !current ? (
+        <EmptyLine text="ยังไม่มีข้อมูลออเดอร์สำหรับแพลตฟอร์มนี้" />
+      ) : (
+        <div className="app-two-col-fixed" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
+          <section className="payi-glass-card" style={{ padding: 16, borderRadius: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)', marginBottom: 4 }}>คู่สินค้าที่ซื้อพ่วงกันบ่อยสุด</div>
+            <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)', marginBottom: 12 }}>นับจากออเดอร์ที่มีสินค้า ≥ 2 กลุ่มขึ้นไป (ไม่รวมยกเลิก/ตีคืน) — คลิกแถวเพื่อดูตัวอย่างออเดอร์จริง</div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', color: 'var(--payi-text-muted)', fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase' }}>
+                    <th style={lTh}>#</th>
+                    <th style={lTh}>คู่สินค้า</th>
+                    <th style={{ ...lTh, textAlign: 'right' }}>จำนวนออเดอร์</th>
+                    <th style={{ ...lTh, textAlign: 'right' }}>% ของออเดอร์รวม</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {current.pairs.map((pair, i) => (
+                    <tr key={i} onClick={() => openPairDetail(pair)} style={{ borderTop: '1px solid var(--payi-border)', cursor: 'pointer' }}>
+                      <td style={lTd}>{i + 1}</td>
+                      <td style={lTd}>
+                        <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{pair.a}</div>
+                        <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>+ {pair.b}</div>
+                      </td>
+                      <td style={{ ...lTd, textAlign: 'right', fontWeight: 800 }}>{fmt(pair.orders)}</td>
+                      <td style={{ ...lTd, textAlign: 'right', color: 'var(--payi-text-muted)' }}>{pair.percentOfOrders}%</td>
+                    </tr>
+                  ))}
+                  {!current.pairs.length && (
+                    <tr><td colSpan={4} style={{ padding: 20, textAlign: 'center', color: 'var(--payi-text-faint)' }}>ยังไม่พบคู่สินค้าที่ซื้อพ่วงกัน</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="payi-glass-card" style={{ padding: 16, borderRadius: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)', marginBottom: 4 }}>ขายเดี่ยวบ่อยสุด (ไม่พ่วง)</div>
+            <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)', marginBottom: 12 }}>ออเดอร์ที่มีสินค้ากลุ่มนี้กลุ่มเดียว — ถ้าติดอันดับสูงและไม่ค่อยพ่วงใคร อาจเป็นตัวเลือกที่เหมาะจะดันเข้า Set ใหม่</div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', color: 'var(--payi-text-muted)', fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase' }}>
+                    <th style={lTh}>#</th>
+                    <th style={lTh}>สินค้า</th>
+                    <th style={{ ...lTh, textAlign: 'right' }}>จำนวนออเดอร์</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {current.topSingles.map((s, i) => (
+                    <tr key={i} style={{ borderTop: '1px solid var(--payi-border)' }}>
+                      <td style={lTd}>{i + 1}</td>
+                      <td style={{ ...lTd, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{s.label}</td>
+                      <td style={{ ...lTd, textAlign: 'right', fontWeight: 800 }}>{fmt(s.orders)}</td>
+                    </tr>
+                  ))}
+                  {!current.topSingles.length && (
+                    <tr><td colSpan={3} style={{ padding: 20, textAlign: 'center', color: 'var(--payi-text-faint)' }}>ไม่มีข้อมูล</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {pairDetail && (
+        <div onClick={() => setPairDetail(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.28)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', zIndex: 999 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--payi-surface)', borderRadius: 16, padding: 22, width: 480, maxWidth: '92vw', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(15,23,42,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--payi-text-strong)' }}>{pairDetail.a} + {pairDetail.b}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)', marginTop: 2 }}>ตัวอย่างออเดอร์จริง (ล่าสุด {DETAIL_LIMIT_LABEL} รายการ)</div>
+              </div>
+              <button onClick={() => setPairDetail(null)} style={{ border: 'none', background: 'var(--payi-border)', borderRadius: '50%', width: 26, height: 26, display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--payi-text-muted)', flexShrink: 0 }}>
+                <X size={13} />
+              </button>
+            </div>
+            {pairDetail.loading ? (
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>กำลังโหลด...</div>
+            ) : pairDetail.examples.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {pairDetail.examples.map((ex) => (
+                  <div key={ex.orderId} style={{ border: '1px solid var(--payi-border)', borderRadius: 10, padding: '9px 12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--payi-text-muted)', marginBottom: 4 }}>
+                      <span style={{ fontFamily: 'monospace' }}>{ex.orderId}</span>
+                      <span>{ex.date}</span>
+                    </div>
+                    <div style={{ fontSize: 12.5, color: 'var(--payi-text-strong)' }}>{ex.items.join(', ')}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyLine text="ไม่พบตัวอย่างออเดอร์" />
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+const DETAIL_LIMIT_LABEL = 30
 
 function iconButton(color, background) {
   return {

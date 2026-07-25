@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
 import { UploadCloud, FileSpreadsheet, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Trash2, X } from 'lucide-react'
-import * as XLSX from 'xlsx'
 
 const API = '/api'
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH')
@@ -188,7 +187,9 @@ export default function Upload() {
     // เพราะ dropdown ยังค้างค่าจากไฟล์ก่อนหน้าที่เพิ่งอัพโหลดไป) — บังคับเลือกใหม่ทุกไฟล์
     setPlatform('auto'); setBusiness(''); setExpectedMonth(''); setMultiMonth(false); setMonthBreakdown(null); setBreakdownConfirmed(false)
     try {
-      const buf = await f.arrayBuffer()
+      // xlsx มีขนาดใหญ่ (400kB+) — โหลดเฉพาะตอนผู้ใช้เลือกไฟล์จริง ไม่ถ่วงตอนเปิดหน้า Import Orders
+      // (เหมือน pattern เดียวกับ ClaimView.jsx)
+      const [buf, XLSX] = await Promise.all([f.arrayBuffer(), import('xlsx')])
       const wb = XLSX.read(buf, { type: 'array' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const json = XLSX.utils.sheet_to_json(ws, { defval: '' })

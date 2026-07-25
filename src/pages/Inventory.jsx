@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Boxes, Layers, AlertTriangle, ArrowLeftRight, Plus, Pencil, X, Eye, EyeOff } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Boxes, Layers, AlertTriangle, ArrowLeftRight, Plus, Pencil, X, Eye, EyeOff, Download } from 'lucide-react'
 import KpiCard from '../components/KpiCard'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
@@ -44,6 +44,34 @@ function Modal({ title, onClose, children }) {
   )
 }
 
+// จัดกลุ่มวัสดุแพ็คเกจจิ้งตาม prefix ของ sku ที่ seed ไว้ — อิงตาม 3 หมวดเดิมจากไฟล์ Excel "Something"
+// (Safety Sticker / กล่อง Package หมิงจึ / กล่องพัสดุ MOQ 10,000) เพื่อให้ดูแยกหมวดง่ายเหมือนต้นฉบับ
+const PACKAGING_GROUP_ORDER = ['สติกเกอร์', 'กล่อง Package หมิงจึ', 'กล่องพัสดุ', 'อื่นๆ']
+const packagingGroupOf = (sku) => {
+  const s = String(sku).toUpperCase()
+  if (s.startsWith('STK-')) return 'สติกเกอร์'
+  if (s.startsWith('BOXMJ-')) return 'กล่อง Package หมิงจึ'
+  if (s.startsWith('BOXP-')) return 'กล่องพัสดุ'
+  return 'อื่นๆ'
+}
+
+// แปลง rows เป็น CSV แล้วดาวน์โหลดเป็นไฟล์ — ใช้ export ทั้งแท็บสินค้า/วัสดุแพ็คเกจจิ้ง
+const exportCsv = (filename, rows, columns) => {
+  const escape = (v) => {
+    const s = String(v ?? '')
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const lines = [columns.map((c) => escape(c.label)).join(',')]
+  for (const row of rows) lines.push(columns.map((c) => escape(c.get(row))).join(','))
+  const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 const inputStyle = { width: '100%', border: '1px solid var(--payi-border)', borderRadius: 10, padding: '9px 12px', fontSize: 13, outline: 'none', boxSizing: 'border-box' }
 const labelStyle = { fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 5, display: 'block' }
 
@@ -71,6 +99,7 @@ export default function Inventory() {
   const [onlyRecommended, setOnlyRecommended] = useState(false)
   const [showHidden, setShowHidden] = useState(false)
   const [itemModal, setItemModal] = useState(null) // null | 'new' | item object (edit)
+  const [categoryTab, setCategoryTab] = useState('product') // 'product' | 'packaging' (วัสดุแพ็คเกจจิ้ง — สติกเกอร์/กล่อง)
   const [moveModal, setMoveModal] = useState(null) // { sku, display_name, unit, type }
 
   const load = useCallback(() => {
@@ -78,7 +107,7 @@ export default function Inventory() {
     setError('')
     Promise.all([
       fetch('/api/sheet-tools?op=inventory&view=items&includeHidden=1').then((r) => r.json()),
-      fetch('/api/planner-sales').then((r) => r.json()).catch(() => null),
+      fetch('/api/planner-sales?days=30').then((r) => r.json()).catch(() => null),
     ])
       .then(([d, planner]) => {
         if (!d.success) throw new Error(d.error || 'โหลดข้อมูลไม่สำเร็จ')
@@ -97,7 +126,7 @@ export default function Inventory() {
   const items = data?.items || []
   const totals = data?.totals || { totalProducts: 0, totalStock: 0, lowStockCount: 0, transactionsToday: 0 }
 
-  // ผูกยอดขาย 90 วัน + ABC เข้ากับแต่ละสินค้า แล้วคำนวณขั้นต่ำแนะนำ/แนะนำสั่งซื้อสดๆ ที่นี่ที่เดียว
+  // ผูกยอดขาย 30 วัน + ABC เข้ากับแต่ละสินค้า แล้วคำนวณขั้นต่ำแนะนำ/แนะนำสั่งซื้อสดๆ ที่นี่ที่เดียว
   // (ตารางกับ modal แก้ไขใช้ตัวเลขชุดเดียวกัน ไม่แยกคำนวณคนละที่)
   //
   // SKU ที่แยกสี/ไซส์เอง (เช่น PY066-B, PY051-C) ไม่มียอดขายของตัวเองตรงๆ เพราะ raw_orders
@@ -145,7 +174,9 @@ export default function Inventory() {
       const leadTimeTotal = (it.lead_time_production || 0) + (it.lead_time_transport || 0)
       const computedSafety = calcSuggestedSafety(dailyAvg, leadTimeTotal, it.ship_freight)
       const effectiveSafety = computedSafety !== null ? computedSafety : it.safety_stock
-      const effectiveStatus = statusOf(it.balance, effectiveSafety)
+      // วัสดุแพ็คเกจจิ้ง — ไม่ track ยอดคงเหลือจริง (คนหน้างานเช็คสต็อกเอง) ระบบเก็บแค่ขั้นต่ำ/lead time
+      // ไว้อ้างอิง ไม่คำนวณสถานะหมด/ใกล้หมดจากยอด balance ที่ไม่มีความหมาย (นิ่งอยู่ 0 ตลอด)
+      const effectiveStatus = it.category === 'packaging' ? null : statusOf(it.balance, effectiveSafety)
       const recommendedOrder = effectiveStatus !== 'ปกติ' && dailyAvg && leadTimeTotal
         ? calcRecommendedOrder(effectiveSafety, it.balance, dailyAvg, leadTimeTotal)
         : null
@@ -156,15 +187,22 @@ export default function Inventory() {
   // นับ Low Stock จาก effectiveStatus (สูตรสด) ไม่ใช้ totals.lowStockCount จาก server ตรงๆ
   // เพราะอันนั้นนับจาก safety_stock ที่เซฟไว้ในชีตเท่านั้น จะไม่ตรงกับสถานะที่โชว์ในตาราง
   const activeEnriched = useMemo(() => enriched.filter((it) => it.active), [enriched])
-  const lowStockCount = useMemo(() => activeEnriched.filter((it) => it.effectiveStatus !== 'ปกติ').length, [activeEnriched])
+  const lowStockCount = useMemo(() => activeEnriched.filter((it) => it.category !== 'packaging' && it.effectiveStatus !== 'ปกติ').length, [activeEnriched])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     let rows = enriched.filter((it) => (showHidden ? !it.active : it.active))
+    rows = rows.filter((it) => (it.category || 'product') === categoryTab)
     if (q) rows = rows.filter((it) => it.display_name.toLowerCase().includes(q) || String(it.sku).toLowerCase().includes(q))
     if (onlyRecommended) rows = rows.filter((it) => (it.recommendedOrder || 0) > 0)
-    return [...rows].sort((a, b) => String(a.sku).localeCompare(String(b.sku), undefined, { numeric: true }))
-  }, [enriched, query, onlyRecommended, showHidden])
+    return [...rows].sort((a, b) => {
+      if (categoryTab === 'packaging') {
+        const groupDiff = PACKAGING_GROUP_ORDER.indexOf(packagingGroupOf(a.sku)) - PACKAGING_GROUP_ORDER.indexOf(packagingGroupOf(b.sku))
+        if (groupDiff) return groupDiff
+      }
+      return String(a.sku).localeCompare(String(b.sku), undefined, { numeric: true })
+    })
+  }, [enriched, query, onlyRecommended, showHidden, categoryTab])
 
   const setItemHidden = async (sku, hidden) => {
     setSaving(true)
@@ -259,24 +297,72 @@ export default function Inventory() {
         <KpiCard title="Transactions" value={fmt(totals.transactionsToday)} subtitle="วันนี้" icon={ArrowLeftRight} trend={null} />
       </div>
 
+      <div style={{ display: 'flex', gap: 8 }}>
+        {[{ key: 'product', label: 'สินค้า' }, { key: 'packaging', label: 'วัสดุแพ็คเกจจิ้ง' }].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setCategoryTab(tab.key)}
+            style={{
+              border: 'none', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer',
+              background: categoryTab === tab.key ? 'var(--payi-gradient-primary)' : 'var(--payi-surface-muted)',
+              color: categoryTab === tab.key ? '#fff' : 'var(--payi-text-muted)',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 20, padding: 20, boxShadow: '0 14px 36px rgba(15,23,42,0.05)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>สินค้า ({filtered.length} รายการ)</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>{categoryTab === 'packaging' ? 'วัสดุแพ็คเกจจิ้ง' : 'สินค้า'} ({filtered.length} รายการ)</div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={onlyRecommended} onChange={(e) => setOnlyRecommended(e.target.checked)} />
-              เฉพาะที่แนะนำสั่ง
-            </label>
+            {categoryTab !== 'packaging' && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={onlyRecommended} onChange={(e) => setOnlyRecommended(e.target.checked)} />
+                เฉพาะที่แนะนำสั่ง
+              </label>
+            )}
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', cursor: 'pointer' }}>
               <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
               แสดงสินค้าที่ซ่อนไว้
             </label>
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาสินค้า..." style={{ ...inputStyle, width: 220 }} />
             <button
+              onClick={() => exportCsv(
+                categoryTab === 'packaging' ? 'วัสดุแพ็คเกจจิ้ง.csv' : 'สินค้า.csv',
+                filtered,
+                categoryTab === 'packaging'
+                  ? [
+                      { label: 'หมวด', get: (r) => packagingGroupOf(r.sku) },
+                      { label: 'SKU', get: (r) => r.sku },
+                      { label: 'ชื่อ', get: (r) => r.display_name },
+                      { label: 'ขั้นต่ำ', get: (r) => r.effectiveSafety },
+                      { label: 'หน่วย', get: (r) => r.unit },
+                      { label: 'วันเติมสินค้า/รอเช็ค', get: (r) => r.reorder_date },
+                    ]
+                  : [
+                      { label: 'SKU', get: (r) => r.sku },
+                      { label: 'ชื่อ', get: (r) => r.display_name },
+                      { label: 'ABC', get: (r) => r.abc },
+                      { label: 'คงเหลือ', get: (r) => r.balance },
+                      { label: 'หน่วย', get: (r) => r.unit },
+                      { label: 'ขั้นต่ำ', get: (r) => r.effectiveSafety },
+                      { label: 'สถานะ', get: (r) => r.effectiveStatus },
+                      { label: 'แนะนำสั่งซื้อ', get: (r) => r.recommendedOrder },
+                      { label: 'วันเติมสินค้า/รอเช็ค', get: (r) => r.reorder_date },
+                    ]
+              )}
+              title="ดาวน์โหลดเป็น CSV"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-surface-muted)', color: 'var(--payi-text-muted)', border: '1px solid var(--payi-border)', borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}
+            >
+              <Download size={14} /> Export
+            </button>
+            <button
               onClick={() => setItemModal('new')}
               style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 18px rgba(37,99,235,0.22)' }}
             >
-              <Plus size={14} /> เพิ่มสินค้า
+              <Plus size={14} /> {categoryTab === 'packaging' ? 'เพิ่มวัสดุ' : 'เพิ่มสินค้า'}
             </button>
           </div>
         </div>
@@ -284,7 +370,59 @@ export default function Inventory() {
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>กำลังโหลด...</div>
         ) : filtered.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>ยังไม่มีสินค้าในระบบ — กด "เพิ่มสินค้า" เพื่อเริ่มต้น</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>
+            ยังไม่มี{categoryTab === 'packaging' ? 'วัสดุ' : 'สินค้า'}ในระบบ — กด "{categoryTab === 'packaging' ? 'เพิ่มวัสดุ' : 'เพิ่มสินค้า'}" เพื่อเริ่มต้น
+          </div>
+        ) : categoryTab === 'packaging' ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, alignItems: 'start' }}>
+            {PACKAGING_GROUP_ORDER.map((group) => {
+              const rows = filtered.filter((it) => packagingGroupOf(it.sku) === group)
+              if (!rows.length) return null
+              return (
+                <div key={group} style={{ border: '1px solid var(--payi-border)', borderRadius: 14, overflow: 'hidden' }}>
+                  <div style={{ padding: '10px 12px', fontWeight: 800, fontSize: 13, color: 'var(--payi-text-strong)', background: 'var(--payi-surface-muted)' }}>{group} ({rows.length})</div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', minWidth: 300, borderCollapse: 'collapse', fontSize: 12.5 }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left', color: 'var(--payi-text-muted)', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          <th style={{ padding: '6px 10px' }}>สินค้า</th>
+                          <th style={{ padding: '6px 10px', textAlign: 'right' }}>ขั้นต่ำ</th>
+                          <th style={{ padding: '6px 10px', textAlign: 'right' }}>จัดการ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((it) => (
+                          <tr key={it.sku} style={{ borderTop: '1px solid var(--payi-border)' }}>
+                            <td style={{ padding: '8px 10px', opacity: it.active ? 1 : 0.5 }} title={it.reorder_date || undefined}>
+                              <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}</div>
+                              <div style={{ fontSize: 10, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{it.sku}</div>
+                            </td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                              <button onClick={() => setItemModal(it)} title="กดเพื่อแก้ไข" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: 'var(--payi-text-muted)', fontWeight: 800 }}>
+                                {fmt(it.effectiveSafety)} {it.unit}
+                              </button>
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                                {it.active ? (
+                                  <>
+                                    <button onClick={() => setItemModal(it)} title="แก้ไข" style={iconBtnStyle('var(--payi-text-muted)')}><Pencil size={12} /></button>
+                                    <button onClick={() => setItemHidden(it.sku, true)} title="ซ่อน" style={iconBtnStyle('var(--payi-text-muted)')}><EyeOff size={12} /></button>
+                                  </>
+                                ) : (
+                                  <button onClick={() => setItemHidden(it.sku, false)} title="กู้คืน" style={iconBtnStyle('var(--payi-mint-strong)')}><Eye size={12} /></button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', minWidth: 1040, borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
@@ -316,7 +454,8 @@ export default function Inventory() {
                 {filtered.map((it) => {
                   const recommendedOrder = it.recommendedOrder
                   return (
-                  <tr key={it.sku} style={{ borderTop: '1px solid var(--payi-border)' }}>
+                  <Fragment key={it.sku}>
+                    <tr style={{ borderTop: '1px solid var(--payi-border)' }}>
                     <td style={{ padding: '10px' }}>
                       {it.abc && (
                         <span
@@ -381,7 +520,8 @@ export default function Inventory() {
                         )}
                       </div>
                     </td>
-                  </tr>
+                    </tr>
+                  </Fragment>
                   )
                 })}
               </tbody>
@@ -393,6 +533,7 @@ export default function Inventory() {
       {itemModal && (
         <ItemModal
           initial={itemModal === 'new' ? null : itemModal}
+          newCategory={categoryTab}
           dailyAvg={itemModal === 'new' ? 0 : itemModal.dailyAvg || 0}
           saving={saving}
           onClose={() => setItemModal(null)}
@@ -419,8 +560,9 @@ const iconBtnStyle = (color) => ({
   fontSize: 16, fontWeight: 800, cursor: 'pointer', lineHeight: 1,
 })
 
-function ItemModal({ initial, dailyAvg, saving, onClose, onSave }) {
+function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave }) {
   const isEdit = Boolean(initial)
+  const isPackaging = (initial?.category || newCategory) === 'packaging'
   const [sku, setSku] = useState(initial?.sku || '')
   const [displayName, setDisplayName] = useState(initial?.display_name || '')
   const [unit, setUnit] = useState(initial?.unit || 'ชิ้น')
@@ -451,7 +593,7 @@ function ItemModal({ initial, dailyAvg, saving, onClose, onSave }) {
     e.preventDefault()
     if (!sku.trim() || !displayName.trim()) return
     const payload = { sku: sku.trim(), display_name: displayName.trim(), unit, safety_stock: safetyStock }
-    if (!isEdit) payload.opening_balance = openingBalance
+    if (!isEdit) { payload.opening_balance = openingBalance; payload.category = newCategory }
     if (isEdit) {
       payload.reorder_date = reorderNote
       payload.lead_time_production = leadProd
@@ -473,7 +615,7 @@ function ItemModal({ initial, dailyAvg, saving, onClose, onSave }) {
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div>
           <label style={labelStyle}>รหัสสินค้า (SKU)</label>
-          <input value={sku} onChange={(e) => setSku(e.target.value)} disabled={isEdit} required style={{ ...inputStyle, opacity: isEdit ? 0.6 : 1 }} placeholder="เช่น PY006" />
+          <input value={sku} onChange={(e) => setSku(e.target.value)} disabled={isEdit} required style={{ ...inputStyle, opacity: isEdit ? 0.6 : 1 }} placeholder={newCategory === 'packaging' ? 'เช่น PKG-STICKER-01' : 'เช่น PY006'} />
         </div>
         <div>
           <label style={labelStyle}>ชื่อสินค้า</label>
@@ -509,11 +651,11 @@ function ItemModal({ initial, dailyAvg, saving, onClose, onSave }) {
             <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>
               {dailyAvg
                 ? `ยอดขายเฉลี่ย ${dailyAvg.toFixed(1)}/วัน${suggestedSafety !== null ? ` — แนะนำขั้นต่ำ ${suggestedSafety}` : ' — กรอก lead time เพื่อคำนวณ'}`
-                : 'ไม่มีข้อมูลยอดขาย 90 วันล่าสุดของ SKU นี้ — คำนวณอัตโนมัติไม่ได้ ต้องกรอกขั้นต่ำเอง'}
+                : 'ไม่มีข้อมูลยอดขาย 30 วันล่าสุดของ SKU นี้ — คำนวณอัตโนมัติไม่ได้ ต้องกรอกขั้นต่ำเอง'}
             </div>
           </div>
         )}
-        {!isEdit && (
+        {!isEdit && !isPackaging && (
           <div>
             <label style={labelStyle}>ยอดคงเหลือเริ่มต้น</label>
             <input type="number" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} style={inputStyle} placeholder="0" />
@@ -530,7 +672,7 @@ function ItemModal({ initial, dailyAvg, saving, onClose, onSave }) {
             />
           </div>
         )}
-        {isEdit && (
+        {isEdit && !isPackaging && (
           <div style={{ background: 'var(--payi-surface-muted)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>
               ปรับยอดคงเหลือ (นับสต็อกจริงไม่ตรง) — ในระบบตอนนี้ {fmt(initial.balance)} {unit}

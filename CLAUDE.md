@@ -105,6 +105,35 @@ Sheets rate limits.
   scope the system prompt + visible data by the caller's role (`dev`/`boss`/`staff` from
   `shared/roles.js`), same pattern already used to gate sidebar tabs. Not built.
 
+- **`ImportTracking.jsx`** (2026-07-24) — "ติดตามนำเข้า", Sheets-backed via
+  `sheet-tools.js?op=import-tracking` (`_lib/importTracking.js`, `import_tracking` sheet,
+  `ensureSheet`-created). **No money/cost tracking at all** — this is the second version
+  of an import-goods page; the first version (`ImportCost.jsx`, same day) computed
+  ต้นทุนต่อชิ้น with CNY price/FX rate/shipping/duty/2-stage payment, but the owner scrapped
+  the whole cost-calculation angle ("ลบที่เกี่ยวกับเงินทั้งหมด ไม่ต้องแทรค") and asked to
+  rebuild keeping only identifiers + document/handover tracking. Fields: date/item/sku/qty,
+  `bill_no`/`customs_no`/`tracking_no` (เลขบิล/เลขที่ใบขน/เลขพัสดุ — `customs_no` is
+  explicitly optional in the UI: the owner's own historical sheet data showed that column
+  was never actually populated with real customs numbers, likely because their shipping
+  agent consolidates customs clearance and doesn't issue per-shipment numbers), a 6-item
+  document checklist (ใบดราฟ, ใบขนดราฟ + ใบขนใช้จริง as two separate checks, ใบกำกับภาษี,
+  หัก ณ ที่จ่าย, ใบทักบัญชี → `docStatus` ครบ/ค้าง/ยังไม่เริ่ม), and a 3-item handover
+  checklist (ส่งบัญชีแล้ว/ส่งคุณจอยแล้ว/พิมพ์แล้ว=PRNT, toggleable inline from the table).
+  **Dev + boss only** (not in `STAFF_TABS`, same `canManageOperations` gating as
+  Inventory/HR). No new `api/*.js` file — piggybacked onto `sheet-tools.js` per the 12/12
+  function-cap rule. Deleting a row is a real delete (discrete purchase-order records, not
+  a catalog, same as the cost version had). The old `import_cost_orders` Sheet tab from the
+  scrapped cost version may still exist (empty, harmless) — nothing reads/writes it.
+  **Bigger idea discussed but not built:** a LINE-based arrival **status confirmation**
+  flow — photograph the goods-receiving bill in the same LINE bot already used for leave
+  requests, boss taps ตรง/ไม่ตรง in-chat (no web page needed for the confirm step, mirrors
+  the HR leave-approval LINE flow). A visual mockup of this was built and shared with the
+  owner 2026-07-24 to explain the flow before deciding whether to build it for real. If
+  revisited: Google Drive photo storage via the service account was ruled out (owner's
+  Google account is a free personal Gmail — service accounts have zero Drive storage quota
+  on non-Workspace accounts, uploads would fail) — a GitHub repo (public, random
+  unguessable filenames, same risk posture as the already-link-public Sheet) was proposed
+  as the free-tier-safe alternative for photo storage instead, not yet confirmed/built.
 - **`Inventory.jsx`** + **`StockMovement.jsx`** (2026-07-21) — real stock tracking, Sheets-
   backed via `sheet-tools.js?op=inventory` (`_lib/inventory.js`). **Tracks at real SKU
   level (`sku`), NOT `deriveGroup` product-family** — M/L/color variants are physically
@@ -135,9 +164,9 @@ backing code. Lower priority (see TODO #9).
 - `claims-import.js` — POST parsed xlsx into `claims` (`requireAuth`)
 - `import-orders.js` (`?view=log` + POST map→alias-match→dedup→route to `raw_orders_YYYY_MM` + log; DELETE by import batch) (`requireDev` — dev-only, this is the destructive one)
 - `manager-claims.js` — mobile manager claim-rate view (`requireManager`)
-- `planner-sales.js` — ABC classification + 90-day sales average, 6h in-memory cache (`requireAuth`). Decomposes Set/bundle SKU sales into real component demand via `set_recipes` sheet — see Files section
+- `planner-sales.js` — ABC classification + sales average over a `?days=N` window (default 90; Inventory/Stock Movement/Planner Control all call `?days=30` as of 2026-07-25), 6h in-memory cache per `days` value (`requireAuth`). Decomposes Set/bundle SKU sales into real component demand via `set_recipes` sheet — see Files section
 - `marketing.js` (`?kind=events|inputs` — multiplexes `_lib/marketingEvents.js` / `_lib/marketingInputs.js`, each with its own `requireManager`)
-- `sheet-tools.js` (`?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|line-webhook`) — the biggest file; HR, workforce/OT, planner CRUD, generic sheet tools, and the LINE webhook all live here to stay under the function cap. `line-webhook` op is unauthenticated (verified via LINE signature instead, see `_lib/line.js`). `op=inventory` (added 2026-07-21) delegates to `_lib/inventory.js` — not in the staff op-whitelist (`summary`/`workforce`/`planner`), so Inventory/Stock Movement are dev+boss only for now, same as it's currently absent from `STAFF_TABS`
+- `sheet-tools.js` (`?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|line-webhook`) — the biggest file; HR, workforce/OT, planner CRUD, generic sheet tools, and the LINE webhook all live here to stay under the function cap. `line-webhook` op is unauthenticated (verified via LINE signature instead, see `_lib/line.js`). `op=inventory` (added 2026-07-21) delegates to `_lib/inventory.js` — not in the staff op-whitelist (`summary`/`workforce`/`planner`), so Inventory/Stock Movement are dev+boss only for now, same as it's currently absent from `STAFF_TABS`. `op=import-tracking` (added 2026-07-24) delegates to `_lib/importTracking.js` — same dev+boss-only gating, see Files section
 - `auth.js` — login/setup/create-user/list-users/delete-user (deliberately NOT behind `requireAuth` — it IS the auth entrypoint)
 - `_lib/`: `sheets.js` (Sheets client), `auth.js` (HMAC token issuing + guards), `productGroup.js` (see below), `inventory.js` (stock items + movements, see Files section above), `claimMapping.js` + `claimImport.js` + `claimsSchema.js` (claims import support), `marketingEvents.js` + `marketingInputs.js` (marketing impls), `dates.js` (date normalization), `line.js` (LINE Messaging API), `leaveCoverage.js` + `scheduleOverrides.js` (HR/workforce logic)
 - `shared/roles.js` — role constants + tab access rules, imported by both frontend (`App.jsx`) and backend (`sheet-tools.js`)

@@ -10,7 +10,9 @@ import { getSkuRedirectMap, resolveRedirect } from './skuMapping.js'
 const ITEMS_SHEET = 'inventory_items'
 const MOVEMENTS_SHEET = 'stock_movements'
 // ต่อท้ายรายการเดิมเท่านั้น (ห้ามแทรกกลาง) — แถวเดิมใน Sheet อิงตำแหน่งคอลัมน์เดิมอยู่ เหมือน claims sheet
-const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note']
+const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category']
+// category: '' หรือ 'product' = สินค้าขาย (ของเดิม), 'packaging' = วัสดุแพ็คเกจจิ้ง/สิ้นเปลือง (สติกเกอร์/กล่อง —
+// เดิมอยู่ในชีท Excel "Something" แยกต่างหาก ไม่มี dailyAverage จากยอดขายลูกค้าเหมือนสินค้าจริง เพราะใช้ตามการผลิตไม่ใช่ตามออเดอร์
 const MOVEMENTS_HEADERS = ['id', 'date', 'sku', 'type', 'qty', 'note', 'created_by', 'created_at']
 const MOVEMENT_TYPES = new Set(['in', 'out', 'adjust'])
 
@@ -68,6 +70,7 @@ async function loadItemsWithBalance({ includeHidden = false } = {}) {
       sku,
       display_name: it.display_name || sku,
       unit: it.unit || 'ชิ้น',
+      category: it.category === 'packaging' ? 'packaging' : 'product',
       safety_stock: safetyStock,
       balance,
       status: statusOf(balance, safetyStock),
@@ -140,6 +143,7 @@ async function upsertItem(body, actorName) {
       sku,
       display_name: body.display_name || sku,
       unit: body.unit || 'ชิ้น',
+      category: body.category === 'packaging' ? 'packaging' : 'product',
       safety_stock: num(body.safety_stock),
       opening_balance: num(body.opening_balance),
       opening_date: isoDate(body.opening_date) || todayBKK(),
@@ -159,6 +163,7 @@ async function upsertItem(body, actorName) {
     const row = items[idx]
     if (body.display_name !== undefined) row.display_name = body.display_name
     if (body.unit !== undefined) row.unit = body.unit
+    if (body.category !== undefined) row.category = body.category === 'packaging' ? 'packaging' : 'product'
     if (body.safety_stock !== undefined) row.safety_stock = num(body.safety_stock)
     if (body.opening_balance !== undefined) row.opening_balance = num(body.opening_balance)
     // วันเติมสินค้า/รอเช็ค — ข้อความอิสระ (ไม่ใช่วันที่) เพราะบางทีสั่งหลายล็อต ของเข้าไม่พร้อมกัน

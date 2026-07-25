@@ -60,16 +60,20 @@ export default function StockMovement() {
     Promise.all([
       fetch(`/api/sheet-tools?op=inventory&${params.toString()}`).then((r) => r.json()),
       fetch('/api/sheet-tools?op=inventory&view=items').then((r) => r.json()),
-      fetch('/api/planner-sales').then((r) => r.json()).catch(() => null),
+      fetch('/api/planner-sales?days=30').then((r) => r.json()).catch(() => null),
     ])
       .then(([moveData, itemData, planner]) => {
         if (!moveData.success) throw new Error(moveData.error || 'โหลดข้อมูลไม่สำเร็จ')
         setMovements(moveData.movements || [])
 
-        // เรียงสินค้าตาม ABC (จาก /api/planner-sales — ยอดขาย 90 วันล่าสุด) ให้ของขายดี (A)
+        // เรียงสินค้าตาม ABC (จาก /api/planner-sales — ยอดขาย 30 วันล่าสุด) ให้ของขายดี (A)
         // ขึ้นก่อนตอนเลือกสินค้าบันทึกรายการ — ของที่หยิบบ่อยควรอยู่บนสุด ไม่ใช่เรียงตามชื่อ
         const abcBySku = new Map((planner?.items || []).map((p) => [String(p.masterSku || '').toUpperCase(), p.abc]))
-        const withAbc = (itemData.items || []).map((it) => ({ ...it, abc: abcBySku.get(String(it.sku).toUpperCase()) || null }))
+        // วัสดุแพ็คเกจจิ้ง (สติกเกอร์/กล่อง) ไม่ track ยอดคงเหลือจริง — คนหน้างานเช็คสต็อกเอง
+        // ตัดออกจากรายการบันทึกรับเข้า-เบิกออกตรงนี้ไปเลย
+        const withAbc = (itemData.items || [])
+          .filter((it) => it.category !== 'packaging')
+          .map((it) => ({ ...it, abc: abcBySku.get(String(it.sku).toUpperCase()) || null }))
         withAbc.sort((a, b) => {
           const rankA = ABC_RANK[a.abc] ?? 3
           const rankB = ABC_RANK[b.abc] ?? 3

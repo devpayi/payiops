@@ -19,7 +19,7 @@ const SET_RECIPES_HEADERS = ['set_sku', 'variation_name', 'component_sku', 'qty_
 
 // ABC ไม่จำเป็นต้องไล่อ่าน raw_orders ทุกครั้งที่เปิดหน้า — 6 ชม. ลดทั้งเวลาและ Sheets quota
 const CACHE_MS = 6 * 60 * 60 * 1000
-let cache = null
+const cacheByDays = new Map()
 const normalizeName = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '')
 const addDays = (iso, days) => {
   const date = new Date(`${String(iso).slice(0, 10)}T00:00:00.000Z`)
@@ -30,6 +30,8 @@ const addDays = (iso, days) => {
 export default async function handler(req, res) {
   if (!requireAuth(req, res)) return
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' })
+  const days = Math.min(180, Math.max(7, parseInt(req.query.days, 10) || 90))
+  const cache = cacheByDays.get(days)
   if (cache && Date.now() - cache.at < CACHE_MS) {
     res.setHeader('Cache-Control', 'private, max-age=300, stale-while-revalidate=21600')
     return res.status(200).json(cache.data)
@@ -61,7 +63,7 @@ export default async function handler(req, res) {
     }
     const productMapping = [...mapped.values()].sort((a, b) => a.masterSku.localeCompare(b.masterSku, undefined, { numeric: true }))
     const allTabs = meta.sheets.map((sheet) => sheet.properties.title).filter((title) => title.startsWith('raw_orders')).sort()
-    if (!allTabs.length) return res.status(200).json({ success: true, items: [], productMapping, anchor: '', start: '', days: 90, fetchedAt: new Date().toISOString() })
+    if (!allTabs.length) return res.status(200).json({ success: true, items: [], productMapping, anchor: '', start: '', days, fetchedAt: new Date().toISOString() })
 
     // ห้ามเดาว่า 4 tab ท้ายสุด (เรียงตามชื่อ) = 4 เดือนล่าสุดที่มีข้อมูลจริง — import-orders.js/ensureSheet
     // สร้าง tab เดือนล่วงหน้าไว้ล่วงหน้าได้ (ว่างเปล่า, แค่ header) ซึ่งจะอยู่ท้ายสุดตามชื่อเสมอ
@@ -69,7 +71,7 @@ export default async function handler(req, res) {
     const dateCols = await batchGetValues(allTabs.map((tab) => `${tab}!D:D`))
     const dataTabs = allTabs.filter((tab, i) => (dateCols[i]?.values || []).length > 1)
     const tabs = dataTabs.slice(-4)
-    if (!tabs.length) return res.status(200).json({ success: true, items: [], productMapping, anchor: '', start: '', days: 90, fetchedAt: new Date().toISOString() })
+    if (!tabs.length) return res.status(200).json({ success: true, items: [], productMapping, anchor: '', start: '', days, fetchedAt: new Date().toISOString() })
 
     // I:N แทน J:N เดิม — เพิ่มคอลัมน์ variation_name (I) เข้ามาด้วย เพื่อแตกยอด Set ตาม variation
     const productCols = await batchGetValues(tabs.map((tab) => `${tab}!I:N`))
@@ -111,7 +113,7 @@ export default async function handler(req, res) {
       }
     }
 
-    const start = anchor ? addDays(anchor, -89) : ''
+    const start = anchor ? addDays(anchor, -(days - 1)) : ''
     const aggregated = new Map()
     for (const row of raw) {
       if (!start || row.date < start || row.date > anchor) continue
@@ -129,11 +131,11 @@ export default async function handler(req, res) {
       const before = totalUnits ? cumulative / totalUnits : 1
       const abc = before < 0.8 ? 'A' : before < 0.95 ? 'B' : 'C'
       cumulative += item.units90
-      return { ...item, abc, dailyAverage: Math.round((item.units90 / 90) * 10) / 10, cumulativePercent: totalUnits ? Math.round((cumulative / totalUnits) * 1000) / 10 : 0 }
+      return { ...item, abc, dailyAverage: Math.round((item.units90 / days) * 10) / 10, cumulativePercent: totalUnits ? Math.round((cumulative / totalUnits) * 1000) / 10 : 0 }
     })
 
-    const data = { success: true, items, productMapping, anchor, start, days: 90, totalUnits, includesCancelledReturned: true, fetchedAt: new Date().toISOString() }
-    cache = { at: Date.now(), data }
+    const data = { success: true, items, productMapping, anchor, start, days, totalUnits, includesCancelledReturned: true, fetchedAt: new Date().toISOString() }
+    cacheByDays.set(days, { at: Date.now(), data })
     res.setHeader('Cache-Control', 'private, max-age=300, stale-while-revalidate=21600')
     return res.status(200).json(data)
   } catch (error) {

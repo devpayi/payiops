@@ -4,7 +4,7 @@ import { CalendarClock, Pencil, X } from 'lucide-react'
 const STORAGE_KEY = 'payi-planner-products-mockup'
 const EXCLUDED_PRODUCTS_KEY = 'payi-planner-excluded-products'
 const DEMAND_MODE_KEY = 'payi-planner-demand-mode'
-const SALES_CACHE_KEY = 'payi-planner-sales-90d-gross-v2'
+const SALES_CACHE_KEY = 'payi-planner-sales-30d-gross-v3'
 const SALES_REFRESH_MS = 6 * 60 * 60 * 1000
 const MANPOWER_CACHE_KEY = 'payi-manpower-today-cache'
 const MANPOWER_REFRESH_MS = 30 * 60 * 1000
@@ -110,7 +110,7 @@ export default function PlannerControl({ onNavigate }) {
     const hasMappedSales = (salesSnapshot?.items || []).some((item) => mappedSkus.has(String(item.masterSku || '').toUpperCase()))
     if (fetchedAt && Date.now() - fetchedAt < SALES_REFRESH_MS && mappedSkus.size && hasMappedSales) return undefined
     let active = true
-    fetch('/api/planner-sales')
+    fetch('/api/planner-sales?days=30')
       .then((response) => response.json())
       .then((data) => {
         if (!active || !data?.success) return

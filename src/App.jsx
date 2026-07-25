@@ -6,7 +6,7 @@ import {
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
   LayoutDashboard, UploadCloud, Radar, Megaphone, CalendarClock, Boxes,
   ArrowLeftRight, Users, ShieldAlert, BookOpen, Link2,
-  Code2, Settings as SettingsIcon, CalendarCheck, Menu,
+  Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -29,6 +29,7 @@ const AdsChannels = lazy(() => import('./pages/AdsChannels'))
 const ContentOSPrototype = lazy(() => import('./pages/ContentOSPrototype'))
 const Inventory = lazy(() => import('./pages/Inventory'))
 const StockMovement = lazy(() => import('./pages/StockMovement'))
+const ImportTracking = lazy(() => import('./pages/ImportTracking'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 const API_BASE = '/api'
@@ -85,6 +86,7 @@ const Icons = {
   PlannerControl: CalendarClock,
   Inventory: Boxes,
   StockMovement: ArrowLeftRight,
+  ImportTracking: Ship,
   WorkforceOT: Users,
   HR: CalendarCheck,
   Claims: ShieldAlert,
@@ -116,6 +118,7 @@ const menuGroups = [
     items: [
       { id: 'Inventory', label: 'Inventory', renderIcon: Icons.Inventory, dotColor: 'var(--payi-danger)' },
       { id: 'Stock Movement', label: 'Stock Movement', renderIcon: Icons.StockMovement },
+      { id: 'Import Tracking', label: 'ติดตามนำเข้า', renderIcon: Icons.ImportTracking, dotColor: '#0ea5e9' },
       { id: 'Planner Control', label: 'Planner Control', renderIcon: Icons.PlannerControl, dotColor: '#8b5cf6', group: ['Planner Control', 'FeedProducts'] },
       { id: 'Workforce OT', label: 'Manpower & OT', renderIcon: Icons.WorkforceOT, dotColor: '#7dd3fc' },
       { id: 'HR', label: 'พนักงาน (ลา)', renderIcon: Icons.HR, dotColor: '#a78bfa' },
@@ -1179,6 +1182,8 @@ export default function App() {
             <PlannerControl onNavigate={setActiveTab} />
         ) : activeTab === 'Inventory' ? (
             <Inventory />
+        ) : activeTab === 'Import Tracking' ? (
+            <ImportTracking />
         ) : activeTab === 'Stock Movement' ? (
             <StockMovement />
         ) : activeTab === 'Workforce OT' ? (

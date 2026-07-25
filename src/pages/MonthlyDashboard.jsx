@@ -144,7 +144,7 @@ export default function MonthlyDashboard() {
     for (const ym of data.months || []) {
       for (const s of data.byStore?.[ym] || []) {
         let m = merged.get(s.store)
-        if (!m) merged.set(s.store, { store: s.store, business: s.business, platform: s.platform, sales: 0, units: 0, orders: 0 })
+        if (!m) merged.set(s.store, (m = { store: s.store, business: s.business, platform: s.platform, sales: 0, units: 0, orders: 0 }))
         m.sales += s.sales; m.units += s.units; m.orders += s.orders
       }
     }
