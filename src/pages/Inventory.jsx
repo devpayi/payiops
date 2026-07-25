@@ -93,6 +93,7 @@ export default function Inventory() {
   const [data, setData] = useState(null)
   const [salesBySku, setSalesBySku] = useState(new Map()) // sku -> { dailyAverage, abc, units90 }
   const [packagingRecipes, setPackagingRecipes] = useState([]) // [{ packaging_sku, product_sku, product_name, qty_per_unit }]
+  const [plannerSafetyBySku, setPlannerSafetyBySku] = useState(new Map()) // master_sku -> safety_percent (จาก Planner Control)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -110,12 +111,16 @@ export default function Inventory() {
       fetch('/api/sheet-tools?op=inventory&view=items&includeHidden=1').then((r) => r.json()),
       fetch('/api/planner-sales?days=30').then((r) => r.json()).catch(() => null),
       fetch('/api/sheet-tools?op=inventory&view=packaging-recipes').then((r) => r.json()).catch(() => null),
+      fetch('/api/sheet-tools?op=planner').then((r) => r.json()).catch(() => null),
     ])
-      .then(([d, planner, recipes]) => {
+      .then(([d, planner, recipes, plannerConfig]) => {
         if (!d.success) throw new Error(d.error || 'โหลดข้อมูลไม่สำเร็จ')
         setData(d)
         setSalesBySku(new Map((planner?.items || []).map((p) => [String(p.masterSku || '').toUpperCase(), p])))
         setPackagingRecipes(recipes?.recipes || [])
+        setPlannerSafetyBySku(new Map((plannerConfig?.config || [])
+          .filter((c) => Number(c.safety_percent) > 0)
+          .map((c) => [String(c.master_sku).toUpperCase(), Number(c.safety_percent)])))
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
@@ -166,8 +171,30 @@ export default function Inventory() {
     return result
   }, [items, salesBySku])
 
+  const DEFAULT_BUFFER_PERCENT = 30
+
+  // % เผื่อแนะนำต่อวัสดุ — เฉลี่ย safety_percent (ตั้งไว้ใน Planner Control) ของสินค้าทุกตัวที่ผูกไว้
+  // เหตุผลที่ต้องเผื่อ: ของจริงเบิกวัสดุไปฟีดการผลิตล่วงหน้า ไม่ใช่ใช้ตามยอดขายวันต่อวันตรงๆ
+  // ไม่มีข้อมูล Planner ของ SKU ไหนเลย = fallback 30% เจ้าของแก้ทับเองได้เสมอ (เก็บใน buffer_percent)
+  const packagingBufferSuggestion = useMemo(() => {
+    const recipesBySku = new Map()
+    for (const r of packagingRecipes) {
+      if (!recipesBySku.has(r.packaging_sku)) recipesBySku.set(r.packaging_sku, [])
+      recipesBySku.get(r.packaging_sku).push(r)
+    }
+    const result = new Map()
+    for (const it of items) {
+      if (it.category !== 'packaging') continue
+      const sku = String(it.sku).toUpperCase()
+      const recipes = recipesBySku.get(sku) || []
+      const percents = recipes.map((r) => plannerSafetyBySku.get(r.product_sku)).filter((v) => v > 0)
+      result.set(sku, percents.length ? Math.round(percents.reduce((s, v) => s + v, 0) / percents.length) : DEFAULT_BUFFER_PERCENT)
+    }
+    return result
+  }, [items, packagingRecipes, plannerSafetyBySku])
+
   // ยอดใช้วัสดุแพ็คเกจจิ้งเฉลี่ย/วัน (หน่วย: แผ่น/แพ็ค ไม่ใช่ชิ้น) — รวมยอดขายเฉลี่ยของสินค้าทุกตัว
-  // ที่ผูกไว้ใน packaging_recipes (× qty_per_unit) แล้วหารด้วย units_per_batch เพื่อแปลงชิ้น→แผ่น/แพ็ค
+  // ที่ผูกไว้ใน packaging_recipes (× qty_per_unit) คูณ % เผื่อ แล้วหารด้วย units_per_batch เพื่อแปลงชิ้น→แผ่น/แพ็ค
   // ผลลัพธ์ใช้แทน dailyAvg ตรงๆ ในสูตรขั้นต่ำเดียวกับสินค้า (calcSuggestedSafety) เลยได้ตัวเลขเป็นแผ่น/แพ็คทันที
   const packagingDailyAvgBatches = useMemo(() => {
     const recipesBySku = new Map()
@@ -185,10 +212,12 @@ export default function Inventory() {
         const productSales = salesBySku.get(r.product_sku) || allocatedSales.get(r.product_sku)
         return sum + (productSales?.dailyAverage || 0) * r.qty_per_unit
       }, 0)
-      result.set(sku, Math.round((piecesPerDay / it.units_per_batch) * 100) / 100)
+      const bufferPercent = it.buffer_percent ?? packagingBufferSuggestion.get(sku) ?? DEFAULT_BUFFER_PERCENT
+      const piecesWithBuffer = piecesPerDay * (1 + bufferPercent / 100)
+      result.set(sku, Math.round((piecesWithBuffer / it.units_per_batch) * 100) / 100)
     }
     return result
-  }, [items, packagingRecipes, salesBySku, allocatedSales])
+  }, [items, packagingRecipes, salesBySku, allocatedSales, packagingBufferSuggestion])
 
   const enriched = useMemo(() => {
     return items.map((it) => {
@@ -610,6 +639,7 @@ export default function Inventory() {
           productOptions={items.filter((it) => it.category !== 'packaging')}
           onSaveRecipe={saveRecipe}
           onDeleteRecipe={deleteRecipe}
+          suggestedBufferPercent={itemModal === 'new' ? 30 : (packagingBufferSuggestion.get(String(itemModal.sku).toUpperCase()) ?? 30)}
         />
       )}
 
@@ -632,13 +662,15 @@ const iconBtnStyle = (color) => ({
   fontSize: 16, fontWeight: 800, cursor: 'pointer', lineHeight: 1,
 })
 
-function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave, recipes = [], productOptions = [], onSaveRecipe, onDeleteRecipe }) {
+function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave, recipes = [], productOptions = [], onSaveRecipe, onDeleteRecipe, suggestedBufferPercent = 30 }) {
   const isEdit = Boolean(initial)
   const isPackaging = (initial?.category || newCategory) === 'packaging'
   const [sku, setSku] = useState(initial?.sku || '')
   const [displayName, setDisplayName] = useState(initial?.display_name || '')
   const [unit, setUnit] = useState(initial?.unit || 'ชิ้น')
   const [unitsPerBatch, setUnitsPerBatch] = useState(initial?.units_per_batch || '')
+  // ว่าง = ยังไม่เคยตั้งเอง ใช้ค่าแนะนำจาก Planner Control (safety_percent ของสินค้าที่ผูกไว้ เฉลี่ยกัน)
+  const [bufferPercent, setBufferPercent] = useState(initial?.buffer_percent ?? '')
   const [newRecipeSku, setNewRecipeSku] = useState('')
   const [newRecipeQty, setNewRecipeQty] = useState('1')
   const [leadProd, setLeadProd] = useState(initial?.lead_time_production ?? '')
@@ -669,7 +701,7 @@ function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave, re
     if (!sku.trim() || !displayName.trim()) return
     const payload = { sku: sku.trim(), display_name: displayName.trim(), unit, safety_stock: safetyStock }
     if (!isEdit) { payload.opening_balance = openingBalance; payload.category = newCategory }
-    if (isPackaging) payload.units_per_batch = unitsPerBatch
+    if (isPackaging) { payload.units_per_batch = unitsPerBatch; payload.buffer_percent = bufferPercent }
     if (isEdit) {
       payload.reorder_date = reorderNote
       payload.lead_time_production = leadProd
@@ -713,6 +745,21 @@ function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave, re
             </div>
           )}
         </div>
+        {isPackaging && (
+          <div>
+            <label style={labelStyle}>% เผื่อ (เบิกไปฟีดล่วงหน้ามากกว่าที่ขายจริง)</label>
+            <input
+              type="number"
+              value={bufferPercent}
+              onChange={(e) => setBufferPercent(e.target.value)}
+              style={inputStyle}
+              placeholder={`แนะนำ ${suggestedBufferPercent}% (จาก Planner Control)`}
+            />
+            <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 4 }}>
+              {bufferPercent === '' ? `ยังไม่ตั้งเอง — ใช้ค่าแนะนำ ${suggestedBufferPercent}% อัตโนมัติ` : 'ตั้งเองแล้ว — จะไม่ขยับตามค่าแนะนำอีก (แก้กลับเป็นว่างเพื่อใช้ค่าแนะนำ)'}
+            </div>
+          </div>
+        )}
         {isEdit && isPackaging && (
           <div style={{ background: 'var(--payi-surface-muted)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>เชื่อมกับสินค้า (ไว้คำนวณยอดใช้เฉลี่ยจากยอดขายจริง)</div>

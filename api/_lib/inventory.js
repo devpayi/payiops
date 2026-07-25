@@ -10,7 +10,11 @@ import { getSkuRedirectMap, resolveRedirect } from './skuMapping.js'
 const ITEMS_SHEET = 'inventory_items'
 const MOVEMENTS_SHEET = 'stock_movements'
 // ต่อท้ายรายการเดิมเท่านั้น (ห้ามแทรกกลาง) — แถวเดิมใน Sheet อิงตำแหน่งคอลัมน์เดิมอยู่ เหมือน claims sheet
-const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category', 'units_per_batch']
+const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category', 'units_per_batch', 'buffer_percent']
+// buffer_percent: เฉพาะ category=packaging — % เผื่อเพิ่มจากยอดใช้เฉลี่ยที่คำนวณจากยอดขาย (เพราะของจริงเบิกไปฟีด
+// การผลิตล่วงหน้า ไม่ใช่ผลิตตามยอดขายวันต่อวัน) ค่าว่าง = ใช้ค่าแนะนำที่หน้าเว็บคำนวณจาก safety_percent
+// ของ Planner Control เฉลี่ยของสินค้าที่ผูกไว้ (fallback 30% ถ้าไม่มีข้อมูล) — เจ้าของแก้ทับเองได้เสมอ
+// เผื่อกรณียอดพุ่ง/ฉุกเฉิน โดยไม่ถูกคำนวณทับอัตโนมัติซ้ำอีกเมื่อมีการตั้งค่าไว้แล้ว
 // category: '' หรือ 'product' = สินค้าขาย (ของเดิม), 'packaging' = วัสดุแพ็คเกจจิ้ง/สิ้นเปลือง (สติกเกอร์/กล่อง —
 // เดิมอยู่ในชีท Excel "Something" แยกต่างหาก ไม่มี dailyAverage จากยอดขายลูกค้าเหมือนสินค้าจริง เพราะใช้ตามการผลิตไม่ใช่ตามออเดอร์
 // units_per_batch: เฉพาะ category=packaging — 1 แผ่น/แพ็คมีกี่ชิ้น ไว้แปลงยอดใช้ (ชิ้น) เป็นจุดสั่งซื้อ (แผ่น/แพ็ค)
@@ -90,6 +94,7 @@ async function loadItemsWithBalance({ includeHidden = false } = {}) {
       lead_time_transport: num(it.lead_time_transport),
       ship_freight: String(it.ship_freight) === '1' || String(it.ship_freight).toLowerCase() === 'true',
       units_per_batch: num(it.units_per_batch),
+      buffer_percent: it.buffer_percent === '' || it.buffer_percent === undefined ? null : num(it.buffer_percent),
       active: truthyActive(it.active),
     }
   })
@@ -164,6 +169,7 @@ async function upsertItem(body, actorName) {
       lead_time_transport: num(body.lead_time_transport),
       ship_freight: body.ship_freight ? '1' : '0',
       units_per_batch: num(body.units_per_batch),
+      buffer_percent: body.buffer_percent === '' || body.buffer_percent === undefined ? '' : num(body.buffer_percent),
       active: '1',
       created_at: now,
       updated_at: now,
@@ -186,6 +192,7 @@ async function upsertItem(body, actorName) {
     if (body.lead_time_transport !== undefined) row.lead_time_transport = num(body.lead_time_transport)
     if (body.ship_freight !== undefined) row.ship_freight = body.ship_freight ? '1' : '0'
     if (body.units_per_batch !== undefined) row.units_per_batch = num(body.units_per_batch)
+    if (body.buffer_percent !== undefined) row.buffer_percent = body.buffer_percent === '' ? '' : num(body.buffer_percent)
     if (body.active !== undefined) row.active = body.active ? '1' : '0'
     row.updated_at = now
   }
