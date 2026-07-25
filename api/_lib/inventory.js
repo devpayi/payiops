@@ -10,16 +10,24 @@ import { getSkuRedirectMap, resolveRedirect } from './skuMapping.js'
 const ITEMS_SHEET = 'inventory_items'
 const MOVEMENTS_SHEET = 'stock_movements'
 // ต่อท้ายรายการเดิมเท่านั้น (ห้ามแทรกกลาง) — แถวเดิมใน Sheet อิงตำแหน่งคอลัมน์เดิมอยู่ เหมือน claims sheet
-const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category']
+const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category', 'units_per_batch']
 // category: '' หรือ 'product' = สินค้าขาย (ของเดิม), 'packaging' = วัสดุแพ็คเกจจิ้ง/สิ้นเปลือง (สติกเกอร์/กล่อง —
 // เดิมอยู่ในชีท Excel "Something" แยกต่างหาก ไม่มี dailyAverage จากยอดขายลูกค้าเหมือนสินค้าจริง เพราะใช้ตามการผลิตไม่ใช่ตามออเดอร์
+// units_per_batch: เฉพาะ category=packaging — 1 แผ่น/แพ็คมีกี่ชิ้น ไว้แปลงยอดใช้ (ชิ้น) เป็นจุดสั่งซื้อ (แผ่น/แพ็ค)
+// ผ่าน packaging_recipes (ดูด้านล่าง)
 const MOVEMENTS_HEADERS = ['id', 'date', 'sku', 'type', 'qty', 'note', 'created_by', 'created_at']
 const MOVEMENT_TYPES = new Set(['in', 'out', 'adjust'])
+
+// เชื่อมวัสดุแพ็คเกจจิ้งกับสินค้าที่ใช้มันจริง — 1 แถวต่อ 1 คู่ (วัสดุ, สินค้า) เพื่อเอายอดขาย
+// เฉลี่ยของสินค้ามาคำนวณว่าวัสดุควรสั่งเพิ่มเท่าไหร่ (เหมือน pattern set_recipes ที่ planner-sales.js ใช้)
+const PACKAGING_RECIPES_SHEET = 'packaging_recipes'
+const PACKAGING_RECIPES_HEADERS = ['packaging_sku', 'product_sku', 'qty_per_unit', 'created_at']
 
 let ensurePromise
 const ensureInventorySheets = () => ensurePromise ||= Promise.all([
   ensureSheet(ITEMS_SHEET, ITEMS_HEADERS),
   ensureSheet(MOVEMENTS_SHEET, MOVEMENTS_HEADERS),
+  ensureSheet(PACKAGING_RECIPES_SHEET, PACKAGING_RECIPES_HEADERS),
 ])
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0 }
@@ -81,6 +89,7 @@ async function loadItemsWithBalance({ includeHidden = false } = {}) {
       lead_time_production: num(it.lead_time_production),
       lead_time_transport: num(it.lead_time_transport),
       ship_freight: String(it.ship_freight) === '1' || String(it.ship_freight).toLowerCase() === 'true',
+      units_per_batch: num(it.units_per_batch),
       active: truthyActive(it.active),
     }
   })
@@ -154,6 +163,7 @@ async function upsertItem(body, actorName) {
       lead_time_production: num(body.lead_time_production),
       lead_time_transport: num(body.lead_time_transport),
       ship_freight: body.ship_freight ? '1' : '0',
+      units_per_batch: num(body.units_per_batch),
       active: '1',
       created_at: now,
       updated_at: now,
@@ -175,6 +185,7 @@ async function upsertItem(body, actorName) {
     if (body.lead_time_production !== undefined) row.lead_time_production = num(body.lead_time_production)
     if (body.lead_time_transport !== undefined) row.lead_time_transport = num(body.lead_time_transport)
     if (body.ship_freight !== undefined) row.ship_freight = body.ship_freight ? '1' : '0'
+    if (body.units_per_batch !== undefined) row.units_per_batch = num(body.units_per_batch)
     if (body.active !== undefined) row.active = body.active ? '1' : '0'
     row.updated_at = now
   }
@@ -218,6 +229,48 @@ async function addMovement(body, actorName) {
   return row
 }
 
+async function loadPackagingRecipes() {
+  await ensureInventorySheets()
+  const [rows, items] = await Promise.all([getSheet(PACKAGING_RECIPES_SHEET), getSheet(ITEMS_SHEET)])
+  const nameBySku = new Map(items.map((it) => [String(it.sku).toUpperCase(), it.display_name || it.sku]))
+  return rows
+    .filter((r) => r.packaging_sku && r.product_sku)
+    .map((r) => ({
+      packaging_sku: String(r.packaging_sku).toUpperCase(),
+      product_sku: String(r.product_sku).toUpperCase(),
+      product_name: nameBySku.get(String(r.product_sku).toUpperCase()) || r.product_sku,
+      qty_per_unit: num(r.qty_per_unit) || 1,
+    }))
+}
+
+async function upsertPackagingRecipe(body) {
+  const packagingSku = String(body.packaging_sku || '').trim().toUpperCase()
+  const productSku = String(body.product_sku || '').trim().toUpperCase()
+  const qtyPerUnit = Number(body.qty_per_unit) || 1
+  if (!packagingSku || !productSku) throw new Error('ต้องระบุ packaging_sku และ product_sku')
+
+  await ensureInventorySheets()
+  const rows = await getSheet(PACKAGING_RECIPES_SHEET)
+  const idx = rows.findIndex((r) => String(r.packaging_sku).toUpperCase() === packagingSku && String(r.product_sku).toUpperCase() === productSku)
+  if (idx === -1) {
+    rows.push({ packaging_sku: packagingSku, product_sku: productSku, qty_per_unit: qtyPerUnit, created_at: new Date().toISOString() })
+  } else {
+    rows[idx].qty_per_unit = qtyPerUnit
+  }
+  await overwriteSheet(PACKAGING_RECIPES_SHEET, PACKAGING_RECIPES_HEADERS, rows.map((r) => PACKAGING_RECIPES_HEADERS.map((h) => r[h] ?? '')))
+  return { packaging_sku: packagingSku, product_sku: productSku }
+}
+
+async function deletePackagingRecipe(body) {
+  const packagingSku = String(body.packaging_sku || '').trim().toUpperCase()
+  const productSku = String(body.product_sku || '').trim().toUpperCase()
+  await ensureInventorySheets()
+  const rows = await getSheet(PACKAGING_RECIPES_SHEET)
+  const next = rows.filter((r) => !(String(r.packaging_sku).toUpperCase() === packagingSku && String(r.product_sku).toUpperCase() === productSku))
+  await overwriteSheet(PACKAGING_RECIPES_SHEET, PACKAGING_RECIPES_HEADERS, next.map((r) => PACKAGING_RECIPES_HEADERS.map((h) => r[h] ?? '')))
+  return { packaging_sku: packagingSku, product_sku: productSku }
+}
+
 export default async function opInventory(req, res) {
   try {
     const actorName = req.user?.display_name || req.user?.username || ''
@@ -233,6 +286,10 @@ export default async function opInventory(req, res) {
         })
         return res.status(200).json({ success: true, movements: rows })
       }
+      if (view === 'packaging-recipes') {
+        const recipes = await loadPackagingRecipes()
+        return res.status(200).json({ success: true, recipes })
+      }
       const data = await loadItemsWithBalance({ includeHidden: req.query.includeHidden === '1' })
       return res.status(200).json({ success: true, ...data })
     }
@@ -246,6 +303,14 @@ export default async function opInventory(req, res) {
       if (action === 'add-movement') {
         const result = await addMovement(req.body, actorName)
         return res.status(200).json({ success: true, movement: result })
+      }
+      if (action === 'upsert-recipe') {
+        const result = await upsertPackagingRecipe(req.body)
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'delete-recipe') {
+        const result = await deletePackagingRecipe(req.body)
+        return res.status(200).json({ success: true, ...result })
       }
       return res.status(400).json({ success: false, error: 'action ไม่ถูกต้อง' })
     }

@@ -92,6 +92,7 @@ const calcRecommendedOrder = (safetyStock, balance, dailyAvg, leadTimeTotal) => 
 export default function Inventory() {
   const [data, setData] = useState(null)
   const [salesBySku, setSalesBySku] = useState(new Map()) // sku -> { dailyAverage, abc, units90 }
+  const [packagingRecipes, setPackagingRecipes] = useState([]) // [{ packaging_sku, product_sku, product_name, qty_per_unit }]
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -108,11 +109,13 @@ export default function Inventory() {
     Promise.all([
       fetch('/api/sheet-tools?op=inventory&view=items&includeHidden=1').then((r) => r.json()),
       fetch('/api/planner-sales?days=30').then((r) => r.json()).catch(() => null),
+      fetch('/api/sheet-tools?op=inventory&view=packaging-recipes').then((r) => r.json()).catch(() => null),
     ])
-      .then(([d, planner]) => {
+      .then(([d, planner, recipes]) => {
         if (!d.success) throw new Error(d.error || 'โหลดข้อมูลไม่สำเร็จ')
         setData(d)
         setSalesBySku(new Map((planner?.items || []).map((p) => [String(p.masterSku || '').toUpperCase(), p])))
+        setPackagingRecipes(recipes?.recipes || [])
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
@@ -163,11 +166,36 @@ export default function Inventory() {
     return result
   }, [items, salesBySku])
 
+  // ยอดใช้วัสดุแพ็คเกจจิ้งเฉลี่ย/วัน (หน่วย: แผ่น/แพ็ค ไม่ใช่ชิ้น) — รวมยอดขายเฉลี่ยของสินค้าทุกตัว
+  // ที่ผูกไว้ใน packaging_recipes (× qty_per_unit) แล้วหารด้วย units_per_batch เพื่อแปลงชิ้น→แผ่น/แพ็ค
+  // ผลลัพธ์ใช้แทน dailyAvg ตรงๆ ในสูตรขั้นต่ำเดียวกับสินค้า (calcSuggestedSafety) เลยได้ตัวเลขเป็นแผ่น/แพ็คทันที
+  const packagingDailyAvgBatches = useMemo(() => {
+    const recipesBySku = new Map()
+    for (const r of packagingRecipes) {
+      if (!recipesBySku.has(r.packaging_sku)) recipesBySku.set(r.packaging_sku, [])
+      recipesBySku.get(r.packaging_sku).push(r)
+    }
+    const result = new Map()
+    for (const it of items) {
+      if (it.category !== 'packaging') continue
+      const sku = String(it.sku).toUpperCase()
+      const recipes = recipesBySku.get(sku)
+      if (!recipes?.length || !it.units_per_batch) continue
+      const piecesPerDay = recipes.reduce((sum, r) => {
+        const productSales = salesBySku.get(r.product_sku) || allocatedSales.get(r.product_sku)
+        return sum + (productSales?.dailyAverage || 0) * r.qty_per_unit
+      }, 0)
+      result.set(sku, Math.round((piecesPerDay / it.units_per_batch) * 100) / 100)
+    }
+    return result
+  }, [items, packagingRecipes, salesBySku, allocatedSales])
+
   const enriched = useMemo(() => {
     return items.map((it) => {
       const sku = String(it.sku).toUpperCase()
+      const isPackaging = it.category === 'packaging'
       const sales = salesBySku.get(sku) || allocatedSales.get(sku)
-      const dailyAvg = sales?.dailyAverage || 0
+      const dailyAvg = isPackaging ? (packagingDailyAvgBatches.get(sku) || 0) : (sales?.dailyAverage || 0)
       const units90 = sales?.units90 || 0
       const abc = sales?.abc || null
       const salesEstimated = Boolean(sales?.estimated)
@@ -176,13 +204,15 @@ export default function Inventory() {
       const effectiveSafety = computedSafety !== null ? computedSafety : it.safety_stock
       // วัสดุแพ็คเกจจิ้ง — ไม่ track ยอดคงเหลือจริง (คนหน้างานเช็คสต็อกเอง) ระบบเก็บแค่ขั้นต่ำ/lead time
       // ไว้อ้างอิง ไม่คำนวณสถานะหมด/ใกล้หมดจากยอด balance ที่ไม่มีความหมาย (นิ่งอยู่ 0 ตลอด)
-      const effectiveStatus = it.category === 'packaging' ? null : statusOf(it.balance, effectiveSafety)
-      const recommendedOrder = effectiveStatus !== 'ปกติ' && dailyAvg && leadTimeTotal
+      const effectiveStatus = isPackaging ? null : statusOf(it.balance, effectiveSafety)
+      // วัสดุแพ็คเกจจิ้งไม่มี balance จริงให้หัก ไม่คำนวณแนะนำสั่งซื้อแบบสินค้า — "ขั้นต่ำ" (คำนวณจากยอดขาย)
+      // ก็คือตัวเลขอ้างอิงพอแล้ว ให้คนหน้างานเทียบกับของบนชั้นเอง
+      const recommendedOrder = isPackaging ? null : (effectiveStatus !== 'ปกติ' && dailyAvg && leadTimeTotal
         ? calcRecommendedOrder(effectiveSafety, it.balance, dailyAvg, leadTimeTotal)
-        : null
+        : null)
       return { ...it, dailyAvg, units90, abc, salesEstimated, leadTimeTotal, computedSafety, effectiveSafety, effectiveStatus, recommendedOrder }
     })
-  }, [items, salesBySku, allocatedSales])
+  }, [items, salesBySku, allocatedSales, packagingDailyAvgBatches])
 
   // นับ Low Stock จาก effectiveStatus (สูตรสด) ไม่ใช้ totals.lowStockCount จาก server ตรงๆ
   // เพราะอันนั้นนับจาก safety_stock ที่เซฟไว้ในชีตเท่านั้น จะไม่ตรงกับสถานะที่โชว์ในตาราง
@@ -215,6 +245,44 @@ export default function Inventory() {
       })
       const json = await res.json()
       if (!json.success) throw new Error(json.error || 'บันทึกไม่สำเร็จ')
+      load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveRecipe = async (packagingSku, productSku, qtyPerUnit) => {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/sheet-tools?op=inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'upsert-recipe', packaging_sku: packagingSku, product_sku: productSku, qty_per_unit: qtyPerUnit }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'บันทึกไม่สำเร็จ')
+      load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const deleteRecipe = async (packagingSku, productSku) => {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/sheet-tools?op=inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-recipe', packaging_sku: packagingSku, product_sku: productSku }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'ลบไม่สำเร็จ')
       load()
     } catch (e) {
       setError(e.message)
@@ -538,6 +606,10 @@ export default function Inventory() {
           saving={saving}
           onClose={() => setItemModal(null)}
           onSave={saveItem}
+          recipes={itemModal === 'new' ? [] : packagingRecipes.filter((r) => r.packaging_sku === String(itemModal.sku).toUpperCase())}
+          productOptions={items.filter((it) => it.category !== 'packaging')}
+          onSaveRecipe={saveRecipe}
+          onDeleteRecipe={deleteRecipe}
         />
       )}
 
@@ -560,12 +632,15 @@ const iconBtnStyle = (color) => ({
   fontSize: 16, fontWeight: 800, cursor: 'pointer', lineHeight: 1,
 })
 
-function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave }) {
+function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave, recipes = [], productOptions = [], onSaveRecipe, onDeleteRecipe }) {
   const isEdit = Boolean(initial)
   const isPackaging = (initial?.category || newCategory) === 'packaging'
   const [sku, setSku] = useState(initial?.sku || '')
   const [displayName, setDisplayName] = useState(initial?.display_name || '')
   const [unit, setUnit] = useState(initial?.unit || 'ชิ้น')
+  const [unitsPerBatch, setUnitsPerBatch] = useState(initial?.units_per_batch || '')
+  const [newRecipeSku, setNewRecipeSku] = useState('')
+  const [newRecipeQty, setNewRecipeQty] = useState('1')
   const [leadProd, setLeadProd] = useState(initial?.lead_time_production ?? '')
   const [leadTransport, setLeadTransport] = useState(initial?.lead_time_transport ?? '')
   const [shipFreight, setShipFreight] = useState(initial?.ship_freight ?? false)
@@ -594,6 +669,7 @@ function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave }) 
     if (!sku.trim() || !displayName.trim()) return
     const payload = { sku: sku.trim(), display_name: displayName.trim(), unit, safety_stock: safetyStock }
     if (!isEdit) { payload.opening_balance = openingBalance; payload.category = newCategory }
+    if (isPackaging) payload.units_per_batch = unitsPerBatch
     if (isEdit) {
       payload.reorder_date = reorderNote
       payload.lead_time_production = leadProd
@@ -621,7 +697,7 @@ function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave }) 
           <label style={labelStyle}>ชื่อสินค้า</label>
           <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required style={inputStyle} placeholder="เช่น ถุงเท้าเจล 2in1 M" />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isPackaging ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
           <div>
             <label style={labelStyle}>หน่วย</label>
             <input value={unit} onChange={(e) => setUnit(e.target.value)} style={inputStyle} placeholder="คู่ / ชิ้น / แพ็ค" />
@@ -630,7 +706,64 @@ function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave }) 
             <label style={labelStyle}>ขั้นต่ำ (safety stock)</label>
             <input type="number" value={safetyStock} onChange={(e) => setSafetyStock(e.target.value)} style={inputStyle} placeholder="0" />
           </div>
+          {isPackaging && (
+            <div>
+              <label style={labelStyle}>1 {unit || 'แพ็ค'} มีกี่ชิ้น</label>
+              <input type="number" value={unitsPerBatch} onChange={(e) => setUnitsPerBatch(e.target.value)} style={inputStyle} placeholder="เช่น 400" />
+            </div>
+          )}
         </div>
+        {isEdit && isPackaging && (
+          <div style={{ background: 'var(--payi-surface-muted)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>เชื่อมกับสินค้า (ไว้คำนวณยอดใช้เฉลี่ยจากยอดขายจริง)</div>
+            {recipes.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {recipes.map((r) => (
+                  <div key={r.product_sku} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+                    <span style={{ flex: 1, color: 'var(--payi-text-strong)' }}>{r.product_name} <span style={{ color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>({r.product_sku})</span></span>
+                    <span style={{ color: 'var(--payi-text-muted)' }}>× {r.qty_per_unit}</span>
+                    <button type="button" onClick={() => onDeleteRecipe(sku, r.product_sku)} style={{ border: 'none', background: 'none', color: 'var(--payi-danger)', cursor: 'pointer', padding: 0 }}>
+                      <X size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>SKU สินค้า</label>
+                <input
+                  list="product-sku-options"
+                  value={newRecipeSku}
+                  onChange={(e) => setNewRecipeSku(e.target.value)}
+                  style={inputStyle}
+                  placeholder="เช่น PY006"
+                />
+                <datalist id="product-sku-options">
+                  {productOptions.map((p) => <option key={p.sku} value={p.sku}>{p.display_name}</option>)}
+                </datalist>
+              </div>
+              <div style={{ width: 70 }}>
+                <label style={labelStyle}>ต่อชิ้น</label>
+                <input type="number" value={newRecipeQty} onChange={(e) => setNewRecipeQty(e.target.value)} style={inputStyle} />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!newRecipeSku.trim()) return
+                  onSaveRecipe(sku, newRecipeSku.trim().toUpperCase(), Number(newRecipeQty) || 1)
+                  setNewRecipeSku(''); setNewRecipeQty('1')
+                }}
+                style={{ height: 38, padding: '0 12px', border: 'none', borderRadius: 8, background: 'var(--payi-gradient-primary)', color: '#fff', fontWeight: 800, cursor: 'pointer' }}
+              >
+                เพิ่ม
+              </button>
+            </div>
+            {!dailyAvg && !recipes.length && (
+              <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>ยังไม่เชื่อมกับสินค้าไหน — "ขั้นต่ำ" จะกรอกเองล้วนๆ ไม่คำนวณอัตโนมัติ</div>
+            )}
+          </div>
+        )}
         {isEdit && (
           <div style={{ background: 'var(--payi-surface-muted)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>Lead time (ไว้คำนวณขั้นต่ำแนะนำอัตโนมัติ)</div>
@@ -650,8 +783,10 @@ function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave }) 
             </label>
             <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>
               {dailyAvg
-                ? `ยอดขายเฉลี่ย ${dailyAvg.toFixed(1)}/วัน${suggestedSafety !== null ? ` — แนะนำขั้นต่ำ ${suggestedSafety}` : ' — กรอก lead time เพื่อคำนวณ'}`
-                : 'ไม่มีข้อมูลยอดขาย 30 วันล่าสุดของ SKU นี้ — คำนวณอัตโนมัติไม่ได้ ต้องกรอกขั้นต่ำเอง'}
+                ? `${isPackaging ? 'ยอดใช้เฉลี่ย' : 'ยอดขายเฉลี่ย'} ${dailyAvg.toFixed(2)} ${isPackaging ? (unit || 'แพ็ค') : ''}/วัน${suggestedSafety !== null ? ` — แนะนำขั้นต่ำ ${suggestedSafety}` : ' — กรอก lead time เพื่อคำนวณ'}`
+                : isPackaging
+                  ? 'ยังไม่มีข้อมูลยอดใช้ — เชื่อมกับสินค้าด้านล่าง + กรอก "1 แพ็คมีกี่ชิ้น" ก่อนถึงจะคำนวณอัตโนมัติได้'
+                  : 'ไม่มีข้อมูลยอดขาย 30 วันล่าสุดของ SKU นี้ — คำนวณอัตโนมัติไม่ได้ ต้องกรอกขั้นต่ำเอง'}
             </div>
           </div>
         )}
