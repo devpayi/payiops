@@ -755,6 +755,16 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
             </div>
           )}
         </div>
+        {isEdit && isPackaging && (
+          dailyAvgBase ? (
+            <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)', marginTop: -6 }}>
+              ระบบคำนวณ (ไม่เผื่อ): <b style={{ color: 'var(--payi-text-strong)' }}>{baseSafety ?? '—'} {unit || 'แพ็ค'}</b>
+              {' · '}เผื่อ {effectiveBufferPercent}%: <b style={{ color: 'var(--payi-mint-strong)' }}>{suggestedSafety ?? '—'} {unit || 'แพ็ค'}</b>
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: -6 }}>ยังไม่มีข้อมูลยอดใช้ — เชื่อมกับสินค้าด้านล่าง + กรอก "1 แพ็คมีกี่ชิ้น" ก่อนถึงจะคำนวณอัตโนมัติได้</div>
+          )
+        )}
         {isPackaging && (
           <div>
             <label style={labelStyle}>% เผื่อ (เบิกไปฟีดล่วงหน้ามากกว่าที่ขายจริง)</label>
@@ -831,20 +841,13 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
                 <input type="number" value={leadTransport} onChange={(e) => setLeadTransport(e.target.value)} style={inputStyle} placeholder="0" />
               </div>
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={shipFreight} onChange={(e) => setShipFreight(e.target.checked)} />
-              ส่งทางเรือ (เผื่อเวลาเพิ่มอีกครึ่งของ lead time)
-            </label>
-            {isPackaging ? (
-              dailyAvgBase ? (
-                <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>
-                  ระบบคำนวณ (ไม่เผื่อ): <b style={{ color: 'var(--payi-text-strong)' }}>{baseSafety ?? '—'} {unit || 'แพ็ค'}</b>
-                  {' · '}เผื่อ {effectiveBufferPercent}%: <b style={{ color: 'var(--payi-mint-strong)' }}>{suggestedSafety ?? '—'} {unit || 'แพ็ค'}</b>
-                </div>
-              ) : (
-                <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>ยังไม่มีข้อมูลยอดใช้ — เชื่อมกับสินค้าด้านล่าง + กรอก "1 แพ็คมีกี่ชิ้น" ก่อนถึงจะคำนวณอัตโนมัติได้</div>
-              )
-            ) : (
+            {!isPackaging && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                <input type="checkbox" checked={shipFreight} onChange={(e) => setShipFreight(e.target.checked)} />
+                ส่งทางเรือ (เผื่อเวลาเพิ่มอีกครึ่งของ lead time)
+              </label>
+            )}
+            {!isPackaging && (
               <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>
                 {dailyAvg
                   ? `ยอดขายเฉลี่ย ${dailyAvg.toFixed(1)}/วัน${suggestedSafety !== null ? ` — แนะนำขั้นต่ำ ${suggestedSafety}` : ' — กรอก lead time เพื่อคำนวณ'}`
