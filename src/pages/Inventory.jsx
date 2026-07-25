@@ -194,9 +194,10 @@ export default function Inventory() {
   }, [items, packagingRecipes, plannerSafetyBySku])
 
   // ยอดใช้วัสดุแพ็คเกจจิ้งเฉลี่ย/วัน (หน่วย: แผ่น/แพ็ค ไม่ใช่ชิ้น) — รวมยอดขายเฉลี่ยของสินค้าทุกตัว
-  // ที่ผูกไว้ใน packaging_recipes (× qty_per_unit) คูณ % เผื่อ แล้วหารด้วย units_per_batch เพื่อแปลงชิ้น→แผ่น/แพ็ค
-  // ผลลัพธ์ใช้แทน dailyAvg ตรงๆ ในสูตรขั้นต่ำเดียวกับสินค้า (calcSuggestedSafety) เลยได้ตัวเลขเป็นแผ่น/แพ็คทันที
-  const packagingDailyAvgBatches = useMemo(() => {
+  // ที่ผูกไว้ใน packaging_recipes (× qty_per_unit) แล้วหารด้วย units_per_batch เพื่อแปลงชิ้น→แผ่น/แพ็ค
+  // เก็บทั้งค่า "base" (ไม่เผื่อ) และ "buffered" (เผื่อแล้ว) แยกกัน — ไว้โชว์ในโมดัลให้เห็นชัดว่า
+  // ระบบคำนวณล้วนๆ ได้เท่าไหร่ vs เผื่อ % แล้วได้เท่าไหร่ ไม่ปนกันจนดูไม่ออกว่าเลขไหนมาจากไหน
+  const packagingDailyAvg = useMemo(() => {
     const recipesBySku = new Map()
     for (const r of packagingRecipes) {
       if (!recipesBySku.has(r.packaging_sku)) recipesBySku.set(r.packaging_sku, [])
@@ -213,8 +214,9 @@ export default function Inventory() {
         return sum + (productSales?.dailyAverage || 0) * r.qty_per_unit
       }, 0)
       const bufferPercent = it.buffer_percent ?? packagingBufferSuggestion.get(sku) ?? DEFAULT_BUFFER_PERCENT
-      const piecesWithBuffer = piecesPerDay * (1 + bufferPercent / 100)
-      result.set(sku, Math.round((piecesWithBuffer / it.units_per_batch) * 100) / 100)
+      const base = Math.round((piecesPerDay / it.units_per_batch) * 100) / 100
+      const buffered = Math.round((piecesPerDay * (1 + bufferPercent / 100) / it.units_per_batch) * 100) / 100
+      result.set(sku, { base, buffered, bufferPercent })
     }
     return result
   }, [items, packagingRecipes, salesBySku, allocatedSales, packagingBufferSuggestion])
@@ -224,7 +226,8 @@ export default function Inventory() {
       const sku = String(it.sku).toUpperCase()
       const isPackaging = it.category === 'packaging'
       const sales = salesBySku.get(sku) || allocatedSales.get(sku)
-      const dailyAvg = isPackaging ? (packagingDailyAvgBatches.get(sku) || 0) : (sales?.dailyAverage || 0)
+      const packagingAvg = packagingDailyAvg.get(sku)
+      const dailyAvg = isPackaging ? (packagingAvg?.buffered || 0) : (sales?.dailyAverage || 0)
       const units90 = sales?.units90 || 0
       const abc = sales?.abc || null
       const salesEstimated = Boolean(sales?.estimated)
@@ -239,9 +242,11 @@ export default function Inventory() {
       const recommendedOrder = isPackaging ? null : (effectiveStatus !== 'ปกติ' && dailyAvg && leadTimeTotal
         ? calcRecommendedOrder(effectiveSafety, it.balance, dailyAvg, leadTimeTotal)
         : null)
-      return { ...it, dailyAvg, units90, abc, salesEstimated, leadTimeTotal, computedSafety, effectiveSafety, effectiveStatus, recommendedOrder }
+      const dailyAvgBase = isPackaging ? (packagingAvg?.base || 0) : dailyAvg
+      const bufferPercentUsed = isPackaging ? (packagingAvg?.bufferPercent ?? DEFAULT_BUFFER_PERCENT) : null
+      return { ...it, dailyAvg, dailyAvgBase, bufferPercentUsed, units90, abc, salesEstimated, leadTimeTotal, computedSafety, effectiveSafety, effectiveStatus, recommendedOrder }
     })
-  }, [items, salesBySku, allocatedSales, packagingDailyAvgBatches])
+  }, [items, salesBySku, allocatedSales, packagingDailyAvg])
 
   // นับ Low Stock จาก effectiveStatus (สูตรสด) ไม่ใช้ totals.lowStockCount จาก server ตรงๆ
   // เพราะอันนั้นนับจาก safety_stock ที่เซฟไว้ในชีตเท่านั้น จะไม่ตรงกับสถานะที่โชว์ในตาราง
@@ -632,6 +637,8 @@ export default function Inventory() {
           initial={itemModal === 'new' ? null : itemModal}
           newCategory={categoryTab}
           dailyAvg={itemModal === 'new' ? 0 : itemModal.dailyAvg || 0}
+          dailyAvgBase={itemModal === 'new' ? 0 : itemModal.dailyAvgBase || 0}
+          bufferPercentUsed={itemModal === 'new' ? null : itemModal.bufferPercentUsed}
           saving={saving}
           onClose={() => setItemModal(null)}
           onSave={saveItem}
@@ -662,7 +669,7 @@ const iconBtnStyle = (color) => ({
   fontSize: 16, fontWeight: 800, cursor: 'pointer', lineHeight: 1,
 })
 
-function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave, recipes = [], productOptions = [], onSaveRecipe, onDeleteRecipe, suggestedBufferPercent = 30 }) {
+function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPercentUsed = null, saving, onClose, onSave, recipes = [], productOptions = [], onSaveRecipe, onDeleteRecipe, suggestedBufferPercent = 30 }) {
   const isEdit = Boolean(initial)
   const isPackaging = (initial?.category || newCategory) === 'packaging'
   const [sku, setSku] = useState(initial?.sku || '')
@@ -689,6 +696,9 @@ function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave, re
   // แก้ lead time/ทางเรือแล้ว คำนวณขั้นต่ำแนะนำให้ใหม่อัตโนมัติ (ยังแก้เลขเองทับได้เสมอ)
   const leadTimeTotal = (Number(leadProd) || 0) + (Number(leadTransport) || 0)
   const suggestedSafety = calcSuggestedSafety(dailyAvg, leadTimeTotal, shipFreight)
+  // ขั้นต่ำ "ไม่เผื่อ" ล้วนๆ (ก่อนคูณ % เผื่อ) — ไว้โชว์แยกจากตัวที่เผื่อแล้ว ให้เห็นชัดว่าเลขไหนมาจากไหน
+  const baseSafety = isPackaging ? calcSuggestedSafety(dailyAvgBase, leadTimeTotal, shipFreight) : null
+  const effectiveBufferPercent = bufferPercent !== '' ? Number(bufferPercent) : (bufferPercentUsed ?? suggestedBufferPercent)
   useEffect(() => {
     if (suggestedSafety !== null) setSafetyStock(suggestedSafety)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -755,9 +765,6 @@ function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave, re
               style={inputStyle}
               placeholder={`แนะนำ ${suggestedBufferPercent}% (จาก Planner Control)`}
             />
-            <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 4 }}>
-              {bufferPercent === '' ? `ยังไม่ตั้งเอง — ใช้ค่าแนะนำ ${suggestedBufferPercent}% อัตโนมัติ` : 'ตั้งเองแล้ว — จะไม่ขยับตามค่าแนะนำอีก (แก้กลับเป็นว่างเพื่อใช้ค่าแนะนำ)'}
-            </div>
           </div>
         )}
         {isEdit && isPackaging && (
@@ -828,13 +835,22 @@ function ItemModal({ initial, newCategory, dailyAvg, saving, onClose, onSave, re
               <input type="checkbox" checked={shipFreight} onChange={(e) => setShipFreight(e.target.checked)} />
               ส่งทางเรือ (เผื่อเวลาเพิ่มอีกครึ่งของ lead time)
             </label>
-            <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>
-              {dailyAvg
-                ? `${isPackaging ? 'ยอดใช้เฉลี่ย' : 'ยอดขายเฉลี่ย'} ${dailyAvg.toFixed(2)} ${isPackaging ? (unit || 'แพ็ค') : ''}/วัน${suggestedSafety !== null ? ` — แนะนำขั้นต่ำ ${suggestedSafety}` : ' — กรอก lead time เพื่อคำนวณ'}`
-                : isPackaging
-                  ? 'ยังไม่มีข้อมูลยอดใช้ — เชื่อมกับสินค้าด้านล่าง + กรอก "1 แพ็คมีกี่ชิ้น" ก่อนถึงจะคำนวณอัตโนมัติได้'
+            {isPackaging ? (
+              dailyAvgBase ? (
+                <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>
+                  ระบบคำนวณ (ไม่เผื่อ): <b style={{ color: 'var(--payi-text-strong)' }}>{baseSafety ?? '—'} {unit || 'แพ็ค'}</b>
+                  {' · '}เผื่อ {effectiveBufferPercent}%: <b style={{ color: 'var(--payi-mint-strong)' }}>{suggestedSafety ?? '—'} {unit || 'แพ็ค'}</b>
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>ยังไม่มีข้อมูลยอดใช้ — เชื่อมกับสินค้าด้านล่าง + กรอก "1 แพ็คมีกี่ชิ้น" ก่อนถึงจะคำนวณอัตโนมัติได้</div>
+              )
+            ) : (
+              <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>
+                {dailyAvg
+                  ? `ยอดขายเฉลี่ย ${dailyAvg.toFixed(1)}/วัน${suggestedSafety !== null ? ` — แนะนำขั้นต่ำ ${suggestedSafety}` : ' — กรอก lead time เพื่อคำนวณ'}`
                   : 'ไม่มีข้อมูลยอดขาย 30 วันล่าสุดของ SKU นี้ — คำนวณอัตโนมัติไม่ได้ ต้องกรอกขั้นต่ำเอง'}
-            </div>
+              </div>
+            )}
           </div>
         )}
         {!isEdit && !isPackaging && (
