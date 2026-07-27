@@ -267,6 +267,8 @@ const rowsToObjects = (values = []) => { const [headers, ...rows] = values; retu
 // อ่านตอน GET ต้องลดเหลือ "ล่าสุดต่อ key" เอง
 const latestByKey = (rows, keyFn, timeField) => { const map = new Map(); for (const r of rows) { const k = keyFn(r); const prev = map.get(k); if (!prev || String(r[timeField]) >= String(prev[timeField])) map.set(k, r) } return [...map.values()] }
 const requireAdmin = (req, res) => { if (authEnabled() && !canManageOperations(req.user?.role)) { res.status(403).json({ error: 'ต้องเป็น Boss หรือ Dev เท่านั้น' }); return false } return true }
+// staff (แตง) ได้สิทธิ์แก้ตารางกะในปฏิทิน Manpower&OT เพิ่มเติมจาก boss/dev — เฉพาะ action นี้จุดเดียว
+const requireScheduleEditor = (req, res) => { if (authEnabled() && !canManageOperations(req.user?.role) && req.user?.role !== 'staff') { res.status(403).json({ error: 'ไม่มีสิทธิ์แก้ตารางกะ' }); return false } return true }
 const clearWorkforceCache = () => { workforceCache = { at: 0, data: null } }
 
 async function getPersonMap() {
@@ -530,7 +532,7 @@ async function opWorkforceInner(req, res) {
   const body = req.body || {}
   const action = String(body.action || '').trim().toLowerCase()
   if (action === 'set-schedule-day') {
-    if (!requireAdmin(req, res)) return
+    if (!requireScheduleEditor(req, res)) return
     const date = String(body.date || '')
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) return res.status(400).json({ error: 'วันที่ไม่ถูกต้อง' })
     const personMap = await getPersonMap()
@@ -1203,7 +1205,8 @@ const LEAVE_EDIT_TRIGGER = 'แก้ไขลา'
 const LEAVE_CANCEL_TRIGGER = 'ยกเลิกลา'
 const LEAVE_SUMMARY_TRIGGER = 'สรุปลา'
 const LEAVE_HISTORY_TRIGGER = 'ประวัติลา'
-const LEAVE_TYPES_LINE = ['พักร้อน', 'ลากิจ', 'ลาป่วย', 'ขาดงาน', 'สลับวันหยุด']
+// ลากิจ/ขาดงาน ตัดออกจากตัวเลือกใน LINE (ลาเองไม่ได้) — เก็บไว้ในเว็บให้ HR เพิ่ม/แก้เองได้ (เผื่อลาส่วนตัว/คุยนอกรอบ)
+const LEAVE_TYPES_LINE = ['พักร้อน', 'ลาป่วย', 'สลับวันหยุด']
 const THAI_MONTH_ABBR = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
 const addDaysStr = (dateStr, n) => { const d = new Date(`${dateStr}T00:00:00`); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
