@@ -285,6 +285,7 @@ function UserManagementCard({ me }) {
         <input type="password" value={draft.password} onChange={(e) => setDraft({ ...draft, password: e.target.value })} placeholder="รหัสผ่าน (อย่างน้อย 6 ตัว)" style={inputStyle} />
         <select value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value })} className="payi-select" style={inputStyle}>
           <option value="staff">Staff — Tang</option>
+          <option value="stock">Stock — สต็อกเท่านั้น</option>
           <option value="boss">Boss</option>
           <option value="dev">Dev</option>
         </select>

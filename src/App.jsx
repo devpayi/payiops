@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import payiLogo from './assets/payi-logo.png'
-import { canAccessTab, normalizeRole, STAFF_TABS } from '../shared/roles.js'
+import { canAccessTab, normalizeRole, STAFF_TABS, STOCK_TABS } from '../shared/roles.js'
 import {
   Bell, Search, UserCircle2, DollarSign, ShoppingBag, Package, TrendingUp,
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
@@ -373,7 +373,7 @@ export default function App() {
     .filter((group) => group.items.length > 0)
   // แถบล่างมือถือ — เลือกมาแค่ 4 อันที่ใช้บ่อยสุด (พื้นที่จำกัด) ที่เหลือกดปุ่ม "เมนู" เปิด sheet ดูทั้งหมด
   const mobileTabItems = MOBILE_TAB_CANDIDATES.filter((item) => canAccessTab(currentRole, item.id))
-  const firstAllowedTab = currentRole === 'staff' ? STAFF_TABS[0] : 'Executive'
+  const firstAllowedTab = currentRole === 'stock' ? STOCK_TABS[0] : currentRole === 'staff' ? STAFF_TABS[0] : 'Executive'
   const [activeTab, setActiveTab] = useState(() => {
     try {
       const stored = localStorage.getItem('payi-active-tab') || firstAllowedTab
