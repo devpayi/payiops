@@ -41,6 +41,24 @@ export async function getMeta() {
   return res.data
 }
 
+// cache ของ getMeta() แยกจาก sheetCache — ensureSheet() เดิมเรียก getMeta() สดทุกครั้ง (ไม่มี cache เลย)
+// พอ ensureWorkforceSheets/ensureHrSheets วนเรียก ensureSheet() ~10 แท็บต่อครั้ง = ยิง getMeta() 10 รอบ
+// ต่อ cold start เดียว เป็นสาเหตุหลักที่ชน quota "Read requests per minute" — cache ไว้ 5 นาทีเพราะรายชื่อ
+// แท็บใน spreadsheet แทบไม่เปลี่ยนเลยระหว่าง request
+const META_CACHE_MS = 300_000
+let metaCache = null
+let metaCacheAt = 0
+async function getMetaCached() {
+  if (metaCache && Date.now() - metaCacheAt < META_CACHE_MS) return metaCache
+  metaCache = await getMeta()
+  metaCacheAt = Date.now()
+  return metaCache
+}
+
+// ensureSheet() เช็ค header ผ่าน values.get ทุกครั้งที่เรียก (กันแท็บใหม่ที่ยังไม่มี header) — พอยืนยันแล้วว่า
+// header ตรงในโปรเซสนี้ ไม่ต้องเช็คซ้ำอีกจนกว่าจะ restart (header ไม่มีทางเปลี่ยนเองระหว่าง process มีชีวิตอยู่)
+const ensuredSheets = new Set()
+
 // อ่านหลาย range ใน API call เดียว
 export async function batchGetValues(ranges) {
   const res = await getClient().spreadsheets.values.batchGet({
@@ -95,7 +113,8 @@ export async function appendRows(sheetName, rows) {
 
 // เขียนทับทั้ง sheet (สำหรับ product_master)
 export async function ensureSheet(sheetName, headers) {
-  const meta = await getMeta()
+  if (ensuredSheets.has(sheetName)) return
+  const meta = await getMetaCached()
   const exists = meta.sheets.some((s) => s.properties.title === sheetName)
   if (!exists) {
     await getClient().spreadsheets.batchUpdate({
@@ -121,6 +140,7 @@ export async function ensureSheet(sheetName, headers) {
     })
     invalidateSheet(sheetName)
   }
+  ensuredSheets.add(sheetName)
 }
 
 export async function overwriteSheet(sheetName, headers, rows) {
