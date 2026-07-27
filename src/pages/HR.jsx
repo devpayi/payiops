@@ -74,6 +74,7 @@ export default function HR() {
   const [balanceDrafts, setBalanceDrafts] = useState({})
   const [editingBalanceCode, setEditingBalanceCode] = useState('')
   const [editingLeave, setEditingLeave] = useState(null)
+  const [historyFilterCode, setHistoryFilterCode] = useState('')
   const isSwap = leaveForm.leave_type === 'สลับวันหยุด'
   const selectedEmployee = people.find((person) => person.code === leaveForm.employee_code)
   const availableLeaveTypes = selectedEmployee && NO_VACATION_GROUPS.has(selectedEmployee.group) ? LEAVE_TYPES.filter((type) => type !== 'พักร้อน') : LEAVE_TYPES
@@ -168,6 +169,7 @@ export default function HR() {
   }
 
   const myLeave = isBoss ? leave : leave.filter((item) => item.username === currentUser?.u)
+  const visibleLeave = isBoss && historyFilterCode ? myLeave.filter((item) => item.username === `mp:${historyFilterCode}`) : myLeave
   const pendingLeave = leave.filter((item) => item.status === 'pending' || item.edit_pending === '1')
   const approvedThisMonth = leave.filter((item) => item.status === 'approved' && String(item.start_date).slice(0, 7) === today().slice(0, 7)).length
   const peopleOnLeaveToday = leave.filter((item) => item.status === 'approved' && item.leave_type !== 'สลับวันหยุด' && item.start_date <= today() && item.end_date >= today()).length
@@ -232,6 +234,7 @@ export default function HR() {
               <div><CalendarDays size={16} /><span>วันที่</span><strong>{formatDateRange(item)}</strong></div>
               <div><Clock3 size={16} /><span>จำนวน</span><strong>{item.days} วัน</strong></div>
             </div>
+            {item.understaffed_dates && <p className="hr-edit-request-pill" style={{ background: '#fff1f2', color: '#be123c' }}><AlertTriangle size={13} /> คนไม่พอวันที่ {item.understaffed_dates.split(',').join(', ')} — ต้องหาคนแทน</p>}
             {(item.reason || item.backup_office || item.backup_assignments?.length) && <div className="hr-request-note">
               {item.reason && <p><span>เหตุผล</span>{item.reason}</p>}
               {(item.backup_office || item.backup_assignments?.length) && <p><span>คนทดแทน</span>{backupLabel(item, people)}</p>}
@@ -246,11 +249,17 @@ export default function HR() {
 
       <div className="hr-workspace-grid">
         <section className="hr-panel" aria-labelledby="history-heading">
-          <div className="hr-section-heading"><div><span className="hr-section-kicker">ประวัติ</span><h2 id="history-heading">{isBoss ? 'คำขอลาทั้งหมด' : 'คำขอลาของฉัน'}</h2></div></div>
-          {loading ? <div className="hr-empty">กำลังโหลดข้อมูล…</div> : !myLeave.length ? <div className="hr-empty">ยังไม่มีคำขอลา</div> : (
-            <div className="hr-history-list">{myLeave.slice().reverse().map((item) => (
+          <div className="hr-section-heading">
+            <div><span className="hr-section-kicker">ประวัติ</span><h2 id="history-heading">{isBoss ? 'คำขอลาทั้งหมด' : 'คำขอลาของฉัน'}</h2></div>
+            {isBoss && people.length > 0 && <select aria-label="กรองตามพนักงาน" value={historyFilterCode} onChange={(e) => setHistoryFilterCode(e.target.value)} style={{ maxWidth: 220 }}>
+              <option value="">ทุกคน</option>
+              {people.map((person) => <option key={person.code} value={person.code}>{person.name}{person.group ? ` · ${person.group}` : ''}</option>)}
+            </select>}
+          </div>
+          {loading ? <div className="hr-empty">กำลังโหลดข้อมูล…</div> : !visibleLeave.length ? <div className="hr-empty">ยังไม่มีคำขอลา</div> : (
+            <div className="hr-history-list">{visibleLeave.slice().reverse().map((item) => (
               <article className="hr-history-row" key={item.id}>
-                <div className="hr-history-main"><strong>{item.employee_name}</strong><span>{item.leave_type} · {formatDateRange(item)} · {periodLabel(item.leave_period, item.days)}</span>{item.edit_pending === '1' && <span className="hr-edit-request-pill">มีข้อมูลแก้ไขรอ HR ยืนยัน</span>}</div>
+                <div className="hr-history-main"><strong>{item.employee_name}</strong><span>{item.leave_type} · {formatDateRange(item)} · {periodLabel(item.leave_period, item.days)}</span>{item.edit_pending === '1' && <span className="hr-edit-request-pill">มีข้อมูลแก้ไขรอ HR ยืนยัน</span>}{item.understaffed_dates && !['rejected', 'cancelled'].includes(item.status) && <span className="hr-edit-request-pill" style={{ background: '#fff1f2', color: '#be123c' }}>คนไม่พอ — ต้องหาคนแทน</span>}</div>
                 <div className="hr-history-days">{item.days}<span>วัน</span></div>
                 <StatusBadge status={item.status} />
                 <div className="hr-history-actions">{(isBoss || (item.username === currentUser?.u && !['rejected', 'cancelled'].includes(item.status))) && <button className="hr-history-edit" onClick={() => setEditingLeave(item)} aria-label={`แก้ไขรายการของ ${item.employee_name}`}><Pencil size={15} /></button>}{item.status === 'pending' && (item.username === currentUser?.u || isBoss) && <button className="hr-text-button is-danger" onClick={() => cancelLeave(item.id)}>ยกเลิก</button>}</div>
@@ -277,7 +286,7 @@ export default function HR() {
             <Field label="เหตุผล · ไม่บังคับ"><input value={leaveForm.reason} onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })} placeholder="เพิ่มรายละเอียดสั้น ๆ" /></Field>
             {leaveLock.locked && <div className={`hr-alert ${leaveLock.blocked ? 'is-error' : 'is-warning'}`}><AlertTriangle size={18} /><div><strong>{leaveLock.blocked ? 'วันนี้ลาไม่ได้' : 'ต้องมีคนออฟฟิศทดแทน'}</strong><span>{leaveLock.error || `กำลังคนต่ำกว่า 3 คนในวันที่ ${leaveLock.lockedDates.join(', ')}`}</span>{!leaveLock.blocked && leaveLock.backupNeeds.flatMap((need) => Array.from({ length: need.required }, (_, index) => {
               const key = selectionKey(need, index); const selectedCodes = Array.from({ length: need.required }, (__, siblingIndex) => backupSelections[selectionKey(need, siblingIndex)]).filter(Boolean)
-              return <Field key={key} label={`${formatDate(need.date)} · ${need.period === 'am' ? 'ช่วงเช้า' : 'ช่วงบ่าย'}${need.required > 1 ? ` · คนที่ ${index + 1}` : ''}`}><select value={backupSelections[key] || ''} onChange={(e) => setBackupSelections((current) => ({ ...current, [key]: e.target.value }))} required><option value="">เลือกคนที่ว่าง</option>{need.candidates.filter((candidate) => candidate.code === backupSelections[key] || !selectedCodes.includes(candidate.code)).map((candidate) => <option key={candidate.code} value={candidate.code}>{candidate.name}</option>)}</select></Field>
+              return <Field key={key} label={`${formatDate(need.date)} · ${need.period === 'am' ? 'ช่วงเช้า' : 'ช่วงบ่าย'}${need.required > 1 ? ` · คนที่ ${index + 1}` : ''}`}><select value={backupSelections[key] || ''} onChange={(e) => setBackupSelections((current) => ({ ...current, [key]: e.target.value }))}><option value="">{need.candidates.length ? 'เลือกคนที่ว่าง (ไม่บังคับ)' : 'ไม่มีคนว่าง — ลาได้ แต่ HR ต้องหาคนแทนภายหลัง'}</option>{need.candidates.filter((candidate) => candidate.code === backupSelections[key] || !selectedCodes.includes(candidate.code)).map((candidate) => <option key={candidate.code} value={candidate.code}>{candidate.name}</option>)}</select></Field>
             }))}</div></div>}
             <button className="hr-button is-primary" disabled={saving || leaveLock.blocked}><Send size={17} />{saving ? 'กำลังบันทึก…' : leaveLock.blocked ? 'ไม่มีคนทดแทน' : 'ส่งคำขอลา'}</button>
           </form>

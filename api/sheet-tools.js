@@ -7,7 +7,7 @@ import { getMeta, batchGetValues, getSheet, appendRows, overwriteSheet, ensureSh
 import { verifySignature, pushMessage, replyMessage } from './_lib/line.js'
 import {
   MIN_LOWER_HOUSE_HEADCOUNT, buildCoveragePlan, leaveAbsenceDates, leaveAbsenceSlots,
-  leavePeriodLabel, normalizeLeavePeriod, officeLeaveConflicts, validateBackupSelections,
+  leavePeriodLabel, normalizeLeavePeriod, officeLeaveConflicts,
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides } from './_lib/scheduleOverrides.js'
 import opInventory from './_lib/inventory.js'
@@ -34,7 +34,10 @@ const OT_APPROVAL_HEADERS = ['id', 'month', 'employee', 'actual_minutes', 'appro
 const PEOPLE_HEADERS = ['code', 'name', 'group', 'active']
 const OT_LIMIT_HEADERS = ['employee', 'limit_hours', 'updated_at', 'updated_by']
 const OT_APPROVAL_HISTORY_HEADERS = ['id', 'month', 'employee', 'before_minutes', 'after_minutes', 'changed_at', 'changed_by']
-const LEAVE_HEADERS = ['id', 'username', 'employee_name', 'leave_type', 'start_date', 'end_date', 'days', 'reason', 'status', 'requested_by', 'requested_at', 'decided_by', 'decided_at', 'decision_note', 'backup_office', 'leave_period', 'edit_pending', 'edit_payload', 'edit_requested_at', 'edit_requested_by']
+// บันทึกวันพิเศษ: โอทีเต็มวัน (มาทำวันหยุด/นักขัตฤกษ์) หรือมาชดเชยเฉยๆไม่รับโอที — แยกจาก workforce_ot ที่เป็น OT รายชั่วโมง
+// สลับวันหยุด ("จากวันไหนไปวันไหน") มีอยู่แล้วเป็น leave_type 'สลับวันหยุด' ใน hr_leave ไม่ต้องทำซ้ำที่นี่
+const DAYRECORD_HEADERS = ['id', 'date', 'employee', 'team', 'kind', 'reason', 'paid_ot', 'note', 'created_at', 'created_by']
+const LEAVE_HEADERS = ['id', 'username', 'employee_name', 'leave_type', 'start_date', 'end_date', 'days', 'reason', 'status', 'requested_by', 'requested_at', 'decided_by', 'decided_at', 'decision_note', 'backup_office', 'leave_period', 'edit_pending', 'edit_payload', 'edit_requested_at', 'edit_requested_by', 'understaffed_dates']
 const BACKUP_HEADERS = ['leave_id', 'date', 'period', 'office_code', 'created_at']
 const LEAVE_EDIT_HEADERS = ['leave_id', 'mode', 'before_json', 'after_json', 'changed_at', 'changed_by']
 const SCHEDULE_HEADERS = ['id', 'date', 'username', 'employee_name', 'shift_start', 'shift_end', 'role_note', 'created_at', 'created_by']
@@ -146,9 +149,10 @@ const backupOfficeLine = (leave, officeMap) => {
   const text = backupAssignmentText(leave, officeMap)
   return text ? `\nคนออฟฟิศทดแทน: ${text}` : ''
 }
+const understaffedLine = (l) => l.understaffed_dates ? `\n⚠️ คนไม่พอวันที่ ${l.understaffed_dates.split(',').join(', ')} ต้องหาคนแทน` : ''
 const leaveSummaryText = (l, officeMap = {}) => l.leave_type === 'สลับวันหยุด'
-  ? `${l.employee_name} ขอสลับวันหยุด จาก ${l.start_date} เป็น ${l.end_date}${l.reason ? `\nเหตุผล: ${l.reason}` : ''}${backupOfficeLine(l, officeMap)}`
-  : `${l.employee_name} ขอลา${l.leave_type}\n${l.start_date}${Number(l.days) === 0.5 ? ' (ครึ่งวัน)' : l.end_date !== l.start_date ? ` – ${l.end_date}` : ''} · ${l.days} วัน${l.reason ? `\nเหตุผล: ${l.reason}` : ''}${backupOfficeLine(l, officeMap)}`
+  ? `${l.employee_name} ขอสลับวันหยุด จาก ${l.start_date} เป็น ${l.end_date}${l.reason ? `\nเหตุผล: ${l.reason}` : ''}${backupOfficeLine(l, officeMap)}${understaffedLine(l)}`
+  : `${l.employee_name} ขอลา${l.leave_type}\n${l.start_date}${Number(l.days) === 0.5 ? ' (ครึ่งวัน)' : l.end_date !== l.start_date ? ` – ${l.end_date}` : ''} · ${l.days} วัน${l.reason ? `\nเหตุผล: ${l.reason}` : ''}${backupOfficeLine(l, officeMap)}${understaffedLine(l)}`
 
 const LINE_LEAVE_THEME = {
   pending: { title: 'คำขอลาใหม่', status: 'รออนุมัติ', icon: '⏰' },
@@ -208,6 +212,7 @@ const leaveFlexMessage = (record, variant = 'pending', officeMap = {}, { balance
   if (!isSwap) facts.push(factRow('ช่วงเวลา', leavePeriodLabel(normalizeLeavePeriod(record.leave_period, record.days))))
   if (record.reason) facts.push(factRow('เหตุผล', record.reason))
   if (record.backup_office || recordBackupAssignments(record).length) facts.push(factRow('คนทดแทน', backupAssignmentText(record, officeMap)))
+  if (record.understaffed_dates) facts.push(factRow('⚠️ คนไม่พอ', `${record.understaffed_dates.split(',').map((d) => lineCompactDate(d)).join(', ')} ต้องหาคนแทน`))
   if (record.decision_note) facts.push(factRow('หมายเหตุ', record.decision_note))
   if (balance) facts.push(factRow('พักร้อนคงเหลือ', `${balance.remaining} / ${balance.quota} วัน`))
 
@@ -250,7 +255,7 @@ const PLANNER_CONFIG_SHEET = 'planner_config'
 const PLANNER_DAILY_SHEET = 'planner_daily'
 const PLANNER_CONFIG_HEADERS = ['master_sku', 'enabled', 'reserve_days', 'safety_percent', 'updated_at', 'updated_by']
 const PLANNER_DAILY_HEADERS = ['id', 'date', 'master_sku', 'fg', 'sales_average', 'demand_mode', 'recommended_feed', 'planned_feed', 'feeders', 'updated_at', 'updated_by']
-const WORKFORCE_SHEETS = [['workforce_ot', OT_HEADERS], ['workforce_manpower', MANPOWER_HEADERS], ['workforce_events', EVENT_HEADERS], ['workforce_ot_history', OT_HISTORY_HEADERS], ['workforce_ot_approvals', OT_APPROVAL_HEADERS], ['workforce_people', PEOPLE_HEADERS], ['workforce_ot_limits', OT_LIMIT_HEADERS], ['workforce_ot_approval_history', OT_APPROVAL_HISTORY_HEADERS], ['workforce_schedule_snapshot', SCHEDULE_SNAPSHOT_HEADERS], ['workforce_schedule_overrides', SCHEDULE_OVERRIDE_HEADERS]]
+const WORKFORCE_SHEETS = [['workforce_ot', OT_HEADERS], ['workforce_manpower', MANPOWER_HEADERS], ['workforce_events', EVENT_HEADERS], ['workforce_ot_history', OT_HISTORY_HEADERS], ['workforce_ot_approvals', OT_APPROVAL_HEADERS], ['workforce_people', PEOPLE_HEADERS], ['workforce_ot_limits', OT_LIMIT_HEADERS], ['workforce_ot_approval_history', OT_APPROVAL_HISTORY_HEADERS], ['workforce_schedule_snapshot', SCHEDULE_SNAPSHOT_HEADERS], ['workforce_schedule_overrides', SCHEDULE_OVERRIDE_HEADERS], ['workforce_dayrecords', DAYRECORD_HEADERS]]
 let workforceEnsurePromise
 let workforceCache = { at: 0, data: null }
 const ensureWorkforceSheets = () => workforceEnsurePromise ||= Promise.all(WORKFORCE_SHEETS.map(([name, headers]) => ensureSheet(name, headers)))
@@ -357,12 +362,10 @@ async function inspectLeaveCoverage(username, proposedLeave, excludeLeaveId = ''
   const leaveRows = allLeaveRows.filter((row) => String(row.id) !== String(excludeLeaveId || ''))
   const backupRows = allBackupRows.filter((row) => String(row.leave_id) !== String(excludeLeaveId || ''))
   if (officeMap[code]) {
+    // เดิมบล็อกถ้าคนออฟฟิศคนนี้ถูกจัดเป็นคนทดแทนที่อื่นไปแล้ว — ตอนนี้ไม่บล็อกอีกต่อไป (เผื่อฉุกเฉิน) แค่เตือนว่าคนไม่พอ
     const conflicts = officeLeaveConflicts({ officeCode: code, proposedLeave, leaveRows, backupRows })
-    if (conflicts.length) {
-      const dates = [...new Set(conflicts.map((row) => row.date))]
-      return { ok: false, blocked: true, needs: [], lockedDates: dates, error: `คุณถูกจัดเป็นคนทดแทนในวันที่ ${dates.join(', ')} จึงยังลาในช่วงเวลานั้นไม่ได้ค่ะ` }
-    }
-    return { ok: true, needs: [], assignments: [] }
+    const understaffedDates = [...new Set(conflicts.map((row) => row.date))]
+    return { ok: true, blocked: false, needs: [], assignments: [], understaffedDates }
   }
   const plan = buildCoveragePlan({
     employeeCode: code,
@@ -375,21 +378,25 @@ async function inspectLeaveCoverage(username, proposedLeave, excludeLeaveId = ''
     minimum: LOWER_HOUSE_MIN_HEADCOUNT,
   })
   const needs = decorateBackupNeeds(plan.needs, officeMap)
-  if (plan.blocked) {
-    const dates = [...new Set(plan.needs.filter((need) => need.candidates.length < need.required).map((need) => need.date))]
-    return { ok: false, blocked: true, needs, lockedDates: dates, error: `วันที่ ${dates.join(', ')} ไม่มีคนออฟฟิศว่างเพียงพอ จึงไม่สามารถลาได้ค่ะ` }
-  }
-  return { ok: true, blocked: false, needs, rawNeeds: plan.needs }
+  // ไม่บล็อกการลาอีกต่อไปแม้คนออฟฟิศไม่พอ (เผื่อกรณีฉุกเฉิน) — แค่ทำเครื่องหมายวันที่ขาดคนไว้เตือนแทน
+  const understaffedDates = [...new Set(plan.needs.filter((need) => need.candidates.length < need.required).map((need) => need.date))]
+  return { ok: true, blocked: false, needs, rawNeeds: plan.needs, understaffedDates }
 }
 
 async function resolveLeaveCoverage(username, proposedLeave, submittedAssignments = [], excludeLeaveId = '') {
   const inspection = await inspectLeaveCoverage(username, proposedLeave, excludeLeaveId)
-  if (!inspection.ok) return inspection
-  const validation = validateBackupSelections(inspection.rawNeeds || [], Array.isArray(submittedAssignments) ? submittedAssignments : [])
-  if (!validation.ok) {
-    return { ok: false, blocked: false, needs: inspection.needs, error: 'ต้องเลือกคนออฟฟิศที่ว่างให้ครบทุกช่วงเวลาก่อนส่งคำขอค่ะ' }
+  if (!inspection.ok) return inspection // ยังบล็อกกรณีจริง: คนออฟฟิศคนนั้นถูกจองเป็นคนแทนของคนอื่นไปแล้ว (ชนกันจริง ไม่ใช่แค่คนไม่พอ)
+  const needs = inspection.rawNeeds || []
+  const selections = Array.isArray(submittedAssignments) ? submittedAssignments : []
+  const assignments = []
+  const understaffedDates = new Set(inspection.understaffedDates || [])
+  for (const need of needs) {
+    const chosen = [...new Set(selections.filter((item) => item.date === need.date && item.period === need.period).map((item) => String(item.office_code || '').toUpperCase()).filter(Boolean))]
+      .filter((code) => need.candidates.includes(code))
+    for (const code of chosen.slice(0, need.required)) assignments.push({ date: need.date, period: need.period, office_code: code })
+    if (chosen.length < need.required) understaffedDates.add(need.date)
   }
-  return { ok: true, blocked: false, needs: inspection.needs, assignments: validation.assignments }
+  return { ok: true, blocked: false, needs: inspection.needs, assignments, understaffedDates: [...understaffedDates] }
 }
 
 function normalizeEditableLeave(body, fallback = {}) {
@@ -494,6 +501,7 @@ async function opWorkforceInner(req, res) {
     const ranges = WORKFORCE_SHEETS.map(([name]) => `${name}!A:Z`)
     const values = await batchGetValues(ranges)
     const [rows, manpower, events, history, rawApprovals, people, rawLimits, approvalHistory] = values.map((range) => rowsToObjects(range.values || []))
+    const dayRecords = rowsToObjects(values[WORKFORCE_SHEETS.findIndex(([name]) => name === 'workforce_dayrecords')].values || [])
     const approvals = latestByKey(rawApprovals, (r) => `${r.month}|${r.employee}`, 'approved_at')
     const limits = latestByKey(rawLimits, (r) => r.employee, 'updated_at')
     const personMap = await getPersonMap() // ต้องผ่าน getPersonMap() ไม่ใช่ build จาก people ตรงๆ — เผื่อชีตยังไม่มีแถวของบางคน (เช่น MOM/PANID) ต้อง fallback ไป DEFAULT_PEOPLE_ROWS ไม่งั้นหายจากปฏิทิน
@@ -514,7 +522,7 @@ async function opWorkforceInner(req, res) {
     } catch (e) { console.error('office presence:', e.message) }
     res.setHeader('Cache-Control', cacheable('public, s-maxage=20, stale-while-revalidate=60'))
     const schedulePeople = Object.entries(personMap).map(([code, [name, group]]) => ({ code, name, group }))
-    const data = { success: true, rows: rows.sort((a, b) => String(b.date).localeCompare(String(a.date))), manpower, sourceManpower, events, history, approvals, approvalHistory, otLimits, people, schedulePeople, officePeople, officeAbsences, sourceYear: '2026' }
+    const data = { success: true, rows: rows.sort((a, b) => String(b.date).localeCompare(String(a.date))), manpower, sourceManpower, events, history, approvals, approvalHistory, otLimits, people, schedulePeople, officePeople, officeAbsences, sourceYear: '2026', dayRecords: dayRecords.sort((a, b) => String(b.date).localeCompare(String(a.date))) }
     workforceCache = { at: Date.now(), data }
     return res.status(200).json(data)
   }
@@ -629,6 +637,37 @@ async function opWorkforceInner(req, res) {
     clearWorkforceCache()
     return res.status(200).json({ success: true, deleted: current.length - kept.length })
   }
+  if (action === 'add-dayrecord') {
+    const employees = Array.isArray(body.employees) ? body.employees.filter(Boolean) : []
+    if (!body.date || !employees.length) return res.status(400).json({ error: 'กรุณาระบุวันที่และรายชื่อ' })
+    if (!['ot_full', 'comp'].includes(body.kind)) return res.status(400).json({ error: 'ประเภทไม่ถูกต้อง' })
+    const now = new Date().toISOString()
+    const createdBy = actorName() || body.created_by || 'Boss'
+    const paidOt = body.kind === 'ot_full' ? (body.paid_ot === false ? '0' : '1') : '0'
+    const rows = employees.map((employee, index) => [`dr-${Date.now()}-${index}`, body.date, employee, body.team || 'บ้านล่าง', body.kind, body.reason || '', paidOt, body.note || '', now, createdBy])
+    await appendRows('workforce_dayrecords', rows)
+    clearWorkforceCache()
+    return res.status(200).json({ success: true, created: rows.length })
+  }
+  if (action === 'update-dayrecord') {
+    if (!body.id) return res.status(400).json({ error: 'กรุณาระบุ id' })
+    const current = await getSheet('workforce_dayrecords')
+    const target = current.find((r) => String(r.id) === String(body.id))
+    if (!target) return res.status(404).json({ error: 'ไม่พบรายการนี้' })
+    const merged = { ...target, date: body.date ?? target.date, employee: body.employee ?? target.employee, team: body.team ?? target.team, kind: body.kind ?? target.kind, reason: body.reason ?? target.reason, paid_ot: body.paid_ot === undefined ? target.paid_ot : (body.paid_ot === false || body.paid_ot === '0' ? '0' : '1'), note: body.note ?? target.note }
+    const next = current.map((r) => String(r.id) === String(body.id) ? merged : r).map((r) => DAYRECORD_HEADERS.map((h) => r[h] ?? ''))
+    await overwriteSheet('workforce_dayrecords', DAYRECORD_HEADERS, next)
+    clearWorkforceCache()
+    return res.status(200).json({ success: true })
+  }
+  if (action === 'delete-dayrecord') {
+    if (!body.id) return res.status(400).json({ error: 'กรุณาระบุ id' })
+    const current = await getSheet('workforce_dayrecords')
+    const kept = current.filter((r) => String(r.id) !== String(body.id)).map((r) => DAYRECORD_HEADERS.map((h) => r[h] ?? ''))
+    await overwriteSheet('workforce_dayrecords', DAYRECORD_HEADERS, kept)
+    clearWorkforceCache()
+    return res.status(200).json({ success: true, deleted: current.length - kept.length })
+  }
   return res.status(400).json({ error: `Unknown workforce action: ${action || '(empty)'}` })
 }
 
@@ -688,7 +727,7 @@ async function opHrInner(req, res) {
     const draft = { leave_type: body.leave_type, start_date: body.start_date, end_date: endDate, leave_period: leavePeriod, days: halfDay ? 0.5 : undefined }
     const coverage = await inspectLeaveCoverage(`mp:${code}`, draft, body.exclude_leave_id)
     const lockedDates = [...new Set([...(coverage.needs || []).map((need) => need.date), ...(coverage.lockedDates || [])])]
-    return res.status(200).json({ success: true, locked: lockedDates.length > 0 || !!coverage.blocked, lockedDates, backupNeeds: coverage.needs || [], blocked: !!coverage.blocked, coverageError: coverage.error || '' })
+    return res.status(200).json({ success: true, locked: lockedDates.length > 0 || !!coverage.blocked, lockedDates, backupNeeds: coverage.needs || [], blocked: !!coverage.blocked, coverageError: coverage.error || '', understaffedDates: coverage.understaffedDates || [] })
   }
 
   if (action === 'add-employee') {
@@ -826,7 +865,7 @@ async function opHrInner(req, res) {
       if (!coverage.ok) return res.status(400).json({ success: false, error: coverage.error, backupNeeds: coverage.needs || [], blocked: !!coverage.blocked })
     }
     const now = new Date().toISOString()
-    const payload = { ...draft, backup_office: coverage.assignments?.[0]?.office_code || '', backup_assignments: coverage.assignments || [] }
+    const payload = { ...draft, backup_office: coverage.assignments?.[0]?.office_code || '', backup_assignments: coverage.assignments || [], understaffed_dates: (coverage.understaffedDates || []).join(',') }
     if (!isAdminEdit) {
       const record = { ...target, edit_pending: '1', edit_payload: JSON.stringify(payload), edit_requested_at: now, edit_requested_by: actorName() }
       const next = current.map((row) => String(row.id) === String(target.id) ? record : row)
@@ -838,7 +877,7 @@ async function opHrInner(req, res) {
     }
     const record = {
       ...target, ...draft, status: nextStatus,
-      backup_office: payload.backup_office,
+      backup_office: payload.backup_office, understaffed_dates: payload.understaffed_dates,
       edit_pending: '', edit_payload: '', edit_requested_at: '', edit_requested_by: '',
       decided_by: actorName(), decided_at: now, decision_note: String(body.decision_note || target.decision_note || ''),
     }
@@ -895,6 +934,7 @@ async function opHrInner(req, res) {
       decided_by: '', decided_at: '', decision_note: '',
       backup_office: coverage.assignments?.[0]?.office_code || '', leave_period: leavePeriod,
       backup_assignments: coverage.assignments || [],
+      understaffed_dates: (coverage.understaffedDates || []).join(','),
     }
     if (coverage.assignments?.length) await appendRows('hr_leave_backups', coverage.assignments.map((assignment) => BACKUP_HEADERS.map((header) => ({ leave_id: record.id, ...assignment, created_at: now })[header] ?? '')))
     await appendRows('hr_leave', [LEAVE_HEADERS.map((h) => record[h] ?? '')])
@@ -1160,6 +1200,8 @@ async function opPlanner(req, res) {
 // ── ตัวช่วยขั้นตอนยื่นลาผ่านแชท LINE (พนักงานที่ไม่มีบัญชี login กดเมนูสำเร็จรูปแทนเข้าเว็บ) ──
 const LEAVE_TRIGGER = 'ลา'
 const LEAVE_EDIT_TRIGGER = 'แก้ไขลา'
+const LEAVE_CANCEL_TRIGGER = 'ยกเลิกลา'
+const LEAVE_SUMMARY_TRIGGER = 'สรุปลา'
 const LEAVE_TYPES_LINE = ['พักร้อน', 'ลากิจ', 'ลาป่วย', 'ขาดงาน', 'สลับวันหยุด']
 const THAI_MONTH_ABBR = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
@@ -1175,6 +1217,25 @@ const editLeaveChoiceMessage = (leaves) => ({
   type: 'text', text: 'เลือกคำขอที่ต้องการแก้ไขค่ะ',
   quickReply: { items: leaves.slice(0, 10).map((leave) => ({ type: 'action', action: { type: 'postback', label: `${thaiDateLabel(leave.start_date)} · ${leave.leave_type}`.slice(0, 20), data: `hr-wiz-edit:${leave.id}`, displayText: `แก้ไข ${thaiDateLabel(leave.start_date)}` } })) },
 })
+const cancelLeaveChoiceMessage = (leaves) => ({
+  type: 'text', text: 'เลือกคำขอที่ต้องการยกเลิกค่ะ (ยกเลิกได้เฉพาะรายการที่ยังไม่อนุมัติ)',
+  quickReply: { items: leaves.slice(0, 10).map((leave) => ({ type: 'action', action: { type: 'postback', label: `${thaiDateLabel(leave.start_date)} · ${leave.leave_type}`.slice(0, 20), data: `hr-wiz-cancelpick:${leave.id}`, displayText: `ยกเลิก ${thaiDateLabel(leave.start_date)}` } })) },
+})
+// สรุปการลาปีนี้ของคนเดียว — ใช้ตอบทั้งใน LINE (พิมพ์ "สรุปลา") และเผื่อ reuse ที่อื่น
+async function leaveOwnSummaryText(staffLink) {
+  const year = currentYearBKK()
+  const [balance, leaveRows] = await Promise.all([vacationBalanceFor(staffLink.code), getSheet('hr_leave')])
+  const own = leaveRows.filter((l) => l.username === staffLink.username && l.status === 'approved' && String(l.start_date || '').slice(0, 4) === year)
+  const byType = {}
+  for (const l of own) byType[l.leave_type] = (byType[l.leave_type] || 0) + (Number(l.days) || 0)
+  const pendingCount = leaveRows.filter((l) => l.username === staffLink.username && l.status === 'pending').length
+  const lines = Object.entries(byType).map(([type, days]) => `${leaveTypeIcon(type)} ${type}: ${days} วัน`)
+  const vacLine = balance.eligible ? `🏖️ พักร้อน: ใช้ ${balance.used}/${balance.quota} วัน (เหลือ ${balance.remaining})` : ''
+  const otherLines = lines.filter((l) => !l.includes('พักร้อน'))
+  const parts = [`สรุปการลาปี ${year} ของคุณ${staffLink.name ? ` ${staffLink.name}` : ''}ค่ะ`, vacLine, ...otherLines]
+  if (pendingCount) parts.push(`⏳ รออนุมัติอยู่ ${pendingCount} รายการ`)
+  return parts.filter(Boolean).join('\n') || `ยังไม่มีประวัติการลาปี ${year} ค่ะ`
+}
 // ปฏิทินจริงของ LINE (datetimepicker) กันพิมพ์วันที่ผิด — ใช้แทนการพิมพ์วันที่เองทั้งหมด
 const dtPicker = (label, data, min) => ({ type: 'datetimepicker', label, data, mode: 'date', initial: min || todayStr(), min: min || todayStr() })
 const choiceCard = ({ altText, title, subtitle, icon = '💭', actions = [], primaryLast = false }) => ({
@@ -1288,6 +1349,14 @@ async function handleLeaveWizard(event, staffLink) {
       await upsertSession(lineUserId, { step: 'await_edit_pick', edit_leave_id: '', backup_assignments: '', backup_needs: '', backup_cursor: '' })
       return replyMessage(replyToken, [editLeaveChoiceMessage(leaves)])
     }
+    if (text === LEAVE_CANCEL_TRIGGER && staffLink) {
+      const leaves = (await getSheet('hr_leave')).filter((leave) => leave.username === staffLink.username && leave.status === 'pending').sort((a, b) => String(b.start_date).localeCompare(String(a.start_date)))
+      if (!leaves.length) return replyMessage(replyToken, [{ type: 'text', text: 'ตอนนี้ไม่มีรายการลาที่ยกเลิกได้ค่ะ (ยกเลิกได้เฉพาะที่ยังรออนุมัติ)' }])
+      return replyMessage(replyToken, [cancelLeaveChoiceMessage(leaves)])
+    }
+    if (text === LEAVE_SUMMARY_TRIGGER && staffLink) {
+      return replyMessage(replyToken, [{ type: 'text', text: await leaveOwnSummaryText(staffLink) }])
+    }
     return // ข้อความอื่นที่ไม่เข้าเงื่อนไข ไม่ตอบ กันสแปมแชท
   }
 
@@ -1304,6 +1373,23 @@ async function handleLeaveWizard(event, staffLink) {
       if (!target) return replyMessage(replyToken, [{ type: 'text', text: 'รายการนี้แก้ไขไม่ได้แล้วค่ะ ลองพิมพ์ “แก้ไขลา” ใหม่อีกครั้งนะคะ' }])
       await upsertSession(lineUserId, { step: 'await_type', edit_leave_id: editLeaveId, leave_type: '', date: '', date2: '', leave_period: '', backup_assignments: '', backup_needs: '', backup_cursor: '' })
       return replyMessage(replyToken, [{ type: 'text', text: 'เลือกข้อมูลใหม่ได้เลยค่ะ รายการเดิมจะยังมีผลจนกว่า HR จะยืนยันการแก้ไขนะคะ' }, typeQuickReplyMessage(staffLink)])
+    }
+
+    if (data.startsWith('hr-wiz-cancelpick:')) {
+      if (!staffLink) return invalid()
+      const cancelLeaveId = data.slice('hr-wiz-cancelpick:'.length)
+      const current = await getSheet('hr_leave')
+      const target = current.find((leave) => String(leave.id) === cancelLeaveId && leave.username === staffLink.username)
+      if (!target || target.status !== 'pending') return replyMessage(replyToken, [{ type: 'text', text: 'รายการนี้ยกเลิกไม่ได้แล้วค่ะ (อาจถูกอนุมัติหรือยกเลิกไปก่อนแล้ว)' }])
+      const kept = current.filter((leave) => String(leave.id) !== cancelLeaveId)
+      const backupRows = await getSheet('hr_leave_backups')
+      const keptBackups = backupRows.filter((row) => String(row.leave_id) !== cancelLeaveId)
+      await Promise.all([
+        overwriteSheet('hr_leave', LEAVE_HEADERS, kept.map((r) => LEAVE_HEADERS.map((h) => r[h] ?? ''))),
+        overwriteSheet('hr_leave_backups', BACKUP_HEADERS, keptBackups.map((row) => BACKUP_HEADERS.map((header) => row[header] ?? ''))),
+      ])
+      clearHrCache()
+      return replyMessage(replyToken, [{ type: 'text', text: `ยกเลิกคำขอลาวันที่ ${thaiDateLabel(target.start_date)} (${target.leave_type}) แล้วค่ะ` }])
     }
 
     if (data.startsWith('hr-wiz-type:')) {
@@ -1423,6 +1509,7 @@ async function handleLeaveWizard(event, staffLink) {
           ...draft,
           days: isSwap ? 1 : leavePeriod === 'full' ? daysBetween(session.date, endDate) : 0.5,
           reason: target.reason || '', backup_office: coverage.assignments?.[0]?.office_code || '', backup_assignments: coverage.assignments || [],
+          understaffed_dates: (coverage.understaffedDates || []).join(','),
         }
         const record = { ...target, edit_pending: '1', edit_payload: JSON.stringify(payload), edit_requested_at: now, edit_requested_by: staffLink.name }
         await overwriteSheet('hr_leave', LEAVE_HEADERS, current.map((leave) => String(leave.id) === String(target.id) ? record : leave).map((leave) => LEAVE_HEADERS.map((header) => leave[header] ?? '')))
@@ -1443,6 +1530,7 @@ async function handleLeaveWizard(event, staffLink) {
         decided_by: '', decided_at: '', decision_note: '',
         backup_office: coverage.assignments?.[0]?.office_code || '', leave_period: leavePeriod,
         backup_assignments: coverage.assignments || [],
+        understaffed_dates: (coverage.understaffedDates || []).join(','),
       }
       if (coverage.assignments?.length) await appendRows('hr_leave_backups', coverage.assignments.map((assignment) => BACKUP_HEADERS.map((header) => ({ leave_id: record.id, ...assignment, created_at: now })[header] ?? '')))
       await appendRows('hr_leave', [LEAVE_HEADERS.map((h) => record[h] ?? '')])

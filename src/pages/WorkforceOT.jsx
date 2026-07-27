@@ -27,6 +27,7 @@ export default function WorkforceOT({ preview = false }) {
   const [history, setHistory] = useState([])
   const [approvals, setApprovals] = useState([])
   const [approvalHistory, setApprovalHistory] = useState([])
+  const [dayRecords, setDayRecords] = useState([])
   const [people, setPeople] = useState([])
   const [schedulePeople, setSchedulePeople] = useState([])
   const [officePeople, setOfficePeople] = useState([])
@@ -78,6 +79,7 @@ export default function WorkforceOT({ preview = false }) {
       setHistory(d.history || [])
       setApprovals(d.approvals || [])
       setApprovalHistory(d.approvalHistory || [])
+      setDayRecords(d.dayRecords || [])
       setPeople(d.people || [])
       setSchedulePeople(d.schedulePeople?.length ? d.schedulePeople : (d.people || []).filter((person) => String(person.active) !== '0' && person.code && person.name))
       setOfficePeople(d.officePeople || [])
@@ -157,7 +159,7 @@ export default function WorkforceOT({ preview = false }) {
       <div style={{ minHeight: 34, display: 'flex', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: sourceStatus.state === 'ok' ? '#16866f' : '#be123c' }}><span style={{ width: 8, height: 8, borderRadius: 99, background: sourceStatus.state === 'ok' ? '#16866f' : sourceStatus.state === 'loading' ? '#d97706' : '#be123c' }} />{sourceStatus.state === 'ok' ? 'ตาราง Manpower ปี 2026 พร้อมใช้ · ข้อมูลภายในระบบ' : sourceStatus.state === 'loading' ? 'กำลังโหลด Manpower…' : 'โหลดตาราง Manpower ไม่สำเร็จ'}</div>
         <div style={{ display: 'flex', gap: 6 }}>
-          {[['calendar','ปฏิทิน'], ...(isBoss ? [['overview','ภาพรวม'], ['summary','สรุป OT']] : [])].map(([id,label]) => <button key={id} onClick={() => { setError(''); setTab(id) }} style={miniTab(tab === id)}>{label}</button>)}
+          {[['calendar','ปฏิทิน'], ...(isBoss ? [['overview','ภาพรวม'], ['summary','สรุป OT'], ['daytype','โอทีเต็มวัน/ชดเชย']] : [])].map(([id,label]) => <button key={id} onClick={() => { setError(''); setTab(id) }} style={miniTab(tab === id)}>{label}</button>)}
           <button onClick={load} aria-label="รีเฟรช" style={{ border: '1px solid #d7e3ef', background: '#fff', borderRadius: 9, padding: 7, color: '#2474b8', cursor: 'pointer' }}><RefreshCw size={15} /></button>
         </div>
       </div>
@@ -190,8 +192,61 @@ export default function WorkforceOT({ preview = false }) {
       {tab === 'calendar' && <CalendarPlanner rows={rows} manpower={manpower} events={events} history={history} names={names} preview={preview} onSaved={load} error={error} setError={setError} otLimits={otLimits} closeRows={closeRows} deleteRows={deleteRows} edits={edits} setEdits={setEdits} saving={saving} groupByName={groupByName} officePeople={officePeople} officeAbsences={officeAbsences} inactiveNames={inactiveNames} schedulePeople={schedulePeople} canEditManpower={isBoss && !preview} />}
       {tab === 'overview' && isBoss && <OverviewOT rows={rows} approvals={approvals} otLimits={otLimits} />}
       {tab === 'summary' && isBoss && <PlanControlSummary rows={rows} approvals={approvals} setApprovals={setApprovals} approvalHistory={approvalHistory} preview={preview} setError={setError} otLimits={otLimits} setOtLimits={saveOtLimit} currentUser={currentUser} onSaved={load} />}
+      {tab === 'daytype' && isBoss && <DayRecordsPanel dayRecords={dayRecords} names={names} preview={preview} setError={setError} onSaved={load} />}
     </div>
   )
+}
+
+// โอทีเต็มวัน (มาทำวันหยุด/นักขัตฤกษ์) หรือมาชดเชยเฉยๆไม่รับโอที — แยกจาก OT รายชั่วโมงข้างบน
+// สลับวันหยุด ("จากวันไหนไปวันไหน") ทำผ่านระบบลา (leave_type 'สลับวันหยุด') อยู่แล้ว ไม่ได้อยู่ที่นี่
+function DayRecordsPanel({ dayRecords = [], names = [], preview, setError, onSaved }) {
+  const [form, setForm] = useState({ date: today(), kind: 'ot_full', reason: '', note: '', paid_ot: true })
+  const [selected, setSelected] = useState([])
+  const [saving, setSaving] = useState(false)
+
+  const add = async (e) => {
+    e.preventDefault()
+    if (!selected.length) return setError('เลือกอย่างน้อย 1 คน')
+    setSaving(true); setError('')
+    try {
+      if (preview) { setSaving(false); return }
+      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add-dayrecord', employees: selected, date: form.date, kind: form.kind, reason: form.reason, paid_ot: form.paid_ot, note: form.note }) })
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || 'บันทึกไม่สำเร็จ')
+      setSelected([]); setForm({ ...form, reason: '', note: '' })
+      await onSaved()
+    } catch (e2) { setError(e2.message) } finally { setSaving(false) }
+  }
+
+  const remove = async (id) => {
+    if (!window.confirm('ลบรายการนี้ใช่ไหม?')) return
+    setError('')
+    try {
+      if (preview) return
+      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete-dayrecord', id }) })
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || 'ลบไม่สำเร็จ')
+      await onSaved()
+    } catch (e) { setError(e.message) }
+  }
+
+  const kindLabel = (kind) => kind === 'ot_full' ? 'โอทีเต็มวัน' : 'ชดเชยเฉยๆ'
+
+  return <div style={{ display: 'grid', gap: 14 }}>
+    <form onSubmit={add} style={{ ...card, padding: 20, display: 'grid', gap: 16 }}>
+      <div><div style={{ fontSize: 17, fontWeight: 900, color: '#102a43' }}>บันทึกโอทีเต็มวัน / มาชดเชย</div><div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>ใช้กับกรณีมาทำงานเต็มวันในวันหยุดตัวเอง/วันนักขัตฤกษ์ — ถ้าเป็น "สลับวันหยุด" ให้ใช้เมนูลาแทน</div></div>
+      <div className="workforce-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 12 }}>
+        <Field label="วันที่"><input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={inputStyle} required /></Field>
+        <Field label="ประเภท"><select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} style={inputStyle}><option value="ot_full">โอทีเต็มวัน</option><option value="comp">มาชดเชยเฉยๆ (ไม่รับโอที)</option></select></Field>
+        <Field label="เหตุผล"><select value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} style={inputStyle}><option value="">— ไม่ระบุ —</option><option value="วันนักขัตฤกษ์">วันนักขัตฤกษ์</option><option value="วันหยุดตัวเอง">วันหยุดตัวเอง</option><option value="อื่น ๆ">อื่น ๆ</option></select></Field>
+        {form.kind === 'ot_full' && <Field label="รับโอทีไหม"><select value={form.paid_ot ? '1' : '0'} onChange={(e) => setForm({ ...form, paid_ot: e.target.value === '1' })} style={inputStyle}><option value="1">รับโอที</option><option value="0">ไม่รับโอที</option></select></Field>}
+        <Field label="หมายเหตุ"><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="เช่น หยุดตัวเองชนวันนักขัต ได้หยุด 2 วัน" style={inputStyle} /></Field>
+      </div>
+      <div><div style={{ fontSize: 12, fontWeight: 800, color: '#334155', marginBottom: 9 }}>เลือกคน · {selected.length} คน</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{names.map((name) => { const on = selected.includes(name); return <button type="button" key={name} onClick={() => setSelected(on ? selected.filter((n) => n !== name) : [...selected, name])} style={{ border: `1px solid ${on ? '#5ca8df' : '#cbd5e1'}`, background: on ? '#e9f5ff' : '#fff', color: on ? '#155f98' : '#64748b', borderRadius: 999, padding: '8px 13px', fontWeight: 800, cursor: 'pointer' }}>{on ? '✓ ' : ''}{name}</button> })}</div></div>
+      <button disabled={saving || !selected.length} style={{ justifySelf: 'start', border: 0, borderRadius: 10, padding: '11px 20px', background: '#397fb5', color: '#fff', fontWeight: 900, cursor: 'pointer', opacity: saving ? .6 : 1 }}>{saving ? 'กำลังบันทึก…' : `บันทึก ${selected.length} คน`}</button>
+    </form>
+    <section style={{ ...card, overflow: 'hidden' }}>
+      {!dayRecords.length ? <Empty text="ยังไม่มีรายการ" /> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700, fontSize: 13 }}><thead><tr style={{ background: '#f0f7fd', color: '#52677a', textAlign: 'left' }}>{['วันที่', 'ชื่อ', 'ประเภท', 'เหตุผล', 'รับโอที', 'หมายเหตุ', ''].map((h) => <th key={h} style={{ padding: '10px 12px' }}>{h}</th>)}</tr></thead><tbody>{dayRecords.map((r) => <tr key={r.id} style={{ borderTop: '1px solid #e5eef7' }}><td style={td}>{r.date}</td><td style={{ ...td, fontWeight: 900 }}>{r.employee}</td><td style={td}>{kindLabel(r.kind)}</td><td style={td}>{r.reason || '—'}</td><td style={td}>{r.kind === 'ot_full' ? (String(r.paid_ot) === '1' ? 'รับ' : 'ไม่รับ') : '—'}</td><td style={td}>{r.note || '—'}</td><td style={td}><button onClick={() => remove(r.id)} aria-label={`ลบ ${r.employee}`} style={{ border: 0, background: '#fef1f1', color: '#be123c', borderRadius: 8, padding: 8, cursor: 'pointer' }}><X size={15} /></button></td></tr>)}</tbody></table></div>}
+    </section>
+  </div>
 }
 
 function Kpi({ icon: Icon, label, value, tone }) { return <div style={{ ...card, padding: 15, display: 'flex', alignItems: 'center', gap: 11 }}><div style={{ width: 38, height: 38, display: 'grid', placeItems: 'center', borderRadius: 11, color: tone, background: `${tone}15` }}><Icon size={19} /></div><div><div style={{ color: '#64748b', fontSize: 11, fontWeight: 800 }}>{label}</div><div style={{ color: '#102a43', fontSize: 18, fontWeight: 900, marginTop: 2 }}>{value}</div></div></div> }
