@@ -53,13 +53,14 @@ export default function LeaveEditPanel({ leave, people = [], isAdmin, onClose, o
     return () => clearTimeout(timer)
   }, [employeeCode, form.leave_type, form.start_date, form.end_date, form.leave_period, form.status, leave.id, needsCoverage])
 
-  const assignments = useMemo(() => coverage.backupNeeds.flatMap((need) =>
-    Array.from({ length: need.required }, (_, index) => ({ date: need.date, period: need.period, office_code: selections[selectionKey(need, index)] || '' }))), [coverage.backupNeeds, selections])
+  // ไม่บังคับเลือกคนแทนครบทุกช่องแล้ว (ลาได้เสมอ) — ส่งเฉพาะช่องที่เลือกจริง
+  const assignments = useMemo(() => coverage.backupNeeds
+    .flatMap((need) => Array.from({ length: need.required }, (_, index) => ({ date: need.date, period: need.period, office_code: selections[selectionKey(need, index)] || '' })))
+    .filter((item) => item.office_code), [coverage.backupNeeds, selections])
 
   const submit = async (event) => {
     event.preventDefault()
     if (coverage.blocked) { setError(coverage.error || 'ไม่มีคนออฟฟิศว่างเพียงพอค่ะ'); return }
-    if (needsCoverage && assignments.some((item) => !item.office_code)) { setError('กรุณาเลือกคนออฟฟิศทดแทนให้ครบค่ะ'); return }
     setSaving(true); setError('')
     try {
       const response = await fetch(API, {

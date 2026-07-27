@@ -28,6 +28,7 @@ export default function WorkforceOT({ preview = false }) {
   const [approvals, setApprovals] = useState([])
   const [approvalHistory, setApprovalHistory] = useState([])
   const [dayRecords, setDayRecords] = useState([])
+  const [swapLeaves, setSwapLeaves] = useState([])
   const [people, setPeople] = useState([])
   const [schedulePeople, setSchedulePeople] = useState([])
   const [officePeople, setOfficePeople] = useState([])
@@ -80,6 +81,10 @@ export default function WorkforceOT({ preview = false }) {
       setApprovals(d.approvals || [])
       setApprovalHistory(d.approvalHistory || [])
       setDayRecords(d.dayRecords || [])
+      // "สลับวันหยุด" อยู่ในระบบลา (op=hr) ไม่ใช่ op=workforce — ดึงมาต่างหากเพื่อขึ้นป้ายในปฏิทินเดียวกับโอทีเต็มวัน/ชดเชย
+      fetch('/api/sheet-tools?op=hr').then((res) => res.json()).then((hrData) => {
+        if (hrData.success) setSwapLeaves((hrData.leave || []).filter((l) => l.leave_type === 'สลับวันหยุด' && !['rejected', 'cancelled'].includes(l.status)))
+      }).catch(() => {})
       setPeople(d.people || [])
       setSchedulePeople(d.schedulePeople?.length ? d.schedulePeople : (d.people || []).filter((person) => String(person.active) !== '0' && person.code && person.name))
       setOfficePeople(d.officePeople || [])
@@ -159,7 +164,7 @@ export default function WorkforceOT({ preview = false }) {
       <div style={{ minHeight: 34, display: 'flex', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: sourceStatus.state === 'ok' ? '#16866f' : '#be123c' }}><span style={{ width: 8, height: 8, borderRadius: 99, background: sourceStatus.state === 'ok' ? '#16866f' : sourceStatus.state === 'loading' ? '#d97706' : '#be123c' }} />{sourceStatus.state === 'ok' ? 'ตาราง Manpower ปี 2026 พร้อมใช้ · ข้อมูลภายในระบบ' : sourceStatus.state === 'loading' ? 'กำลังโหลด Manpower…' : 'โหลดตาราง Manpower ไม่สำเร็จ'}</div>
         <div style={{ display: 'flex', gap: 6 }}>
-          {[['calendar','ปฏิทิน'], ...(isBoss ? [['overview','ภาพรวม'], ['summary','สรุป OT'], ['daytype','โอทีเต็มวัน/ชดเชย']] : [])].map(([id,label]) => <button key={id} onClick={() => { setError(''); setTab(id) }} style={miniTab(tab === id)}>{label}</button>)}
+          {[['calendar','ปฏิทิน'], ...(isBoss ? [['overview','ภาพรวม'], ['summary','สรุป OT']] : [])].map(([id,label]) => <button key={id} onClick={() => { setError(''); setTab(id) }} style={miniTab(tab === id)}>{label}</button>)}
           <button onClick={load} aria-label="รีเฟรช" style={{ border: '1px solid #d7e3ef', background: '#fff', borderRadius: 9, padding: 7, color: '#2474b8', cursor: 'pointer' }}><RefreshCw size={15} /></button>
         </div>
       </div>
@@ -189,64 +194,11 @@ export default function WorkforceOT({ preview = false }) {
         {loading ? <Empty text="กำลังโหลด…" /> : !planned.length ? <Empty text="ไม่มีรายการ OT ที่รอยืนยัน" /> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820, fontSize: 13 }}><thead><tr style={{ background: '#f0f7fd', color: '#52677a', textAlign: 'left' }}>{['วันที่','ชื่อ','งาน','เวลาแผน','เริ่มจริง','จบจริง','สถานะ',''].map((h) => <th key={h} style={{ padding: '10px 12px' }}>{h}</th>)}</tr></thead><tbody>{planned.map((r) => { const e = edits[r.id] || {}; return <tr key={r.id} style={{ borderTop: '1px solid #e5eef7' }}><td style={td}>{r.date}</td><td style={{ ...td, fontWeight: 900 }}>{r.employee}</td><td style={td}>{r.task}</td><td style={td}>{r.planned_start}–{r.planned_end}<div style={{ fontSize: 11, color: '#94a3b8' }}>{fmtMinutes(r.planned_minutes)}</div></td><td style={td}><input type="time" value={e.actual_start ?? r.planned_start} onChange={(x) => setEdits({ ...edits, [r.id]: { ...e, actual_start: x.target.value } })} style={{ ...inputStyle, width: 105, padding: 7 }} /></td><td style={td}><input type="time" value={e.actual_end ?? r.planned_end} onChange={(x) => setEdits({ ...edits, [r.id]: { ...e, actual_end: x.target.value } })} style={{ ...inputStyle, width: 105, padding: 7 }} /></td><td style={td}><select value={e.status || 'completed'} onChange={(x) => setEdits({ ...edits, [r.id]: { ...e, status: x.target.value } })} style={{ ...inputStyle, width: 110, padding: 7 }}><option value="completed">ทำแล้ว</option><option value="cancelled">ยกเลิก</option></select></td><td style={td}><button onClick={() => closeRows([r])} aria-label={`ยืนยัน ${r.employee}`} style={{ border: 0, background: '#e7f7f2', color: '#16866f', borderRadius: 8, padding: 8, cursor: 'pointer' }}><CheckCircle2 size={17} /></button></td></tr> })}</tbody></table></div>}
       </section>}
 
-      {tab === 'calendar' && <CalendarPlanner rows={rows} manpower={manpower} events={events} history={history} names={names} preview={preview} onSaved={load} error={error} setError={setError} otLimits={otLimits} closeRows={closeRows} deleteRows={deleteRows} edits={edits} setEdits={setEdits} saving={saving} groupByName={groupByName} officePeople={officePeople} officeAbsences={officeAbsences} inactiveNames={inactiveNames} schedulePeople={schedulePeople} canEditManpower={isBoss && !preview} />}
+      {tab === 'calendar' && <CalendarPlanner rows={rows} manpower={manpower} events={events} history={history} names={names} preview={preview} onSaved={load} error={error} setError={setError} otLimits={otLimits} closeRows={closeRows} deleteRows={deleteRows} edits={edits} setEdits={setEdits} saving={saving} groupByName={groupByName} officePeople={officePeople} officeAbsences={officeAbsences} inactiveNames={inactiveNames} schedulePeople={schedulePeople} canEditManpower={isBoss && !preview} dayRecords={dayRecords} swapLeaves={swapLeaves} />}
       {tab === 'overview' && isBoss && <OverviewOT rows={rows} approvals={approvals} otLimits={otLimits} />}
       {tab === 'summary' && isBoss && <PlanControlSummary rows={rows} approvals={approvals} setApprovals={setApprovals} approvalHistory={approvalHistory} preview={preview} setError={setError} otLimits={otLimits} setOtLimits={saveOtLimit} currentUser={currentUser} onSaved={load} />}
-      {tab === 'daytype' && isBoss && <DayRecordsPanel dayRecords={dayRecords} names={names} preview={preview} setError={setError} onSaved={load} />}
     </div>
   )
-}
-
-// โอทีเต็มวัน (มาทำวันหยุด/นักขัตฤกษ์) หรือมาชดเชยเฉยๆไม่รับโอที — แยกจาก OT รายชั่วโมงข้างบน
-// สลับวันหยุด ("จากวันไหนไปวันไหน") ทำผ่านระบบลา (leave_type 'สลับวันหยุด') อยู่แล้ว ไม่ได้อยู่ที่นี่
-function DayRecordsPanel({ dayRecords = [], names = [], preview, setError, onSaved }) {
-  const [form, setForm] = useState({ date: today(), kind: 'ot_full', reason: '', note: '', paid_ot: true })
-  const [selected, setSelected] = useState([])
-  const [saving, setSaving] = useState(false)
-
-  const add = async (e) => {
-    e.preventDefault()
-    if (!selected.length) return setError('เลือกอย่างน้อย 1 คน')
-    setSaving(true); setError('')
-    try {
-      if (preview) { setSaving(false); return }
-      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add-dayrecord', employees: selected, date: form.date, kind: form.kind, reason: form.reason, paid_ot: form.paid_ot, note: form.note }) })
-      const d = await r.json(); if (!r.ok) throw new Error(d.error || 'บันทึกไม่สำเร็จ')
-      setSelected([]); setForm({ ...form, reason: '', note: '' })
-      await onSaved()
-    } catch (e2) { setError(e2.message) } finally { setSaving(false) }
-  }
-
-  const remove = async (id) => {
-    if (!window.confirm('ลบรายการนี้ใช่ไหม?')) return
-    setError('')
-    try {
-      if (preview) return
-      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete-dayrecord', id }) })
-      const d = await r.json(); if (!r.ok) throw new Error(d.error || 'ลบไม่สำเร็จ')
-      await onSaved()
-    } catch (e) { setError(e.message) }
-  }
-
-  const kindLabel = (kind) => kind === 'ot_full' ? 'โอทีเต็มวัน' : 'ชดเชยเฉยๆ'
-
-  return <div style={{ display: 'grid', gap: 14 }}>
-    <form onSubmit={add} style={{ ...card, padding: 20, display: 'grid', gap: 16 }}>
-      <div><div style={{ fontSize: 17, fontWeight: 900, color: '#102a43' }}>บันทึกโอทีเต็มวัน / มาชดเชย</div><div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>ใช้กับกรณีมาทำงานเต็มวันในวันหยุดตัวเอง/วันนักขัตฤกษ์ — ถ้าเป็น "สลับวันหยุด" ให้ใช้เมนูลาแทน</div></div>
-      <div className="workforce-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 12 }}>
-        <Field label="วันที่"><input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={inputStyle} required /></Field>
-        <Field label="ประเภท"><select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} style={inputStyle}><option value="ot_full">โอทีเต็มวัน</option><option value="comp">มาชดเชยเฉยๆ (ไม่รับโอที)</option></select></Field>
-        <Field label="เหตุผล"><select value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} style={inputStyle}><option value="">— ไม่ระบุ —</option><option value="วันนักขัตฤกษ์">วันนักขัตฤกษ์</option><option value="วันหยุดตัวเอง">วันหยุดตัวเอง</option><option value="อื่น ๆ">อื่น ๆ</option></select></Field>
-        {form.kind === 'ot_full' && <Field label="รับโอทีไหม"><select value={form.paid_ot ? '1' : '0'} onChange={(e) => setForm({ ...form, paid_ot: e.target.value === '1' })} style={inputStyle}><option value="1">รับโอที</option><option value="0">ไม่รับโอที</option></select></Field>}
-        <Field label="หมายเหตุ"><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="เช่น หยุดตัวเองชนวันนักขัต ได้หยุด 2 วัน" style={inputStyle} /></Field>
-      </div>
-      <div><div style={{ fontSize: 12, fontWeight: 800, color: '#334155', marginBottom: 9 }}>เลือกคน · {selected.length} คน</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{names.map((name) => { const on = selected.includes(name); return <button type="button" key={name} onClick={() => setSelected(on ? selected.filter((n) => n !== name) : [...selected, name])} style={{ border: `1px solid ${on ? '#5ca8df' : '#cbd5e1'}`, background: on ? '#e9f5ff' : '#fff', color: on ? '#155f98' : '#64748b', borderRadius: 999, padding: '8px 13px', fontWeight: 800, cursor: 'pointer' }}>{on ? '✓ ' : ''}{name}</button> })}</div></div>
-      <button disabled={saving || !selected.length} style={{ justifySelf: 'start', border: 0, borderRadius: 10, padding: '11px 20px', background: '#397fb5', color: '#fff', fontWeight: 900, cursor: 'pointer', opacity: saving ? .6 : 1 }}>{saving ? 'กำลังบันทึก…' : `บันทึก ${selected.length} คน`}</button>
-    </form>
-    <section style={{ ...card, overflow: 'hidden' }}>
-      {!dayRecords.length ? <Empty text="ยังไม่มีรายการ" /> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700, fontSize: 13 }}><thead><tr style={{ background: '#f0f7fd', color: '#52677a', textAlign: 'left' }}>{['วันที่', 'ชื่อ', 'ประเภท', 'เหตุผล', 'รับโอที', 'หมายเหตุ', ''].map((h) => <th key={h} style={{ padding: '10px 12px' }}>{h}</th>)}</tr></thead><tbody>{dayRecords.map((r) => <tr key={r.id} style={{ borderTop: '1px solid #e5eef7' }}><td style={td}>{r.date}</td><td style={{ ...td, fontWeight: 900 }}>{r.employee}</td><td style={td}>{kindLabel(r.kind)}</td><td style={td}>{r.reason || '—'}</td><td style={td}>{r.kind === 'ot_full' ? (String(r.paid_ot) === '1' ? 'รับ' : 'ไม่รับ') : '—'}</td><td style={td}>{r.note || '—'}</td><td style={td}><button onClick={() => remove(r.id)} aria-label={`ลบ ${r.employee}`} style={{ border: 0, background: '#fef1f1', color: '#be123c', borderRadius: 8, padding: 8, cursor: 'pointer' }}><X size={15} /></button></td></tr>)}</tbody></table></div>}
-    </section>
-  </div>
 }
 
 function Kpi({ icon: Icon, label, value, tone }) { return <div style={{ ...card, padding: 15, display: 'flex', alignItems: 'center', gap: 11 }}><div style={{ width: 38, height: 38, display: 'grid', placeItems: 'center', borderRadius: 11, color: tone, background: `${tone}15` }}><Icon size={19} /></div><div><div style={{ color: '#64748b', fontSize: 11, fontWeight: 800 }}>{label}</div><div style={{ color: '#102a43', fontSize: 18, fontWeight: 900, marginTop: 2 }}>{value}</div></div></div> }
@@ -254,7 +206,25 @@ function Field({ label, children }) { return <label style={{ display: 'grid', ga
 function Empty({ text }) { return <div style={{ padding: 42, textAlign: 'center', color: '#94a3b8' }}>{text}</div> }
 const td = { padding: '11px 12px', color: '#334155', verticalAlign: 'middle' }
 
-function CalendarPlanner({ rows, manpower, events, history = [], names, preview, onSaved, error, setError, otLimits = {}, closeRows, deleteRows, edits = {}, setEdits, saving, groupByName = {}, officePeople = [], officeAbsences = [], inactiveNames = new Set(), schedulePeople = [], canEditManpower = false }) {
+// ป้าย OT เต็มวัน/ชดเชย ในปฏิทิน — มาจาก workforce_dayrecords (บันทึกที่หน้า HR) แสดงแยกจากชื่อในกล่องปกติ
+const DAY_RECORD_LABEL = { ot_full: 'OT', comp: 'ชดเชย' }
+
+function CalendarPlanner({ rows, manpower, events, history = [], names, preview, onSaved, error, setError, otLimits = {}, closeRows, deleteRows, edits = {}, setEdits, saving, groupByName = {}, officePeople = [], officeAbsences = [], inactiveNames = new Set(), schedulePeople = [], canEditManpower = false, dayRecords = [], swapLeaves = [] }) {
+  const dayRecordByNameDate = useMemo(() => {
+    const map = new Map()
+    for (const r of dayRecords) { if (r.employee && r.date) map.set(`${r.date}|${r.employee}`, DAY_RECORD_LABEL[r.kind] || r.kind) }
+    // สลับวันหยุด — ขึ้นป้ายทั้งวันหยุดเดิม (start_date) และวันหยุดใหม่ (end_date) อ้างอิงถึงกันด้วยเลขวันที่
+    for (const l of swapLeaves) {
+      if (!l.employee_name || !l.start_date || !l.end_date) continue
+      const fromDay = Number(l.start_date.slice(-2))
+      const toDay = Number(l.end_date.slice(-2))
+      const startKey = `${l.start_date}|${l.employee_name}`
+      const endKey = `${l.end_date}|${l.employee_name}`
+      map.set(startKey, [map.get(startKey), `S/W ${toDay}`].filter(Boolean).join(', '))
+      map.set(endKey, [map.get(endKey), `S/W ${fromDay}`].filter(Boolean).join(', '))
+    }
+    return map
+  }, [dayRecords, swapLeaves])
   const [month, setMonth] = useState(today().slice(0, 7))
   // มือถือ: ปฏิทินตาราง 7 คอลัมน์บีบจนอ่านไม่ออก — สลับเป็นรายการรายวันแทน (owner ขอ)
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 700)
@@ -382,15 +352,17 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
       return r.group === 'คนฟีด' || ['PANID', 'MOM'].includes(code) || ['PANID', 'MOM', 'ป้านิด', 'แม่'].includes(employee)
     })
     const regularManpower = distinctDayManpower.filter((r) => !feedManpower.includes(r))
-    const feedNames = feedManpower.map((r) => { const identity = String(r.code || r.employee || '').trim().toUpperCase(); return identity === 'PANID' ? 'ป้านิด' : identity === 'MOM' ? 'แม่' : r.employee })
-    const regularNames = regularManpower.map((r) => r.employee === 'มะปราง' ? 'ปราง' : r.employee)
+    // ป้าย OT เต็มวัน/ชดเชย/สลับวันหยุด — ต่อท้ายชื่อบรรทัดเดียวกันเลย (สไตล์ "TANG : OT" ในชีทเดิม)
+    const annotate = (name) => { const label = dayRecordByNameDate.get(`${date}|${name}`); return label ? `${name} : ${label}` : name }
+    const feedNames = feedManpower.map((r) => { const identity = String(r.code || r.employee || '').trim().toUpperCase(); return annotate(identity === 'PANID' ? 'ป้านิด' : identity === 'MOM' ? 'แม่' : r.employee) })
+    const regularNames = regularManpower.map((r) => annotate(r.employee === 'มะปราง' ? 'ปราง' : r.employee))
     const regularHeadcount = regularManpower.reduce((s, r) => s + Number(r.fraction || 1), 0)
     const officeAbsentCodes = new Set(officeAbsences.filter((a) => a.date === date).map((a) => a.code))
-    const officePresentNames = officePeople.filter((p) => !officeAbsentCodes.has(p.code)).map((p) => p.name)
+    const officePresentNames = officePeople.filter((p) => !officeAbsentCodes.has(p.code)).map((p) => annotate(p.name))
     const lowPackingManpower = regularHeadcount <= 2
     const isToday = date === today()
     const promoTitleForDate = events.filter((e) => e.date === date)
-    return { isPromo, isFeed, partTime, packers, feedNames, regularNames, officePresentNames, lowPackingManpower, isToday, promoEvents: promoTitleForDate }
+    return { isPromo, isFeed, partTime, packers, feedNames, regularNames, officePresentNames, regularHeadcount, lowPackingManpower, isToday, promoEvents: promoTitleForDate }
   }
   const monthDates = cells.filter(Boolean)
   const defaultMobileDate = monthDates.includes(today()) ? today() : (monthDates[0] || today())
@@ -422,22 +394,7 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', background: 'linear-gradient(180deg,#eef6ff,#f7fbff)', borderRadius: 12 }}>{['อา','จ','อ','พ','พฤ','ศ','ส'].map((d) => <div key={d} style={{ padding: 7, textAlign: 'center', fontSize: 11, fontWeight: 900, color: '#7a94b8' }}>{d}</div>)}</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', gap: 5, marginTop: 5 }}>{cells.map((date, i) => {
         if (!date) return <div key={`blank-${i}`} style={{ minWidth: 0, minHeight: 132, borderRadius: 12, background: 'transparent' }} />
-        const dayRows = rows.filter((r) => r.date === date && r.status !== 'cancelled'); const dayManpower = manpower.filter((r) => r.date === date); const isPromo = promoDates.has(date); const isFeed = feedRangeDates.has(date); const partTime = dayRows.filter((r) => groupByName[r.employee] === 'พาร์ทไทม์'); const packers = dayRows.filter((r) => groupByName[r.employee] !== 'พาร์ทไทม์')
-        const distinctDayManpower = [...new Map(dayManpower.map((r) => [String(r.code || r.employee).toUpperCase(), r])).values()]
-        const feedManpower = distinctDayManpower.filter((r) => {
-          const code = String(r.code || '').toUpperCase()
-          const employee = String(r.employee || '').trim().toUpperCase()
-          return r.group === 'คนฟีด' || ['PANID', 'MOM'].includes(code) || ['PANID', 'MOM', 'ป้านิด', 'แม่'].includes(employee)
-        })
-        const regularManpower = distinctDayManpower.filter((r) => !feedManpower.includes(r))
-        const feedNames = feedManpower.map((r) => { const identity = String(r.code || r.employee || '').trim().toUpperCase(); return identity === 'PANID' ? 'ป้านิด' : identity === 'MOM' ? 'แม่' : r.employee })
-        const regularNames = regularManpower.map((r) => r.employee === 'มะปราง' ? 'ปราง' : r.employee)
-        const regularHeadcount = regularManpower.reduce((s, r) => s + Number(r.fraction || 1), 0)
-        // กลุ่มออฟฟิศ — แยกจากบ้านล่าง/บ้านบนข้างบน ไม่รวมนับ headcount เดียวกัน แค่โชว์ให้เห็นว่าใครลาวันนี้
-        const officeAbsentCodes = new Set(officeAbsences.filter((a) => a.date === date).map((a) => a.code))
-        const officePresentNames = officePeople.filter((p) => !officeAbsentCodes.has(p.code)).map((p) => p.name)
-        const lowPackingManpower = regularHeadcount <= 2
-        const isToday = date === today()
+        const { isPromo, isFeed, partTime, packers, feedNames, regularNames, officePresentNames, regularHeadcount, lowPackingManpower, isToday } = computeDayInfo(date)
         return <div key={date} style={{ minWidth: 0, minHeight: 132, padding: 7, textAlign: 'left', borderRadius: 12, border: isToday ? '2px solid #355872' : `1px solid ${isPromo ? '#c3b1ea' : isFeed ? '#e4d9f7' : '#e2e8ef'}`, background: isPromo ? 'linear-gradient(135deg,#ede7fb,#f5f1fd)' : isFeed ? 'linear-gradient(180deg,#f5f1fd,#faf8fe)' : 'linear-gradient(180deg,#ffffff,#fbfdff)', boxShadow: isToday ? '0 4px 16px rgba(53,88,114,.20)' : '0 2px 10px rgba(53,88,114,.07)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', overflow: 'visible' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
@@ -450,17 +407,21 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
             </span>
           </div>
           {events.filter((e) => e.date === date).map((e) => <div key={e.id} style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, minWidth: 0, color: '#be185d', fontSize: 10, fontWeight: 900 }}><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.title}>{e.title}</span><span role="button" aria-label={`ลบ ${e.title}`} onClick={(ev) => { ev.stopPropagation(); deleteEvent(e) }} style={{ flexShrink: 0, cursor: 'pointer', color: '#be185d', opacity: .6, padding: '0 3px' }}>×</span></div>)}
-          <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-            {regularManpower.length > 0 && <div style={{ borderRadius: 7, padding: '3px 5px', background: '#e0f2fe', border: '1px solid #7AAACE' }}>
-              <div style={{ fontSize: 9, lineHeight: '13px', fontWeight: lowPackingManpower ? 900 : 700, color: lowPackingManpower ? '#dc2626' : '#355872' }}>{regularNames.join(', ')}</div>
+          {(regularNames.length > 0 || feedNames.length > 0 || officePresentNames.length > 0) && <div style={{ marginTop: 4, borderRadius: 8, padding: '4px 6px', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            {regularNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+              <span style={{ width: 5, height: 5, borderRadius: 99, background: '#7AAACE', flexShrink: 0 }} />
+              <span style={{ fontSize: 9, lineHeight: '13px', fontWeight: 700, color: '#355872', minWidth: 0, flex: 1 }}>{regularNames.join(', ')}</span>
+              {lowPackingManpower && <span style={{ fontSize: 9, fontWeight: 900, color: '#dc2626', flexShrink: 0 }} title={`กำลังคนบ้านล่างเหลือ ${regularHeadcount} คน`}>⚠{regularHeadcount}</span>}
             </div>}
-            {feedManpower.length > 0 && <div style={{ borderRadius: 7, padding: '3px 5px', background: '#ffedd5', border: '1px solid #fb923c' }}>
-              <div style={{ fontSize: 9, lineHeight: '13px', fontWeight: 900, color: '#c2410c' }}>{feedNames.join(', ')}</div>
+            {feedNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+              <span style={{ width: 5, height: 5, borderRadius: 99, background: '#fb923c', flexShrink: 0 }} />
+              <span style={{ fontSize: 9, lineHeight: '13px', fontWeight: 900, color: '#c2410c', minWidth: 0 }}>{feedNames.join(', ')}</span>
             </div>}
-            {officePresentNames.length > 0 && <div style={{ borderRadius: 7, padding: '3px 5px', background: '#ecfdf5', border: '1px solid #6ee7b7' }}>
-              <div style={{ fontSize: 9, lineHeight: '13px', fontWeight: 700, color: '#047857' }}>{officePresentNames.join(', ')}</div>
+            {officePresentNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+              <span style={{ width: 5, height: 5, borderRadius: 99, background: '#6ee7b7', flexShrink: 0 }} />
+              <span style={{ fontSize: 9, lineHeight: '13px', fontWeight: 700, color: '#047857', minWidth: 0 }}>{officePresentNames.join(', ')}</span>
             </div>}
-          </div>
+          </div>}
           {packers.length > 0 && <DayGroup label="OT คนแพ็ก" rows={packers} />}{partTime.length > 0 && <DayGroup label="OT พาร์ทไทม์" rows={partTime} />}
         </div>
       })}</div>
@@ -555,7 +516,7 @@ function MobileDayAgenda({ monthDates, activeDate, onSelectDate, computeDayInfo,
   const d = new Date(`${activeDate}T00:00:00`)
   const dateLabel = `${weekdayLabels[d.getDay()]} ${d.getDate()} ${['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][d.getMonth()]}`
   const sections = [
-    info.regularNames.length > 0 && { color: info.lowPackingManpower ? '#dc2626' : '#0369a1', bg: '#e0f2fe', label: 'บ้านล่าง', value: info.regularNames.join(', ') },
+    info.regularNames.length > 0 && { color: '#0369a1', bg: '#e0f2fe', label: 'บ้านล่าง', value: info.regularNames.join(', '), alert: info.lowPackingManpower ? `⚠ เหลือ ${info.regularHeadcount} คน` : '' },
     info.feedNames.length > 0 && { color: '#c2410c', bg: '#ffedd5', label: 'คนฟีด', value: info.feedNames.join(', ') },
     info.officePresentNames.length > 0 && { color: '#047857', bg: '#ecfdf5', label: 'ออฟฟิศ', value: info.officePresentNames.join(', ') },
   ].filter(Boolean)
@@ -612,6 +573,7 @@ function MobileDayAgenda({ monthDates, activeDate, onSelectDate, computeDayInfo,
         <div key={s.label} style={{ display: 'flex', gap: 10, marginBottom: 10, padding: '10px 12px', borderRadius: 12, background: s.bg, borderLeft: `4px solid ${s.color}` }}>
           <div style={{ minWidth: 60, fontSize: 11, fontWeight: 900, color: s.color, opacity: .75 }}>{s.label}</div>
           <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 800, color: s.color }}>{s.value}</div>
+          {s.alert && <div style={{ flexShrink: 0, fontSize: 11, fontWeight: 900, color: '#dc2626' }}>{s.alert}</div>}
         </div>
       ))}
 

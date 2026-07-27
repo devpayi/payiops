@@ -1202,6 +1202,7 @@ const LEAVE_TRIGGER = 'ลา'
 const LEAVE_EDIT_TRIGGER = 'แก้ไขลา'
 const LEAVE_CANCEL_TRIGGER = 'ยกเลิกลา'
 const LEAVE_SUMMARY_TRIGGER = 'สรุปลา'
+const LEAVE_HISTORY_TRIGGER = 'ประวัติลา'
 const LEAVE_TYPES_LINE = ['พักร้อน', 'ลากิจ', 'ลาป่วย', 'ขาดงาน', 'สลับวันหยุด']
 const THAI_MONTH_ABBR = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
@@ -1235,6 +1236,26 @@ async function leaveOwnSummaryText(staffLink) {
   const parts = [`สรุปการลาปี ${year} ของคุณ${staffLink.name ? ` ${staffLink.name}` : ''}ค่ะ`, vacLine, ...otherLines]
   if (pendingCount) parts.push(`⏳ รออนุมัติอยู่ ${pendingCount} รายการ`)
   return parts.filter(Boolean).join('\n') || `ยังไม่มีประวัติการลาปี ${year} ค่ะ`
+}
+const LEAVE_STATUS_LABEL_LINE = { pending: '⏳ รออนุมัติ', approved: '✅ อนุมัติแล้ว', rejected: '✕ ไม่อนุมัติ', cancelled: '↩️ ยกเลิกแล้ว' }
+// ประวัติการลาทั้งปีนี้ของคนเดียวแบบทีละรายการ (ต่างจาก "สรุปลา" ที่เป็นยอดรวม) — ใช้ตอบใน LINE พิมพ์ "ประวัติลา"
+// จำกัดแค่ปีปัจจุบัน ไม่ใช่ตลอดกาล — กันข้อความยาวเกิน 5000 ตัวอักษรของ LINE สำหรับคนที่ลามาหลายปี
+async function leaveHistoryText(staffLink) {
+  const year = currentYearBKK()
+  const leaveRows = await getSheet('hr_leave')
+  const own = leaveRows
+    .filter((l) => l.username === staffLink.username && l.status !== 'cancelled' && String(l.start_date || '').slice(0, 4) === year)
+    .sort((a, b) => String(b.start_date).localeCompare(String(a.start_date)))
+  if (!own.length) return `ยังไม่มีประวัติการลาปี ${year} ค่ะ`
+  const lines = own.map((l) => {
+    const isSwap = l.leave_type === 'สลับวันหยุด'
+    const dateLabel = isSwap ? `${thaiDateLabel(l.start_date)} → ${thaiDateLabel(l.end_date)}` : l.start_date === l.end_date ? thaiDateLabel(l.start_date) : `${thaiDateLabel(l.start_date)} – ${thaiDateLabel(l.end_date)}`
+    const statusLabel = LEAVE_STATUS_LABEL_LINE[l.status] || l.status
+    return `${leaveTypeIcon(l.leave_type)} ${l.leave_type} · ${dateLabel} · ${l.days} วัน\n${statusLabel}`
+  })
+  const text = [`ประวัติการลาปี ${year}${staffLink.name ? ` ของ ${staffLink.name}` : ''} (${own.length} รายการ)`, ...lines].join('\n\n')
+  // เผื่อกรณีลาถี่มากจนยังยาวเกิน limit ของ LINE — ตัดท้ายไว้กันข้อความส่งไม่ออก
+  return text.length > 4800 ? `${text.slice(0, 4750)}\n\n…(ดูรายการเพิ่มเติมได้ที่หน้าเว็บ)` : text
 }
 // ปฏิทินจริงของ LINE (datetimepicker) กันพิมพ์วันที่ผิด — ใช้แทนการพิมพ์วันที่เองทั้งหมด
 const dtPicker = (label, data, min) => ({ type: 'datetimepicker', label, data, mode: 'date', initial: min || todayStr(), min: min || todayStr() })
@@ -1356,6 +1377,9 @@ async function handleLeaveWizard(event, staffLink) {
     }
     if (text === LEAVE_SUMMARY_TRIGGER && staffLink) {
       return replyMessage(replyToken, [{ type: 'text', text: await leaveOwnSummaryText(staffLink) }])
+    }
+    if (text === LEAVE_HISTORY_TRIGGER && staffLink) {
+      return replyMessage(replyToken, [{ type: 'text', text: await leaveHistoryText(staffLink) }])
     }
     return // ข้อความอื่นที่ไม่เข้าเงื่อนไข ไม่ตอบ กันสแปมแชท
   }
