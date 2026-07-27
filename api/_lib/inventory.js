@@ -19,8 +19,11 @@ const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_b
 // เดิมอยู่ในชีท Excel "Something" แยกต่างหาก ไม่มี dailyAverage จากยอดขายลูกค้าเหมือนสินค้าจริง เพราะใช้ตามการผลิตไม่ใช่ตามออเดอร์
 // units_per_batch: เฉพาะ category=packaging — 1 แผ่น/แพ็คมีกี่ชิ้น ไว้แปลงยอดใช้ (ชิ้น) เป็นจุดสั่งซื้อ (แผ่น/แพ็ค)
 // ผ่าน packaging_recipes (ดูด้านล่าง)
-const MOVEMENTS_HEADERS = ['id', 'date', 'sku', 'type', 'qty', 'note', 'created_by', 'created_at']
+const MOVEMENTS_HEADERS = ['id', 'date', 'sku', 'type', 'qty', 'note', 'created_by', 'created_at', 'updated_by', 'updated_at']
 const MOVEMENT_TYPES = new Set(['in', 'out', 'adjust'])
+// ประวัติแก้ไขรายการเข้า-ออก — append-only เก็บ before/after ทั้งแถว (เหมือน pattern workforce_ot_history)
+const MOVEMENTS_HISTORY_SHEET = 'stock_movements_history'
+const MOVEMENTS_HISTORY_HEADERS = ['id', 'movement_id', 'before_json', 'after_json', 'changed_at', 'changed_by']
 
 // เชื่อมวัสดุแพ็คเกจจิ้งกับสินค้าที่ใช้มันจริง — 1 แถวต่อ 1 คู่ (วัสดุ, สินค้า) เพื่อเอายอดขาย
 // เฉลี่ยของสินค้ามาคำนวณว่าวัสดุควรสั่งเพิ่มเท่าไหร่ (เหมือน pattern set_recipes ที่ planner-sales.js ใช้)
@@ -32,6 +35,7 @@ const ensureInventorySheets = () => ensurePromise ||= Promise.all([
   ensureSheet(ITEMS_SHEET, ITEMS_HEADERS),
   ensureSheet(MOVEMENTS_SHEET, MOVEMENTS_HEADERS),
   ensureSheet(PACKAGING_RECIPES_SHEET, PACKAGING_RECIPES_HEADERS),
+  ensureSheet(MOVEMENTS_HISTORY_SHEET, MOVEMENTS_HISTORY_HEADERS),
 ])
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0 }
@@ -128,6 +132,8 @@ async function loadMovements({ type, q, from, to }) {
     note: m.note || '',
     created_by: m.created_by || '',
     created_at: m.created_at || '',
+    updated_by: m.updated_by || '',
+    updated_at: m.updated_at || '',
   }))
 
   if (type && type !== 'all') rows = rows.filter((r) => r.type === type)
@@ -236,6 +242,41 @@ async function addMovement(body, actorName) {
   return row
 }
 
+async function updateMovement(body, actorName) {
+  const id = String(body.id || '').trim()
+  if (!id) throw new Error('ต้องระบุ id')
+  const type = String(body.type || '').trim()
+  const qtyInput = Number(body.qty)
+  if (!MOVEMENT_TYPES.has(type)) throw new Error('ประเภทรายการไม่ถูกต้อง')
+  if (!Number.isFinite(qtyInput) || qtyInput === 0) throw new Error('ต้องระบุจำนวน')
+
+  await ensureInventorySheets()
+  const movements = await getSheet(MOVEMENTS_SHEET)
+  const idx = movements.findIndex((m) => String(m.id) === id)
+  if (idx === -1) throw new Error('ไม่พบรายการนี้')
+  const before = movements[idx]
+
+  let qty = qtyInput
+  if (type === 'in') qty = Math.abs(qtyInput)
+  if (type === 'out') qty = -Math.abs(qtyInput)
+
+  const now = new Date().toISOString()
+  const after = {
+    ...before,
+    date: isoDate(body.date) || before.date,
+    type, qty,
+    note: body.note !== undefined ? body.note : before.note,
+    updated_by: actorName || '',
+    updated_at: now,
+  }
+  movements[idx] = after
+  await Promise.all([
+    overwriteSheet(MOVEMENTS_SHEET, MOVEMENTS_HEADERS, movements.map((m) => MOVEMENTS_HEADERS.map((h) => m[h] ?? ''))),
+    appendRows(MOVEMENTS_HISTORY_SHEET, [[`mvhist-${Date.now()}`, id, JSON.stringify(before), JSON.stringify(after), now, actorName || '']]),
+  ])
+  return after
+}
+
 async function loadPackagingRecipes() {
   await ensureInventorySheets()
   const [rows, items] = await Promise.all([getSheet(PACKAGING_RECIPES_SHEET), getSheet(ITEMS_SHEET)])
@@ -280,7 +321,7 @@ async function deletePackagingRecipe(body) {
 
 export default async function opInventory(req, res) {
   try {
-    const actorName = req.user?.display_name || req.user?.username || ''
+    const actorName = req.user?.name || req.user?.u || ''
 
     if (req.method === 'GET') {
       const view = String(req.query.view || 'items')
@@ -309,6 +350,10 @@ export default async function opInventory(req, res) {
       }
       if (action === 'add-movement') {
         const result = await addMovement(req.body, actorName)
+        return res.status(200).json({ success: true, movement: result })
+      }
+      if (action === 'update-movement') {
+        const result = await updateMovement(req.body, actorName)
         return res.status(200).json({ success: true, movement: result })
       }
       if (action === 'upsert-recipe') {

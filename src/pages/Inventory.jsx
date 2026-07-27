@@ -730,7 +730,7 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
 
   return (
     <Modal title={isEdit ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่'} onClose={onClose}>
-      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div>
           <label style={labelStyle}>รหัสสินค้า (SKU)</label>
           <input value={sku} onChange={(e) => setSku(e.target.value)} disabled={isEdit} required style={{ ...inputStyle, opacity: isEdit ? 0.6 : 1 }} placeholder={newCategory === 'packaging' ? 'เช่น PKG-STICKER-01' : 'เช่น PY006'} />
@@ -778,10 +778,10 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
           </div>
         )}
         {isEdit && isPackaging && (
-          <div style={{ background: 'var(--payi-surface-muted)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ background: 'var(--payi-surface-muted)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>เชื่อมกับสินค้า (ไว้คำนวณยอดใช้เฉลี่ยจากยอดขายจริง)</div>
             {recipes.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {recipes.map((r) => (
                   <div key={r.product_sku} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
                     <span style={{ flex: 1, color: 'var(--payi-text-strong)' }}>{r.product_name} <span style={{ color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>({r.product_sku})</span></span>
@@ -829,7 +829,7 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
           </div>
         )}
         {isEdit && (
-          <div style={{ background: 'var(--payi-surface-muted)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ background: 'var(--payi-surface-muted)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>Lead time (ไว้คำนวณขั้นต่ำแนะนำอัตโนมัติ)</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
@@ -854,6 +854,17 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
                   : 'ไม่มีข้อมูลยอดขาย 30 วันล่าสุดของ SKU นี้ — คำนวณอัตโนมัติไม่ได้ ต้องกรอกขั้นต่ำเอง'}
               </div>
             )}
+            {isPackaging && (
+              <div>
+                <label style={labelStyle}>วันเติมสินค้า/รอเช็ค</label>
+                <input
+                  value={reorderNote}
+                  onChange={(e) => setReorderNote(e.target.value)}
+                  style={inputStyle}
+                  placeholder="เช่น สั่งแล้ว 2 ล็อต ล็อตแรกมา 200/500 รออีก 300 ต้นเดือน"
+                />
+              </div>
+            )}
           </div>
         )}
         {!isEdit && !isPackaging && (
@@ -862,7 +873,7 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
             <input type="number" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} style={inputStyle} placeholder="0" />
           </div>
         )}
-        {isEdit && (
+        {isEdit && !isPackaging && (
           <div>
             <label style={labelStyle}>วันเติมสินค้า/รอเช็ค</label>
             <input
@@ -900,7 +911,7 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
             )}
           </div>
         )}
-        <button type="submit" disabled={saving} style={{ marginTop: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 16px', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: saving ? 0.6 : 1, boxShadow: '0 8px 18px rgba(37,99,235,0.22)' }}>
+        <button type="submit" disabled={saving} style={{ marginTop: 2, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 16px', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: saving ? 0.6 : 1, boxShadow: '0 8px 18px rgba(37,99,235,0.22)' }}>
           {saving ? 'กำลังบันทึก...' : 'บันทึก'}
         </button>
       </form>

@@ -35,7 +35,7 @@ export default function Login({ firstTime, onLogin }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 20, fontFamily: 'Inter, -apple-system, sans-serif' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: 'Inter, -apple-system, sans-serif' }}>
       <form onSubmit={submit} className="payi-glass-card" style={{ width: 360, maxWidth: '94vw', borderRadius: 24, boxShadow: '0 24px 60px rgba(37,99,235,0.12)', padding: 28, display: 'grid', gap: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
           <span style={{ padding: 2, borderRadius: '50%', background: 'var(--payi-gradient-primary)', display: 'inline-flex', boxShadow: '0 8px 18px rgba(37,99,235,0.24)' }}>
@@ -69,6 +69,7 @@ export default function Login({ firstTime, onLogin }) {
           {firstTime ? 'สร้างบัญชีและเข้าสู่ระบบ' : 'เข้าสู่ระบบ'}
         </button>
       </form>
+      <div style={{ marginTop: 18, fontSize: 11, color: 'var(--payi-text-faint)', textAlign: 'center' }}>PAYI Health Care © 2026</div>
     </div>
   )
 }

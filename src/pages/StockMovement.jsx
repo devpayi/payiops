@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeftRight, Download, Plus, Search, X } from 'lucide-react'
+import { ArrowLeftRight, Download, Pencil, Plus, Search, X } from 'lucide-react'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
 const fmtDateTime = (iso) => {
@@ -47,6 +47,7 @@ export default function StockMovement() {
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [showAdd, setShowAdd] = useState(false)
+  const [editing, setEditing] = useState(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -103,6 +104,26 @@ export default function StockMovement() {
       const json = await res.json()
       if (!json.success) throw new Error(json.error || 'บันทึกไม่สำเร็จ')
       setShowAdd(false)
+      load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveEdit = async (payload) => {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/sheet-tools?op=inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update-movement', id: editing.id, ...payload }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'บันทึกไม่สำเร็จ')
+      setEditing(null)
       load()
     } catch (e) {
       setError(e.message)
@@ -174,6 +195,7 @@ export default function StockMovement() {
                   <th style={{ padding: '8px 10px', textAlign: 'right' }}>จำนวน</th>
                   <th style={{ padding: '8px 10px' }}>ผู้ทำรายการ</th>
                   <th style={{ padding: '8px 10px' }}>หมายเหตุ</th>
+                  <th style={{ padding: '8px 10px' }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -189,7 +211,15 @@ export default function StockMovement() {
                       {m.qty > 0 ? '+' : ''}{fmt(m.qty)}
                     </td>
                     <td style={{ padding: '10px', color: 'var(--payi-text-muted)' }}>{m.created_by || '-'}</td>
-                    <td style={{ padding: '10px', color: 'var(--payi-text-muted)' }}>{m.note || '-'}</td>
+                    <td style={{ padding: '10px', color: 'var(--payi-text-muted)' }}>
+                      {m.note || '-'}
+                      {m.updated_at && <div style={{ fontSize: 10.5, color: 'var(--payi-text-faint)', marginTop: 2 }} title={fmtDateTime(m.updated_at)}>แก้ไขล่าสุดโดย {m.updated_by || '-'}</div>}
+                    </td>
+                    <td style={{ padding: '10px', textAlign: 'right' }}>
+                      <button onClick={() => setEditing(m)} aria-label={`แก้ไขรายการ ${m.display_name}`} style={{ border: 'none', background: 'var(--payi-surface-muted)', borderRadius: 8, padding: 7, cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
+                        <Pencil size={13} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -201,16 +231,20 @@ export default function StockMovement() {
       {showAdd && (
         <AddMovementModal items={items} saving={saving} onClose={() => setShowAdd(false)} onSave={saveMovement} />
       )}
+      {editing && (
+        <AddMovementModal items={items} saving={saving} initial={editing} onClose={() => setEditing(null)} onSave={saveEdit} />
+      )}
     </div>
   )
 }
 
-function AddMovementModal({ items, saving, onClose, onSave }) {
-  const [sku, setSku] = useState(items[0]?.sku || '')
-  const [type, setType] = useState('in')
-  const [qty, setQty] = useState('')
-  const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }))
-  const [note, setNote] = useState('')
+function AddMovementModal({ items, saving, initial, onClose, onSave }) {
+  const isEdit = !!initial
+  const [sku, setSku] = useState(initial?.sku || items[0]?.sku || '')
+  const [type, setType] = useState(initial?.type || 'in')
+  const [qty, setQty] = useState(initial ? String(initial.type === 'adjust' ? initial.qty : Math.abs(initial.qty)) : '')
+  const [date, setDate] = useState(initial?.date || (() => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }))())
+  const [note, setNote] = useState(initial?.note || '')
 
   const submit = (e) => {
     e.preventDefault()
@@ -222,7 +256,7 @@ function AddMovementModal({ items, saving, onClose, onSave }) {
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.28)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', zIndex: 999 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--payi-surface)', borderRadius: 16, padding: 24, width: 420, maxWidth: '92vw', boxShadow: '0 20px 60px rgba(15,23,42,0.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--payi-text-strong)' }}>เพิ่มรายการเข้า-ออก</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--payi-text-strong)' }}>{isEdit ? `แก้ไขรายการ — ${initial.display_name}` : 'เพิ่มรายการเข้า-ออก'}</div>
           <button onClick={onClose} style={{ border: 'none', background: 'var(--payi-border)', borderRadius: '50%', width: 28, height: 28, display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
             <X size={14} />
           </button>
@@ -230,12 +264,16 @@ function AddMovementModal({ items, saving, onClose, onSave }) {
         <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
             <label style={labelStyle}>สินค้า</label>
-            <select value={sku} onChange={(e) => setSku(e.target.value)} required style={{ ...inputStyle, width: '100%' }}>
-              {items.length === 0 && <option value="">ยังไม่มีสินค้า — ไปเพิ่มที่หน้า Inventory ก่อน</option>}
-              {items.map((it) => (
-                <option key={it.sku} value={it.sku}>{it.abc ? `[${it.abc}] ` : ''}{it.display_name} ({it.sku})</option>
-              ))}
-            </select>
+            {isEdit ? (
+              <div style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', background: 'var(--payi-surface-muted)', color: 'var(--payi-text-muted)' }}>{initial.display_name} ({sku})</div>
+            ) : (
+              <select value={sku} onChange={(e) => setSku(e.target.value)} required style={{ ...inputStyle, width: '100%' }}>
+                {items.length === 0 && <option value="">ยังไม่มีสินค้า — ไปเพิ่มที่หน้า Inventory ก่อน</option>}
+                {items.map((it) => (
+                  <option key={it.sku} value={it.sku}>{it.abc ? `[${it.abc}] ` : ''}{it.display_name} ({it.sku})</option>
+                ))}
+              </select>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {[['in', 'รับเข้า'], ['out', 'เบิกออก'], ['adjust', 'ปรับยอด']].map(([id, label]) => (
