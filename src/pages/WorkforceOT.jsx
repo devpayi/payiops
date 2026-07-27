@@ -34,7 +34,6 @@ export default function WorkforceOT({ preview = false }) {
   const [people, setPeople] = useState([])
   const [schedulePeople, setSchedulePeople] = useState([])
   const [officePeople, setOfficePeople] = useState([])
-  const [officeAbsences, setOfficeAbsences] = useState([])
   const groupByName = useMemo(() => Object.fromEntries(people.filter((p) => p.name).map((p) => [p.name, p.group])), [people])
   // คนที่ถูกลบออกแล้ว (active='0') — กันไม่ให้โผล่ในตัวเลือก "เพิ่มคน OT ใหม่" อีก แม้ชื่อจะยังค้างในประวัติเดิม
   const inactiveNames = useMemo(() => new Set(people.filter((p) => p.name && String(p.active) === '0').map((p) => p.name)), [people])
@@ -90,7 +89,6 @@ export default function WorkforceOT({ preview = false }) {
       setPeople(d.people || [])
       setSchedulePeople(d.schedulePeople?.length ? d.schedulePeople : (d.people || []).filter((person) => String(person.active) !== '0' && person.code && person.name))
       setOfficePeople(d.officePeople || [])
-      setOfficeAbsences(d.officeAbsences || [])
       setOtLimitsState(d.otLimits || {})
       setSourceStatus({ state: d.sourceManpower?.length ? 'ok' : 'error', count: d.sourceManpower?.length || 0 })
       setNames((current) => [...new Set([...current, ...loadedRows.map((row) => row.employee).filter(Boolean), ...(d.sourceManpower || []).map((row) => row.employee).filter(Boolean), ...(d.manpower || []).map((row) => row.employee).filter(Boolean)])])
@@ -196,7 +194,7 @@ export default function WorkforceOT({ preview = false }) {
         {loading ? <Empty text="กำลังโหลด…" /> : !planned.length ? <Empty text="ไม่มีรายการ OT ที่รอยืนยัน" /> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820, fontSize: 13 }}><thead><tr style={{ background: '#f0f7fd', color: '#52677a', textAlign: 'left' }}>{['วันที่','ชื่อ','งาน','เวลาแผน','เริ่มจริง','จบจริง','สถานะ',''].map((h) => <th key={h} style={{ padding: '10px 12px' }}>{h}</th>)}</tr></thead><tbody>{planned.map((r) => { const e = edits[r.id] || {}; return <tr key={r.id} style={{ borderTop: '1px solid #e5eef7' }}><td style={td}>{r.date}</td><td style={{ ...td, fontWeight: 900 }}>{r.employee}</td><td style={td}>{r.task}</td><td style={td}>{r.planned_start}–{r.planned_end}<div style={{ fontSize: 11, color: '#94a3b8' }}>{fmtMinutes(r.planned_minutes)}</div></td><td style={td}><input type="time" value={e.actual_start ?? r.planned_start} onChange={(x) => setEdits({ ...edits, [r.id]: { ...e, actual_start: x.target.value } })} style={{ ...inputStyle, width: 105, padding: 7 }} /></td><td style={td}><input type="time" value={e.actual_end ?? r.planned_end} onChange={(x) => setEdits({ ...edits, [r.id]: { ...e, actual_end: x.target.value } })} style={{ ...inputStyle, width: 105, padding: 7 }} /></td><td style={td}><select value={e.status || 'completed'} onChange={(x) => setEdits({ ...edits, [r.id]: { ...e, status: x.target.value } })} style={{ ...inputStyle, width: 110, padding: 7 }}><option value="completed">ทำแล้ว</option><option value="cancelled">ยกเลิก</option></select></td><td style={td}><button onClick={() => closeRows([r])} aria-label={`ยืนยัน ${r.employee}`} style={{ border: 0, background: '#e7f7f2', color: '#16866f', borderRadius: 8, padding: 8, cursor: 'pointer' }}><CheckCircle2 size={17} /></button></td></tr> })}</tbody></table></div>}
       </section>}
 
-      {tab === 'calendar' && <CalendarPlanner rows={rows} manpower={manpower} events={events} history={history} names={names} preview={preview} onSaved={load} error={error} setError={setError} otLimits={otLimits} closeRows={closeRows} deleteRows={deleteRows} edits={edits} setEdits={setEdits} saving={saving} groupByName={groupByName} officePeople={officePeople} officeAbsences={officeAbsences} inactiveNames={inactiveNames} schedulePeople={schedulePeople} canEditManpower={canEditManpowerSchedule && !preview} dayRecords={dayRecords} swapLeaves={swapLeaves} />}
+      {tab === 'calendar' && <CalendarPlanner rows={rows} manpower={manpower} events={events} history={history} names={names} preview={preview} onSaved={load} error={error} setError={setError} otLimits={otLimits} closeRows={closeRows} deleteRows={deleteRows} edits={edits} setEdits={setEdits} saving={saving} groupByName={groupByName} officePeople={officePeople} inactiveNames={inactiveNames} schedulePeople={schedulePeople} canEditManpower={canEditManpowerSchedule && !preview} dayRecords={dayRecords} swapLeaves={swapLeaves} />}
       {tab === 'overview' && isBoss && <OverviewOT rows={rows} approvals={approvals} otLimits={otLimits} />}
       {tab === 'summary' && isBoss && <PlanControlSummary rows={rows} approvals={approvals} setApprovals={setApprovals} approvalHistory={approvalHistory} preview={preview} setError={setError} otLimits={otLimits} setOtLimits={saveOtLimit} currentUser={currentUser} onSaved={load} />}
     </div>
@@ -211,7 +209,7 @@ const td = { padding: '11px 12px', color: '#334155', verticalAlign: 'middle' }
 // ป้าย OT เต็มวัน/ชดเชย ในปฏิทิน — มาจาก workforce_dayrecords (บันทึกที่หน้า HR) แสดงแยกจากชื่อในกล่องปกติ
 const DAY_RECORD_LABEL = { ot_full: 'OT', comp: 'ชดเชย' }
 
-function CalendarPlanner({ rows, manpower, events, history = [], names, preview, onSaved, error, setError, otLimits = {}, closeRows, deleteRows, edits = {}, setEdits, saving, groupByName = {}, officePeople = [], officeAbsences = [], inactiveNames = new Set(), schedulePeople = [], canEditManpower = false, dayRecords = [], swapLeaves = [] }) {
+function CalendarPlanner({ rows, manpower, events, history = [], names, preview, onSaved, error, setError, otLimits = {}, closeRows, deleteRows, edits = {}, setEdits, saving, groupByName = {}, officePeople = [], inactiveNames = new Set(), schedulePeople = [], canEditManpower = false, dayRecords = [], swapLeaves = [] }) {
   const dayRecordByNameDate = useMemo(() => {
     const map = new Map()
     for (const r of dayRecords) { if (r.employee && r.date) map.set(`${r.date}|${r.employee}`, DAY_RECORD_LABEL[r.kind] || r.kind) }
@@ -249,6 +247,7 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
   const [busy, setBusy] = useState(false)
   const [warning, setWarning] = useState('')
   const [scheduleDraft, setScheduleDraft] = useState({})
+  const [scheduleOtDraft, setScheduleOtDraft] = useState({})
   const [year, mo] = month.split('-').map(Number)
   const first = new Date(year, mo - 1, 1)
   const cells = [...Array(first.getDay()).fill(null), ...Array.from({ length: new Date(year, mo, 0).getDate() }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)]
@@ -276,6 +275,9 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
   const openSchedule = (date) => {
     const workingCodes = new Set(manpower.filter((row) => row.date === date).map((row) => String(row.code || '').toUpperCase()))
     setScheduleDraft(Object.fromEntries(schedulePeople.map((person) => [person.code, workingCodes.has(String(person.code).toUpperCase())])))
+    // เติมสถานะ OT เต็มวันเดิม (ถ้าเคยบันทึกไว้แล้ว) กลับเข้า draft ตอนเปิดแก้ซ้ำ
+    const otNamesToday = new Set(dayRecords.filter((r) => r.date === date && r.kind === 'ot_full').map((r) => r.employee))
+    setScheduleOtDraft(Object.fromEntries(schedulePeople.map((person) => [person.code, otNamesToday.has(person.name)])))
     setError('')
     setModal({ type: 'schedule', date })
   }
@@ -296,6 +298,17 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
         const response = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set-schedule-day', date: modal.date, codes }) })
         const data = await response.json()
         if (!response.ok) throw new Error(data.error || 'บันทึก Manpower ไม่สำเร็จ')
+
+        // sync โอทีเต็มวัน (ป้ายในปฏิทิน) — เทียบกับ dayRecords เดิมของวันนี้ เพิ่ม/ลบเฉพาะส่วนต่าง กันซ้ำซ้อนถ้าแก้ซ้ำ
+        const existingOt = dayRecords.filter((r) => r.date === modal.date && r.kind === 'ot_full')
+        const wantOtNames = new Set(schedulePeople.filter((p) => scheduleOtDraft[p.code]).map((p) => p.name))
+        const toAdd = [...wantOtNames].filter((name) => !existingOt.some((r) => r.employee === name))
+        const toRemove = existingOt.filter((r) => !wantOtNames.has(r.employee))
+        await Promise.all([
+          ...(toAdd.length ? [fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add-dayrecord', employees: toAdd, date: modal.date, kind: 'ot_full', reason: '', paid_ot: true, note: '' }) })] : []),
+          ...toRemove.map((r) => fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete-dayrecord', id: r.id }) })),
+        ])
+
         setModal(null)
         await onSaved()
       } catch (e) { setError(e.message) } finally { setBusy(false) }
@@ -345,22 +358,25 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
   }
 
   // สรุปข้อมูลของวันเดียว — ใช้ร่วมกันทั้งช่องปฏิทินตาราง (desktop) และการ์ดรายวัน (มือถือ) กันคำนวณซ้ำสองที่
+  const officeCodesSet = useMemo(() => new Set(officePeople.map((p) => String(p.code || '').toUpperCase())), [officePeople])
   const computeDayInfo = (date) => {
     const dayRows = rows.filter((r) => r.date === date && r.status !== 'cancelled'); const dayManpower = manpower.filter((r) => r.date === date); const isPromo = promoDates.has(date); const isFeed = feedRangeDates.has(date); const partTime = dayRows.filter((r) => groupByName[r.employee] === 'พาร์ทไทม์'); const packers = dayRows.filter((r) => groupByName[r.employee] !== 'พาร์ทไทม์')
     const distinctDayManpower = [...new Map(dayManpower.map((r) => [String(r.code || r.employee).toUpperCase(), r])).values()]
+    const officeManpower = distinctDayManpower.filter((r) => officeCodesSet.has(String(r.code || '').toUpperCase()))
     const feedManpower = distinctDayManpower.filter((r) => {
       const code = String(r.code || '').toUpperCase()
       const employee = String(r.employee || '').trim().toUpperCase()
+      if (officeCodesSet.has(code)) return false
       return r.group === 'คนฟีด' || ['PANID', 'MOM'].includes(code) || ['PANID', 'MOM', 'ป้านิด', 'แม่'].includes(employee)
     })
-    const regularManpower = distinctDayManpower.filter((r) => !feedManpower.includes(r))
+    const regularManpower = distinctDayManpower.filter((r) => !feedManpower.includes(r) && !officeManpower.includes(r))
     // ป้าย OT เต็มวัน/ชดเชย/สลับวันหยุด — ต่อท้ายชื่อบรรทัดเดียวกันเลย (สไตล์ "TANG : OT" ในชีทเดิม)
     const annotate = (name) => { const label = dayRecordByNameDate.get(`${date}|${name}`); return label ? `${name} : ${label}` : name }
     const feedNames = feedManpower.map((r) => { const identity = String(r.code || r.employee || '').trim().toUpperCase(); return annotate(identity === 'PANID' ? 'ป้านิด' : identity === 'MOM' ? 'แม่' : r.employee) })
     const regularNames = regularManpower.map((r) => annotate(r.employee === 'มะปราง' ? 'ปราง' : r.employee))
     const regularHeadcount = regularManpower.reduce((s, r) => s + Number(r.fraction || 1), 0)
-    const officeAbsentCodes = new Set(officeAbsences.filter((a) => a.date === date).map((a) => a.code))
-    const officePresentNames = officePeople.filter((p) => !officeAbsentCodes.has(p.code)).map((p) => annotate(p.name))
+    // ออฟฟิศตอนนี้อ่านจากตารางกะจริง (workforce_schedule_snapshot) เหมือนบ้านล่างแล้ว ไม่ใช่ "มาทุกวันเสมอเว้นลา" แบบเดิม — ลาก็หักให้แล้วตั้งแต่ฝั่ง backend (getCalendarPresence)
+    const officePresentNames = officeManpower.map((r) => annotate(r.employee))
     const lowPackingManpower = regularHeadcount <= 2
     const isToday = date === today()
     const promoTitleForDate = events.filter((e) => e.date === date)
@@ -452,7 +468,7 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
         </div>}
       </div>}
 
-      {modal.type === 'schedule' ? <ScheduleDayEditor people={schedulePeople} draft={scheduleDraft} setDraft={setScheduleDraft} /> : modal.type === 'ot' ? <div style={{ display: 'grid', gap: 14, marginTop: 18 }}>
+      {modal.type === 'schedule' ? <ScheduleDayEditor people={schedulePeople} draft={scheduleDraft} setDraft={setScheduleDraft} otDraft={scheduleOtDraft} setOtDraft={setScheduleOtDraft} /> : modal.type === 'ot' ? <div style={{ display: 'grid', gap: 14, marginTop: 18 }}>
         <div style={{ fontSize: 12, fontWeight: 900, color: '#334155' }}>{modalDayRows.length > 0 ? 'เพิ่มคน OT ใหม่' : 'เลือกคนทำ OT'}</div>
         <Field label="เลือกคนทำ OT"><div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>{[
           ...names.filter((name) => !inactiveNames.has(name) && (!monthsByName[name] || monthsByName[name].has((modal?.date || month).slice(0, 7)))),
@@ -474,7 +490,7 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
   </section>
 }
 
-function ScheduleDayEditor({ people = [], draft = {}, setDraft }) {
+function ScheduleDayEditor({ people = [], draft = {}, setDraft, otDraft = {}, setOtDraft }) {
   const selectedCount = people.filter((person) => draft[person.code]).length
   const groups = [...new Set(people.map((person) => person.group || 'อื่น ๆ'))]
   return <div style={{ display: 'grid', gap: 14, marginTop: 18 }}>
@@ -493,10 +509,15 @@ function ScheduleDayEditor({ people = [], draft = {}, setDraft }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 8 }}>
         {people.filter((person) => (person.group || 'อื่น ๆ') === group).map((person) => {
           const checked = !!draft[person.code]
-          return <label key={person.code} style={{ minHeight: 46, display: 'flex', alignItems: 'center', gap: 9, padding: '7px 10px', border: `1px solid ${checked ? '#7dd3fc' : '#e2e8f0'}`, borderRadius: 11, background: checked ? '#f0f9ff' : '#fff', color: checked ? '#075985' : '#64748b', cursor: 'pointer' }}>
-            <input type="checkbox" checked={checked} onChange={(event) => setDraft({ ...draft, [person.code]: event.target.checked })} style={{ width: 18, height: 18, accentColor: '#0284c7' }} />
-            <span style={{ minWidth: 0 }}><strong style={{ display: 'block', color: checked ? '#0c4a6e' : '#334155', fontSize: 12 }}>{person.name}</strong><small style={{ fontSize: 9 }}>{person.code}</small></span>
-          </label>
+          const isOt = !!otDraft[person.code]
+          return <div key={person.code} style={{ minHeight: 46, display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', border: `1px solid ${checked ? '#7dd3fc' : '#e2e8f0'}`, borderRadius: 11, background: checked ? '#f0f9ff' : '#fff', color: checked ? '#075985' : '#64748b' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 9, flex: 1, minWidth: 0, cursor: 'pointer' }}>
+              <input type="checkbox" checked={checked} onChange={(event) => { const on = event.target.checked; setDraft({ ...draft, [person.code]: on }); if (!on && setOtDraft) setOtDraft({ ...otDraft, [person.code]: false }) }} style={{ width: 18, height: 18, accentColor: '#0284c7', flexShrink: 0 }} />
+              <span style={{ minWidth: 0 }}><strong style={{ display: 'block', color: checked ? '#0c4a6e' : '#334155', fontSize: 12 }}>{person.name}</strong><small style={{ fontSize: 9 }}>{person.code}</small></span>
+            </label>
+            {/* ปุ่ม OT โชว์เฉพาะคนที่ยังไม่ได้อยู่ในตารางวันนี้ (หรือเคยติ๊ก OT ไว้แล้วจากรอบก่อน) — คนที่เข้างานตามตารางปกติอยู่แล้วไม่ใช่กรณี "โอทีวัน" จึงไม่ต้องมีปุ่มนี้ */}
+            {setOtDraft && (!checked || isOt) && <button type="button" onClick={() => { const next = !isOt; setOtDraft({ ...otDraft, [person.code]: next }); setDraft({ ...draft, [person.code]: next }) }} title="มาทำโอทีเต็มวัน (ไม่ได้อยู่ในตารางงานวันนี้ แต่มาทำ) — ขึ้นป้ายในปฏิทินด้วย" style={{ flexShrink: 0, border: `1px solid ${isOt ? '#f472b6' : '#e2e8f0'}`, background: isOt ? '#fdf2f8' : '#fff', color: isOt ? '#be185d' : '#94a3b8', borderRadius: 999, padding: '4px 9px', fontSize: 10, fontWeight: 900, cursor: 'pointer' }}>{isOt ? '✓ โอทีวัน' : '+ โอทีวัน'}</button>}
+          </div>
         })}
       </div>
     </fieldset>)}

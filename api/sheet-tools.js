@@ -454,14 +454,14 @@ function generateCalendarPresence(personMap, leaveRows) {
 }
 // ปฏิทินบ้านล่างใช้ตารางพนักงานปี 2026 ในระบบ และกรองแถวออฟฟิศออกด้วย roster บ้านล่าง
 // ถ้ามีคำขอลาอนุมัติผ่านระบบ ให้ยึด hr_leave แทนตารางตั้งต้น
-async function getCalendarPresence(personMap, overrideScopeCodes = Object.keys(personMap), applyLeaves = true) {
+async function getCalendarPresence(personMap, overrideScopeCodes = Object.keys(personMap), applyLeaves = true, officeCodes = []) {
   const [snapshotRows, overrideRows, leaveRows] = await Promise.all([
     getSheet('workforce_schedule_snapshot'), getSheet('workforce_schedule_overrides'), getSheet('hr_leave'),
   ])
   let baseRows = (snapshotRows.length ? snapshotRows : generateCalendarPresence(personMap, []))
     .filter((r) => personMap[String(r.code || '').toUpperCase()])
     .map((r) => ({ id: `stored-${r.date}-${r.code}`, date: r.date, employee: r.employee, code: String(r.code || '').toUpperCase(), group: r.group, fraction: Number(r.fraction) || 1, source: 'stored' }))
-  baseRows = applyScheduleOverrides({ baseRows, overrideRows, personMap, overrideScopeCodes })
+  baseRows = applyScheduleOverrides({ baseRows, overrideRows, personMap, overrideScopeCodes, officeCodes })
   if (!applyLeaves) return baseRows
   const absenceByCode = buildLeaveAbsenceMap(leaveRows)
   return baseRows.map((row) => ({ ...row, fraction: Math.max(0, row.fraction - absenceFraction(absenceByCode, row.code, row.date)) })).filter((row) => row.fraction > 0)
@@ -492,8 +492,8 @@ async function opWorkforceInner(req, res) {
   if (req.method === 'GET' && String(req.query.sourceOnly || '') === '1') {
     try {
       await ensureWorkforceSheets()
-      const personMap = await getPersonMap()
-      const sourceManpower = await getCalendarPresence(personMap)
+      const [personMap, officeMap] = await Promise.all([getPersonMap(), getOfficePeopleMap()])
+      const sourceManpower = await getCalendarPresence({ ...personMap, ...officeMap }, Object.keys(personMap), true, Object.keys(officeMap))
       return res.status(200).json({ success: true, sourceManpower, sourceYear: '2026' })
     } catch (e) { return res.status(500).json({ success: false, error: e.message }) }
   }
@@ -509,10 +509,12 @@ async function opWorkforceInner(req, res) {
     const personMap = await getPersonMap() // ต้องผ่าน getPersonMap() ไม่ใช่ build จาก people ตรงๆ — เผื่อชีตยังไม่มีแถวของบางคน (เช่น MOM/PANID) ต้อง fallback ไป DEFAULT_PEOPLE_ROWS ไม่งั้นหายจากปฏิทิน
     const otLimits = Object.fromEntries(limits.filter((l) => l.employee).map((l) => [l.employee, l.limit_hours]))
     let sourceManpower = []
-    let officePeople = []; let officeAbsences = []
+    let officePeople = []; let officeAbsences = []; let officeMap = {}
     try {
-      sourceManpower = await getCalendarPresence(personMap)
-      const [leaveRows, officeMap] = await Promise.all([getSheet('hr_leave'), getOfficePeopleMap()])
+      const [leaveRows, officeMapResult] = await Promise.all([getSheet('hr_leave'), getOfficePeopleMap()])
+      officeMap = officeMapResult
+      // รวมออฟฟิศเข้ากับตารางกะด้วย (เดิมส่งแค่บ้านล่าง) — ปฏิทินจะได้โชว์ตามตารางกะจริงของออฟฟิศด้วย ไม่ใช่ "มาทุกวันเสมอ" เหมือนก่อน
+      sourceManpower = await getCalendarPresence({ ...personMap, ...officeMap }, Object.keys(personMap), true, Object.keys(officeMap))
       officePeople = Object.entries(officeMap).map(([code, [name]]) => ({ code, name }))
       for (const l of leaveRows) {
         if (!['pending', 'approved'].includes(l.status)) continue
@@ -523,7 +525,11 @@ async function opWorkforceInner(req, res) {
       }
     } catch (e) { console.error('office presence:', e.message) }
     res.setHeader('Cache-Control', cacheable('public, s-maxage=20, stale-while-revalidate=60'))
-    const schedulePeople = Object.entries(personMap).map(([code, [name, group]]) => ({ code, name, group }))
+    // เพิ่มออฟฟิศเข้าไปในรายชื่อที่แก้ผ่านปุ่ม "คน" ได้แล้ว (เดิมแก้ได้แค่บ้านล่าง)
+    const schedulePeople = [
+      ...Object.entries(personMap).map(([code, [name, group]]) => ({ code, name, group })),
+      ...Object.entries(officeMap).map(([code, [name]]) => ({ code, name, group: 'ออฟฟิศ' })),
+    ]
     const data = { success: true, rows: rows.sort((a, b) => String(b.date).localeCompare(String(a.date))), manpower, sourceManpower, events, history, approvals, approvalHistory, otLimits, people, schedulePeople, officePeople, officeAbsences, sourceYear: '2026', dayRecords: dayRecords.sort((a, b) => String(b.date).localeCompare(String(a.date))) }
     workforceCache = { at: Date.now(), data }
     return res.status(200).json(data)
@@ -535,10 +541,11 @@ async function opWorkforceInner(req, res) {
     if (!requireScheduleEditor(req, res)) return
     const date = String(body.date || '')
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) return res.status(400).json({ error: 'วันที่ไม่ถูกต้อง' })
-    const personMap = await getPersonMap()
+    const [personMap, officeMap] = await Promise.all([getPersonMap(), getOfficePeopleMap()])
+    const combinedMap = { ...personMap, ...officeMap }
     const requestedCodes = Array.isArray(body.codes) ? body.codes.map((code) => String(code || '').toUpperCase()).filter(Boolean) : []
     const codes = [...new Set(requestedCodes)]
-    const unknown = codes.filter((code) => !personMap[code])
+    const unknown = codes.filter((code) => !combinedMap[code])
     if (unknown.length) return res.status(400).json({ error: `ไม่พบพนักงานในระบบ: ${unknown.join(', ')}` })
     const updatedAt = new Date().toISOString()
     const updatedBy = actorName() || body.updated_by || 'Boss'

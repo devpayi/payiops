@@ -75,7 +75,6 @@ export default function HR() {
   const [editingBalanceCode, setEditingBalanceCode] = useState('')
   const [editingLeave, setEditingLeave] = useState(null)
   const [historyFilterCode, setHistoryFilterCode] = useState('')
-  const [dayRecords, setDayRecords] = useState([])
   const isSwap = leaveForm.leave_type === 'สลับวันหยุด'
   const selectedEmployee = people.find((person) => person.code === leaveForm.employee_code)
   const availableLeaveTypes = selectedEmployee && NO_VACATION_GROUPS.has(selectedEmployee.group) ? LEAVE_TYPES.filter((type) => type !== 'พักร้อน') : LEAVE_TYPES
@@ -99,8 +98,6 @@ export default function HR() {
       const response = await fetch(API); const data = await readApiResponse(response)
       if (!response.ok || !data.success) throw new Error(data.error || 'โหลดข้อมูลไม่สำเร็จ')
       setLeave(data.leave || []); setPeople(data.people || []); setActiveMonths(data.activeMonths || {}); setLeaveBalances(data.leaveBalances || []); setServerCanManage(!!data.canManage)
-      // โอทีเต็มวัน/ชดเชย — ข้อมูลอยู่คนละ op (workforce) เพราะปฏิทิน Manpower&OT ต้องใช้ร่วมด้วย (โชว์ป้ายชื่อในปฏิทิน)
-      fetch('/api/sheet-tools?op=workforce').then((r) => r.json()).then((d) => { if (d.success) setDayRecords(d.dayRecords || []) }).catch(() => {})
     } catch (e) { setError(e.message) } finally { setLoading(false) }
   }
 
@@ -206,10 +203,8 @@ export default function HR() {
           <Field label="กลุ่ม"><select value={empForm.group} onChange={(e) => setEmpForm({ ...empForm, group: e.target.value })}>{EMPLOYEE_GROUPS.map((group) => <option key={group}>{group}</option>)}</select></Field>
           <button className="hr-button is-primary" disabled={saving}><Plus size={17} />เพิ่ม</button>
         </form>}
-        <div className="hr-balance-groups">{[
-          { key: 'lower', label: 'บ้านล่าง', rows: vacationLeaveBalances.filter((item) => item.group !== 'ออฟฟิศ') },
-          { key: 'office', label: 'ออฟฟิศ', rows: vacationLeaveBalances.filter((item) => item.group === 'ออฟฟิศ') },
-        ].filter((group) => group.rows.length).map((group) => <div className="hr-balance-group" key={group.key}><h3>{group.label}<span>{group.rows.length} คน</span></h3><div className="hr-balance-grid">{group.rows.map((item) => {
+        <div className="hr-balance-groups">
+          <div className="hr-balance-grid">{vacationLeaveBalances.map((item) => {
           const percentage = item.quota > 0 ? Math.max(0, Math.min(100, (item.remaining / item.quota) * 100)) : 0
           return <article className={`hr-balance-card ${item.remaining <= 0 ? 'is-empty' : ''}`} key={item.code}>
             <div className="hr-balance-card-top"><div className="hr-avatar is-small" aria-hidden="true">{item.name?.trim().slice(0, 1) || '?'}</div><div><strong>{item.name}</strong><span>{item.group}</span></div>{isBoss && <div className="hr-balance-card-actions"><button type="button" className={`hr-balance-pencil ${editingBalanceCode === item.code ? 'is-active' : ''}`} onClick={() => setEditingBalanceCode((code) => code === item.code ? '' : item.code)} aria-label={`แก้วันลาคงเหลือของ ${item.name}`} title="แก้วันลาคงเหลือ"><Pencil size={14} /></button>{editEmployees && <button className="hr-remove-button" onClick={() => removeEmployee(item.code, item.group, item.name)} aria-label={`ลบ ${item.name}`}><X size={15} /></button>}</div>}</div>
@@ -218,7 +213,8 @@ export default function HR() {
             {isBoss && (editEmployees || editingBalanceCode === item.code) && <div className="hr-balance-edit"><input type="number" min="0" max="365" step="0.5" aria-label={`วันลาคงเหลือของ ${item.name}`} value={balanceDrafts[item.code] ?? item.remaining} onChange={(e) => setBalanceDrafts((current) => ({ ...current, [item.code]: e.target.value }))} /><button type="button" disabled={saving} onClick={() => setLeaveBalance(item)} aria-label={`บันทึกยอดของ ${item.name}`}><Check size={15} /></button></div>}
             {isBoss && editEmployees && <select aria-label={`กลุ่มของ ${item.name}`} value={item.group} onChange={(e) => editEmployeeGroup(item.code, e.target.value)}>{EMPLOYEE_GROUPS.map((value) => <option key={value}>{value}</option>)}</select>}
           </article>
-        })}</div></div>)}</div>
+          })}</div>
+        </div>
       </section>}
 
       {isBoss && <section className="hr-panel hr-approval-panel" aria-labelledby="pending-heading">
@@ -298,74 +294,9 @@ export default function HR() {
         </aside>
       </div>
 
-      {isBoss && <DayRecordsPanel dayRecords={dayRecords} names={[...new Set(people.map((p) => p.name).filter(Boolean))]} setError={setError} onSaved={load} />}
-
       {editingLeave && <LeaveEditPanel leave={editingLeave} people={people} isAdmin={isBoss} onClose={() => setEditingLeave(null)} onSaved={async () => { setEditingLeave(null); await load() }} />}
 
     </main>
   )
 }
 
-// โอทีเต็มวัน (มาทำวันหยุด/นักขัตฤกษ์) หรือมาชดเชยเฉยๆไม่รับโอที — ย้ายมาไว้ที่ HR (เดิมอยู่ Manpower&OT)
-// สลับวันหยุด ("จากวันไหนไปวันไหน") ทำผ่านระบบลาด้านบน (leave_type 'สลับวันหยุด') ไม่ได้อยู่ที่นี่
-// ข้อมูลอยู่คนละ sheet/op (workforce_dayrecords ผ่าน op=workforce) เพราะปฏิทิน Manpower&OT ต้องอ่านไปโชว์ป้ายชื่อในปฏิทินด้วย
-function DayRecordsPanel({ dayRecords = [], names = [], setError, onSaved }) {
-  const [form, setForm] = useState({ date: today(), kind: 'ot_full', reason: '', note: '', paid_ot: true })
-  const [selected, setSelected] = useState([])
-  const [saving, setSaving] = useState(false)
-
-  const add = async (e) => {
-    e.preventDefault()
-    if (!selected.length) return setError('เลือกอย่างน้อย 1 คน')
-    setSaving(true); setError('')
-    try {
-      const r = await fetch('/api/sheet-tools?op=workforce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add-dayrecord', employees: selected, date: form.date, kind: form.kind, reason: form.reason, paid_ot: form.paid_ot, note: form.note }) })
-      const d = await readApiResponse(r); if (!r.ok || !d.success) throw new Error(d.error || 'บันทึกไม่สำเร็จ')
-      setSelected([]); setForm({ ...form, reason: '', note: '' })
-      await onSaved()
-    } catch (e2) { setError(e2.message) } finally { setSaving(false) }
-  }
-
-  const remove = async (id) => {
-    if (!window.confirm('ลบรายการนี้ใช่ไหม?')) return
-    setError('')
-    try {
-      const r = await fetch('/api/sheet-tools?op=workforce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete-dayrecord', id }) })
-      const d = await readApiResponse(r); if (!r.ok || !d.success) throw new Error(d.error || 'ลบไม่สำเร็จ')
-      await onSaved()
-    } catch (e) { setError(e.message) }
-  }
-
-  const kindLabel = (kind) => kind === 'ot_full' ? 'โอทีเต็มวัน' : 'ชดเชยเฉยๆ'
-
-  return (
-    <section className="hr-panel" aria-labelledby="dayrecord-heading">
-      <div className="hr-section-heading"><div><span className="hr-section-kicker">Manpower</span><h2 id="dayrecord-heading">โอทีเต็มวัน / มาชดเชย</h2></div></div>
-      <div style={{ fontSize: 12, color: 'var(--payi-text-muted, #64748b)', marginTop: -6, marginBottom: 14 }}>ใช้กับกรณีมาทำงานเต็มวันในวันหยุดตัวเอง/วันนักขัตฤกษ์ — ชื่อจะขึ้นป้ายในปฏิทิน Manpower&amp;OT ด้วย</div>
-      <form onSubmit={add} className="hr-form" style={{ marginBottom: 18 }}>
-        <div className="hr-form-columns">
-          <Field label="วันที่"><input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required /></Field>
-          <Field label="ประเภท"><select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}><option value="ot_full">โอทีเต็มวัน</option><option value="comp">มาชดเชยเฉยๆ (ไม่รับโอที)</option></select></Field>
-        </div>
-        <div className="hr-form-columns">
-          <Field label="เหตุผล"><select value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })}><option value="">— ไม่ระบุ —</option><option value="วันนักขัตฤกษ์">วันนักขัตฤกษ์</option><option value="วันหยุดตัวเอง">วันหยุดตัวเอง</option><option value="อื่น ๆ">อื่น ๆ</option></select></Field>
-          {form.kind === 'ot_full' && <Field label="รับโอทีไหม"><select value={form.paid_ot ? '1' : '0'} onChange={(e) => setForm({ ...form, paid_ot: e.target.value === '1' })}><option value="1">รับโอที</option><option value="0">ไม่รับโอที</option></select></Field>}
-        </div>
-        <Field label="หมายเหตุ"><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="เช่น หยุดตัวเองชนวันนักขัต ได้หยุด 2 วัน" /></Field>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted, #64748b)', marginBottom: 8 }}>เลือกคน · {selected.length} คน</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{names.map((name) => { const on = selected.includes(name); return <button type="button" key={name} onClick={() => setSelected(on ? selected.filter((n) => n !== name) : [...selected, name])} style={{ border: `1px solid ${on ? '#5ca8df' : '#cbd5e1'}`, background: on ? '#e9f5ff' : '#fff', color: on ? '#155f98' : '#64748b', borderRadius: 999, padding: '7px 12px', fontWeight: 800, cursor: 'pointer', fontSize: 12.5 }}>{on ? '✓ ' : ''}{name}</button> })}</div>
-        </div>
-        <button className="hr-button is-primary" disabled={saving || !selected.length}>{saving ? 'กำลังบันทึก…' : `บันทึก ${selected.length} คน`}</button>
-      </form>
-      {!dayRecords.length ? <div className="hr-empty">ยังไม่มีรายการ</div> : (
-        <div className="hr-history-list">{dayRecords.map((r) => (
-          <article className="hr-history-row" key={r.id}>
-            <div className="hr-history-main"><strong>{r.employee}</strong><span>{kindLabel(r.kind)} · {r.date}{r.reason ? ` · ${r.reason}` : ''}{r.note ? ` · ${r.note}` : ''}</span></div>
-            <button className="hr-text-button is-danger" onClick={() => remove(r.id)}>ลบ</button>
-          </article>
-        ))}</div>
-      )}
-    </section>
-  )
-}

@@ -1,4 +1,4 @@
-export function applyScheduleOverrides({ baseRows = [], overrideRows = [], personMap = {}, overrideScopeCodes = Object.keys(personMap) }) {
+export function applyScheduleOverrides({ baseRows = [], overrideRows = [], personMap = {}, overrideScopeCodes = Object.keys(personMap), officeCodes = [] }) {
   const latestByDate = new Map()
   for (const row of overrideRows) {
     const date = String(row.date || '')
@@ -8,8 +8,24 @@ export function applyScheduleOverrides({ baseRows = [], overrideRows = [], perso
   }
   if (!latestByDate.size) return [...baseRows]
 
-  const scope = new Set(overrideScopeCodes.map((code) => String(code).toUpperCase()))
-  const result = baseRows.filter((row) => !latestByDate.has(String(row.date || '')) || !scope.has(String(row.code || '').toUpperCase()))
+  const baseScope = new Set(overrideScopeCodes.map((code) => String(code).toUpperCase()))
+  const officeSet = new Set(officeCodes.map((code) => String(code).toUpperCase()))
+  // ออฟฟิศเพิ่งเริ่มแก้ผ่านตัวนี้ได้ — override เก่าที่เคยบันทึกไว้ก่อนหน้า (ไม่มีโค้ดออฟฟิศติดมาด้วยเลย) ไม่ควรลบแถวออฟฟิศเดิมทิ้ง
+  // ถือว่า override วันนั้น "แตะออฟฟิศ" ก็ต่อเมื่อมีโค้ดออฟฟิศอยู่ใน entries จริงๆ เท่านั้น กันย้อนหลังพังของเก่า
+  const overrideTouchesOffice = new Map()
+  for (const [date, override] of latestByDate) {
+    let entries = []
+    try { entries = JSON.parse(override.entries_json || '[]') } catch { entries = [] }
+    const codes = (Array.isArray(entries) ? entries : []).map((entry) => String(entry?.code || '').toUpperCase())
+    overrideTouchesOffice.set(date, codes.some((code) => officeSet.has(code)))
+  }
+  const result = baseRows.filter((row) => {
+    const date = String(row.date || '')
+    if (!latestByDate.has(date)) return true
+    const code = String(row.code || '').toUpperCase()
+    const inScope = baseScope.has(code) || (officeSet.has(code) && overrideTouchesOffice.get(date))
+    return !inScope
+  })
   for (const [date, override] of latestByDate) {
     let entries = []
     try { entries = JSON.parse(override.entries_json || '[]') } catch { entries = [] }
