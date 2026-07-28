@@ -142,12 +142,18 @@ const menuGroups = [
 ]
 
 // bottom tab bar มือถือ — 4 อันที่ใช้บ่อยสุด (พื้นที่นิ้วโป้งจำกัด) ที่เหลือเข้าถึงผ่านปุ่ม "เมนู" (sheet เต็ม visibleMenuGroups)
+// ใช้เฉพาะ role ที่เห็นแท็บเยอะ (boss/dev/staff) — role แคบๆ ที่เห็นแค่ไม่กี่แท็บ (เช่น stock)
+// ใช้ทุกแท็บที่ตัวเองเห็นตรงๆ แทน ไม่ต้องมีปุ่ม "เมนู" เลย ดู MOBILE_TAB_LIMIT ด้านล่าง
 const MOBILE_TAB_CANDIDATES = [
   { id: 'Executive', label: 'หน้าหลัก', renderIcon: Icons.Executive, group: ['Executive', 'Monthly'] },
   { id: 'Inventory', label: 'สต็อก', renderIcon: Icons.Inventory },
   { id: 'Claims', label: 'เคลม', renderIcon: Icons.Claims },
   { id: 'Planner Control', label: 'แพลน', renderIcon: Icons.PlannerControl, group: ['Planner Control', 'FeedProducts'] },
 ]
+// ป้ายสั้นสำหรับ role แคบที่โชว์ทุกแท็บตรงๆ บน bottom bar (label เต็มใน menuGroups ยาวเกินจะพอดีปุ่มเล็ก)
+const MOBILE_SHORT_LABELS = { Inventory: 'สต็อก', 'Stock Movement': 'เข้า-ออก', Executive: 'หน้าหลัก', Claims: 'เคลม' }
+// จำนวนแท็บสูงสุดที่ยัดลง bottom bar ได้พอดีโดยไม่ต้องมีปุ่ม "เมนู" เพิ่ม (นิ้วโป้งกดถนัด)
+const MOBILE_TAB_LIMIT = 5
 
 // แท็บย่อยของ Dashboard ใหญ่ที่ยุบมาจากหลายหน้า (render เดิมของแต่ละหน้ายังอยู่ครบ)
 const SALES_SUBTABS = [['Executive', 'ภาพรวม'], ['Monthly', 'รายเดือน']]
@@ -371,8 +377,14 @@ export default function App() {
   const visibleMenuGroups = menuGroups
     .map((group) => ({ ...group, items: group.items.filter((item) => canAccessTab(currentRole, item.id)) }))
     .filter((group) => group.items.length > 0)
-  // แถบล่างมือถือ — เลือกมาแค่ 4 อันที่ใช้บ่อยสุด (พื้นที่จำกัด) ที่เหลือกดปุ่ม "เมนู" เปิด sheet ดูทั้งหมด
-  const mobileTabItems = MOBILE_TAB_CANDIDATES.filter((item) => canAccessTab(currentRole, item.id))
+  // แถบล่างมือถือ — role ที่เห็นแท็บเยอะ (boss/dev/staff) ใช้ 4 อันที่ใช้บ่อยสุด ที่เหลือกดปุ่ม "เมนู"
+  // role แคบที่เห็นแท็บน้อย (เช่น stock — เห็นแค่ Inventory/Stock Movement) ยัดทุกแท็บที่ตัวเองเห็นลง
+  // bottom bar ตรงๆ เลย ไม่ต้องมีปุ่ม "เมนู" ซ้อนอีกชั้นเพราะมีของให้กดแค่ไม่กี่อย่างอยู่แล้ว
+  const allVisibleTabs = visibleMenuGroups.flatMap((group) => group.items)
+  const showAllTabsDirect = allVisibleTabs.length > 0 && allVisibleTabs.length <= MOBILE_TAB_LIMIT
+  const mobileTabItems = showAllTabsDirect
+    ? allVisibleTabs.map((item) => ({ ...item, label: MOBILE_SHORT_LABELS[item.id] || item.label }))
+    : MOBILE_TAB_CANDIDATES.filter((item) => canAccessTab(currentRole, item.id))
   const firstAllowedTab = currentRole === 'stock' ? STOCK_TABS[0] : currentRole === 'staff' ? STAFF_TABS[0] : 'Executive'
   const [activeTab, setActiveTab] = useState(() => {
     try {
@@ -1264,15 +1276,17 @@ export default function App() {
             </button>
           )
         })}
-        <button onClick={() => setMobileMoreOpen(true)} className="payi-bottom-tab" aria-label="เมนูเพิ่มเติม">
-          <span className={mobileMoreOpen ? 'payi-bottom-tab-icon active' : 'payi-bottom-tab-icon'}><Menu size={19} /></span>
-          <span className="payi-bottom-tab-label" style={{ color: mobileMoreOpen ? 'var(--payi-mint-strong)' : undefined, fontWeight: mobileMoreOpen ? 800 : 650 }}>เมนู</span>
-        </button>
+        {!showAllTabsDirect && (
+          <button onClick={() => setMobileMoreOpen(true)} className="payi-bottom-tab" aria-label="เมนูเพิ่มเติม">
+            <span className={mobileMoreOpen ? 'payi-bottom-tab-icon active' : 'payi-bottom-tab-icon'}><Menu size={19} /></span>
+            <span className="payi-bottom-tab-label" style={{ color: mobileMoreOpen ? 'var(--payi-mint-strong)' : undefined, fontWeight: mobileMoreOpen ? 800 : 650 }}>เมนู</span>
+          </button>
+        )}
       </nav>
       )}
 
       {/* MORE SHEET — มือถือ: รายการเมนูทั้งหมด เลื่อนขึ้นจากล่าง แทนที่ sidebar drawer เดิม */}
-      {mobileMoreOpen && (
+      {!showAllTabsDirect && mobileMoreOpen && (
         <div className="payi-more-backdrop" onClick={() => setMobileMoreOpen(false)}>
           <div className="payi-more-sheet" onClick={(e) => e.stopPropagation()}>
             <div style={{ width: 40, height: 4, borderRadius: 999, background: 'var(--payi-border)', margin: '0 auto 16px' }} />
