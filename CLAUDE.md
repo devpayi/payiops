@@ -508,6 +508,29 @@ a new one.
      delta); the test row's effect was reverted with a compensating `adjust` movement
      afterward, same manual-cleanup pattern as the "revert test correction" row already
      visible in `stock_movements` history from an earlier session.
+   - ✅ **DONE (2026-07-28) — blind-count order tracking.** Owner clarified the intent
+     behind the queue: once ฟ้า reports an arrival, **boss must match it himself, and ฟ้า
+     must not see how much was ordered in advance** — otherwise she'd just confirm the
+     expected number instead of doing a genuine physical count. So a new "สั่งของรอบนี้กี่ชิ้น"
+     field on the Inventory edit modal (`Inventory.jsx`) lets boss log the qty he actually
+     ordered — this creates/updates a `stock_in_requests` row with `arrival_date`/
+     `count_date` left blank (`syncOrderToPendingRequest` in `api/_lib/inventory.js`,
+     called from `upsertItem` whenever `reorder_qty > 0`). `loadStockInRequests` computes
+     `order_only: !arrival_date` per row and **filters those out entirely for non-manager
+     roles** (`authEnabled() && !canManageOperations(role)`) — enforced server-side, not
+     just hidden in the UI, since the whole point is staff/stock literally cannot see the
+     number even via direct API call. Boss/dev see these in a separate "สั่งไว้ รอของเข้า"
+     panel in `StockMovement.jsx` (edit/cancel only, no Match button — there's nothing to
+     match yet). `matchStockInRequest` now also hard-rejects matching any row with no
+     `arrival_date` ("ยังไม่มีคนแจ้งรับของจริง") so a boss can't accidentally match his own
+     order-placeholder row instead of a real arrival report. ฟ้า's own "แจ้งของเข้า" flow is
+     unchanged — she still creates her own independent row with her own blind-counted qty;
+     the two rows are never auto-linked (deliberately — auto-filling one from the other
+     would leak the ordered number back to her through the edit form). `editStockInRequest`
+     was widened to also allow editing `status: 'pending'` rows (previously rejected-only),
+     but gated: editing an order-only row (no `arrival_date`) requires
+     `canManageOperations`, same as match/reject — editing a real arrival report (has
+     `arrival_date`, whether pending or rejected) stays open to whoever filed it.
 8. ✅ **REMOVED (2026-07-21)** — "PAYI Brain" AI Assistant tab was fake (canned
    if/else replies, no LLM call). Owner decided to delete rather than keep a
    fake-AI page (`AIAssistantView` function, menu item, icon mapping, ternary branch
