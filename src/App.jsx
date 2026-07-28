@@ -108,7 +108,7 @@ const menuGroups = [
     title: 'ยอดขายและการตลาด',
     items: [
       { id: 'Import Orders', label: 'Import Orders', renderIcon: Icons.ImportOrders, dotColor: 'var(--payi-success)' },
-      { id: 'MarketingRadar', label: 'Marketing Radar', renderIcon: Icons.MarketingRadar, dotColor: 'var(--payi-warning)' },
+      { id: 'MarketingRadar', label: 'Marketing Radar', renderIcon: Icons.MarketingRadar, dotColor: 'var(--payi-mint)' },
       { id: 'AdsChannels', label: 'Ads & Channels', renderIcon: Icons.AdsChannels },
       { id: 'ContentOS', label: 'Content OS Prototype', renderIcon: Icons.ContentOS, dotColor: 'var(--payi-mint)' }
     ]
@@ -724,6 +724,7 @@ export default function App() {
   }
 
   const isLinksHubMode = activeTab === 'Links Hub'
+  const hidePageTitleCard = activeTab === 'MarketingRadar'
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f7fbff', fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif', color: 'var(--payi-text-strong)' }}>
@@ -771,8 +772,12 @@ export default function App() {
                     onClick={() => setActiveTab(item.id)}
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: sidebarExpanded ? 'space-between' : 'center', flex: '1 1 0', width: '100%', padding: sidebarExpanded ? '7px 9px' : '7px 0', minHeight: 32, border: 'none', borderRadius: 10,
-                      background: isActive ? 'linear-gradient(135deg, var(--payi-mint) 0%, #34d399 100%)' : 'transparent',
-                      boxShadow: isActive ? '0 6px 16px rgba(37,99,235,0.24)' : 'none',
+                      background: isActive
+                          ? item.id === 'MarketingRadar'
+                          ? 'linear-gradient(135deg, #7198d5 0%, #a782da 52%, #dc87b7 100%)'
+                          : 'linear-gradient(135deg, var(--payi-mint) 0%, #34d399 100%)'
+                        : 'transparent',
+                      boxShadow: isActive ? '0 6px 16px rgba(55,95,110,0.18)' : 'none',
                       color: isActive ? '#fff' : '#0f172a', cursor: 'pointer', fontSize: '13.5px', lineHeight: 1.1, fontWeight: isActive ? '850' : '700', textAlign: 'left', transition: 'background 140ms ease, color 140ms ease'
                     }}
                   >
@@ -797,8 +802,8 @@ export default function App() {
                           borderRadius: 999,
                           display: 'grid',
                           placeItems: 'center',
-                          background: isActive ? 'rgba(255,255,255,0.22)' : 'var(--payi-warning-bg)',
-                          color: isActive ? '#fff' : 'var(--payi-warning)',
+                          background: isActive ? 'rgba(255,255,255,0.22)' : 'var(--payi-mint-soft)',
+                          color: isActive ? '#fff' : 'var(--payi-mint-strong)',
                           fontSize: 10,
                           fontWeight: 900,
                           fontVariantNumeric: 'tabular-nums',
@@ -823,15 +828,15 @@ export default function App() {
       <div className="payi-main-content" style={{ flex: 1, minHeight: '100vh', overflow: 'auto', padding: isLinksHubMode ? '32px 34px 40px' : '24px 32px 40px', boxSizing: 'border-box', width: '100%' }}>
 
         {/* HEADER TOP ROW — กล่องหัวไล่สีมนๆ สไตล์แอพธนาคาร ทั้ง desktop และมือถือ */}
-        {!isLinksHubMode && <div className="payi-topbar" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 18, marginBottom: 18, alignItems: 'center' }}>
-          <div style={{
+        {!isLinksHubMode && <div className="payi-topbar" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: hidePageTitleCard ? 'flex-end' : 'space-between', gap: 18, marginBottom: hidePageTitleCard ? 12 : 18, alignItems: 'center' }}>
+          {!hidePageTitleCard && <div style={{
             width: isMobileViewport ? '100%' : 'auto', background: 'linear-gradient(120deg, var(--payi-mint) 0%, #34d399 100%)',
             borderRadius: isMobileViewport ? 24 : 20, padding: isMobileViewport ? '18px 20px 20px' : '16px 26px', boxShadow: '0 14px 30px rgba(37,99,235,0.18)', boxSizing: 'border-box',
           }}>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 6 }}>{pageMeta.eyebrow}</div>
             <div style={{ fontSize: 28, fontWeight: 850, letterSpacing: 0, color: '#fff', marginBottom: 4 }}>{pageMeta.title}</div>
             <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.88)' }}>{pageMeta.subtitle}</div>
-          </div>
+          </div>}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <div className="payi-topbar-search" style={{ display: 'flex', alignItems: 'center', gap: 10, width: 280, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.6)', borderRadius: 999, padding: '10px 14px', boxShadow: '0 8px 20px rgba(16,24,40,0.06)' }}>
               <Search size={16} color="var(--payi-text-muted)" />

@@ -24,7 +24,7 @@ const EVENT_TYPES = [
 
 const COLUMNS = [
   { id: 'waiting', title: 'Waiting', icon: Clock3, tone: '#d97706' },
-  { id: 'live', title: 'Live', icon: CheckCircle2, tone: '#20b8a6' },
+  { id: 'live', title: 'Live', icon: CheckCircle2, tone: '#819fe0' },
   { id: 'check7', title: '7-Day Check', icon: TrendingUp, tone: '#2f5fd0' },
   { id: 'check30', title: '30-Day Check', icon: RefreshCw, tone: '#7c3aed' },
   { id: 'content', title: 'Push Content', icon: Megaphone, tone: '#db2777' },
@@ -360,7 +360,7 @@ function DecisionQueue({ events, onDecide, saving, dataThrough }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: events.length ? 12 : 0 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Sparkles size={17} color="var(--payi-warning)" aria-hidden="true" />
+            <Sparkles size={17} color="var(--payi-mint-strong)" aria-hidden="true" />
             <h3 id="marketing-review-title" style={{ margin: 0, fontSize: 16, color: 'var(--payi-text-strong)' }}>
               งานที่ Boss ต้องตัดสินใจ
             </h3>
@@ -376,8 +376,8 @@ function DecisionQueue({ events, onDecide, saving, dataThrough }) {
           borderRadius: 999,
           display: 'grid',
           placeItems: 'center',
-          background: events.length ? 'var(--payi-warning-bg)' : 'var(--payi-mint-soft)',
-          color: events.length ? 'var(--payi-warning)' : 'var(--payi-mint-strong)',
+          background: 'var(--payi-mint-soft)',
+          color: 'var(--payi-mint-strong)',
           fontSize: 12,
           fontWeight: 900,
           fontVariantNumeric: 'tabular-nums',
@@ -407,7 +407,7 @@ function DecisionCard({ event, onDecide, saving }) {
     ? 'var(--payi-success)'
     : recommendation?.code === 'stop'
       ? 'var(--payi-danger)'
-      : 'var(--payi-warning)'
+      : 'var(--payi-mint-strong)'
 
   return (
     <article className="marketing-decision-card" style={{
@@ -423,7 +423,7 @@ function DecisionCard({ event, onDecide, saving }) {
     }}>
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <span style={{ padding: '3px 7px', borderRadius: 6, background: 'var(--payi-warning-bg)', color: 'var(--payi-warning)', fontSize: 10, fontWeight: 900 }}>
+          <span style={{ padding: '3px 7px', borderRadius: 6, background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)', fontSize: 10, fontWeight: 900 }}>
             REVIEW {reviewDay} วัน
           </span>
           <span style={{ fontSize: 10, color: 'var(--payi-text-muted)' }}>{event.event_label}</span>
@@ -477,7 +477,7 @@ function DecisionCard({ event, onDecide, saving }) {
 function DecisionButton({ label, tone, disabled, onClick }) {
   const colors = {
     success: ['var(--payi-mint-soft)', 'var(--payi-success)'],
-    warning: ['var(--payi-warning-bg)', 'var(--payi-warning)'],
+    warning: ['var(--payi-mint-soft)', 'var(--payi-mint-strong)'],
     danger: ['var(--payi-danger-bg)', 'var(--payi-danger)'],
   }
   const [background, color] = colors[tone]

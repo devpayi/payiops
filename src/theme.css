@@ -302,13 +302,18 @@ body {
   min-width: 0;
 }
 
-/* ---------- Marketing Radar: airy decision cockpit ---------- */
+/* ---------- Marketing Radar: Swan Lake glass ---------- */
 .marketing-radar-page {
-  --marketing-sky: #5ea7ff;
-  --marketing-blue: #3b82f6;
-  --marketing-teal: #2dd4bf;
-  --marketing-lilac: #a78bfa;
-  --marketing-rose: #fb7185;
+  --payi-mint: #9a83dc;
+  --payi-mint-strong: #6652a5;
+  --payi-mint-soft: #f2efff;
+  --payi-success: #778bd4;
+  --payi-success-bg: #eef3ff;
+  --marketing-sky: #8fbbe3;
+  --marketing-blue: #748bd2;
+  --marketing-teal: #a988db;
+  --marketing-lilac: #b28de2;
+  --marketing-rose: #e18bbb;
   position: relative;
   isolation: isolate;
 }
@@ -320,9 +325,9 @@ body {
   inset: -32px;
   border-radius: 36px;
   background:
-    radial-gradient(circle at 7% 5%, rgba(147, 197, 253, 0.34), transparent 27%),
-    radial-gradient(circle at 92% 12%, rgba(167, 139, 250, 0.2), transparent 25%),
-    radial-gradient(circle at 72% 60%, rgba(45, 212, 191, 0.18), transparent 30%);
+    radial-gradient(circle at 7% 5%, rgba(163, 207, 240, 0.42), transparent 29%),
+    radial-gradient(circle at 92% 12%, rgba(231, 169, 211, 0.32), transparent 27%),
+    radial-gradient(circle at 72% 60%, rgba(196, 176, 235, 0.3), transparent 32%);
   filter: blur(2px);
   pointer-events: none;
 }
@@ -333,27 +338,27 @@ body {
   border-radius: 24px !important;
   border: 1px solid rgba(255, 255, 255, 0.28);
   background:
-    radial-gradient(circle at 90% -20%, rgba(94, 234, 212, 0.58), transparent 42%),
-    radial-gradient(circle at 12% 112%, rgba(96, 165, 250, 0.7), transparent 42%),
-    linear-gradient(135deg, #172554 0%, #1d4ed8 52%, #0f766e 118%) !important;
+    radial-gradient(circle at 92% -12%, rgba(255, 190, 230, 0.5), transparent 38%),
+    radial-gradient(circle at 10% 112%, rgba(155, 218, 245, 0.45), transparent 44%),
+    radial-gradient(circle at 64% 34%, rgba(215, 193, 255, 0.35), transparent 27%),
+    linear-gradient(135deg, #557ab8 0%, #7c80cc 38%, #a478d0 68%, #d47fab 110%) !important;
   box-shadow:
-    0 2px 4px rgba(30, 64, 175, 0.1),
-    0 16px 34px rgba(30, 64, 175, 0.18),
-    0 34px 72px rgba(15, 118, 110, 0.12);
+    0 2px 4px rgba(83, 105, 169, 0.1),
+    0 16px 36px rgba(136, 114, 202, 0.18),
+    0 34px 72px rgba(220, 126, 178, 0.11);
 }
 
 .marketing-hero-card::after {
   content: "";
   position: absolute;
-  width: 190px;
-  height: 190px;
-  right: -60px;
-  top: -86px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  box-shadow:
-    0 0 0 24px rgba(255, 255, 255, 0.04),
-    0 0 0 52px rgba(255, 255, 255, 0.025);
+  inset: 0;
+  background:
+    radial-gradient(circle at 91% 22%, rgba(255, 255, 255, 0.95) 0 1px, transparent 2px),
+    radial-gradient(circle at 85% 58%, rgba(255, 255, 255, 0.76) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at 72% 16%, rgba(255, 255, 255, 0.74) 0 1px, transparent 2px),
+    radial-gradient(circle at 63% 72%, rgba(255, 222, 245, 0.88) 0 1px, transparent 2px),
+    radial-gradient(circle at 96% 82%, rgba(219, 239, 255, 0.9) 0 1.5px, transparent 2.5px);
+  opacity: 0.88;
   pointer-events: none;
 }
 
@@ -364,9 +369,11 @@ body {
 
 .marketing-hero-metric {
   border-radius: 14px !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  background: rgba(255, 255, 255, 0.11) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  background: rgba(72, 73, 151, 0.2) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 8px 22px rgba(74, 67, 145, 0.08);
   backdrop-filter: blur(14px);
 }
 
@@ -377,10 +384,10 @@ body {
   border-radius: 22px !important;
   border: 1px solid rgba(255, 255, 255, 0.86) !important;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(244, 249, 255, 0.68)) !important;
+    linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(244, 242, 255, 0.7)) !important;
   box-shadow:
-    0 2px 4px rgba(30, 64, 175, 0.03),
-    0 14px 32px rgba(30, 64, 175, 0.07),
+    0 2px 4px rgba(99, 87, 172, 0.035),
+    0 14px 32px rgba(110, 105, 190, 0.09),
     inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
   backdrop-filter: blur(24px) saturate(135%) !important;
 }
@@ -397,8 +404,8 @@ body {
   z-index: -1;
   border-radius: inherit;
   background:
-    radial-gradient(circle at 100% 0%, rgba(45, 212, 191, 0.17), transparent 40%),
-    radial-gradient(circle at 0% 100%, rgba(96, 165, 250, 0.14), transparent 42%);
+    radial-gradient(circle at 100% 0%, rgba(235, 174, 216, 0.26), transparent 40%),
+    radial-gradient(circle at 0% 100%, rgba(169, 212, 242, 0.22), transparent 42%);
   pointer-events: none;
 }
 
@@ -411,7 +418,7 @@ body {
   background: rgba(255, 255, 255, 0.72) !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.96),
-    0 5px 16px rgba(59, 130, 246, 0.045);
+    0 5px 16px rgba(103, 83, 165, 0.045);
   backdrop-filter: blur(16px);
   transition: border-color 140ms ease-out, box-shadow 140ms ease-out, background-color 140ms ease-out;
 }
@@ -419,11 +426,11 @@ body {
 .marketing-radar-page input:focus,
 .marketing-radar-page select:focus,
 .marketing-radar-page textarea:focus {
-  outline: 3px solid rgba(59, 130, 246, 0.13) !important;
+  outline: 3px solid rgba(154, 131, 220, 0.18) !important;
   outline-offset: 1px;
-  border-color: rgba(59, 130, 246, 0.62) !important;
+  border-color: rgba(154, 131, 220, 0.72) !important;
   background: rgba(255, 255, 255, 0.96) !important;
-  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 10px 24px rgba(103, 83, 165, 0.1);
 }
 
 .marketing-radar-page button {
@@ -431,7 +438,7 @@ body {
 }
 
 .marketing-radar-page button:focus-visible {
-  outline: 3px solid rgba(59, 130, 246, 0.2);
+  outline: 3px solid rgba(154, 131, 220, 0.24);
   outline-offset: 2px;
 }
 
@@ -444,18 +451,18 @@ body {
   border-radius: 14px !important;
   background:
     radial-gradient(circle at 84% -45%, rgba(255, 255, 255, 0.42), transparent 48%),
-    linear-gradient(135deg, #3b82f6 0%, #14b8a6 100%) !important;
+    linear-gradient(135deg, #738fd4 0%, #a47fd8 52%, #dd85b7 100%) !important;
   box-shadow:
-    0 2px 4px rgba(37, 99, 235, 0.12),
-    0 12px 24px rgba(20, 184, 166, 0.18) !important;
+    0 2px 4px rgba(92, 83, 169, 0.12),
+    0 12px 24px rgba(190, 118, 187, 0.2) !important;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .marketing-primary-btn:hover:not(:disabled) {
     filter: saturate(1.08) brightness(1.03);
     box-shadow:
-      0 3px 6px rgba(37, 99, 235, 0.14),
-      0 16px 30px rgba(20, 184, 166, 0.23) !important;
+      0 3px 6px rgba(115, 143, 212, 0.16),
+      0 16px 30px rgba(221, 133, 183, 0.25) !important;
   }
 }
 
@@ -481,7 +488,8 @@ body {
   top: -105px;
   right: -35px;
   border-radius: 50%;
-  background: rgba(251, 191, 36, 0.14);
+  background:
+    radial-gradient(circle at 35% 35%, rgba(166, 211, 245, 0.26), rgba(220, 143, 211, 0.17) 62%, transparent 76%);
   filter: blur(12px);
   pointer-events: none;
 }
@@ -513,23 +521,23 @@ body {
 }
 
 .marketing-radar-column:nth-child(1) {
-  background: linear-gradient(165deg, rgba(255, 251, 235, 0.86), rgba(255, 255, 255, 0.66)) !important;
+  background: linear-gradient(165deg, rgba(247, 242, 255, 0.9), rgba(255, 255, 255, 0.66)) !important;
 }
 
 .marketing-radar-column:nth-child(2) {
-  background: linear-gradient(165deg, rgba(236, 253, 245, 0.88), rgba(255, 255, 255, 0.66)) !important;
+  background: linear-gradient(165deg, rgba(239, 247, 255, 0.92), rgba(255, 255, 255, 0.68)) !important;
 }
 
 .marketing-radar-column:nth-child(3) {
-  background: linear-gradient(165deg, rgba(239, 246, 255, 0.9), rgba(255, 255, 255, 0.66)) !important;
+  background: linear-gradient(165deg, rgba(237, 241, 255, 0.92), rgba(255, 255, 255, 0.68)) !important;
 }
 
 .marketing-radar-column:nth-child(4) {
-  background: linear-gradient(165deg, rgba(245, 243, 255, 0.9), rgba(255, 255, 255, 0.66)) !important;
+  background: linear-gradient(165deg, rgba(245, 238, 255, 0.92), rgba(255, 255, 255, 0.68)) !important;
 }
 
 .marketing-radar-column:nth-child(5) {
-  background: linear-gradient(165deg, rgba(253, 242, 248, 0.9), rgba(255, 255, 255, 0.66)) !important;
+  background: linear-gradient(165deg, rgba(255, 237, 249, 0.92), rgba(255, 255, 255, 0.68)) !important;
 }
 
 .marketing-event-card,
