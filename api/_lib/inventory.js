@@ -213,7 +213,37 @@ async function upsertItem(body, actorName) {
     row.updated_at = now
   }
   await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
+
+  // boss กรอก "วันเติมสินค้า/รอเช็ค" + จำนวนที่สั่ง (สั่งของจริง) — ขึ้นคิว "รอ Match" ทันที
+  // (arrival_date/count_date ว่างไว้ก่อน แปลว่า "สั่งแล้ว รอของเข้า") ไม่ต้องรอฟ้ามาแจ้งของเข้าใหม่
+  // ทับ/แก้ไข ก็แค่อัปเดตแถวเดิมที่ยังไม่มีคนมาลงวันของเข้า ไม่สร้างซ้ำ
+  if (idx !== -1 && body.reorder_qty !== undefined && Number(body.reorder_qty) > 0) {
+    await syncOrderToPendingRequest(sku, Number(body.reorder_qty), body.reorder_note, actorName)
+  }
   return { sku }
+}
+
+async function syncOrderToPendingRequest(sku, qty, note, actorName) {
+  const requests = await getSheet(STOCK_IN_REQUESTS_SHEET)
+  const idx = requests.findIndex((r) => String(r.sku) === sku && r.status === 'pending' && !r.arrival_date)
+  const now = new Date().toISOString()
+  if (idx !== -1) {
+    requests[idx] = { ...requests[idx], qty, note: note || requests[idx].note }
+    await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
+  } else {
+    const row = {
+      id: genId(),
+      sku,
+      arrival_date: '',
+      count_date: '',
+      qty,
+      note: note || '',
+      status: 'pending',
+      created_by: actorName || '',
+      created_at: now,
+    }
+    await appendRows(STOCK_IN_REQUESTS_SHEET, [STOCK_IN_REQUESTS_HEADERS.map((h) => row[h] ?? '')])
+  }
 }
 
 async function addMovement(body, actorName) {
@@ -287,7 +317,11 @@ async function updateMovement(body, actorName) {
   return after
 }
 
-async function loadStockInRequests({ status } = {}) {
+// role กรอง: แถวที่ยัง "สั่งไว้ รอของเข้า" (ไม่มี arrival_date เลย — มาจากพี่หยกกรอกจำนวนสั่งใน
+// Inventory เอง) ให้ boss/dev เห็นเท่านั้น — ตั้งใจไม่ให้ฟ้า(คนรับของ)เห็นจำนวนที่สั่งไว้ล่วงหน้า
+// จะได้นับสต็อกจริงแบบ blind count ไม่ใช่แค่เช็คให้ตรงกับเลขที่คาดไว้ (แถวที่มี arrival_date
+// แล้ว = มีคนแจ้งของเข้าจริงแล้ว ปลอดภัยให้ทุกคนเห็น เพราะเป็นเลขนับจริง ไม่ใช่เลขคาดการณ์)
+async function loadStockInRequests({ status, role } = {}) {
   await ensureInventorySheets()
   const [rows, items] = await Promise.all([getSheet(STOCK_IN_REQUESTS_SHEET), getSheet(ITEMS_SHEET)])
   const nameBySku = new Map(items.map((it) => [String(it.sku), it.display_name || it.sku]))
@@ -305,8 +339,10 @@ async function loadStockInRequests({ status } = {}) {
     matched_by: r.matched_by || '',
     matched_at: r.matched_at || '',
     reject_reason: r.reject_reason || '',
+    order_only: !isoDate(r.arrival_date),
   }))
   if (status) out = out.filter((r) => r.status === status)
+  if (authEnabled() && !canManageOperations(role)) out = out.filter((r) => !r.order_only)
   out.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
   return out
 }
@@ -350,6 +386,8 @@ async function matchStockInRequest(body, actorName, role) {
   if (idx === -1) throw new Error('ไม่พบคำขอนี้')
   const req = requests[idx]
   if (req.status !== 'pending') throw new Error('คำขอนี้ถูกดำเนินการไปแล้ว')
+  // แถว "สั่งไว้ รอของเข้า" เฉยๆ (ไม่มีคนแจ้งของเข้าจริง) ยัง match ไม่ได้ — ต้องรอมีคนแจ้งรับของจริงก่อน
+  if (!req.arrival_date) throw new Error('คำขอนี้ยังไม่มีคนแจ้งรับของจริง — รอฟ้าแจ้งของเข้าก่อน')
 
   const qty = body.qty !== undefined ? Number(body.qty) : num(req.qty)
   if (!Number.isFinite(qty) || qty <= 0) throw new Error('ต้องระบุจำนวน')
@@ -385,8 +423,10 @@ async function rejectStockInRequest(body, actorName, role) {
   return requests[idx]
 }
 
-// ฟ้าแก้ไขคำขอที่ถูกปฏิเสธแล้วส่งกลับเข้าคิวรอ match ใหม่ — ไม่ต้องพิมพ์แจ้งของเข้าใหม่ทั้งหมด
-async function editStockInRequest(body, actorName) {
+// ฟ้าแก้ไขคำขอที่ถูกปฏิเสธแล้วส่งกลับเข้าคิวรอ match ใหม่ (ไม่ต้องพิมพ์แจ้งของเข้าใหม่ทั้งหมด)
+// หรือแก้ไขคำขอที่ยัง pending อยู่ — กรณีนี้ใช้ตอนพี่หยกสั่งของไว้ก่อน (ยังไม่มีวันของเข้า/วันนับ)
+// แล้วฟ้ามากรอกวันที่จริงทีหลังตอนของมาถึง
+async function editStockInRequest(body, actorName, role) {
   const id = String(body.id || '').trim()
   if (!id) throw new Error('ต้องระบุ id')
 
@@ -394,7 +434,10 @@ async function editStockInRequest(body, actorName) {
   const [requests, items] = await Promise.all([getSheet(STOCK_IN_REQUESTS_SHEET), getSheet(ITEMS_SHEET)])
   const idx = requests.findIndex((r) => String(r.id) === id)
   if (idx === -1) throw new Error('ไม่พบคำขอนี้')
-  if (requests[idx].status !== 'rejected') throw new Error('แก้ไขได้เฉพาะคำขอที่ถูกปฏิเสธ')
+  if (!['pending', 'rejected'].includes(requests[idx].status)) throw new Error('แก้ไขได้เฉพาะคำขอที่ยังไม่ match')
+  // แถว "สั่งไว้ รอของเข้า" (ยังไม่มี arrival_date) เป็นของ boss เท่านั้น — กันไม่ให้ใครแก้ไขเพื่อ
+  // ดูจำนวนที่สั่งไว้ล่วงหน้าได้ผ่าน endpoint ตรงๆ แม้ UI จะซ่อนไว้แล้วก็ตาม (defense in depth)
+  if (!requests[idx].arrival_date && authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่แก้ไขได้')
 
   const sku = String(body.sku || requests[idx].sku).trim()
   const qty = Number(body.qty)
@@ -468,7 +511,7 @@ export default async function opInventory(req, res) {
     if (req.method === 'GET') {
       const view = String(req.query.view || 'items')
       if (view === 'stock-in-requests') {
-        const rows = await loadStockInRequests({ status: req.query.status })
+        const rows = await loadStockInRequests({ status: req.query.status, role })
         return res.status(200).json({ success: true, requests: rows })
       }
       if (view === 'movements') {
@@ -515,7 +558,7 @@ export default async function opInventory(req, res) {
         return res.status(200).json({ success: true, request: result })
       }
       if (action === 'edit-stock-in-request') {
-        const result = await editStockInRequest(req.body, actorName)
+        const result = await editStockInRequest(req.body, actorName, role)
         return res.status(200).json({ success: true, request: result })
       }
       if (action === 'upsert-recipe') {

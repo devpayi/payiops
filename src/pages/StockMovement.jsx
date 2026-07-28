@@ -60,7 +60,11 @@ export default function StockMovement() {
   const [rejecting, setRejecting] = useState(null)
   const [editingRequest, setEditingRequest] = useState(null)
 
-  const pendingRequests = useMemo(() => requests.filter((r) => r.status === 'pending'), [requests])
+  // order_only = พี่หยกสั่งของไว้ (กรอกจำนวนสั่งที่หน้า Inventory) แต่ยังไม่มีคนแจ้งของเข้าจริง —
+  // API กรองไม่ส่งมาให้ role ที่ไม่ใช่ boss/dev อยู่แล้ว (ไม่ให้ฟ้าเห็นจำนวนที่สั่งไว้ล่วงหน้า
+  // จะได้นับสต็อกจริงแบบ blind ไม่ใช่แค่เช็คให้ตรงเลขที่คาดไว้)
+  const orderOnlyRequests = useMemo(() => requests.filter((r) => r.status === 'pending' && r.order_only), [requests])
+  const pendingRequests = useMemo(() => requests.filter((r) => r.status === 'pending' && !r.order_only), [requests])
   const rejectedRequests = useMemo(() => requests.filter((r) => r.status === 'rejected'), [requests])
 
   const load = useCallback(() => {
@@ -258,6 +262,34 @@ export default function StockMovement() {
 
       {error && (
         <div style={{ background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', borderRadius: 12, padding: '10px 14px', fontSize: 13 }}>{error}</div>
+      )}
+
+      {isBoss && orderOnlyRequests.length > 0 && (
+        <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 18, padding: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Truck size={16} style={{ color: 'var(--payi-text-muted)' }} />
+            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>สั่งไว้ รอของเข้า ({orderOnlyRequests.length})</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--payi-text-faint)', marginBottom: 14 }}>เห็นเฉพาะ Boss/Dev — ไม่ให้ฟ้าเห็นจำนวนที่สั่งไว้ล่วงหน้า</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {orderOnlyRequests.map((r) => (
+              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 14px' }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name} <span style={{ fontWeight: 800, color: 'var(--payi-text-muted)' }}>{fmt(r.qty)}</span></div>
+                  <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>สั่งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setEditingRequest(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-text)' }}>
+                    <Pencil size={13} /> แก้ไข
+                  </button>
+                  <button onClick={() => setRejecting(r)} style={{ background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-danger)' }}>
+                    ยกเลิก
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {pendingRequests.length > 0 && (
