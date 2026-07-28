@@ -212,7 +212,7 @@ const DAY_RECORD_LABEL = { ot_full: 'OT', comp: 'ชดเชย' }
 function CalendarPlanner({ rows, manpower, events, history = [], names, preview, onSaved, error, setError, otLimits = {}, closeRows, deleteRows, edits = {}, setEdits, saving, groupByName = {}, officePeople = [], inactiveNames = new Set(), schedulePeople = [], canEditManpower = false, dayRecords = [], swapLeaves = [] }) {
   const dayRecordByNameDate = useMemo(() => {
     const map = new Map()
-    for (const r of dayRecords) { if (r.employee && r.date) map.set(`${r.date}|${r.employee}`, DAY_RECORD_LABEL[r.kind] || r.kind) }
+    for (const r of dayRecords) { if (r.employee && r.date && DAY_RECORD_LABEL[r.kind]) map.set(`${r.date}|${r.employee}`, DAY_RECORD_LABEL[r.kind]) }
     // สลับวันหยุด — ขึ้นป้ายทั้งวันหยุดเดิม (start_date) และวันหยุดใหม่ (end_date) อ้างอิงถึงกันด้วยเลขวันที่
     for (const l of swapLeaves) {
       if (!l.employee_name || !l.start_date || !l.end_date) continue
@@ -248,6 +248,7 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
   const [warning, setWarning] = useState('')
   const [scheduleDraft, setScheduleDraft] = useState({})
   const [scheduleOtDraft, setScheduleOtDraft] = useState({})
+  const [scheduleBaselineCodes, setScheduleBaselineCodes] = useState(new Set())
   const [year, mo] = month.split('-').map(Number)
   const first = new Date(year, mo - 1, 1)
   const cells = [...Array(first.getDay()).fill(null), ...Array.from({ length: new Date(year, mo, 0).getDate() }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)]
@@ -275,6 +276,7 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
   const openSchedule = (date) => {
     const workingCodes = new Set(manpower.filter((row) => row.date === date).map((row) => String(row.code || '').toUpperCase()))
     setScheduleDraft(Object.fromEntries(schedulePeople.map((person) => [person.code, workingCodes.has(String(person.code).toUpperCase())])))
+    setScheduleBaselineCodes(workingCodes)
     // เติมสถานะ OT เต็มวันเดิม (ถ้าเคยบันทึกไว้แล้ว) กลับเข้า draft ตอนเปิดแก้ซ้ำ
     const otNamesToday = new Set(dayRecords.filter((r) => r.date === date && r.kind === 'ot_full').map((r) => r.employee))
     setScheduleOtDraft(Object.fromEntries(schedulePeople.map((person) => [person.code, otNamesToday.has(person.name)])))
@@ -304,9 +306,19 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
         const wantOtNames = new Set(schedulePeople.filter((p) => scheduleOtDraft[p.code]).map((p) => p.name))
         const toAdd = [...wantOtNames].filter((name) => !existingOt.some((r) => r.employee === name))
         const toRemove = existingOt.filter((r) => !wantOtNames.has(r.employee))
+
+        // แก้ตารางปกติ (ไม่ใช่ OT) เทียบรายชื่อก่อน/หลังแก้ ใครถูกเพิ่ม/ถอนออกจากวันนี้ บันทึกไว้ให้ HR รีเช็คด้วย
+        // ข้ามคนที่เป็นเคส OT อยู่แล้ว (toAdd/existingOt) กันขึ้นซ้ำซ้อนกับป้ายโอที
+        const addedCodes = codes.map((c) => String(c).toUpperCase()).filter((c) => !scheduleBaselineCodes.has(c))
+        const removedCodes = [...scheduleBaselineCodes].filter((c) => !codes.some((code) => String(code).toUpperCase() === c))
+        const schedAddNames = schedulePeople.filter((p) => addedCodes.includes(String(p.code).toUpperCase()) && !wantOtNames.has(p.name)).map((p) => p.name)
+        const schedRemoveNames = schedulePeople.filter((p) => removedCodes.includes(String(p.code).toUpperCase()) && !existingOt.some((r) => r.employee === p.name)).map((p) => p.name)
+
         await Promise.all([
           ...(toAdd.length ? [fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add-dayrecord', employees: toAdd, date: modal.date, kind: 'ot_full', reason: '', paid_ot: true, note: '' }) })] : []),
           ...toRemove.map((r) => fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete-dayrecord', id: r.id }) })),
+          ...(schedAddNames.length ? [fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add-dayrecord', employees: schedAddNames, date: modal.date, kind: 'sched_add', reason: '', note: '' }) })] : []),
+          ...(schedRemoveNames.length ? [fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add-dayrecord', employees: schedRemoveNames, date: modal.date, kind: 'sched_remove', reason: '', note: '' }) })] : []),
         ])
 
         setModal(null)

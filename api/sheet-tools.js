@@ -77,7 +77,12 @@ async function applyLeaveDecision(id, decision, decidedBy, decisionNote = '') {
     const proposed = { ...target, ...payload, backup_assignments: payload.backup_assignments || [] }
     let record
     let notificationRecord
-    if (decision === 'approved') {
+    if (decision === 'approved' && payload.cancel_requested) {
+      // ขอยกเลิกวันลาที่อนุมัติไปแล้ว — ไม่ต้องเช็คกำลังคน (ยกเลิกมีแต่ทำให้คนว่างขึ้น) แค่เปลี่ยนสถานะเป็นยกเลิก
+      record = { ...target, status: 'cancelled', edit_pending: '', edit_payload: '', edit_requested_at: '', edit_requested_by: '', decided_by: decidedBy, decided_at: now, decision_note: decisionNote }
+      await appendLeaveAudit(id, 'cancel-approved', target, record, decidedBy)
+      notificationRecord = { ...record }
+    } else if (decision === 'approved') {
       const coverage = await resolveLeaveCoverage(target.username, proposed, proposed.backup_assignments, target.id)
       if (!coverage.ok) return { error: coverage.error, target }
       record = {
@@ -150,7 +155,9 @@ const backupOfficeLine = (leave, officeMap) => {
   return text ? `\nคนออฟฟิศทดแทน: ${text}` : ''
 }
 const understaffedLine = (l) => l.understaffed_dates ? `\n⚠️ คนไม่พอวันที่ ${l.understaffed_dates.split(',').join(', ')} ต้องหาคนแทน` : ''
-const leaveSummaryText = (l, officeMap = {}) => l.leave_type === 'สลับวันหยุด'
+const leaveSummaryText = (l, officeMap = {}) => l.cancel_requested
+  ? `${l.employee_name} ขอยกเลิกวันลา${l.leave_type} วันที่ ${l.start_date}${l.end_date !== l.start_date ? ` – ${l.end_date}` : ''}${l.note ? `\nหมายเหตุ: ${l.note}` : ''}`
+  : l.leave_type === 'สลับวันหยุด'
   ? `${l.employee_name} ขอสลับวันหยุด จาก ${l.start_date} เป็น ${l.end_date}${l.reason ? `\nเหตุผล: ${l.reason}` : ''}${backupOfficeLine(l, officeMap)}${understaffedLine(l)}`
   : `${l.employee_name} ขอลา${l.leave_type}\n${l.start_date}${Number(l.days) === 0.5 ? ' (ครึ่งวัน)' : l.end_date !== l.start_date ? ` – ${l.end_date}` : ''} · ${l.days} วัน${l.reason ? `\nเหตุผล: ${l.reason}` : ''}${backupOfficeLine(l, officeMap)}${understaffedLine(l)}`
 
@@ -206,19 +213,20 @@ const lineCardButton = (action, primary = false) => ({
 // การ์ดเดียวกันทั้งแจ้ง admin และแจ้งผลกลับหาพนักงาน เพื่อให้สถานะอ่านได้เหมือนกันทุกจุด
 const leaveFlexMessage = (record, variant = 'pending', officeMap = {}, { balance = null } = {}) => {
   const theme = LINE_LEAVE_THEME[variant] || LINE_LEAVE_THEME.pending
-  const cardTitle = record.is_edit_request ? 'คำขอแก้ไขวันลา' : theme.title
+  const cardTitle = record.cancel_requested ? 'ขอยกเลิกวันลา' : record.is_edit_request ? 'คำขอแก้ไขวันลา' : theme.title
   const isSwap = record.leave_type === 'สลับวันหยุด'
   const facts = [factRow(isSwap ? 'วันหยุดเดิม → ใหม่' : 'วันที่ลา', isSwap ? `${lineDate(record.start_date)} → ${lineDate(record.end_date)}` : lineDateRange(record))]
   if (!isSwap) facts.push(factRow('ช่วงเวลา', leavePeriodLabel(normalizeLeavePeriod(record.leave_period, record.days))))
   if (record.reason) facts.push(factRow('เหตุผล', record.reason))
   if (record.backup_office || recordBackupAssignments(record).length) facts.push(factRow('คนทดแทน', backupAssignmentText(record, officeMap)))
   if (record.understaffed_dates) facts.push(factRow('⚠️ คนไม่พอ', `${record.understaffed_dates.split(',').map((d) => lineCompactDate(d)).join(', ')} ต้องหาคนแทน`))
+  if (record.cancel_requested && record.note) facts.push(factRow('หมายเหตุ', record.note))
   if (record.decision_note) facts.push(factRow('หมายเหตุ', record.decision_note))
   if (balance) facts.push(factRow('พักร้อนคงเหลือ', `${balance.remaining} / ${balance.quota} วัน`))
 
   const bubble = {
     type: 'bubble', size: 'kilo',
-    header: lineCardHeader(cardTitle, record.employee_name || 'พนักงาน', theme.icon, record.is_edit_request ? 'รอ HR ยืนยันการแก้ไข' : theme.status),
+    header: lineCardHeader(cardTitle, record.employee_name || 'พนักงาน', theme.icon, record.cancel_requested ? 'รอ HR ยืนยันการยกเลิก' : record.is_edit_request ? 'รอ HR ยืนยันการแก้ไข' : theme.status),
     body: { type: 'box', layout: 'vertical', paddingAll: '14px', spacing: 'md', backgroundColor: '#FBFEFF', contents: [
       { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [
         summaryTile('ประเภท', `${leaveTypeIcon(record.leave_type)} ${record.leave_type}`, LINE_CARD.skySoft, LINE_CARD.blueDark),
@@ -649,7 +657,7 @@ async function opWorkforceInner(req, res) {
   if (action === 'add-dayrecord') {
     const employees = Array.isArray(body.employees) ? body.employees.filter(Boolean) : []
     if (!body.date || !employees.length) return res.status(400).json({ error: 'กรุณาระบุวันที่และรายชื่อ' })
-    if (!['ot_full', 'comp'].includes(body.kind)) return res.status(400).json({ error: 'ประเภทไม่ถูกต้อง' })
+    if (!['ot_full', 'comp', 'sched_add', 'sched_remove'].includes(body.kind)) return res.status(400).json({ error: 'ประเภทไม่ถูกต้อง' })
     const now = new Date().toISOString()
     const createdBy = actorName() || body.created_by || 'Boss'
     const paidOt = body.kind === 'ot_full' ? (body.paid_ot === false ? '0' : '1') : '0'
@@ -975,6 +983,27 @@ async function opHrInner(req, res) {
     ])
     clearHrCache()
     return res.status(200).json({ success: true })
+  }
+  if (action === 'request-leave-cancel') {
+    // ยกเลิกคำขอลาที่อนุมัติไปแล้ว — พนักงานทำเองไม่ได้ทันที ต้องส่งคำขอแล้วรอ HR ยืนยันก่อน (เหมือน request-leave-edit)
+    if (!body.id) return res.status(400).json({ success: false, error: 'กรุณาระบุ id' })
+    const current = await getSheet('hr_leave')
+    const target = current.find((r) => String(r.id) === String(body.id))
+    if (!target) return res.status(404).json({ success: false, error: 'ไม่พบคำขอลานี้' })
+    const isOwner = target.username === actorUsername()
+    const isAdmin = !authEnabled() || canManageOperations(req.user?.role)
+    if (!isOwner && !isAdmin) return res.status(403).json({ success: false, error: 'ยกเลิกได้เฉพาะคำขอของตัวเองหรือ admin' })
+    if (!['pending', 'approved'].includes(target.status)) return res.status(400).json({ success: false, error: 'รายการนี้ยกเลิกไม่ได้แล้วค่ะ' })
+    if (target.edit_pending === '1') return res.status(400).json({ success: false, error: 'มีคำขอแก้ไข/ยกเลิกค้างรอ HR อยู่แล้ว' })
+    const now = new Date().toISOString()
+    const payload = { cancel_requested: true, note: String(body.note || '').trim() }
+    const record = { ...target, edit_pending: '1', edit_payload: JSON.stringify(payload), edit_requested_at: now, edit_requested_by: actorName() }
+    const next = current.map((row) => String(row.id) === String(target.id) ? record : row)
+    await overwriteSheet('hr_leave', LEAVE_HEADERS, next.map((row) => LEAVE_HEADERS.map((header) => row[header] ?? '')))
+    await appendLeaveAudit(target.id, 'cancel-requested', target, payload, actorName())
+    clearHrCache()
+    await notifyNewLeaveRequestSafely({ ...target, ...payload, status: 'pending', is_edit_request: true, cancel_requested: true })
+    return res.status(200).json({ success: true, leave: record })
   }
   if (action === 'set-line-id' || action === 'set-line-id-for') {
     let username
@@ -1381,8 +1410,8 @@ async function handleLeaveWizard(event, staffLink) {
       return replyMessage(replyToken, [editLeaveChoiceMessage(leaves)])
     }
     if (text === LEAVE_CANCEL_TRIGGER && staffLink) {
-      const leaves = (await getSheet('hr_leave')).filter((leave) => leave.username === staffLink.username && leave.status === 'pending').sort((a, b) => String(b.start_date).localeCompare(String(a.start_date)))
-      if (!leaves.length) return replyMessage(replyToken, [{ type: 'text', text: 'ตอนนี้ไม่มีรายการลาที่ยกเลิกได้ค่ะ (ยกเลิกได้เฉพาะที่ยังรออนุมัติ)' }])
+      const leaves = (await getSheet('hr_leave')).filter((leave) => leave.username === staffLink.username && ['pending', 'approved'].includes(leave.status) && leave.edit_pending !== '1').sort((a, b) => String(b.start_date).localeCompare(String(a.start_date)))
+      if (!leaves.length) return replyMessage(replyToken, [{ type: 'text', text: 'ตอนนี้ไม่มีรายการลาที่ยกเลิกได้ค่ะ' }])
       return replyMessage(replyToken, [cancelLeaveChoiceMessage(leaves)])
     }
     if (text === LEAVE_SUMMARY_TRIGGER && staffLink) {
@@ -1414,7 +1443,19 @@ async function handleLeaveWizard(event, staffLink) {
       const cancelLeaveId = data.slice('hr-wiz-cancelpick:'.length)
       const current = await getSheet('hr_leave')
       const target = current.find((leave) => String(leave.id) === cancelLeaveId && leave.username === staffLink.username)
-      if (!target || target.status !== 'pending') return replyMessage(replyToken, [{ type: 'text', text: 'รายการนี้ยกเลิกไม่ได้แล้วค่ะ (อาจถูกอนุมัติหรือยกเลิกไปก่อนแล้ว)' }])
+      if (!target || !['pending', 'approved'].includes(target.status) || target.edit_pending === '1') return replyMessage(replyToken, [{ type: 'text', text: 'รายการนี้ยกเลิกไม่ได้แล้วค่ะ' }])
+      if (target.status === 'approved') {
+        // อนุมัติไปแล้ว — ยกเลิกเองทันทีไม่ได้ ต้องส่งคำขอแล้วรอ HR ยืนยันก่อน (เหมือนขอแก้ไข)
+        const now = new Date().toISOString()
+        const payload = { cancel_requested: true, note: '' }
+        const record = { ...target, edit_pending: '1', edit_payload: JSON.stringify(payload), edit_requested_at: now, edit_requested_by: staffLink.name }
+        await overwriteSheet('hr_leave', LEAVE_HEADERS, current.map((leave) => String(leave.id) === String(target.id) ? record : leave).map((leave) => LEAVE_HEADERS.map((header) => leave[header] ?? '')))
+        await appendLeaveAudit(target.id, 'cancel-requested', target, payload, staffLink.name)
+        clearHrCache()
+        const proposed = { ...target, ...payload, status: 'pending', is_edit_request: true }
+        await Promise.all([notifyNewLeaveRequestSafely(proposed), replyMessage(replyToken, [{ type: 'text', text: `ส่งคำขอยกเลิกวันลาวันที่ ${thaiDateLabel(target.start_date)} (${target.leave_type}) แล้วค่ะ รอ HR ยืนยันอีกทีนะคะ` }])])
+        return
+      }
       const kept = current.filter((leave) => String(leave.id) !== cancelLeaveId)
       const backupRows = await getSheet('hr_leave_backups')
       const keptBackups = backupRows.filter((row) => String(row.leave_id) !== cancelLeaveId)

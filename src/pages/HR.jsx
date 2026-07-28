@@ -75,6 +75,7 @@ export default function HR() {
   const [editingBalanceCode, setEditingBalanceCode] = useState('')
   const [editingLeave, setEditingLeave] = useState(null)
   const [historyFilterCode, setHistoryFilterCode] = useState('')
+  const [dayRecords, setDayRecords] = useState([])
   const isSwap = leaveForm.leave_type === 'สลับวันหยุด'
   const selectedEmployee = people.find((person) => person.code === leaveForm.employee_code)
   const availableLeaveTypes = selectedEmployee && NO_VACATION_GROUPS.has(selectedEmployee.group) ? LEAVE_TYPES.filter((type) => type !== 'พักร้อน') : LEAVE_TYPES
@@ -98,6 +99,8 @@ export default function HR() {
       const response = await fetch(API); const data = await readApiResponse(response)
       if (!response.ok || !data.success) throw new Error(data.error || 'โหลดข้อมูลไม่สำเร็จ')
       setLeave(data.leave || []); setPeople(data.people || []); setActiveMonths(data.activeMonths || {}); setLeaveBalances(data.leaveBalances || []); setServerCanManage(!!data.canManage)
+      // โอทีเต็มวัน/ชดเชย — แก้จริงที่ปฏิทิน Manpower&OT แล้ว ตรงนี้ดึงมาโชว์ไว้แค่ให้ HR รีเช็คย้อนหลังว่าใครทำโอทีวันไหนบ้าง
+      fetch('/api/sheet-tools?op=workforce').then((r) => r.json()).then((d) => { if (d.success) setDayRecords(d.dayRecords || []) }).catch(() => {})
     } catch (e) { setError(e.message) } finally { setLoading(false) }
   }
 
@@ -163,11 +166,15 @@ export default function HR() {
     catch (e) { setError(e.message) } finally { setSaving(false) }
   }
 
-  const cancelLeave = async (id) => {
-    if (!window.confirm('ยกเลิกคำขอลานี้ใช่ไหม?')) return
+  const cancelLeave = async (item) => {
+    // pending ยกเลิกได้ทันที (ลบทิ้งเลย) — approved ต้องส่งคำขอแล้วรอ HR ยืนยันก่อน (เหมือนขอแก้ไข)
+    const isApproved = item.status === 'approved'
+    if (!window.confirm(isApproved ? 'ส่งคำขอยกเลิกวันลานี้ใช่ไหม? (รอ HR ยืนยันก่อน)' : 'ยกเลิกคำขอลานี้ใช่ไหม?')) return
     setSaving(true); setError('')
-    try { await postAction({ action: 'cancel-leave', id }, 'ยกเลิกไม่สำเร็จ'); await load() }
-    catch (e) { setError(e.message) } finally { setSaving(false) }
+    try {
+      await postAction(isApproved ? { action: 'request-leave-cancel', id: item.id } : { action: 'cancel-leave', id: item.id }, 'ยกเลิกไม่สำเร็จ')
+      await load()
+    } catch (e) { setError(e.message) } finally { setSaving(false) }
   }
 
   const myLeave = isBoss ? leave : leave.filter((item) => item.username === currentUser?.u)
@@ -228,7 +235,7 @@ export default function HR() {
           <article className="hr-request-card" key={rawItem.id}>
             <div className="hr-request-top">
               <div className="hr-avatar" aria-hidden="true">{item.employee_name?.trim().slice(0, 1) || '?'}</div>
-              <div className="hr-request-person"><strong>{item.employee_name}</strong><span>{item.leave_type}</span></div>
+              <div className="hr-request-person"><strong>{item.employee_name}</strong><span>{item.cancel_requested ? `ขอยกเลิก: ${item.leave_type}` : item.leave_type}</span></div>
               <StatusBadge status="pending" />
             </div>
             <div className="hr-request-facts">
@@ -236,13 +243,13 @@ export default function HR() {
               <div><Clock3 size={16} /><span>จำนวน</span><strong>{item.days} วัน</strong></div>
             </div>
             {item.understaffed_dates && <p className="hr-edit-request-pill" style={{ background: '#fff1f2', color: '#be123c' }}><AlertTriangle size={13} /> คนไม่พอวันที่ {item.understaffed_dates.split(',').join(', ')} — ต้องหาคนแทน</p>}
-            {(item.reason || item.backup_office || item.backup_assignments?.length) && <div className="hr-request-note">
-              {item.reason && <p><span>เหตุผล</span>{item.reason}</p>}
+            {(item.reason || item.note || item.backup_office || item.backup_assignments?.length) && <div className="hr-request-note">
+              {item.cancel_requested ? (item.note && <p><span>หมายเหตุ</span>{item.note}</p>) : item.reason && <p><span>เหตุผล</span>{item.reason}</p>}
               {(item.backup_office || item.backup_assignments?.length) && <p><span>คนทดแทน</span>{backupLabel(item, people)}</p>}
             </div>}
             <div className="hr-request-actions">
-              <button className="hr-button is-reject" disabled={saving} onClick={() => decideLeave(rawItem.id, 'rejected')}><X size={17} />ไม่อนุมัติ</button>
-              <button className="hr-button is-approve" disabled={saving} onClick={() => decideLeave(rawItem.id, 'approved')}><Check size={17} />{rawItem.edit_pending === '1' ? 'ยืนยันการแก้ไข' : 'อนุมัติ'}</button>
+              <button className="hr-button is-reject" disabled={saving} onClick={() => decideLeave(rawItem.id, 'rejected')}><X size={17} />{item.cancel_requested ? 'ไม่ยกเลิก' : 'ไม่อนุมัติ'}</button>
+              <button className="hr-button is-approve" disabled={saving} onClick={() => decideLeave(rawItem.id, 'approved')}><Check size={17} />{item.cancel_requested ? 'ยืนยันการยกเลิก' : rawItem.edit_pending === '1' ? 'ยืนยันการแก้ไข' : 'อนุมัติ'}</button>
             </div>
           </article>
         )})}</div>}
@@ -260,10 +267,10 @@ export default function HR() {
           {loading ? <div className="hr-empty">กำลังโหลดข้อมูล…</div> : !visibleLeave.length ? <div className="hr-empty">ยังไม่มีคำขอลา</div> : (
             <div className="hr-history-list">{visibleLeave.slice().reverse().map((item) => (
               <article className="hr-history-row" key={item.id}>
-                <div className="hr-history-main"><strong>{item.employee_name}</strong><span>{item.leave_type} · {formatDateRange(item)} · {periodLabel(item.leave_period, item.days)}</span>{item.edit_pending === '1' && <span className="hr-edit-request-pill">มีข้อมูลแก้ไขรอ HR ยืนยัน</span>}{item.understaffed_dates && !['rejected', 'cancelled'].includes(item.status) && <span className="hr-edit-request-pill" style={{ background: '#fff1f2', color: '#be123c' }}>คนไม่พอ — ต้องหาคนแทน</span>}</div>
+                <div className="hr-history-main"><strong>{item.employee_name}</strong><span>{item.leave_type} · {formatDateRange(item)} · {periodLabel(item.leave_period, item.days)}</span>{item.edit_pending === '1' && <span className="hr-edit-request-pill">{item.edit_proposal?.cancel_requested ? 'ขอยกเลิก รอ HR ยืนยัน' : 'มีข้อมูลแก้ไขรอ HR ยืนยัน'}</span>}{item.understaffed_dates && !['rejected', 'cancelled'].includes(item.status) && <span className="hr-edit-request-pill" style={{ background: '#fff1f2', color: '#be123c' }}>คนไม่พอ — ต้องหาคนแทน</span>}</div>
                 <div className="hr-history-days">{item.days}<span>วัน</span></div>
                 <StatusBadge status={item.status} />
-                <div className="hr-history-actions">{(isBoss || (item.username === currentUser?.u && !['rejected', 'cancelled'].includes(item.status))) && <button className="hr-history-edit" onClick={() => setEditingLeave(item)} aria-label={`แก้ไขรายการของ ${item.employee_name}`}><Pencil size={15} /></button>}{item.status === 'pending' && (item.username === currentUser?.u || isBoss) && <button className="hr-text-button is-danger" onClick={() => cancelLeave(item.id)}>ยกเลิก</button>}</div>
+                <div className="hr-history-actions">{(isBoss || (item.username === currentUser?.u && !['rejected', 'cancelled'].includes(item.status))) && <button className="hr-history-edit" onClick={() => setEditingLeave(item)} aria-label={`แก้ไขรายการของ ${item.employee_name}`}><Pencil size={15} /></button>}{['pending', 'approved'].includes(item.status) && item.edit_pending !== '1' && (item.username === currentUser?.u || isBoss) && <button className="hr-text-button is-danger" onClick={() => cancelLeave(item)}>ยกเลิก</button>}</div>
               </article>
             ))}</div>
           )}
@@ -293,6 +300,16 @@ export default function HR() {
           </form>
         </aside>
       </div>
+
+      {isBoss && !!dayRecords.length && <section className="hr-panel" aria-labelledby="dayrecord-heading">
+        <div className="hr-section-heading"><div><span className="hr-section-kicker">Manpower</span><h2 id="dayrecord-heading">โอที / ชดเชย / แก้ตาราง — รีเช็ค</h2></div></div>
+        <div style={{ fontSize: 12, color: 'var(--payi-text-muted, #64748b)', marginTop: -6, marginBottom: 14, padding: '0 20px' }}>แก้ไขได้ที่ปฏิทิน Manpower&amp;OT (ปุ่ม "คน") — ตรงนี้ไว้ดูย้อนหลังว่าวันนั้นใครทำโอทีวันจริง หรือถูกเพิ่ม/ถอนออกจากตาราง</div>
+        <div className="hr-history-list">{dayRecords.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).map((r) => (
+          <article className="hr-history-row" key={r.id}>
+            <div className="hr-history-main"><strong>{r.employee}</strong><span>{{ ot_full: 'โอทีเต็มวัน', comp: 'ชดเชยเฉยๆ', sched_add: 'เพิ่มเข้าตาราง', sched_remove: 'ถอนออกจากตาราง' }[r.kind] || r.kind} · {r.date}{r.reason ? ` · ${r.reason}` : ''}{r.note ? ` · ${r.note}` : ''}</span></div>
+          </article>
+        ))}</div>
+      </section>}
 
       {editingLeave && <LeaveEditPanel leave={editingLeave} people={people} isAdmin={isBoss} onClose={() => setEditingLeave(null)} onSaved={async () => { setEditingLeave(null); await load() }} />}
 
