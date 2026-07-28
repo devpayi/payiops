@@ -336,7 +336,7 @@ export default function StockMovement() {
               <Truck size={16} style={{ color: 'var(--payi-text-muted)' }} />
               <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>สั่งไว้ รอของเข้า ({orderOnlyRequests.length})</span>
             </div>
-            <div style={{ fontSize: 11.5, color: 'var(--payi-text-faint)', marginBottom: 14 }}>เห็นเฉพาะ Boss/Dev — ไม่ให้ฟ้าเห็นจำนวนที่สั่งไว้ล่วงหน้า</div>
+            <div style={{ fontSize: 11.5, color: 'var(--payi-text-faint)', marginBottom: 14 }}>เห็นเฉพาะ Boss/Dev</div>
             {orderOnlyRequests.length === 0 ? (
               <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>ยังไม่มีรายการสั่งของ</div>
             ) : (
