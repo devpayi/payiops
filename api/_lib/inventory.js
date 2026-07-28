@@ -271,6 +271,24 @@ async function finishOrderRequest(body, actorName, role) {
   return requests[idx]
 }
 
+// ลบทิ้งจริง (ไม่ใช่ append-only แบบ stock_movements) — เฉพาะแถวที่ถูกปฏิเสธแล้วเท่านั้น
+// เพราะเป็นแค่คำขอที่ยังไม่กระทบยอดคงเหลือเลย (pending/matched ห้ามลบ กันหลักฐานหาย)
+async function deleteStockInRequest(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ลบได้')
+  const id = String(body.id || '').trim()
+  if (!id) throw new Error('ต้องระบุ id')
+
+  await ensureInventorySheets()
+  const requests = await getSheet(STOCK_IN_REQUESTS_SHEET)
+  const idx = requests.findIndex((r) => String(r.id) === id)
+  if (idx === -1) throw new Error('ไม่พบคำขอนี้')
+  if (requests[idx].status !== 'rejected') throw new Error('ลบได้เฉพาะคำขอที่ถูกปฏิเสธแล้ว')
+
+  const next = requests.filter((r) => String(r.id) !== id)
+  await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, next.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
+  return { id }
+}
+
 async function addMovement(body, actorName) {
   const sku = String(body.sku || '').trim()
   const type = String(body.type || '').trim()
@@ -593,6 +611,10 @@ export default async function opInventory(req, res) {
       if (action === 'finish-stock-in-request') {
         const result = await finishOrderRequest(req.body, actorName, role)
         return res.status(200).json({ success: true, request: result })
+      }
+      if (action === 'delete-stock-in-request') {
+        const result = await deleteStockInRequest(req.body, actorName, role)
+        return res.status(200).json({ success: true, ...result })
       }
       if (action === 'upsert-recipe') {
         const result = await upsertPackagingRecipe(req.body)

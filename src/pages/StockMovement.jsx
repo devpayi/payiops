@@ -272,6 +272,26 @@ export default function StockMovement() {
     }
   }
 
+  const deleteRequest = async (id) => {
+    if (!confirm('ลบรายการนี้ทิ้งถาวร?')) return
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/sheet-tools?op=inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-stock-in-request', id }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'ลบไม่สำเร็จ')
+      load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const exportCsv = () => {
     const csv = toCsv(movements)
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -414,9 +434,16 @@ export default function StockMovement() {
                     <div style={{ fontSize: 11.5, color: 'var(--payi-danger)', marginTop: 3 }}>เหตุผลปฏิเสธ: {r.reject_reason}</div>
                   )}
                 </div>
-                <button onClick={() => setEditingRequest(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
-                  <Pencil size={13} /> แก้ไข & ส่งใหม่
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setEditingRequest(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
+                    <Pencil size={13} /> แก้ไข & ส่งใหม่
+                  </button>
+                  {isBoss && (
+                    <button onClick={() => deleteRequest(r.id)} style={{ background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-danger)' }}>
+                      ลบ
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
