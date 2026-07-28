@@ -337,7 +337,7 @@ export default function StockMovement() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%' }}>
+    <div className="swan-pastel-page stock-movement-pastel-page" style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <span style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>{movements.length} รายการ</span>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -378,7 +378,7 @@ export default function StockMovement() {
                   <div key={r.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 14px' }}>
                     <div>
                       <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name} <span style={{ fontWeight: 800, color: 'var(--payi-text-muted)' }}>{fmt(r.qty)}</span></div>
-                      <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>สั่งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>สั่งวันที่ {r.order_date || '-'} · สั่งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <button onClick={() => finishOrder(r.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
@@ -657,12 +657,13 @@ function OrderRequestModal({ items, saving, initial, onClose, onSave }) {
   const isEdit = !!initial
   const [sku, setSku] = useState(initial?.sku || items[0]?.sku || '')
   const [qty, setQty] = useState(initial ? String(initial.qty) : '')
+  const [orderDate, setOrderDate] = useState(initial?.order_date || (() => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }))())
   const [note, setNote] = useState(initial?.note || '')
 
   const submit = (e) => {
     e.preventDefault()
     if (!sku || !qty || Number(qty) <= 0) return
-    onSave({ sku, qty, note })
+    onSave({ sku, qty, order_date: orderDate, note })
   }
 
   return (
@@ -692,6 +693,10 @@ function OrderRequestModal({ items, saving, initial, onClose, onSave }) {
           <div>
             <label style={labelStyle}>จำนวนที่สั่ง</label>
             <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} required style={{ ...inputStyle, width: '100%' }} placeholder="0" />
+          </div>
+          <div>
+            <label style={labelStyle}>วันที่สั่ง</label>
+            <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
           </div>
           <div>
             <label style={labelStyle}>หมายเหตุ</label>
@@ -774,11 +779,16 @@ function StockInRequestModal({ items, saving, initial, onClose, onSave }) {
 function MatchRequestModal({ request, saving, onClose, onSave }) {
   const [qty, setQty] = useState(String(request.qty))
   const [note, setNote] = useState('')
+  // available_orders มาจาก backend เรียง FIFO ไว้แล้ว (สั่งก่อนอยู่บนสุด) — ตัวแรกเป็นแค่ suggest
+  // เริ่มต้น boss เลือกลอตอื่นแทนได้เสมอถ้าของจริงสลับลอตมา หรือเลือก "ไม่ผูกลอต" ถ้าไม่มีลอตให้จับคู่
+  const orders = request.available_orders || []
+  const [orderRequestId, setOrderRequestId] = useState(orders[0]?.id || '')
+  const selectedOrder = orders.find((o) => o.id === orderRequestId)
 
   const submit = (e) => {
     e.preventDefault()
     if (!qty || Number(qty) <= 0) return
-    onSave({ qty, note })
+    onSave({ qty, note, order_request_id: orderRequestId || undefined })
   }
 
   return (
@@ -794,6 +804,24 @@ function MatchRequestModal({ request, saving, onClose, onSave }) {
           เข้า {request.arrival_date || '-'} · นับ {request.count_date || '-'} · แจ้งโดย {request.created_by || '-'}{request.note ? ` · ${request.note}` : ''}
         </div>
         <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {orders.length > 0 && (
+            <div>
+              <label style={labelStyle}>เทียบกับลอตที่สั่งไว้ (FIFO — สั่งก่อนอยู่บนสุด)</label>
+              <select value={orderRequestId} onChange={(e) => setOrderRequestId(e.target.value)} style={{ ...inputStyle, width: '100%' }}>
+                <option value="">ไม่ผูกลอต (ไม่มีที่ตรง/ไม่ต้องเทียบ)</option>
+                {orders.map((o, i) => (
+                  <option key={o.id} value={o.id}>
+                    ลอต {i + 1} — สั่งไว้ {fmt(o.qty)} · {o.order_date || '-'} · โดย {o.created_by || '-'}{o.note ? ` · ${o.note}` : ''}
+                  </option>
+                ))}
+              </select>
+              {selectedOrder && Number(qty) !== selectedOrder.qty && (
+                <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: 'var(--payi-danger)' }}>
+                  ไม่ตรง — สั่งไว้ {fmt(selectedOrder.qty)} แต่นับจริง {fmt(Number(qty) || 0)} (ส่วนต่าง {fmt((Number(qty) || 0) - selectedOrder.qty)})
+                </div>
+              )}
+            </div>
+          )}
           <div>
             <label style={labelStyle}>จำนวนที่นับจริง (แก้ได้ถ้าไม่ตรง)</label>
             <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} required style={{ ...inputStyle, width: '100%' }} />

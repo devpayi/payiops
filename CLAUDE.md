@@ -540,6 +540,46 @@ a new one.
      ฟ้า-reports → boss-matches flow — sets `status: 'done'` without creating a second
      `stock_movements` row (the real qty already landed through that separate flow; this
      is purely closing the order-tracking placeholder so it drops off the queue).
+   - ✅ **DONE (2026-07-28) — multi-lot ordering + FIFO match pairing.** Owner flagged two
+     gaps in the above: (1) `createOrderRequest` used to find-and-overwrite any existing
+     pending order-only row for the same SKU instead of creating a new one — ordering a
+     second lot before the first arrived silently destroyed the first lot's qty/note.
+     Fixed to always `appendRows` a new row, same as `addStockInRequest` already did —
+     multiple open "สั่งของ" lots per SKU now coexist correctly. (2) boss had no way to
+     see which order-lot an arrival report corresponds to without manually cross-checking
+     — `loadStockInRequests` now computes, for every pending arrival row, an
+     `available_orders` array: all pending order-only rows for that SKU sorted oldest-first
+     (FIFO — "สั่งก่อนจับคู่กับที่แจ้งก่อน"), gated the same as `order_only` itself (only
+     attached when `!authEnabled() || canManageOperations(role)` — never leaks the ordered
+     qty to non-manager roles). `MatchRequestModal` (`StockMovement.jsx`) shows this as a
+     dropdown (FIFO-oldest pre-selected as a suggestion, not a lock — boss can pick a
+     different lot, or "ไม่ผูกลอต" if lots got swapped or there's no matching order at all)
+     with a live mismatch warning when the selected lot's qty differs from what's being
+     counted in. Confirmed explicitly by owner: ฟ้า can file an arrival report even when
+     no order-request exists yet for that SKU — matching a lot is optional, never required.
+     One Match click now does both: creates the real `stock_movements` row AND (if a lot
+     was selected) closes that order-request as matched — no more separate "เสร็จสิ้น" step.
+     `STOCK_IN_REQUESTS_HEADERS` gained `linked_order_id` (append-only, records which lot
+     an arrival was matched against, for history). `matchStockInRequest` takes an optional
+     `order_request_id`, validates it's a pending order-only row for the same SKU, and
+     updates both rows in the same sheet write. **Verified live end-to-end** (order 2 lots
+     same SKU → confirmed both persist separately → filed arrival → Match modal showed
+     both lots FIFO-ordered with lot 1 pre-selected → cleaned up all test rows after).
+     **Hit the same eventually-consistent-Sheets gotcha again while cleaning up test
+     data**: two `delete-stock-in-request` calls fired concurrently (parallel `Promise.all`)
+     both read-modified-wrote the same sheet snapshot, so one delete silently got lost
+     (classic lost-update race, not a code bug in the endpoint itself) — resolved by
+     retrying the single missing delete sequentially. Any future bulk cleanup script
+     against `stock_in_requests` (or other shared sheets) should serialize writes, not
+     fire them in parallel.
+   - ✅ **DONE (2026-07-28) — order date on "สั่งของ".** `OrderRequestModal` gained a date
+     input (defaults to today, editable) — before this the only timestamp was
+     `created_at`, not owner-settable, so backdating an order already placed (or noting
+     a date different from when the boss got around to entering it) wasn't possible.
+     New `order_date` column (append-only, end of `STOCK_IN_REQUESTS_HEADERS`) stored via
+     `createOrderRequest`/`editStockInRequest`, shown in the "สั่งไว้ รอของเข้า" list and in
+     the FIFO lot picker inside `MatchRequestModal`. Old rows created before this column
+     existed show `-` (blank order_date), expected — not backfilled.
 8. ✅ **REMOVED (2026-07-21)** — "PAYI Brain" AI Assistant tab was fake (canned
    if/else replies, no LLM call). Owner decided to delete rather than keep a
    fake-AI page (`AIAssistantView` function, menu item, icon mapping, ternary branch

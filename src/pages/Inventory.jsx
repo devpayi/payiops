@@ -387,7 +387,7 @@ export default function Inventory() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%' }}>
+    <div className="swan-pastel-page inventory-pastel-page" style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%' }}>
       {error && (
         <div style={{ background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', borderRadius: 12, padding: '10px 14px', fontSize: 13 }}>{error}</div>
       )}
@@ -970,4 +970,3 @@ function MovementModal({ target, saving, onClose, onSave }) {
     </Modal>
   )
 }
-

@@ -36,7 +36,9 @@ const PACKAGING_RECIPES_HEADERS = ['packaging_sku', 'product_sku', 'qty_per_unit
 // ที่หน้างานถ่ายลงกลุ่มไลน์ (คุยกันนอกระบบ ไม่ผูก LINE API) แล้วรอ boss (พี่หยก/พี่แต้ว) เข้ามา match
 // ยืนยันในเว็บ — match แล้วค่อยสร้างแถวจริงใน stock_movements (ไม่กระทบยอดคงเหลือจนกว่าจะ match)
 const STOCK_IN_REQUESTS_SHEET = 'stock_in_requests'
-const STOCK_IN_REQUESTS_HEADERS = ['id', 'sku', 'arrival_date', 'count_date', 'qty', 'note', 'status', 'created_by', 'created_at', 'matched_by', 'matched_at', 'movement_id', 'reject_reason']
+// linked_order_id: ต่อท้ายล่าสุด — ผูกแถว "แจ้งของเข้า" (มี arrival_date) เข้ากับแถว "สั่งของ"
+// (order_only) ที่ boss เลือก match ด้วยตอนกดยืนยัน ใช้ตรวจสอบย้อนหลังว่าของล็อตนี้คือของที่สั่งลอตไหน
+const STOCK_IN_REQUESTS_HEADERS = ['id', 'sku', 'arrival_date', 'count_date', 'qty', 'note', 'status', 'created_by', 'created_at', 'matched_by', 'matched_at', 'movement_id', 'reject_reason', 'linked_order_id', 'order_date']
 const STOCK_IN_STATUSES = new Set(['pending', 'matched', 'rejected'])
 
 let ensurePromise
@@ -216,9 +218,10 @@ async function upsertItem(body, actorName) {
   return { sku }
 }
 
-// boss กด "สั่งของ" (ปุ่มแยกจาก "แจ้งของเข้า" บนหน้า Stock Movement) — สร้าง/อัปเดตแถว
-// pending ที่ arrival_date/count_date ว่างไว้ก่อน ("สั่งแล้ว รอของเข้า") ทับแถวเดิมที่ยังไม่มี
-// คนมาลงวันของเข้า แทนสร้างซ้ำถ้าสั่งของ sku เดิมอีกรอบก่อนของรอบแรกจะมา
+// boss กด "สั่งของ" (ปุ่มแยกจาก "แจ้งของเข้า" บนหน้า Stock Movement) — สร้างแถว pending ใหม่เสมอ
+// ที่ arrival_date/count_date ว่างไว้ก่อน ("สั่งแล้ว รอของเข้า") แยกแถวต่อ 1 ลอตเสมอ (ไม่ทับของเดิม)
+// เพื่อให้สั่งซ้อนหลายลอตพร้อมกันได้โดยไม่ทำลอตแรกหาย — เรียงคิว FIFO ตาม created_at ตอน match
+// (ดู loadStockInRequests: available_orders)
 async function createOrderRequest(body, actorName, role) {
   if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่สั่งของได้')
   const sku = String(body.sku || '').trim()
@@ -227,15 +230,9 @@ async function createOrderRequest(body, actorName, role) {
   if (!Number.isFinite(qty) || qty <= 0) throw new Error('ต้องระบุจำนวน')
 
   await ensureInventorySheets()
-  const [items, requests] = await Promise.all([getSheet(ITEMS_SHEET), getSheet(STOCK_IN_REQUESTS_SHEET)])
+  const items = await getSheet(ITEMS_SHEET)
   if (!items.some((it) => String(it.sku) === sku)) throw new Error('ไม่พบสินค้านี้ในระบบ')
 
-  const idx = requests.findIndex((r) => String(r.sku) === sku && r.status === 'pending' && !r.arrival_date)
-  if (idx !== -1) {
-    requests[idx] = { ...requests[idx], qty, note: body.note || requests[idx].note }
-    await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
-    return requests[idx]
-  }
   const now = new Date().toISOString()
   const row = {
     id: genId(),
@@ -247,6 +244,7 @@ async function createOrderRequest(body, actorName, role) {
     status: 'pending',
     created_by: actorName || '',
     created_at: now,
+    order_date: isoDate(body.order_date) || todayBKK(),
   }
   await appendRows(STOCK_IN_REQUESTS_SHEET, [STOCK_IN_REQUESTS_HEADERS.map((h) => row[h] ?? '')])
   return row
@@ -382,8 +380,32 @@ async function loadStockInRequests({ status, role } = {}) {
     matched_by: r.matched_by || '',
     matched_at: r.matched_at || '',
     reject_reason: r.reject_reason || '',
+    linked_order_id: r.linked_order_id || '',
+    order_date: isoDate(r.order_date),
     order_only: !isoDate(r.arrival_date),
   }))
+
+  // FIFO เทียบลอต: ต่อ sku เดียวกัน เรียง "สั่งของ" (order_only) ที่ยัง pending ตาม created_at ก่อนหลัง
+  // แปะเป็น available_orders ลงในแถว "แจ้งของเข้า" ทุกแถว (ไม่ใช่แค่แถวแรก) ให้ boss เลือกจับคู่เองตอน
+  // match ได้ (ล็อตสลับมาก็เลือกลอตอื่นแทน suggest ได้) — suggested = ตัวแรกตามคิว FIFO เท่านั้น ไม่บังคับ
+  // เห็นเฉพาะ boss/dev เพราะเป็นข้อมูลจำนวนที่สั่งไว้ล่วงหน้า (กัน blind count รั่ว เหมือน order_only เอง)
+  if (!authEnabled() || canManageOperations(role)) {
+    const openOrdersBySku = new Map()
+    for (const r of out) {
+      if (r.order_only && r.status === 'pending') {
+        if (!openOrdersBySku.has(r.sku)) openOrdersBySku.set(r.sku, [])
+        openOrdersBySku.get(r.sku).push(r)
+      }
+    }
+    for (const list of openOrdersBySku.values()) list.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+    for (const r of out) {
+      if (!r.order_only && r.status === 'pending') {
+        const available = openOrdersBySku.get(r.sku) || []
+        r.available_orders = available.map((o) => ({ id: o.id, qty: o.qty, note: o.note, created_by: o.created_by, created_at: o.created_at, order_date: o.order_date }))
+      }
+    }
+  }
+
   if (status) out = out.filter((r) => r.status === status)
   if (authEnabled() && !canManageOperations(role)) out = out.filter((r) => !r.order_only)
   out.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
@@ -418,6 +440,9 @@ async function addStockInRequest(body, actorName) {
 
 // boss match ยืนยัน — สร้างแถวจริงใน stock_movements (type=in) แล้ว mark คำขอเป็น matched
 // รับ qty ทับได้ (ถ้านับจริงไม่ตรงกับที่ฟ้าลงไว้ก่อนหน้า) — ไม่บังคับต้องเท่าเดิม
+// order_request_id (ไม่บังคับ) — ถ้า boss เลือกจับคู่กับลอต "สั่งของ" ที่ค้างอยู่ (ดู available_orders
+// จาก loadStockInRequests) ปิดลอตนั้นให้เป็น matched ในคำสั่งเดียวกันเลย ไม่ต้องกด "เสร็จสิ้น" แยกอีกที
+// ฟ้าแจ้งของเข้าได้ตามปกติแม้พี่หยกยังไม่ได้กด "สั่งของ" ไว้ในระบบ (ไม่มีลอตให้เลือกก็ match เดี่ยวๆ ได้)
 async function matchStockInRequest(body, actorName, role) {
   if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ match ได้')
   const id = String(body.id || '').trim()
@@ -435,6 +460,16 @@ async function matchStockInRequest(body, actorName, role) {
   const qty = body.qty !== undefined ? Number(body.qty) : num(req.qty)
   if (!Number.isFinite(qty) || qty <= 0) throw new Error('ต้องระบุจำนวน')
 
+  const orderRequestId = String(body.order_request_id || '').trim()
+  let orderIdx = -1
+  if (orderRequestId) {
+    orderIdx = requests.findIndex((r) => String(r.id) === orderRequestId)
+    if (orderIdx === -1) throw new Error('ไม่พบลอตที่สั่งไว้นี้')
+    const orderReq = requests[orderIdx]
+    if (orderReq.status !== 'pending' || isoDate(orderReq.arrival_date)) throw new Error('ลอตนี้ไม่ใช่รายการสั่งของที่รอ match')
+    if (String(orderReq.sku) !== String(req.sku)) throw new Error('ลอตที่เลือกไม่ตรงกับสินค้านี้')
+  }
+
   const movement = await addMovement({
     sku: req.sku,
     type: 'in',
@@ -444,7 +479,10 @@ async function matchStockInRequest(body, actorName, role) {
   }, actorName)
 
   const now = new Date().toISOString()
-  requests[idx] = { ...req, status: 'matched', matched_by: actorName || '', matched_at: now, movement_id: movement.id }
+  requests[idx] = { ...req, status: 'matched', matched_by: actorName || '', matched_at: now, movement_id: movement.id, linked_order_id: orderRequestId }
+  if (orderIdx !== -1) {
+    requests[orderIdx] = { ...requests[orderIdx], status: 'matched', matched_by: actorName || '', matched_at: now, movement_id: movement.id }
+  }
   await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
   return requests[idx]
 }
@@ -493,6 +531,7 @@ async function editStockInRequest(body, actorName, role) {
     qty,
     arrival_date: isoDate(body.arrival_date) || requests[idx].arrival_date,
     count_date: body.count_date !== undefined ? (isoDate(body.count_date) || '') : requests[idx].count_date,
+    order_date: body.order_date !== undefined ? (isoDate(body.order_date) || requests[idx].order_date) : requests[idx].order_date,
     note: body.note !== undefined ? body.note : requests[idx].note,
     status: 'pending',
     created_by: actorName || requests[idx].created_by,

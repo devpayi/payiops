@@ -24,7 +24,7 @@ const EVENT_TYPES = [
 
 const COLUMNS = [
   { id: 'waiting', title: 'Waiting', icon: Clock3, tone: '#d97706' },
-  { id: 'live', title: 'Live', icon: CheckCircle2, tone: '#819fe0' },
+  { id: 'live', title: 'Live', icon: CheckCircle2, tone: '#4fa7b8' },
   { id: 'check7', title: '7-Day Check', icon: TrendingUp, tone: '#2f5fd0' },
   { id: 'check30', title: '30-Day Check', icon: RefreshCw, tone: '#7c3aed' },
   { id: 'content', title: 'Push Content', icon: Megaphone, tone: '#db2777' },
@@ -216,7 +216,7 @@ export default function MarketingRadar() {
       <div className="app-two-col-fixed" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(280px, 0.8fr)', gap: 16 }}>
         <section className="marketing-hero-card" style={{ background: 'var(--payi-surface-dark)', color: '#fff', borderRadius: 8, padding: 22, minHeight: 168, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
-            <div>
+            <div className="marketing-hero-copy">
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)', fontWeight: 700, marginBottom: 8 }}>MARKETING CHANGE TRACKER</div>
               <h2 style={{ margin: 0, fontSize: 28, lineHeight: 1.12, letterSpacing: 0 }}>Marketing Radar</h2>
               <p style={{ margin: '10px 0 0', maxWidth: 640, color: 'rgba(255,255,255,0.76)', fontSize: 13, lineHeight: 1.7 }}>
@@ -227,6 +227,10 @@ export default function MarketingRadar() {
               <RefreshCw size={17} className={saving ? 'payi-spin' : ''} />
             </button>
           </div>
+          <div className="marketing-mermaid" aria-hidden="true">
+            <img src="/marketing-mermaid-cutout.webp" alt="" decoding="async" />
+          </div>
+          <UnderwaterHeroDecor />
           <div className="app-kpi-grid marketing-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, marginTop: 24 }}>
             <Metric label="ต้องตัดสินใจ" value={reviewQueue.length} />
             <Metric label="กำลังวัดผล" value={(radar.live?.length || 0) + (radar.content?.length || 0)} />
@@ -351,6 +355,49 @@ export default function MarketingRadar() {
       </section>
       )}
     </div>
+  )
+}
+
+function UnderwaterHeroDecor() {
+  return (
+    <svg className="marketing-underwater-decor" viewBox="0 0 900 320" preserveAspectRatio="none" aria-hidden="true">
+      <g className="marketing-fish-school">
+        <g transform="translate(520 116) scale(0.72)">
+          <path d="M0 12C12-2 38-3 53 12C38 27 12 26 0 12Z" fill="rgba(204,241,246,.56)" />
+          <path d="M2 12L-15 1V23Z" fill="rgba(179,227,237,.5)" />
+          <circle cx="42" cy="9" r="2" fill="rgba(35,92,116,.7)" />
+        </g>
+        <g transform="translate(594 76) scale(0.52)">
+          <path d="M0 12C12-2 38-3 53 12C38 27 12 26 0 12Z" fill="rgba(221,247,249,.54)" />
+          <path d="M2 12L-15 1V23Z" fill="rgba(185,230,238,.46)" />
+          <circle cx="42" cy="9" r="2" fill="rgba(35,92,116,.65)" />
+        </g>
+        <g transform="translate(646 132) scale(0.42)">
+          <path d="M0 12C12-2 38-3 53 12C38 27 12 26 0 12Z" fill="rgba(210,242,246,.5)" />
+          <path d="M2 12L-15 1V23Z" fill="rgba(175,222,233,.44)" />
+          <circle cx="42" cy="9" r="2" fill="rgba(35,92,116,.62)" />
+        </g>
+      </g>
+
+      <g className="marketing-coral-cluster" transform="translate(14 136)">
+        <path d="M22 92C20 62 23 42 35 17M34 54L18 37M34 45L50 28M67 92C65 66 68 48 78 31M77 57L92 43"
+          fill="none" stroke="rgba(244,145,139,.76)" strokeWidth="9" strokeLinecap="round" />
+        <circle cx="35" cy="17" r="8" fill="rgba(250,171,153,.76)" />
+        <circle cx="18" cy="37" r="7" fill="rgba(238,126,139,.7)" />
+        <circle cx="50" cy="28" r="7" fill="rgba(250,171,153,.72)" />
+        <circle cx="78" cy="31" r="7" fill="rgba(238,126,139,.68)" />
+        <circle cx="92" cy="43" r="6" fill="rgba(250,171,153,.68)" />
+      </g>
+
+      <g className="marketing-seaweed" fill="none" strokeLinecap="round">
+        <path d="M860 320C840 277 878 252 856 206C844 180 854 158 872 139" stroke="rgba(86,184,160,.46)" strokeWidth="9" />
+        <path d="M889 320C868 287 895 260 884 227C877 207 885 188 898 173" stroke="rgba(67,157,147,.4)" strokeWidth="7" />
+      </g>
+
+      <path className="marketing-starfish"
+        d="M790 149L799 168L820 162L808 180L824 194L803 191L796 212L789 191L767 195L783 180L771 163L792 168Z"
+        fill="rgba(251,183,132,.78)" stroke="rgba(255,216,178,.62)" strokeWidth="2" />
+    </svg>
   )
 }
 

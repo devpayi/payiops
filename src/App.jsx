@@ -725,6 +725,7 @@ export default function App() {
 
   const isLinksHubMode = activeTab === 'Links Hub'
   const hidePageTitleCard = activeTab === 'MarketingRadar'
+  const isSwanPastelPage = activeTab === 'Inventory' || activeTab === 'Stock Movement'
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f7fbff', fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif', color: 'var(--payi-text-strong)' }}>
@@ -774,6 +775,8 @@ export default function App() {
                       display: 'flex', alignItems: 'center', justifyContent: sidebarExpanded ? 'space-between' : 'center', flex: '1 1 0', width: '100%', padding: sidebarExpanded ? '7px 9px' : '7px 0', minHeight: 32, border: 'none', borderRadius: 10,
                       background: isActive
                           ? item.id === 'MarketingRadar'
+                          ? 'linear-gradient(135deg, #467fa8 0%, #4299aa 54%, #4ba99f 100%)'
+                          : item.id === 'Inventory' || item.id === 'Stock Movement'
                           ? 'linear-gradient(135deg, #7198d5 0%, #a782da 52%, #dc87b7 100%)'
                           : 'linear-gradient(135deg, var(--payi-mint) 0%, #34d399 100%)'
                         : 'transparent',
@@ -830,8 +833,8 @@ export default function App() {
         {/* HEADER TOP ROW — กล่องหัวไล่สีมนๆ สไตล์แอพธนาคาร ทั้ง desktop และมือถือ */}
         {!isLinksHubMode && <div className="payi-topbar" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: hidePageTitleCard ? 'flex-end' : 'space-between', gap: 18, marginBottom: hidePageTitleCard ? 12 : 18, alignItems: 'center' }}>
           {!hidePageTitleCard && <div style={{
-            width: isMobileViewport ? '100%' : 'auto', background: 'linear-gradient(120deg, var(--payi-mint) 0%, #34d399 100%)',
-            borderRadius: isMobileViewport ? 24 : 20, padding: isMobileViewport ? '18px 20px 20px' : '16px 26px', boxShadow: '0 14px 30px rgba(37,99,235,0.18)', boxSizing: 'border-box',
+            width: isMobileViewport ? '100%' : 'auto', background: isSwanPastelPage ? 'linear-gradient(120deg, #7198d5 0%, #a782da 52%, #dc87b7 100%)' : 'linear-gradient(120deg, var(--payi-mint) 0%, #34d399 100%)',
+            borderRadius: isMobileViewport ? 24 : 20, padding: isMobileViewport ? '18px 20px 20px' : '16px 26px', boxShadow: isSwanPastelPage ? '0 14px 30px rgba(146,111,195,0.2)' : '0 14px 30px rgba(37,99,235,0.18)', boxSizing: 'border-box',
           }}>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 6 }}>{pageMeta.eyebrow}</div>
             <div style={{ fontSize: 28, fontWeight: 850, letterSpacing: 0, color: '#fff', marginBottom: 4 }}>{pageMeta.title}</div>
