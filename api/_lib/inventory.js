@@ -6,6 +6,8 @@
 import { getSheet, appendRows, overwriteSheet, ensureSheet } from './sheets.js'
 import { isoDate } from './dates.js'
 import { getSkuRedirectMap, resolveRedirect } from './skuMapping.js'
+import { canManageOperations } from '../../shared/roles.js'
+import { authEnabled } from './auth.js'
 
 const ITEMS_SHEET = 'inventory_items'
 const MOVEMENTS_SHEET = 'stock_movements'
@@ -30,12 +32,20 @@ const MOVEMENTS_HISTORY_HEADERS = ['id', 'movement_id', 'before_json', 'after_js
 const PACKAGING_RECIPES_SHEET = 'packaging_recipes'
 const PACKAGING_RECIPES_HEADERS = ['packaging_sku', 'product_sku', 'qty_per_unit', 'created_at']
 
+// คิวของเข้ารอ match — ฟ้า (stock role) ลงว่าของอะไรเข้าวันไหน/นับวันไหน/เข้าเท่าไร หลังเห็นรูป
+// ที่หน้างานถ่ายลงกลุ่มไลน์ (คุยกันนอกระบบ ไม่ผูก LINE API) แล้วรอ boss (พี่หยก/พี่แต้ว) เข้ามา match
+// ยืนยันในเว็บ — match แล้วค่อยสร้างแถวจริงใน stock_movements (ไม่กระทบยอดคงเหลือจนกว่าจะ match)
+const STOCK_IN_REQUESTS_SHEET = 'stock_in_requests'
+const STOCK_IN_REQUESTS_HEADERS = ['id', 'sku', 'arrival_date', 'count_date', 'qty', 'note', 'status', 'created_by', 'created_at', 'matched_by', 'matched_at', 'movement_id', 'reject_reason']
+const STOCK_IN_STATUSES = new Set(['pending', 'matched', 'rejected'])
+
 let ensurePromise
 const ensureInventorySheets = () => ensurePromise ||= Promise.all([
   ensureSheet(ITEMS_SHEET, ITEMS_HEADERS),
   ensureSheet(MOVEMENTS_SHEET, MOVEMENTS_HEADERS),
   ensureSheet(PACKAGING_RECIPES_SHEET, PACKAGING_RECIPES_HEADERS),
   ensureSheet(MOVEMENTS_HISTORY_SHEET, MOVEMENTS_HISTORY_HEADERS),
+  ensureSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS),
 ])
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0 }
@@ -277,6 +287,137 @@ async function updateMovement(body, actorName) {
   return after
 }
 
+async function loadStockInRequests({ status } = {}) {
+  await ensureInventorySheets()
+  const [rows, items] = await Promise.all([getSheet(STOCK_IN_REQUESTS_SHEET), getSheet(ITEMS_SHEET)])
+  const nameBySku = new Map(items.map((it) => [String(it.sku), it.display_name || it.sku]))
+  let out = rows.map((r) => ({
+    id: r.id,
+    sku: r.sku,
+    display_name: nameBySku.get(String(r.sku)) || r.sku,
+    arrival_date: isoDate(r.arrival_date),
+    count_date: isoDate(r.count_date),
+    qty: num(r.qty),
+    note: r.note || '',
+    status: r.status || 'pending',
+    created_by: r.created_by || '',
+    created_at: r.created_at || '',
+    matched_by: r.matched_by || '',
+    matched_at: r.matched_at || '',
+    reject_reason: r.reject_reason || '',
+  }))
+  if (status) out = out.filter((r) => r.status === status)
+  out.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+  return out
+}
+
+async function addStockInRequest(body, actorName) {
+  const sku = String(body.sku || '').trim()
+  const qty = Number(body.qty)
+  if (!sku) throw new Error('ต้องระบุสินค้า')
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error('ต้องระบุจำนวน')
+
+  await ensureInventorySheets()
+  const items = await getSheet(ITEMS_SHEET)
+  if (!items.some((it) => String(it.sku) === sku)) throw new Error('ไม่พบสินค้านี้ในระบบ')
+
+  const now = new Date().toISOString()
+  const row = {
+    id: genId(),
+    sku,
+    arrival_date: isoDate(body.arrival_date) || todayBKK(),
+    count_date: isoDate(body.count_date) || '',
+    qty,
+    note: body.note || '',
+    status: 'pending',
+    created_by: actorName || '',
+    created_at: now,
+  }
+  await appendRows(STOCK_IN_REQUESTS_SHEET, [STOCK_IN_REQUESTS_HEADERS.map((h) => row[h] ?? '')])
+  return row
+}
+
+// boss match ยืนยัน — สร้างแถวจริงใน stock_movements (type=in) แล้ว mark คำขอเป็น matched
+// รับ qty ทับได้ (ถ้านับจริงไม่ตรงกับที่ฟ้าลงไว้ก่อนหน้า) — ไม่บังคับต้องเท่าเดิม
+async function matchStockInRequest(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ match ได้')
+  const id = String(body.id || '').trim()
+  if (!id) throw new Error('ต้องระบุ id')
+
+  await ensureInventorySheets()
+  const requests = await getSheet(STOCK_IN_REQUESTS_SHEET)
+  const idx = requests.findIndex((r) => String(r.id) === id)
+  if (idx === -1) throw new Error('ไม่พบคำขอนี้')
+  const req = requests[idx]
+  if (req.status !== 'pending') throw new Error('คำขอนี้ถูกดำเนินการไปแล้ว')
+
+  const qty = body.qty !== undefined ? Number(body.qty) : num(req.qty)
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error('ต้องระบุจำนวน')
+
+  const movement = await addMovement({
+    sku: req.sku,
+    type: 'in',
+    qty,
+    date: req.count_date || req.arrival_date,
+    note: body.note || `รับเข้าจากคำขอของ ${req.created_by || '-'}${req.note ? ` — ${req.note}` : ''}`,
+  }, actorName)
+
+  const now = new Date().toISOString()
+  requests[idx] = { ...req, status: 'matched', matched_by: actorName || '', matched_at: now, movement_id: movement.id }
+  await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
+  return requests[idx]
+}
+
+async function rejectStockInRequest(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ปฏิเสธได้')
+  const id = String(body.id || '').trim()
+  if (!id) throw new Error('ต้องระบุ id')
+
+  await ensureInventorySheets()
+  const requests = await getSheet(STOCK_IN_REQUESTS_SHEET)
+  const idx = requests.findIndex((r) => String(r.id) === id)
+  if (idx === -1) throw new Error('ไม่พบคำขอนี้')
+  if (requests[idx].status !== 'pending') throw new Error('คำขอนี้ถูกดำเนินการไปแล้ว')
+
+  const now = new Date().toISOString()
+  requests[idx] = { ...requests[idx], status: 'rejected', matched_by: actorName || '', matched_at: now, reject_reason: body.note || '' }
+  await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
+  return requests[idx]
+}
+
+// ฟ้าแก้ไขคำขอที่ถูกปฏิเสธแล้วส่งกลับเข้าคิวรอ match ใหม่ — ไม่ต้องพิมพ์แจ้งของเข้าใหม่ทั้งหมด
+async function editStockInRequest(body, actorName) {
+  const id = String(body.id || '').trim()
+  if (!id) throw new Error('ต้องระบุ id')
+
+  await ensureInventorySheets()
+  const [requests, items] = await Promise.all([getSheet(STOCK_IN_REQUESTS_SHEET), getSheet(ITEMS_SHEET)])
+  const idx = requests.findIndex((r) => String(r.id) === id)
+  if (idx === -1) throw new Error('ไม่พบคำขอนี้')
+  if (requests[idx].status !== 'rejected') throw new Error('แก้ไขได้เฉพาะคำขอที่ถูกปฏิเสธ')
+
+  const sku = String(body.sku || requests[idx].sku).trim()
+  const qty = Number(body.qty)
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error('ต้องระบุจำนวน')
+  if (!items.some((it) => String(it.sku) === sku)) throw new Error('ไม่พบสินค้านี้ในระบบ')
+
+  requests[idx] = {
+    ...requests[idx],
+    sku,
+    qty,
+    arrival_date: isoDate(body.arrival_date) || requests[idx].arrival_date,
+    count_date: body.count_date !== undefined ? (isoDate(body.count_date) || '') : requests[idx].count_date,
+    note: body.note !== undefined ? body.note : requests[idx].note,
+    status: 'pending',
+    created_by: actorName || requests[idx].created_by,
+    matched_by: '',
+    matched_at: '',
+    reject_reason: '',
+  }
+  await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
+  return requests[idx]
+}
+
 async function loadPackagingRecipes() {
   await ensureInventorySheets()
   const [rows, items] = await Promise.all([getSheet(PACKAGING_RECIPES_SHEET), getSheet(ITEMS_SHEET)])
@@ -322,9 +463,14 @@ async function deletePackagingRecipe(body) {
 export default async function opInventory(req, res) {
   try {
     const actorName = req.user?.name || req.user?.u || ''
+    const role = req.user?.role
 
     if (req.method === 'GET') {
       const view = String(req.query.view || 'items')
+      if (view === 'stock-in-requests') {
+        const rows = await loadStockInRequests({ status: req.query.status })
+        return res.status(200).json({ success: true, requests: rows })
+      }
       if (view === 'movements') {
         const rows = await loadMovements({
           type: req.query.type,
@@ -355,6 +501,22 @@ export default async function opInventory(req, res) {
       if (action === 'update-movement') {
         const result = await updateMovement(req.body, actorName)
         return res.status(200).json({ success: true, movement: result })
+      }
+      if (action === 'create-stock-in-request') {
+        const result = await addStockInRequest(req.body, actorName)
+        return res.status(200).json({ success: true, request: result })
+      }
+      if (action === 'match-stock-in-request') {
+        const result = await matchStockInRequest(req.body, actorName, role)
+        return res.status(200).json({ success: true, request: result })
+      }
+      if (action === 'reject-stock-in-request') {
+        const result = await rejectStockInRequest(req.body, actorName, role)
+        return res.status(200).json({ success: true, request: result })
+      }
+      if (action === 'edit-stock-in-request') {
+        const result = await editStockInRequest(req.body, actorName)
+        return res.status(200).json({ success: true, request: result })
       }
       if (action === 'upsert-recipe') {
         const result = await upsertPackagingRecipe(req.body)

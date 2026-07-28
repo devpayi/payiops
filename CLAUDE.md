@@ -475,6 +475,39 @@ a new one.
      underlying pattern as the earlier `appendRows`-to-`product_aliases` blank-columns
      gotcha — treat immediate-read-after-write on Sheets as eventually consistent, not
      synchronous, for any bulk operation.
+   - ✅ **DONE (2026-07-28) — of-goods-arrival "แจ้งของเข้า → Match" queue**, owner's real
+     workflow: พี่หยกลงวันที่/รายการ/จำนวน on paper → goods arrive, photo posted to a LINE
+     group (that part stays outside the app, owner explicitly said "ไม่ต้องผ่านไลน์" — no
+     LINE bot integration) → ฟ้า (the `stock` role) logs the arrival in the web app (sku,
+     arrival date, count date, qty) → it shows as pending until พี่หยก/พี่แต้ว (`boss` role)
+     match-confirms it, which is what actually creates the real `stock_movements` (type
+     `in`) row and moves the balance. New `stock_in_requests` sheet
+     (`api/_lib/inventory.js`: `id, sku, arrival_date, count_date, qty, note, status,
+     created_by, created_at, matched_by, matched_at, movement_id`, `ensureSheet`-created,
+     same append-only-headers rule as the rest of this file) holds pending/matched/rejected
+     rows — a pending row has **zero effect on balance** until matched, so a wrong or
+     duplicate arrival report never silently corrupts stock. `op=inventory` gained
+     `view=stock-in-requests` (GET) and 3 actions: `create-stock-in-request` (any logged-in
+     role — this is the point, ฟ้า/staff can report without needing boss/dev access),
+     `match-stock-in-request` (creates the real movement, boss/dev only via
+     `canManageOperations`, qty editable at match time in case the physical count differs
+     from what was first reported), `reject-stock-in-request` (boss/dev only). **Gotcha hit
+     while building this:** the manager-only check inside `inventory.js` used
+     `canManageOperations(role)` unconditionally, but local dev has no `AUTH_SECRET` (auth
+     disabled) so `req.user` is `undefined` and `role` came through as `undefined` →
+     `normalizeRole` defaults that to `staff` → match got rejected for the owner's own dev
+     session. Fixed to only enforce when `authEnabled()` is true, same short-circuit
+     pattern every other role guard in this codebase already uses (e.g.
+     `requireAdmin`/`requireScheduleEditor` in `sheet-tools.js`) — don't gate on
+     `canManageOperations(role)` alone in a new endpoint, always pair it with
+     `authEnabled() &&`. UI: `StockMovement.jsx` gained a "แจ้งของเข้า" button (anyone) and
+     a "ของเข้ารอ Match" panel showing pending requests, with Match/ปฏิเสธ buttons visible
+     only to `isBoss` (same `!authEnabled || canManageOperations(currentUser?.role)` pattern
+     `WorkforceOT.jsx` already uses for its own boss-gated actions). Verified live end-to-end
+     against the real Sheet (create → match → real movement appeared with correct balance
+     delta); the test row's effect was reverted with a compensating `adjust` movement
+     afterward, same manual-cleanup pattern as the "revert test correction" row already
+     visible in `stock_movements` history from an earlier session.
 8. ✅ **REMOVED (2026-07-21)** — "PAYI Brain" AI Assistant tab was fake (canned
    if/else replies, no LLM call). Owner decided to delete rather than keep a
    fake-AI page (`AIAssistantView` function, menu item, icon mapping, ternary branch

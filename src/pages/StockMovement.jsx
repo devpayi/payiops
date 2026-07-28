@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeftRight, Download, Pencil, Plus, Search, X } from 'lucide-react'
+import { ArrowLeftRight, Check, Download, Pencil, Plus, Search, Truck, X } from 'lucide-react'
+import { canManageOperations } from '../../shared/roles.js'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
 const fmtDateTime = (iso) => {
@@ -37,8 +38,14 @@ function toCsv(rows) {
 const ABC_RANK = { A: 0, B: 1, C: 2 }
 
 export default function StockMovement() {
+  const [authEnabled, setAuthEnabled] = useState(true)
+  useEffect(() => { fetch('/api/auth?action=status').then((r) => r.json()).then((d) => setAuthEnabled(!!d.enabled)).catch(() => {}) }, [])
+  const currentUser = (() => { try { return JSON.parse(localStorage.getItem('payi-user') || 'null') } catch { return null } })()
+  const isBoss = !authEnabled || canManageOperations(currentUser?.role)
+
   const [movements, setMovements] = useState([])
   const [items, setItems] = useState([])
+  const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -48,6 +55,13 @@ export default function StockMovement() {
   const [toDate, setToDate] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [showAddRequest, setShowAddRequest] = useState(false)
+  const [matching, setMatching] = useState(null)
+  const [rejecting, setRejecting] = useState(null)
+  const [editingRequest, setEditingRequest] = useState(null)
+
+  const pendingRequests = useMemo(() => requests.filter((r) => r.status === 'pending'), [requests])
+  const rejectedRequests = useMemo(() => requests.filter((r) => r.status === 'rejected'), [requests])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -62,10 +76,12 @@ export default function StockMovement() {
       fetch(`/api/sheet-tools?op=inventory&${params.toString()}`).then((r) => r.json()),
       fetch('/api/sheet-tools?op=inventory&view=items').then((r) => r.json()),
       fetch('/api/planner-sales?days=30').then((r) => r.json()).catch(() => null),
+      fetch('/api/sheet-tools?op=inventory&view=stock-in-requests').then((r) => r.json()).catch(() => null),
     ])
-      .then(([moveData, itemData, planner]) => {
+      .then(([moveData, itemData, planner, requestData]) => {
         if (!moveData.success) throw new Error(moveData.error || 'โหลดข้อมูลไม่สำเร็จ')
         setMovements(moveData.movements || [])
+        setRequests(requestData?.success ? requestData.requests || [] : [])
 
         // เรียงสินค้าตาม ABC (จาก /api/planner-sales — ยอดขาย 30 วันล่าสุด) ให้ของขายดี (A)
         // ขึ้นก่อนตอนเลือกสินค้าบันทึกรายการ — ของที่หยิบบ่อยควรอยู่บนสุด ไม่ใช่เรียงตามชื่อ
@@ -132,6 +148,86 @@ export default function StockMovement() {
     }
   }
 
+  const saveRequest = async (payload) => {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/sheet-tools?op=inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create-stock-in-request', ...payload }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'บันทึกไม่สำเร็จ')
+      setShowAddRequest(false)
+      load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const confirmMatch = async (payload) => {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/sheet-tools?op=inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'match-stock-in-request', id: matching.id, ...payload }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'match ไม่สำเร็จ')
+      setMatching(null)
+      load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const confirmReject = async (payload) => {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/sheet-tools?op=inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reject-stock-in-request', id: rejecting.id, ...payload }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'ปฏิเสธไม่สำเร็จ')
+      setRejecting(null)
+      load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveEditRequest = async (payload) => {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/sheet-tools?op=inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'edit-stock-in-request', id: editingRequest.id, ...payload }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'บันทึกไม่สำเร็จ')
+      setEditingRequest(null)
+      load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const exportCsv = () => {
     const csv = toCsv(movements)
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -148,6 +244,9 @@ export default function StockMovement() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <span style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>{movements.length} รายการ</span>
         <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => setShowAddRequest(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', color: 'var(--payi-text)', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            <Truck size={14} /> แจ้งของเข้า
+          </button>
           <button onClick={exportCsv} disabled={!movements.length} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', color: 'var(--payi-text)', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: movements.length ? 'pointer' : 'not-allowed', opacity: movements.length ? 1 : 0.5 }}>
             <Download size={14} /> Export CSV
           </button>
@@ -159,6 +258,64 @@ export default function StockMovement() {
 
       {error && (
         <div style={{ background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', borderRadius: 12, padding: '10px 14px', fontSize: 13 }}>{error}</div>
+      )}
+
+      {pendingRequests.length > 0 && (
+        <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 18, padding: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+            <Truck size={16} style={{ color: 'var(--payi-mint-strong)' }} />
+            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>ของเข้ารอ Match ({pendingRequests.length})</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {pendingRequests.map((r) => (
+              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 14px' }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name} <span style={{ fontWeight: 800, color: 'var(--payi-mint-strong)' }}>+{fmt(r.qty)}</span></div>
+                  <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>
+                    เข้า {r.arrival_date || '-'} · นับ {r.count_date || '-'} · แจ้งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}
+                  </div>
+                </div>
+                {isBoss && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => setMatching(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
+                      <Check size={13} /> Match
+                    </button>
+                    <button onClick={() => setRejecting(r)} style={{ background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-danger)' }}>
+                      ปฏิเสธ
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {rejectedRequests.length > 0 && (
+        <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-danger-bg)', borderRadius: 18, padding: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+            <X size={16} style={{ color: 'var(--payi-danger)' }} />
+            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>ถูกปฏิเสธ — แก้ไขแล้วส่งใหม่ได้ ({rejectedRequests.length})</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {rejectedRequests.map((r) => (
+              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 14px' }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name} <span style={{ fontWeight: 800, color: 'var(--payi-text-muted)' }}>{fmt(r.qty)}</span></div>
+                  <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>
+                    เข้า {r.arrival_date || '-'} · นับ {r.count_date || '-'} · แจ้งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}
+                  </div>
+                  {r.reject_reason && (
+                    <div style={{ fontSize: 11.5, color: 'var(--payi-danger)', marginTop: 3 }}>เหตุผลปฏิเสธ: {r.reject_reason}</div>
+                  )}
+                </div>
+                <button onClick={() => setEditingRequest(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
+                  <Pencil size={13} /> แก้ไข & ส่งใหม่
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 18, padding: 20 }}>
@@ -234,6 +391,154 @@ export default function StockMovement() {
       {editing && (
         <AddMovementModal items={items} saving={saving} initial={editing} onClose={() => setEditing(null)} onSave={saveEdit} />
       )}
+      {showAddRequest && (
+        <StockInRequestModal items={items} saving={saving} onClose={() => setShowAddRequest(false)} onSave={saveRequest} />
+      )}
+      {matching && (
+        <MatchRequestModal request={matching} saving={saving} onClose={() => setMatching(null)} onSave={confirmMatch} />
+      )}
+      {rejecting && (
+        <RejectRequestModal request={rejecting} saving={saving} onClose={() => setRejecting(null)} onSave={confirmReject} />
+      )}
+      {editingRequest && (
+        <StockInRequestModal items={items} saving={saving} initial={editingRequest} onClose={() => setEditingRequest(null)} onSave={saveEditRequest} />
+      )}
+    </div>
+  )
+}
+
+function RejectRequestModal({ request, saving, onClose, onSave }) {
+  const [note, setNote] = useState('')
+
+  const submit = (e) => {
+    e.preventDefault()
+    onSave({ note })
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.28)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', zIndex: 999 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--payi-surface)', borderRadius: 16, padding: 24, width: 420, maxWidth: '92vw', boxShadow: '0 20px 60px rgba(15,23,42,0.2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--payi-text-strong)' }}>ปฏิเสธ — {request.display_name}</div>
+          <button onClick={onClose} style={{ border: 'none', background: 'var(--payi-border)', borderRadius: '50%', width: 28, height: 28, display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
+            <X size={14} />
+          </button>
+        </div>
+        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={labelStyle}>เหตุผลที่ปฏิเสธ (ฟ้าจะเห็นตอนแก้ไข)</label>
+            <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="เช่น จำนวนไม่ตรง, สินค้าผิด" />
+          </div>
+          <button type="submit" disabled={saving} style={{ marginTop: 6, background: 'var(--payi-danger)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 16px', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'กำลังบันทึก...' : 'ยืนยันปฏิเสธ'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function StockInRequestModal({ items, saving, initial, onClose, onSave }) {
+  const isEdit = !!initial
+  const [sku, setSku] = useState(initial?.sku || items[0]?.sku || '')
+  const [qty, setQty] = useState(initial ? String(initial.qty) : '')
+  const [arrivalDate, setArrivalDate] = useState(initial?.arrival_date || (() => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }))())
+  const [countDate, setCountDate] = useState(initial?.count_date || '')
+  const [note, setNote] = useState(initial?.note || '')
+
+  const submit = (e) => {
+    e.preventDefault()
+    if (!sku || !qty || Number(qty) <= 0) return
+    onSave({ sku, qty, arrival_date: arrivalDate, count_date: countDate, note })
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.28)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', zIndex: 999 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--payi-surface)', borderRadius: 16, padding: 24, width: 420, maxWidth: '92vw', boxShadow: '0 20px 60px rgba(15,23,42,0.2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--payi-text-strong)' }}>{isEdit ? `แก้ไข & ส่งใหม่ — ${initial.display_name}` : 'แจ้งของเข้า'}</div>
+          <button onClick={onClose} style={{ border: 'none', background: 'var(--payi-border)', borderRadius: '50%', width: 28, height: 28, display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
+            <X size={14} />
+          </button>
+        </div>
+        {isEdit && initial.reject_reason && (
+          <div style={{ background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', borderRadius: 10, padding: '8px 12px', fontSize: 12.5, marginBottom: 14 }}>
+            เหตุผลที่ถูกปฏิเสธ: {initial.reject_reason}
+          </div>
+        )}
+        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={labelStyle}>สินค้า</label>
+            <select value={sku} onChange={(e) => setSku(e.target.value)} required style={{ ...inputStyle, width: '100%' }}>
+              {items.length === 0 && <option value="">ยังไม่มีสินค้า</option>}
+              {items.map((it) => (
+                <option key={it.sku} value={it.sku}>{it.abc ? `[${it.abc}] ` : ''}{it.display_name} ({it.sku})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>จำนวนที่เข้า</label>
+            <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} required style={{ ...inputStyle, width: '100%' }} placeholder="0" />
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>วันของเข้า</label>
+              <input type="date" value={arrivalDate} onChange={(e) => setArrivalDate(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>วันนับ</label>
+              <input type="date" value={countDate} onChange={(e) => setCountDate(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>หมายเหตุ</label>
+            <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="ไม่บังคับ" />
+          </div>
+          <button type="submit" disabled={saving || !items.length} style={{ marginTop: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 16px', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: saving ? 0.6 : 1, boxShadow: '0 8px 18px rgba(37,99,235,0.22)' }}>
+            {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function MatchRequestModal({ request, saving, onClose, onSave }) {
+  const [qty, setQty] = useState(String(request.qty))
+  const [note, setNote] = useState('')
+
+  const submit = (e) => {
+    e.preventDefault()
+    if (!qty || Number(qty) <= 0) return
+    onSave({ qty, note })
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.28)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', zIndex: 999 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--payi-surface)', borderRadius: 16, padding: 24, width: 420, maxWidth: '92vw', boxShadow: '0 20px 60px rgba(15,23,42,0.2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--payi-text-strong)' }}>Match — {request.display_name}</div>
+          <button onClick={onClose} style={{ border: 'none', background: 'var(--payi-border)', borderRadius: '50%', width: 28, height: 28, display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
+            <X size={14} />
+          </button>
+        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--payi-text-muted)', marginBottom: 14 }}>
+          เข้า {request.arrival_date || '-'} · นับ {request.count_date || '-'} · แจ้งโดย {request.created_by || '-'}{request.note ? ` · ${request.note}` : ''}
+        </div>
+        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={labelStyle}>จำนวนที่นับจริง (แก้ได้ถ้าไม่ตรง)</label>
+            <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} required style={{ ...inputStyle, width: '100%' }} />
+          </div>
+          <div>
+            <label style={labelStyle}>หมายเหตุ</label>
+            <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="ไม่บังคับ" />
+          </div>
+          <button type="submit" disabled={saving} style={{ marginTop: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 16px', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: saving ? 0.6 : 1, boxShadow: '0 8px 18px rgba(37,99,235,0.22)' }}>
+            {saving ? 'กำลังยืนยัน...' : 'ยืนยัน Match'}
+          </button>
+        </form>
+      </div>
     </div>
   )
 }
