@@ -5,8 +5,10 @@ import { google } from 'googleapis'
 let client
 
 // ลด round-trip ไป Google Sheets เมื่อหลาย widget ขอ tab เดียวกันพร้อมกัน
-// อายุสั้นพอให้ข้อมูลสด และ mutation ด้านล่างจะล้าง cache ทันที
-const SHEET_CACHE_MS = 120_000
+// mutation ด้านล่างจะล้าง cache ทันทีอยู่แล้ว ดังนั้นยืด TTL ได้โดยไม่เสียความสด (แค่ลดหน้าต่าง
+// ที่ instance อื่น — เช่น serverless cold start ใหม่ — จะเห็นข้อมูลที่คนอื่นเขียนไปหมาดๆ)
+// ยืดจาก 120s เป็น 300s หลังชน quota "Read requests per minute per user" ของ Sheets API จริง
+const SHEET_CACHE_MS = 300_000
 const sheetCache = new Map()
 const sheetInflight = new Map()
 const sheetVersion = new Map()

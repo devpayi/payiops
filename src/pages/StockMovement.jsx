@@ -68,7 +68,7 @@ export default function StockMovement() {
   const pendingRequests = useMemo(() => requests.filter((r) => r.status === 'pending' && !r.order_only), [requests])
   const rejectedRequests = useMemo(() => requests.filter((r) => r.status === 'rejected'), [requests])
 
-  const load = useCallback(() => {
+  const loadMovements = useCallback(() => {
     setLoading(true)
     setError('')
     const params = new URLSearchParams({ view: 'movements' })
@@ -77,15 +77,25 @@ export default function StockMovement() {
     if (toDate) params.set('to', toDate)
     if (query.trim()) params.set('q', query.trim())
 
-    Promise.all([
-      fetch(`/api/sheet-tools?op=inventory&${params.toString()}`).then((r) => r.json()),
+    return fetch(`/api/sheet-tools?op=inventory&${params.toString()}`).then((r) => r.json())
+      .then((moveData) => {
+        if (!moveData.success) throw new Error(moveData.error || 'โหลดข้อมูลไม่สำเร็จ')
+        setMovements(moveData.movements || [])
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [typeFilter, fromDate, toDate, query])
+
+  // สินค้า/ABC/คิว match ไม่ได้ขึ้นกับตัวกรองค้นหาเลย — แยกจาก loadMovements ไม่งั้นพิมพ์ค้นหา
+  // ทีนึงจะยิง /api/sheet-tools + /api/planner-sales ซ้ำทุก keystroke โดยไม่จำเป็น (เจอ Sheets API
+  // quota "Read requests per minute" เกินมาแล้วจากพฤติกรรมนี้) — โหลดแค่ตอน mount + หลัง mutation จริงๆ
+  const loadSupporting = useCallback(() => {
+    return Promise.all([
       fetch('/api/sheet-tools?op=inventory&view=items').then((r) => r.json()),
       fetch('/api/planner-sales?days=30').then((r) => r.json()).catch(() => null),
       fetch('/api/sheet-tools?op=inventory&view=stock-in-requests').then((r) => r.json()).catch(() => null),
     ])
-      .then(([moveData, itemData, planner, requestData]) => {
-        if (!moveData.success) throw new Error(moveData.error || 'โหลดข้อมูลไม่สำเร็จ')
-        setMovements(moveData.movements || [])
+      .then(([itemData, planner, requestData]) => {
         setRequests(requestData?.success ? requestData.requests || [] : [])
 
         // เรียงสินค้าตาม ABC (จาก /api/planner-sales — ยอดขาย 30 วันล่าสุด) ให้ของขายดี (A)
@@ -105,13 +115,24 @@ export default function StockMovement() {
         setItems(withAbc)
       })
       .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [typeFilter, fromDate, toDate, query])
+  }, [])
+
+  // load() = รีเฟรชทั้งหน้า ใช้ตอน mount ครั้งแรก + หลัง mutation ใดๆ (เพิ่ม/แก้/match/ปฏิเสธ/ฯลฯ)
+  const load = useCallback(() => {
+    setLoading(true)
+    return Promise.all([loadMovements(), loadSupporting()]).finally(() => setLoading(false))
+  }, [loadMovements, loadSupporting])
 
   useEffect(() => {
-    const t = setTimeout(load, query ? 300 : 0) // debounce เฉพาะตอนพิมพ์ค้นหา
+    loadSupporting()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    setLoading(true)
+    const t = setTimeout(loadMovements, query ? 300 : 0) // debounce เฉพาะตอนพิมพ์ค้นหา
     return () => clearTimeout(t)
-  }, [load, query])
+  }, [loadMovements, query])
 
   const saveMovement = async (payload) => {
     setSaving(true)
