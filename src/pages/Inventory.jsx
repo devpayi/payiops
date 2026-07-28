@@ -689,7 +689,6 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
   )
   const [openingBalance, setOpeningBalance] = useState(isEdit ? '' : '0')
   const [reorderNote, setReorderNote] = useState(initial?.reorder_date || '')
-  const [reorderQty, setReorderQty] = useState('')
   // นับสต็อกจริงไม่ตรง — แก้ตรงนี้เลยแทนป็อปอัพแยก บันทึกเป็นรายการ adjust แยกประวัติเสมอ
   const [actualBalance, setActualBalance] = useState(initial?.balance ?? '')
   const [correctionNote, setCorrectionNote] = useState('')
@@ -715,7 +714,6 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
     if (isPackaging) { payload.units_per_batch = unitsPerBatch; payload.buffer_percent = bufferPercent }
     if (isEdit) {
       payload.reorder_date = reorderNote
-      if (reorderQty !== '') { payload.reorder_qty = reorderQty; payload.reorder_note = reorderNote }
       payload.lead_time_production = leadProd
       payload.lead_time_transport = leadTransport
       payload.ship_freight = shipFreight
@@ -865,8 +863,6 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
                   style={inputStyle}
                   placeholder="เช่น สั่งแล้ว 2 ล็อต ล็อตแรกมา 200/500 รออีก 300 ต้นเดือน"
                 />
-                <label style={{ ...labelStyle, marginTop: 10 }}>สั่งของรอบนี้กี่ชิ้น (กรอกถ้าเพิ่งสั่งไป — ขึ้นคิว "รอ Match" ให้ boss เห็น ฟ้าไม่เห็น)</label>
-                <input type="number" value={reorderQty} onChange={(e) => setReorderQty(e.target.value)} style={inputStyle} placeholder="เว้นว่างถ้าไม่ได้สั่งรอบนี้" />
               </div>
             )}
           </div>
@@ -886,8 +882,6 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
               style={inputStyle}
               placeholder="เช่น สั่งแล้ว 2 ล็อต ล็อตแรกมา 200/500 รออีก 300 ต้นเดือน"
             />
-            <label style={{ ...labelStyle, marginTop: 10 }}>สั่งของรอบนี้กี่ชิ้น (กรอกถ้าเพิ่งสั่งไป — ขึ้นคิว "รอ Match" ให้ boss เห็น ฟ้าไม่เห็น)</label>
-            <input type="number" value={reorderQty} onChange={(e) => setReorderQty(e.target.value)} style={inputStyle} placeholder="เว้นว่างถ้าไม่ได้สั่งรอบนี้" />
           </div>
         )}
         {isEdit && !isPackaging && (

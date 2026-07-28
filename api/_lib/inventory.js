@@ -213,37 +213,62 @@ async function upsertItem(body, actorName) {
     row.updated_at = now
   }
   await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
-
-  // boss กรอก "วันเติมสินค้า/รอเช็ค" + จำนวนที่สั่ง (สั่งของจริง) — ขึ้นคิว "รอ Match" ทันที
-  // (arrival_date/count_date ว่างไว้ก่อน แปลว่า "สั่งแล้ว รอของเข้า") ไม่ต้องรอฟ้ามาแจ้งของเข้าใหม่
-  // ทับ/แก้ไข ก็แค่อัปเดตแถวเดิมที่ยังไม่มีคนมาลงวันของเข้า ไม่สร้างซ้ำ
-  if (idx !== -1 && body.reorder_qty !== undefined && Number(body.reorder_qty) > 0) {
-    await syncOrderToPendingRequest(sku, Number(body.reorder_qty), body.reorder_note, actorName)
-  }
   return { sku }
 }
 
-async function syncOrderToPendingRequest(sku, qty, note, actorName) {
-  const requests = await getSheet(STOCK_IN_REQUESTS_SHEET)
+// boss กด "สั่งของ" (ปุ่มแยกจาก "แจ้งของเข้า" บนหน้า Stock Movement) — สร้าง/อัปเดตแถว
+// pending ที่ arrival_date/count_date ว่างไว้ก่อน ("สั่งแล้ว รอของเข้า") ทับแถวเดิมที่ยังไม่มี
+// คนมาลงวันของเข้า แทนสร้างซ้ำถ้าสั่งของ sku เดิมอีกรอบก่อนของรอบแรกจะมา
+async function createOrderRequest(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่สั่งของได้')
+  const sku = String(body.sku || '').trim()
+  const qty = Number(body.qty)
+  if (!sku) throw new Error('ต้องระบุสินค้า')
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error('ต้องระบุจำนวน')
+
+  await ensureInventorySheets()
+  const [items, requests] = await Promise.all([getSheet(ITEMS_SHEET), getSheet(STOCK_IN_REQUESTS_SHEET)])
+  if (!items.some((it) => String(it.sku) === sku)) throw new Error('ไม่พบสินค้านี้ในระบบ')
+
   const idx = requests.findIndex((r) => String(r.sku) === sku && r.status === 'pending' && !r.arrival_date)
-  const now = new Date().toISOString()
   if (idx !== -1) {
-    requests[idx] = { ...requests[idx], qty, note: note || requests[idx].note }
+    requests[idx] = { ...requests[idx], qty, note: body.note || requests[idx].note }
     await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
-  } else {
-    const row = {
-      id: genId(),
-      sku,
-      arrival_date: '',
-      count_date: '',
-      qty,
-      note: note || '',
-      status: 'pending',
-      created_by: actorName || '',
-      created_at: now,
-    }
-    await appendRows(STOCK_IN_REQUESTS_SHEET, [STOCK_IN_REQUESTS_HEADERS.map((h) => row[h] ?? '')])
+    return requests[idx]
   }
+  const now = new Date().toISOString()
+  const row = {
+    id: genId(),
+    sku,
+    arrival_date: '',
+    count_date: '',
+    qty,
+    note: body.note || '',
+    status: 'pending',
+    created_by: actorName || '',
+    created_at: now,
+  }
+  await appendRows(STOCK_IN_REQUESTS_SHEET, [STOCK_IN_REQUESTS_HEADERS.map((h) => row[h] ?? '')])
+  return row
+}
+
+// ปิดรายการ "สั่งของ" ที่ของมาครบ/เคลียร์แล้วด้วยตัวเอง — ไม่สร้าง stock_movements (เพราะยอดจริง
+// เข้าไปแล้วผ่านการที่ฟ้า "แจ้งของเข้า" + boss match แยกต่างหาก) แค่ปิดรายการติดตามให้หายไปจากคิว
+async function finishOrderRequest(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ปิดรายการได้')
+  const id = String(body.id || '').trim()
+  if (!id) throw new Error('ต้องระบุ id')
+
+  await ensureInventorySheets()
+  const requests = await getSheet(STOCK_IN_REQUESTS_SHEET)
+  const idx = requests.findIndex((r) => String(r.id) === id)
+  if (idx === -1) throw new Error('ไม่พบคำขอนี้')
+  if (requests[idx].status !== 'pending' || requests[idx].arrival_date) throw new Error('ปิดได้เฉพาะรายการสั่งของที่ยังไม่มีของเข้า')
+
+  const now = new Date().toISOString()
+  requests[idx] = { ...requests[idx], status: 'done', matched_by: actorName || '', matched_at: now }
+  await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
+  return requests[idx]
 }
 
 async function addMovement(body, actorName) {
@@ -559,6 +584,14 @@ export default async function opInventory(req, res) {
       }
       if (action === 'edit-stock-in-request') {
         const result = await editStockInRequest(req.body, actorName, role)
+        return res.status(200).json({ success: true, request: result })
+      }
+      if (action === 'create-order-request') {
+        const result = await createOrderRequest(req.body, actorName, role)
+        return res.status(200).json({ success: true, request: result })
+      }
+      if (action === 'finish-stock-in-request') {
+        const result = await finishOrderRequest(req.body, actorName, role)
         return res.status(200).json({ success: true, request: result })
       }
       if (action === 'upsert-recipe') {
