@@ -19,7 +19,7 @@ const TYPE_STYLE = {
 
 function TypeBadge({ type }) {
   const s = TYPE_STYLE[type] || TYPE_STYLE.adjust
-  return <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 999, background: s.bg, color: s.color }}>{TYPE_LABEL[type] || type}</span>
+  return <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 999, background: s.bg, color: s.color, whiteSpace: 'nowrap', display: 'inline-block' }}>{TYPE_LABEL[type] || type}</span>
 }
 
 const inputStyle = { border: '1px solid var(--payi-border)', borderRadius: 10, padding: '9px 12px', fontSize: 13, outline: 'none', boxSizing: 'border-box' }
@@ -60,6 +60,18 @@ export default function StockMovement() {
   const [rejecting, setRejecting] = useState(null)
   const [editingRequest, setEditingRequest] = useState(null)
   const [showOrderRequest, setShowOrderRequest] = useState(false)
+  const [expandedRows, setExpandedRows] = useState(() => new Set())
+  const [isNarrow, setIsNarrow] = useState(() => window.innerWidth <= 640)
+  useEffect(() => {
+    const onResize = () => setIsNarrow(window.innerWidth <= 640)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  const toggleExpanded = (id) => setExpandedRows((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
 
   // order_only = พี่หยกกด "สั่งของ" ไว้ (คนละปุ่มกับ "แจ้งของเข้า") แต่ยังไม่มีคนแจ้งของเข้าจริง —
   // API กรองไม่ส่งมาให้ role ที่ไม่ใช่ boss/dev อยู่แล้ว (ไม่ให้ฟ้าเห็นจำนวนที่สั่งไว้ล่วงหน้า
@@ -493,6 +505,41 @@ export default function StockMovement() {
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>
             <ArrowLeftRight size={28} style={{ marginBottom: 10, opacity: 0.4 }} />
             <div>ยังไม่มีรายการเข้า-ออก</div>
+          </div>
+        ) : isNarrow ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {movements.map((m) => {
+              const expanded = expandedRows.has(m.id)
+              return (
+                <div key={m.id} onClick={() => toggleExpanded(m.id)} style={{ border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 12px', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>{fmtDateTime(m.created_at) || m.date}</span>
+                    <TypeBadge type={m.type} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 8, marginTop: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.display_name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{m.sku}</div>
+                    </div>
+                    <div style={{ fontWeight: 800, whiteSpace: 'nowrap', color: m.qty < 0 ? 'var(--payi-danger)' : 'var(--payi-success)' }}>
+                      {m.qty > 0 ? '+' : ''}{fmt(m.qty)}
+                    </div>
+                  </div>
+                  {expanded ? (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--payi-border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ fontSize: 12.5, color: 'var(--payi-text-muted)' }}>ผู้ทำรายการ: {m.created_by || '-'}</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--payi-text-muted)' }}>หมายเหตุ: {m.note || '-'}</div>
+                      {m.updated_at && <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }} title={fmtDateTime(m.updated_at)}>แก้ไขล่าสุดโดย {m.updated_by || '-'}</div>}
+                      <button onClick={(e) => { e.stopPropagation(); setEditing(m) }} aria-label={`แก้ไขรายการ ${m.display_name}`} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, border: 'none', background: 'var(--payi-surface-muted)', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
+                        <Pencil size={12} /> แก้ไข
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 6 }}>แตะเพื่อดูหมายเหตุ/ผู้ทำรายการ</div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
