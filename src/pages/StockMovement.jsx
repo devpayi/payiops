@@ -521,7 +521,7 @@ export default function StockMovement() {
                       <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.display_name}</div>
                       <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{m.sku}</div>
                     </div>
-                    <div style={{ fontWeight: 800, whiteSpace: 'nowrap', color: m.qty < 0 ? 'var(--payi-danger)' : 'var(--payi-success)' }}>
+                    <div style={{ fontWeight: 800, whiteSpace: 'nowrap', color: m.qty < 0 ? 'var(--payi-danger)' : '#16a34a' }}>
                       {m.qty > 0 ? '+' : ''}{fmt(m.qty)}
                     </div>
                   </div>
@@ -573,7 +573,7 @@ export default function StockMovement() {
                       <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.display_name}>{m.display_name}</div>
                       <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{m.sku}</div>
                     </td>
-                    <td style={{ padding: '10px', textAlign: 'right', fontWeight: 800, whiteSpace: 'nowrap', color: m.qty < 0 ? 'var(--payi-danger)' : 'var(--payi-success)' }}>
+                    <td style={{ padding: '10px', textAlign: 'right', fontWeight: 800, whiteSpace: 'nowrap', color: m.qty < 0 ? 'var(--payi-danger)' : '#16a34a' }}>
                       {m.qty > 0 ? '+' : ''}{fmt(m.qty)}
                     </td>
                     <td style={{ padding: '10px', color: 'var(--payi-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.created_by || '-'}>{m.created_by || '-'}</td>
