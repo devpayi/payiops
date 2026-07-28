@@ -12,7 +12,7 @@ const fmtDateTime = (iso) => {
 
 const TYPE_LABEL = { in: 'รับเข้า', out: 'เบิกออก', adjust: 'ปรับยอด' }
 const TYPE_STYLE = {
-  in: { bg: 'var(--payi-success-bg)', color: 'var(--payi-success)' },
+  in: { bg: '#dcfce7', color: '#16a34a' },
   out: { bg: 'var(--payi-danger-bg)', color: 'var(--payi-danger)' },
   adjust: { bg: '#eef2ff', color: '#4338ca' },
 }
