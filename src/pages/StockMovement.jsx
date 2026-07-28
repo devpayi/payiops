@@ -309,38 +309,73 @@ export default function StockMovement() {
         <div style={{ background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', borderRadius: 12, padding: '10px 14px', fontSize: 13 }}>{error}</div>
       )}
 
-      {isBoss && orderOnlyRequests.length > 0 && (
-        <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 18, padding: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Truck size={16} style={{ color: 'var(--payi-text-muted)' }} />
-            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>สั่งไว้ รอของเข้า ({orderOnlyRequests.length})</span>
-          </div>
-          <div style={{ fontSize: 11.5, color: 'var(--payi-text-faint)', marginBottom: 14 }}>เห็นเฉพาะ Boss/Dev — ไม่ให้ฟ้าเห็นจำนวนที่สั่งไว้ล่วงหน้า</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {orderOnlyRequests.map((r) => (
-              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 14px' }}>
-                <div>
-                  <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name} <span style={{ fontWeight: 800, color: 'var(--payi-text-muted)' }}>{fmt(r.qty)}</span></div>
-                  <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>สั่งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</div>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => finishOrder(r.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
-                    <Check size={13} /> เสร็จสิ้น
-                  </button>
-                  <button onClick={() => setEditingRequest(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-text)' }}>
-                    <Pencil size={13} /> แก้ไข
-                  </button>
-                  <button onClick={() => setRejecting(r)} style={{ background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-danger)' }}>
-                    ยกเลิก
-                  </button>
-                </div>
+      {isBoss ? (
+        <div className="app-two-col-fixed" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+          <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 18, padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <Truck size={16} style={{ color: 'var(--payi-text-muted)' }} />
+              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>สั่งไว้ รอของเข้า ({orderOnlyRequests.length})</span>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--payi-text-faint)', marginBottom: 14 }}>เห็นเฉพาะ Boss/Dev — ไม่ให้ฟ้าเห็นจำนวนที่สั่งไว้ล่วงหน้า</div>
+            {orderOnlyRequests.length === 0 ? (
+              <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>ยังไม่มีรายการสั่งของ</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {orderOnlyRequests.map((r) => (
+                  <div key={r.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 14px' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name} <span style={{ fontWeight: 800, color: 'var(--payi-text-muted)' }}>{fmt(r.qty)}</span></div>
+                      <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>สั่งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button onClick={() => finishOrder(r.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
+                        <Check size={13} /> เสร็จสิ้น
+                      </button>
+                      <button onClick={() => setEditingRequest(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-text)' }}>
+                        <Pencil size={13} /> แก้ไข
+                      </button>
+                      <button onClick={() => setRejecting(r)} style={{ background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-danger)' }}>
+                        ยกเลิก
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+          </div>
+
+          <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 18, padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <Truck size={16} style={{ color: 'var(--payi-mint-strong)' }} />
+              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>ของเข้ารอ Match ({pendingRequests.length})</span>
+            </div>
+            {pendingRequests.length === 0 ? (
+              <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>ยังไม่มีของเข้ารอ match</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {pendingRequests.map((r) => (
+                  <div key={r.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 14px' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name} <span style={{ fontWeight: 800, color: 'var(--payi-mint-strong)' }}>+{fmt(r.qty)}</span></div>
+                      <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>
+                        เข้า {r.arrival_date || '-'} · นับ {r.count_date || '-'} · แจ้งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button onClick={() => setMatching(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
+                        <Check size={13} /> Match
+                      </button>
+                      <button onClick={() => setRejecting(r)} style={{ background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-danger)' }}>
+                        ปฏิเสธ
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      )}
-
-      {pendingRequests.length > 0 && (
+      ) : pendingRequests.length > 0 && (
         <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 18, padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <Truck size={16} style={{ color: 'var(--payi-mint-strong)' }} />
@@ -348,23 +383,13 @@ export default function StockMovement() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {pendingRequests.map((r) => (
-              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 14px' }}>
+              <div key={r.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 14px' }}>
                 <div>
                   <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name} <span style={{ fontWeight: 800, color: 'var(--payi-mint-strong)' }}>+{fmt(r.qty)}</span></div>
                   <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>
                     เข้า {r.arrival_date || '-'} · นับ {r.count_date || '-'} · แจ้งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}
                   </div>
                 </div>
-                {isBoss && (
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => setMatching(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
-                      <Check size={13} /> Match
-                    </button>
-                    <button onClick={() => setRejecting(r)} style={{ background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-danger)' }}>
-                      ปฏิเสธ
-                    </button>
-                  </div>
-                )}
               </div>
             ))}
           </div>
