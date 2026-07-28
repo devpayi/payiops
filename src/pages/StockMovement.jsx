@@ -496,7 +496,16 @@ export default function StockMovement() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse', fontSize: 13 }}>
+            <table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '11%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '27%' }} />
+                <col style={{ width: '6%' }} />
+              </colgroup>
               <thead>
                 <tr style={{ textAlign: 'left', color: 'var(--payi-text-muted)', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <th style={{ padding: '8px 10px' }}>วันที่</th>
@@ -513,16 +522,16 @@ export default function StockMovement() {
                   <tr key={m.id} style={{ borderTop: '1px solid var(--payi-border)' }}>
                     <td style={{ padding: '10px', color: 'var(--payi-text-muted)', whiteSpace: 'nowrap' }}>{fmtDateTime(m.created_at) || m.date}</td>
                     <td style={{ padding: '10px' }}><TypeBadge type={m.type} /></td>
-                    <td style={{ padding: '10px' }}>
-                      <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{m.display_name}</div>
+                    <td style={{ padding: '10px', overflow: 'hidden' }}>
+                      <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.display_name}>{m.display_name}</div>
                       <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{m.sku}</div>
                     </td>
-                    <td style={{ padding: '10px', textAlign: 'right', fontWeight: 800, color: m.qty < 0 ? 'var(--payi-danger)' : 'var(--payi-success)' }}>
+                    <td style={{ padding: '10px', textAlign: 'right', fontWeight: 800, whiteSpace: 'nowrap', color: m.qty < 0 ? 'var(--payi-danger)' : 'var(--payi-success)' }}>
                       {m.qty > 0 ? '+' : ''}{fmt(m.qty)}
                     </td>
-                    <td style={{ padding: '10px', color: 'var(--payi-text-muted)' }}>{m.created_by || '-'}</td>
-                    <td style={{ padding: '10px', color: 'var(--payi-text-muted)' }}>
-                      {m.note || '-'}
+                    <td style={{ padding: '10px', color: 'var(--payi-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.created_by || '-'}>{m.created_by || '-'}</td>
+                    <td style={{ padding: '10px', color: 'var(--payi-text-muted)', overflow: 'hidden' }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.note || undefined}>{m.note || '-'}</div>
                       {m.updated_at && <div style={{ fontSize: 10.5, color: 'var(--payi-text-faint)', marginTop: 2 }} title={fmtDateTime(m.updated_at)}>แก้ไขล่าสุดโดย {m.updated_by || '-'}</div>}
                     </td>
                     <td style={{ padding: '10px', textAlign: 'right' }}>
