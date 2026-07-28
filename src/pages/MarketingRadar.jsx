@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  CheckCircle2, Clock3, Film, Loader2, Megaphone, PackagePlus, Pencil, RefreshCw,
-  Search, Send, Sparkles, Trash2, TrendingUp, X,
+  AlertTriangle, CheckCircle2, ChevronDown, Clock3, Film, Loader2, Megaphone,
+  PackagePlus, Pencil, RefreshCw, Search, Send, Sparkles, Trash2, TrendingUp, X,
 } from 'lucide-react'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
 const fmtBaht = (n) => '฿' + fmt(n)
-const todayIso = () => new Date().toISOString().slice(0, 10)
+const todayIso = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Bangkok',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date())
 
 const EVENT_TYPES = [
   ['image_change', 'แก้รูปสินค้า'],
@@ -31,7 +36,6 @@ const PLATFORMS = ['all', 'Shopee', 'TikTok Shop', 'Lazada']
 // ความคืบหน้าตาม stage ของงาน (pipeline) — ใช้ทำ progress bar แบบ Notion
 const STAGE_PCT = { waiting: 10, live: 40, check7: 65, check30: 85, content: 95, done: 100 }
 const stageColor = (status) => (COLUMNS.find((c) => c.id === status)?.tone) || (status === 'done' ? '#16a34a' : 'var(--payi-mint)')
-const eventTypeLabel = (id) => EVENT_TYPES.find(([k]) => k === id)?.[1] || id
 
 export default function MarketingRadar() {
   const [data, setData] = useState(null)
@@ -50,6 +54,9 @@ export default function MarketingRadar() {
       .then((r) => r.json())
       .then((d) => {
         if (!d.success) throw new Error(d.error || 'โหลดข้อมูลไม่สำเร็จ')
+        const dueCount = Number(d.dueReviewCount || 0)
+        localStorage.setItem('payi-marketing-due-count', String(dueCount))
+        window.dispatchEvent(new CustomEvent('payi-marketing-due', { detail: dueCount }))
         if (d.productOptions?.length) {
           setData(d)
           return
@@ -82,6 +89,7 @@ export default function MarketingRadar() {
   const radar = useMemo(() => data?.radar || {}, [data])
   const signals = useMemo(() => data?.productSignals || [], [data])
   const signalWindow = data?.signalWindow
+  const reviewQueue = useMemo(() => events.filter((event) => event.needs_review), [events])
 
   // กรองตามประเภทงาน — ใช้ทั้งบอร์ดและรายการ
   const radarFiltered = useMemo(() => {
@@ -195,38 +203,51 @@ export default function MarketingRadar() {
     if (eventId) updateEvent(eventId, { status })
   }
 
+  const decideEvent = (event, decision, note = '') => updateEvent(event.event_id, {
+    review_day: event.due_review_day,
+    decision,
+    decision_note: note,
+  })
+
   if (loading && !data) return <Center><Loader2 size={18} className="payi-spin" /> กำลังโหลดเรดาร์การตลาด...</Center>
 
   return (
-    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="marketing-radar-page" style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div className="app-two-col-fixed" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(280px, 0.8fr)', gap: 16 }}>
-        <section style={{ background: 'var(--payi-surface-dark)', color: '#fff', borderRadius: 8, padding: 22, minHeight: 168, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+        <section className="marketing-hero-card" style={{ background: 'var(--payi-surface-dark)', color: '#fff', borderRadius: 8, padding: 22, minHeight: 168, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
             <div>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)', fontWeight: 700, marginBottom: 8 }}>MARKETING CHANGE TRACKER</div>
               <h2 style={{ margin: 0, fontSize: 28, lineHeight: 1.12, letterSpacing: 0 }}>Marketing Radar</h2>
               <p style={{ margin: '10px 0 0', maxWidth: 640, color: 'rgba(255,255,255,0.76)', fontSize: 13, lineHeight: 1.7 }}>
-                จดเหตุการณ์สั้น ๆ เช่น ส่งให้บอสแล้ว รูปขึ้นร้านแล้ว หรือลงคลิป แล้วให้ระบบเทียบยอดขายก่อน/หลัง 7 วันและ 30 วันให้อัตโนมัติ
+                ตูนบันทึกสิ่งที่เปลี่ยน ระบบเทียบจำนวนชิ้นต่อวัน และส่งเฉพาะงานที่ถึงเวลาตัดสินใจให้ Boss
               </p>
             </div>
             <button onClick={load} disabled={saving} title="Sync sales" style={iconButton('#fff', 'rgba(255,255,255,0.14)')}>
               <RefreshCw size={17} className={saving ? 'payi-spin' : ''} />
             </button>
           </div>
-          <div className="app-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, marginTop: 24 }}>
-            <Metric label="Waiting" value={radar.waiting?.length || 0} />
-            <Metric label="Live" value={radar.live?.length || 0} />
-            <Metric label="Due to check" value={(radar.check7?.length || 0) + (radar.check30?.length || 0)} />
-            <Metric label="To push" value={radar.content?.length || 0} />
+          <div className="app-kpi-grid marketing-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, marginTop: 24 }}>
+            <Metric label="ต้องตัดสินใจ" value={reviewQueue.length} />
+            <Metric label="กำลังวัดผล" value={(radar.live?.length || 0) + (radar.content?.length || 0)} />
+            <Metric label="รอยืนยัน" value={radar.waiting?.length || 0} />
+            <Metric label="ข้อมูลถึง" value={data?.dataThrough?.slice(5) || '-'} compact />
           </div>
         </section>
 
-        <section className="payi-glass-card" style={{ padding: 18, borderRadius: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <Sparkles size={17} color="var(--payi-mint)" />
-            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>Content &amp; Sales Lens</div>
+        <section className="payi-glass-card marketing-capture-card" style={{ padding: 18, borderRadius: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <PackagePlus size={17} color="var(--payi-mint)" />
+              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>
+                {draft?.event_id ? 'แก้ไขงาน' : 'บันทึกสิ่งที่เปลี่ยน'}
+              </div>
+            </div>
+            {draft?.event_id && (
+              <button onClick={() => setDraft(null)} title="ยกเลิกแก้ไข" style={cardIconBtn}><X size={13} /> ยกเลิก</button>
+            )}
           </div>
-          <Lens event={events[0]} />
+          <QuickCapture draft={draft} setDraft={setDraft} onSave={saveEvent} saving={saving} productOptions={data?.productOptions || []} />
         </section>
       </div>
 
@@ -236,8 +257,10 @@ export default function MarketingRadar() {
         </div>
       )}
 
+      <DecisionQueue events={reviewQueue} onDecide={decideEvent} saving={saving} dataThrough={data?.dataThrough} />
+
       {/* Toolbar: สลับมุมมอง + กรองประเภทงาน (แบบ Notion) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div className="marketing-view-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 4, background: 'var(--payi-surface-muted)', padding: 3, borderRadius: 9 }}>
           {[['board', 'บอร์ด'], ['list', 'รายการ'], ['basket', 'จัดคู่สินค้า']].map(([id, label]) => (
             <button key={id} onClick={() => setView(id)} style={segStyle(view === id)}>{label}</button>
@@ -280,7 +303,7 @@ export default function MarketingRadar() {
         )}
 
         <aside style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div className="payi-glass-card" style={{ padding: 14, borderRadius: 8 }}>
+          <div className="payi-glass-card marketing-signal-panel" style={{ padding: 14, borderRadius: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 2 }}>
               <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>Products to Push</div>
               <Film size={16} color="var(--payi-text-muted)" />
@@ -312,23 +335,12 @@ export default function MarketingRadar() {
             </div>
           </div>
 
-          <div className="payi-glass-card" style={{ padding: 14, borderRadius: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>
-                Quick Capture{draft?.event_id && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--payi-warning)' }}> · กำลังแก้ไข</span>}
-              </div>
-              {draft?.event_id && (
-                <button onClick={() => setDraft(null)} title="ยกเลิกแก้ไข" style={cardIconBtn}><X size={13} /> ยกเลิก</button>
-              )}
-            </div>
-            <QuickCapture draft={draft} setDraft={setDraft} onSave={saveEvent} saving={saving} productOptions={data?.productOptions || []} />
-          </div>
         </aside>
       </div>
       )}
 
       {view !== 'basket' && (
-      <section className="payi-glass-card" style={{ padding: 16, borderRadius: 8 }}>
+      <section className="payi-glass-card marketing-history-card" style={{ padding: 16, borderRadius: 8 }}>
         <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)', marginBottom: 12 }}>Event History</div>
         <div style={{ overflowX: 'auto' }}>
           <div style={{ display: 'grid', gap: 8, minWidth: 560 }}>
@@ -342,10 +354,160 @@ export default function MarketingRadar() {
   )
 }
 
+function DecisionQueue({ events, onDecide, saving, dataThrough }) {
+  return (
+    <section className="payi-glass-card marketing-review-shell" aria-labelledby="marketing-review-title" style={{ padding: 16, borderRadius: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: events.length ? 12 : 0 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Sparkles size={17} color="var(--payi-warning)" aria-hidden="true" />
+            <h3 id="marketing-review-title" style={{ margin: 0, fontSize: 16, color: 'var(--payi-text-strong)' }}>
+              งานที่ Boss ต้องตัดสินใจ
+            </h3>
+          </div>
+          <p style={{ margin: '5px 0 0', fontSize: 12, color: 'var(--payi-text-muted)' }}>
+            ระบบเรียงงานครบกำหนดให้ก่อน · ใช้จำนวนชิ้นเฉลี่ยต่อวัน · ข้อมูลถึง {dataThrough || '-'}
+          </p>
+        </div>
+        <span style={{
+          minWidth: 28,
+          height: 28,
+          padding: '0 8px',
+          borderRadius: 999,
+          display: 'grid',
+          placeItems: 'center',
+          background: events.length ? 'var(--payi-warning-bg)' : 'var(--payi-mint-soft)',
+          color: events.length ? 'var(--payi-warning)' : 'var(--payi-mint-strong)',
+          fontSize: 12,
+          fontWeight: 900,
+          fontVariantNumeric: 'tabular-nums',
+        }}>{events.length}</span>
+      </div>
+      {events.length ? (
+        <div style={{ display: 'grid', gap: 10 }}>
+          {events.map((event) => (
+            <DecisionCard key={event.event_id} event={event} onDecide={onDecide} saving={saving} />
+          ))}
+        </div>
+      ) : (
+        <div style={{ padding: '18px 14px', borderRadius: 8, background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)', fontSize: 13, fontWeight: 700 }}>
+          ไม่มีงานค้างตัดสินใจ ตอนนี้ทีมทำงานต่อได้เลย
+        </div>
+      )}
+    </section>
+  )
+}
+
+function DecisionCard({ event, onDecide, saving }) {
+  const [note, setNote] = useState('')
+  const recommendation = event.recommendation
+  const reviewDay = event.due_review_day || 7
+  const after = reviewDay === 30 ? event.snapshot?.after30 : event.snapshot?.after7
+  const recommendationTone = recommendation?.code === 'scale'
+    ? 'var(--payi-success)'
+    : recommendation?.code === 'stop'
+      ? 'var(--payi-danger)'
+      : 'var(--payi-warning)'
+
+  return (
+    <article className="marketing-decision-card" style={{
+      display: 'grid',
+      gridTemplateColumns: 'minmax(180px, 1fr) minmax(230px, 1.15fr) minmax(250px, 1fr)',
+      gap: 12,
+      alignItems: 'center',
+      padding: 12,
+      border: '1px solid var(--payi-border)',
+      borderRadius: 10,
+      background: 'var(--payi-surface)',
+      boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 6px 18px rgba(15,23,42,0.04)',
+    }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ padding: '3px 7px', borderRadius: 6, background: 'var(--payi-warning-bg)', color: 'var(--payi-warning)', fontSize: 10, fontWeight: 900 }}>
+            REVIEW {reviewDay} วัน
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--payi-text-muted)' }}>{event.event_label}</span>
+        </div>
+        <div style={{ marginTop: 7, fontSize: 13, lineHeight: 1.4, fontWeight: 900, color: 'var(--payi-text-strong)' }}>
+          {event.display_name || event.master_sku || event.product_key}
+        </div>
+        <div style={{ marginTop: 3, fontSize: 10, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>
+          {event.master_sku || event.product_key}
+        </div>
+      </div>
+
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 8, alignItems: 'center' }}>
+          <Tiny label="ก่อนเปลี่ยน" value={`${fmt(event.snapshot?.before7?.units)} ชิ้น`} />
+          <span aria-hidden="true" style={{ color: 'var(--payi-text-faint)', fontWeight: 900 }}>→</span>
+          <Tiny label={`หลัง ${reviewDay} วัน`} value={`${fmt(after?.units)} ชิ้น`} />
+        </div>
+        <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.5, color: recommendationTone, fontWeight: 800 }}>
+          ระบบแนะนำ: {recommendation?.label || 'รอข้อมูล'}
+        </div>
+        <div style={{ marginTop: 2, fontSize: 11, lineHeight: 1.45, color: 'var(--payi-text-muted)' }}>
+          {recommendation?.reason}
+        </div>
+        {recommendation?.confidence === 'low' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5, fontSize: 10.5, color: 'var(--payi-warning)', fontWeight: 800 }}>
+            <AlertTriangle size={13} aria-hidden="true" /> ความมั่นใจต่ำ · Boss ต้องรีเช็ก
+          </div>
+        )}
+      </div>
+
+      <div>
+        <label style={fieldLabelStyle}>หมายเหตุของ Boss (ไม่บังคับ)
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="เหตุผลสั้น ๆ"
+            style={{ ...inputStyle, marginTop: 4 }}
+          />
+        </label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 8 }}>
+          <DecisionButton label="ทำต่อ" tone="success" disabled={saving} onClick={() => onDecide(event, 'scale', note)} />
+          <DecisionButton label="ปรับใหม่" tone="warning" disabled={saving} onClick={() => onDecide(event, 'iterate', note)} />
+          <DecisionButton label="หยุด" tone="danger" disabled={saving} onClick={() => onDecide(event, 'stop', note)} />
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function DecisionButton({ label, tone, disabled, onClick }) {
+  const colors = {
+    success: ['var(--payi-mint-soft)', 'var(--payi-success)'],
+    warning: ['var(--payi-warning-bg)', 'var(--payi-warning)'],
+    danger: ['var(--payi-danger-bg)', 'var(--payi-danger)'],
+  }
+  const [background, color] = colors[tone]
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        minHeight: 44,
+        border: `1px solid ${color}`,
+        borderRadius: 8,
+        background,
+        color,
+        fontSize: 11,
+        fontWeight: 900,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.55 : 1,
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
 function RadarColumn({ column, items, onDropStatus, updateEvent, onEdit, onDelete }) {
   const Icon = column.icon
   return (
     <div
+      className="marketing-radar-column"
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => onDropStatus(column.id, event)}
       style={{ minWidth: 170, background: 'rgba(255,255,255,0.55)', border: '1px solid var(--payi-border)', borderRadius: 8, padding: 10, minHeight: 360 }}
@@ -369,6 +531,7 @@ function EventCard({ event, updateEvent, onEdit, onDelete }) {
   const lift = event.snapshot?.lift7
   return (
     <article
+      className="marketing-event-card"
       draggable
       onDragStart={(dragEvent) => dragEvent.dataTransfer.setData('event_id', event.event_id)}
       style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 8, padding: 10, boxShadow: '0 8px 22px rgba(15,23,42,0.05)', cursor: 'grab' }}
@@ -382,12 +545,12 @@ function EventCard({ event, updateEvent, onEdit, onDelete }) {
       </div>
       <ProgressBar status={event.status} label={event.status_label} style={{ marginTop: 10 }} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 10 }}>
-        <Tiny label="Before 7d" value={fmtBaht(event.snapshot?.before7?.revenue)} />
-        <Tiny label="After 7d" value={fmtBaht(event.snapshot?.after7?.revenue)} />
+        <Tiny label="ก่อน 7 วัน" value={`${fmt(event.snapshot?.before7?.units)} ชิ้น`} />
+        <Tiny label="หลัง 7 วัน" value={`${fmt(event.snapshot?.after7?.units)} ชิ้น`} />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 9 }}>
         <span style={{ fontSize: 11, color: lift == null ? 'var(--payi-text-muted)' : lift >= 0 ? 'var(--payi-success)' : 'var(--payi-danger)', fontWeight: 800 }}>
-          {lift == null ? 'ยังไม่มีฐานเทียบ' : `${lift >= 0 ? '+' : ''}${lift}%`}
+          {lift == null ? 'ยังไม่มีฐานเทียบ' : `${lift >= 0 ? '+' : ''}${lift}% จำนวนชิ้น`}
         </span>
         {!event.confirmed_at ? (
           <button onClick={() => updateEvent(event.event_id, { status: 'live', confirmed_at: todayIso() })} title="ยืนยันว่าขึ้นร้านแล้ว" style={smallActionStyle}>
@@ -472,7 +635,7 @@ function ListView({ events, updateEvent, onEdit, onDelete }) {
 function SignalItem({ item, onTrack }) {
   const lift = item.lift7
   return (
-    <div style={{ border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', borderRadius: 8, padding: 10 }}>
+    <div className="marketing-signal-item" style={{ border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', borderRadius: 8, padding: 10 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.display_name}</div>
@@ -483,7 +646,7 @@ function SignalItem({ item, onTrack }) {
         </button>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, fontSize: 11 }}>
-        <span style={{ color: 'var(--payi-text-muted)' }}>{fmtBaht(item.revenue7)} ใน 7 วัน</span>
+        <span style={{ color: 'var(--payi-text-muted)' }}>{fmt(item.units7)} ชิ้นใน 7 วัน</span>
         <span style={{ color: lift == null ? 'var(--payi-text-faint)' : lift >= 0 ? 'var(--payi-success)' : 'var(--payi-danger)', fontWeight: 800 }}>{lift == null ? 'ใหม่' : `${lift >= 0 ? '+' : ''}${lift}%`}</span>
       </div>
     </div>
@@ -492,6 +655,7 @@ function SignalItem({ item, onTrack }) {
 
 function QuickCapture({ draft, setDraft, onSave, saving, productOptions = [] }) {
   const [productOpen, setProductOpen] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const isEditing = Boolean(draft?.event_id)
   const value = draft || {
     product_key: '',
@@ -501,8 +665,8 @@ function QuickCapture({ draft, setDraft, onSave, saving, productOptions = [] }) 
     platform: 'all',
     event_type: 'image_change',
     event_date: todayIso(),
-    status: 'waiting',
-    confirmed_at: '',
+    status: 'live',
+    confirmed_at: todayIso(),
     note: '',
   }
   const set = (patch) => setDraft({ ...value, ...patch })
@@ -538,12 +702,13 @@ function QuickCapture({ draft, setDraft, onSave, saving, productOptions = [] }) 
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <div style={{ position: 'relative' }}>
+        <label style={fieldLabelStyle}>1. สินค้า</label>
         <input
           value={productValue}
           onChange={(e) => setProduct(e.target.value)}
           onFocus={() => !isEditing && setProductOpen(true)}
           onBlur={() => window.setTimeout(() => setProductOpen(false), 140)}
-          placeholder="สินค้า / SKU"
+          placeholder="ค้นหาสินค้า / SKU"
           readOnly={isEditing}
           title={isEditing ? 'แก้ไขสินค้าไม่ได้ (ลบแล้วสร้างใหม่ถ้าต้องเปลี่ยน)' : undefined}
           style={{ ...inputStyle, ...(isEditing ? { background: 'var(--payi-surface-muted)', color: 'var(--payi-text-muted)' } : null) }}
@@ -567,57 +732,54 @@ function QuickCapture({ draft, setDraft, onSave, saving, productOptions = [] }) 
         )}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <select value={value.event_type} onChange={(e) => set({ event_type: e.target.value })} style={inputStyle}>
-          {EVENT_TYPES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-        </select>
-        <input type="date" value={value.event_date} onChange={(e) => set({ event_date: e.target.value })} style={inputStyle} />
+        <label style={fieldLabelStyle}>2. สิ่งที่เปลี่ยน
+          <select value={value.event_type} onChange={(e) => set({ event_type: e.target.value })} style={{ ...inputStyle, marginTop: 4 }}>
+            {EVENT_TYPES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>
+        <label style={fieldLabelStyle}>3. วันที่ขึ้นจริง
+          <input
+            type="date"
+            max={todayIso()}
+            value={value.event_date}
+            onChange={(e) => set({ event_date: e.target.value, confirmed_at: e.target.value, status: 'live' })}
+            style={{ ...inputStyle, marginTop: 4 }}
+          />
+        </label>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <select
-          value={value.business}
-          onChange={(e) => set({
-            business: e.target.value,
-            platform: e.target.value === 'Payi' ? value.platform : (value.platform === 'Payi Outlet' ? 'all' : value.platform),
-          })}
-          style={inputStyle}
-        >
-          {BUSINESSES.map((item) => <option key={item} value={item}>{optionLabel(item)}</option>)}
-        </select>
-        <select value={value.platform} onChange={(e) => set({ platform: e.target.value })} style={inputStyle}>
-          {platformOptions.map((item) => <option key={item} value={item}>{optionLabel(item)}</option>)}
-        </select>
-      </div>
-      <textarea value={value.note} onChange={(e) => set({ note: e.target.value })} placeholder="โน้ตสั้น ๆ" rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
-      <button disabled={!canSave || saving} onClick={() => onSave(value)} style={{ ...primaryBtnStyle, opacity: !canSave || saving ? 0.55 : 1 }}>
-        {saving ? <Loader2 size={15} className="payi-spin" /> : <PackagePlus size={15} />} {isEditing ? 'อัปเดตเหตุการณ์' : 'บันทึกเหตุการณ์'}
+      <button type="button" onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen} style={advancedToggleStyle}>
+        รายละเอียดเพิ่มเติม (ไม่บังคับ)
+        <ChevronDown size={14} style={{ transform: advancedOpen ? 'rotate(180deg)' : 'none' }} />
       </button>
-    </div>
-  )
-}
-
-function Lens({ event }) {
-  const lens = event?.lens
-  const rows = lens ? [
-    ['Strategy', lens.strategy],
-    ['Audience', lens.audience],
-    ['Sales', lens.conversion],
-    ['Process', lens.process],
-    ['Next', lens.nextMove],
-  ] : [
-    ['Strategy', 'เริ่มจากจดเหตุการณ์สั้น ๆ'],
-    ['Audience', 'สัญญาณจะขึ้นหลังดึงยอดขาย'],
-    ['Sales', 'ระบบเทียบก่อน/หลังให้อัตโนมัติ'],
-    ['Process', 'กดยืนยันเมื่อร้านเปลี่ยนขึ้นจริง'],
-    ['Next', 'ลองติดตามรูปสินค้า หรือสินค้าใหม่ 1 ตัว'],
-  ]
-  return (
-    <div style={{ display: 'grid', gap: 8 }}>
-      {rows.map(([label, text]) => (
-        <div key={label} style={{ display: 'grid', gridTemplateColumns: '88px minmax(0, 1fr)', gap: 8, fontSize: 12, lineHeight: 1.45 }}>
-          <span style={{ fontWeight: 800, color: 'var(--payi-mint-strong)' }}>{label}</span>
-          <span style={{ color: 'var(--payi-text)' }}>{text}</span>
+      {advancedOpen && (
+        <div style={{ display: 'grid', gap: 8, padding: 10, borderRadius: 8, background: 'var(--payi-surface-muted)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <label style={fieldLabelStyle}>ธุรกิจ
+              <select
+                value={value.business}
+                onChange={(e) => set({
+                  business: e.target.value,
+                  platform: e.target.value === 'Payi' ? value.platform : (value.platform === 'Payi Outlet' ? 'all' : value.platform),
+                })}
+                style={{ ...inputStyle, marginTop: 4 }}
+              >
+                {BUSINESSES.map((item) => <option key={item} value={item}>{optionLabel(item)}</option>)}
+              </select>
+            </label>
+            <label style={fieldLabelStyle}>ช่องทาง
+              <select value={value.platform} onChange={(e) => set({ platform: e.target.value })} style={{ ...inputStyle, marginTop: 4 }}>
+                {platformOptions.map((item) => <option key={item} value={item}>{optionLabel(item)}</option>)}
+              </select>
+            </label>
+          </div>
+          <label style={fieldLabelStyle}>หมายเหตุ
+            <textarea value={value.note} onChange={(e) => set({ note: e.target.value })} placeholder="ใส่เมื่อมีบริบทที่ Boss ควรรู้" rows={2} style={{ ...inputStyle, marginTop: 4, resize: 'vertical' }} />
+          </label>
         </div>
-      ))}
+      )}
+      <button className="marketing-primary-btn" disabled={!canSave || saving} onClick={() => onSave(value)} style={{ ...primaryBtnStyle, opacity: !canSave || saving ? 0.55 : 1 }}>
+        {saving ? <Loader2 size={15} className="payi-spin" /> : <PackagePlus size={15} />} {isEditing ? 'อัปเดตงาน' : 'เริ่มวัดผล'}
+      </button>
     </div>
   )
 }
@@ -642,18 +804,18 @@ function TimelineRow({ event, onEdit, onDelete }) {
   )
 }
 
-function Metric({ label, value }) {
+function Metric({ label, value, compact }) {
   return (
-    <div style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 8, padding: 10 }}>
+    <div className="marketing-hero-metric" style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 8, padding: 10 }}>
       <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.64)', fontWeight: 700 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 900, marginTop: 2 }}>{value}</div>
+      <div style={{ fontSize: compact ? 16 : 22, fontWeight: 900, marginTop: compact ? 7 : 2, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
     </div>
   )
 }
 
 function Tiny({ label, value }) {
   return (
-    <div style={{ border: '1px solid var(--payi-border)', background: 'var(--payi-surface-muted)', borderRadius: 8, padding: 7 }}>
+    <div className="marketing-tiny-metric" style={{ border: '1px solid var(--payi-border)', background: 'var(--payi-surface-muted)', borderRadius: 8, padding: 7 }}>
       <div style={{ fontSize: 9, color: 'var(--payi-text-muted)', fontWeight: 700 }}>{label}</div>
       <div style={{ fontSize: 12, color: 'var(--payi-text-strong)', fontWeight: 900, marginTop: 2 }}>{value}</div>
     </div>
@@ -684,6 +846,28 @@ const inputStyle = {
   fontSize: 12,
   color: 'var(--payi-text-strong)',
   outline: 'none',
+}
+
+const fieldLabelStyle = {
+  display: 'block',
+  fontSize: 11,
+  lineHeight: 1.35,
+  fontWeight: 800,
+  color: 'var(--payi-text-muted)',
+}
+
+const advancedToggleStyle = {
+  minHeight: 36,
+  padding: '6px 8px',
+  border: 0,
+  background: 'transparent',
+  color: 'var(--payi-text-muted)',
+  fontSize: 11,
+  fontWeight: 700,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
 }
 
 const dropdownStyle = {

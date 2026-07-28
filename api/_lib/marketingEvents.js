@@ -3,6 +3,7 @@
 import { requireManager } from './auth.js'
 import { appendRows, batchGetValues, ensureSheet, getMeta, getSheet, overwriteSheet } from './sheets.js'
 import { buildOverrideMap, deriveGroup } from './productGroup.js'
+import { recommendMarketingAction } from '../../shared/marketingRadar.js'
 
 const SHEET = 'marketing_events'
 const HEADERS = [
@@ -20,6 +21,14 @@ const HEADERS = [
   'note',
   'created_at',
   'updated_at',
+  'review7_decision',
+  'review7_note',
+  'review7_at',
+  'review7_by',
+  'review30_decision',
+  'review30_note',
+  'review30_at',
+  'review30_by',
 ]
 
 const EVENT_LABELS = {
@@ -45,7 +54,12 @@ const round2 = (n) => Math.round(n * 100) / 100
 const isCancelled = (s = '') => s.includes('ยกเลิก') || s.toLowerCase().includes('cancel')
 const isReturned = (s = '') => s.toLowerCase().includes('return')
 const dayMs = 86400000
-const todayIso = () => new Date().toISOString().slice(0, 10)
+const todayIso = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Bangkok',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date())
 const day10 = (v) => String(v ?? '').slice(0, 10) // กันกรณีค่ามี timestamp ปน (เช่น "2026-05-01T..") ไม่ให้ Date พัง
 const addDays = (iso, days) => {
   const d = new Date(`${day10(iso)}T00:00:00.000Z`)
@@ -147,59 +161,48 @@ function sumWindow(orders, event, start, end) {
   }
 }
 
-function buildSnapshot(event, orders, today) {
+function buildSnapshot(event, orders, dataThrough) {
   const anchor = event.confirmed_at || event.event_date
   if (!anchor) return null
   const before7 = sumWindow(orders, event, addDays(anchor, -7), addDays(anchor, -1))
   const after7 = sumWindow(orders, event, anchor, addDays(anchor, 6))
   const after30 = sumWindow(orders, event, anchor, addDays(anchor, 29))
-  const daysLive = event.confirmed_at ? Math.max(0, daysBetween(event.confirmed_at, today)) : null
-  const check7Due = Boolean(event.confirmed_at && daysLive >= 7)
-  const check30Due = Boolean(event.confirmed_at && daysLive >= 30)
+  const daysLive = event.confirmed_at ? Math.max(0, daysBetween(event.confirmed_at, dataThrough)) : null
+  const observedDays = event.confirmed_at && dataThrough >= event.confirmed_at
+    ? Math.min(30, daysLive + 1)
+    : 0
+  const check7Due = Boolean(event.confirmed_at && observedDays >= 7)
+  const check30Due = Boolean(event.confirmed_at && observedDays >= 30)
+  const partialEnd = observedDays > 0 ? addDays(anchor, Math.min(6, observedDays - 1)) : anchor
+  const afterPartial = observedDays > 0 ? sumWindow(orders, event, anchor, partialEnd) : null
 
   return {
     anchor,
     daysLive,
+    observedDays,
+    dataThrough,
     before7,
     after7,
     after30,
-    lift7: pct(after7.revenue, before7.revenue),
-    lift30: pct(after30.revenue, before7.revenue * (30 / 7)),
+    afterPartial,
+    lift7: pct(after7.units, before7.units),
+    lift30: pct(after30.units / 30, before7.units / 7),
     check7Due,
     check30Due,
   }
 }
 
-function lensFor(event, snapshot) {
-  if (!snapshot) {
-    return {
-      strategy: 'ยืนยันวันขึ้นร้านก่อน',
-      audience: 'ยังต้องรอวันขึ้นร้านจริง',
-      conversion: 'รอเทียบยอดก่อน/หลัง',
-      process: 'ต้องยืนยันจากร้านก่อน',
-      nextMove: 'ยืนยันวันขึ้นร้าน',
-    }
-  }
-
-  const lift = snapshot.lift7
-  const positive = lift !== null && lift >= 15
-  const weak = lift !== null && lift <= -10
-  return {
-    strategy: positive ? 'ทำต่อและเพิ่มแรงดัน' : weak ? 'ทบทวนรูป/แพ็คเกจอีกครั้ง' : 'รอให้ครบช่วงวัดผล',
-    audience: positive ? 'ลูกค้าตอบรับดีขึ้น' : 'ดูแยกช่องทางก่อนตัดสินใจ',
-    conversion: lift === null ? 'ยอดก่อนหน้าไม่พอเทียบ' : `${lift >= 0 ? '+' : ''}${lift}% เทียบ 7 วันก่อนหน้า`,
-    process: event.confirmed_at ? `เริ่มนับจาก ${event.confirmed_at}` : 'ยังไม่ยืนยันวันขึ้นร้าน',
-    nextMove: positive ? 'ดันคอนเทนต์ต่อ' : snapshot.check7Due ? 'เช็กผล 7 วัน' : 'รอก่อน',
-  }
+function sameTrackedProduct(a, b) {
+  if (a.master_sku && b.master_sku) return a.master_sku === b.master_sku
+  return Boolean(a.product_key && b.product_key && a.product_key === b.product_key)
 }
 
-function decorateEvents(events, orders) {
-  const today = todayIso()
-  return events
+function decorateEvents(events, orders, dataThrough = latestOrderDate(orders)) {
+  const base = events
     .filter((event) => event.event_id)
     .map((event) => {
-      const snapshot = buildSnapshot(event, orders, today)
-      const daysSinceEvent = event.event_date ? daysBetween(event.event_date, today) : null
+      const snapshot = buildSnapshot(event, orders, dataThrough)
+      const daysSinceEvent = event.event_date ? daysBetween(event.event_date, dataThrough) : null
       const inferredStatus = event.status || (event.confirmed_at ? 'live' : 'waiting')
       return {
         ...event,
@@ -208,10 +211,56 @@ function decorateEvents(events, orders) {
         status_label: STATUS_LABELS[inferredStatus] || inferredStatus,
         daysSinceEvent,
         snapshot,
-        lens: lensFor(event, snapshot),
       }
     })
-    .sort((a, b) => String(b.event_date || '').localeCompare(String(a.event_date || '')))
+
+  return base
+    .map((event) => {
+      const anchor = event.confirmed_at || event.event_date
+      const overlaps = base.filter((other) => {
+        if (other.event_id === event.event_id || !sameTrackedProduct(event, other)) return false
+        const otherAnchor = other.confirmed_at || other.event_date
+        return anchor && otherAnchor && Math.abs(daysBetween(anchor, otherAnchor)) <= 30
+      })
+      const reviewDay = event.snapshot?.check30Due ? 30 : 7
+      const after = reviewDay === 30 ? event.snapshot?.after30 : event.snapshot?.after7
+      const complete = reviewDay === 30 ? event.snapshot?.check30Due : event.snapshot?.check7Due
+      const recommendation = event.snapshot
+        ? recommendMarketingAction({
+            before: event.snapshot.before7,
+            after,
+            reviewDay,
+            complete,
+            overlap: overlaps.length > 0,
+          })
+        : null
+      const needsReview = event.status !== 'done' && (
+        (event.snapshot?.check30Due && !event.review30_decision) ||
+        (event.snapshot?.check7Due && !event.review7_decision)
+      )
+      const dueReviewDay = event.snapshot?.check30Due && !event.review30_decision
+        ? 30
+        : event.snapshot?.check7Due && !event.review7_decision
+          ? 7
+          : null
+
+      return {
+        ...event,
+        overlaps: overlaps.map((item) => ({
+          event_id: item.event_id,
+          event_label: item.event_label,
+          event_date: item.event_date,
+        })),
+        recommendation,
+        needs_review: needsReview,
+        due_review_day: dueReviewDay,
+      }
+    })
+    .sort((a, b) =>
+      Number(b.needs_review) - Number(a.needs_review) ||
+      Number(b.due_review_day || 0) - Number(a.due_review_day || 0) ||
+      String(b.event_date || '').localeCompare(String(a.event_date || ''))
+    )
 }
 
 function buildRadar(events) {
@@ -226,9 +275,9 @@ function buildRadar(events) {
   for (const event of events) {
     if (event.status === 'done') continue // เสร็จแล้ว → ออกจากบอร์ด เหลือแค่ในประวัติ
     if (!event.confirmed_at || event.status === 'waiting') buckets.waiting.push(event)
-    else if (event.snapshot?.check30Due || event.status === 'check30') buckets.check30.push(event)
-    else if (event.snapshot?.check7Due || event.status === 'check7') buckets.check7.push(event)
-    else if ((event.snapshot?.lift7 ?? 0) >= 15 || event.status === 'content') buckets.content.push(event)
+    else if (event.due_review_day === 30) buckets.check30.push(event)
+    else if (event.due_review_day === 7) buckets.check7.push(event)
+    else if (event.review7_decision === 'scale' || event.status === 'content') buckets.content.push(event)
     else buckets.live.push(event)
   }
 
@@ -256,6 +305,7 @@ function buildProductSignals(orders, anchor = latestOrderDate(orders)) {
         revenue7: 0,
         revenuePrev7: 0,
         units7: 0,
+        unitsPrev7: 0,
         platforms: new Map(),
       }
       products.set(order.product_key, product)
@@ -266,6 +316,7 @@ function buildProductSignals(orders, anchor = latestOrderDate(orders)) {
       product.platforms.set(order.platform, (product.platforms.get(order.platform) || 0) + order.revenue)
     } else if (order.date >= prevStart && order.date <= prevEnd) {
       product.revenuePrev7 += order.revenue
+      product.unitsPrev7 += order.qty
     }
   }
 
@@ -274,13 +325,13 @@ function buildProductSignals(orders, anchor = latestOrderDate(orders)) {
       ...product,
       revenue7: round2(product.revenue7),
       revenuePrev7: round2(product.revenuePrev7),
-      lift7: pct(product.revenue7, product.revenuePrev7),
+      lift7: pct(product.units7, product.unitsPrev7),
       platforms: Object.fromEntries(product.platforms.entries()),
     }))
     .filter((product) => product.revenue7 > 0)
     .sort((a, b) => {
-      const aScore = (a.lift7 || 0) * 1000 + a.revenue7
-      const bScore = (b.lift7 || 0) * 1000 + b.revenue7
+      const aScore = (a.lift7 || 0) * 1000 + a.units7
+      const bScore = (b.lift7 || 0) * 1000 + b.units7
       return bScore - aScore
     })
     .slice(0, 20)
@@ -333,8 +384,9 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const [events, orders] = await Promise.all([getMarketingRows(), readOrderRows()])
-      const decorated = decorateEvents(events, orders)
       const anchor = latestOrderDate(orders)
+      const decorated = decorateEvents(events, orders, anchor)
+      const reviewQueue = decorated.filter((event) => event.needs_review)
       res.setHeader('Cache-Control', 'no-store')
       return res.status(200).json({
         success: true,
@@ -343,6 +395,8 @@ export default async function handler(req, res) {
         productSignals: buildProductSignals(orders, anchor),
         productOptions: buildProductOptions(orders),
         signalWindow: { start: addDays(anchor, -6), end: anchor },
+        dataThrough: anchor,
+        dueReviewCount: reviewQueue.length,
       })
     }
 
@@ -359,9 +413,9 @@ export default async function handler(req, res) {
         platform: String(body.platform || 'all').trim(),
         event_type: String(body.event_type || 'image_change').trim(),
         event_date: String(body.event_date || todayIso()).slice(0, 10),
-        confirmed_at: String(body.confirmed_at || '').slice(0, 10),
-        status: String(body.status || (body.confirmed_at ? 'live' : 'waiting')).trim(),
-        owner: String(body.owner || '').trim(),
+        confirmed_at: String(body.confirmed_at || body.event_date || todayIso()).slice(0, 10),
+        status: String(body.status || 'live').trim(),
+        owner: String(body.owner || req.user?.username || '').trim(),
         note: String(body.note || '').trim(),
         created_at: now,
         updated_at: now,
@@ -388,6 +442,18 @@ export default async function handler(req, res) {
             const v = String(body[key]).trim()
             next[key] = (key === 'confirmed_at' || key === 'event_date') ? v.slice(0, 10) : v
           }
+        }
+        if (body.review_day !== undefined && body.decision !== undefined) {
+          const reviewDay = Number(body.review_day) === 30 ? 30 : 7
+          const decision = String(body.decision || '').trim()
+          if (!['scale', 'iterate', 'stop'].includes(decision)) return next
+          const prefix = reviewDay === 30 ? 'review30' : 'review7'
+          next[`${prefix}_decision`] = decision
+          next[`${prefix}_note`] = String(body.decision_note || '').trim()
+          next[`${prefix}_at`] = now
+          next[`${prefix}_by`] = String(req.user?.username || req.user?.role || 'Boss')
+          if (reviewDay === 30 || decision === 'stop') next.status = 'done'
+          else next.status = decision === 'scale' ? 'content' : 'live'
         }
         if (next.status === 'live' && !next.confirmed_at) next.confirmed_at = todayIso()
         return next

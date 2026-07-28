@@ -398,11 +398,19 @@ export default function App() {
   // มือถือ (<=860px, ดูใน theme.css): sidebar ทั้งแถบซ่อนไปเลย ใช้ bottom tab bar + more sheet แทน
   // (ของเดิมเป็นลิ้นชักเลื่อนออกจาก sidebar — owner ขอเปลี่ยนเป็นแท็บล่างสไตล์แอพธนาคาร)
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
+  const [marketingDueCount, setMarketingDueCount] = useState(() => {
+    try { return Number(localStorage.getItem('payi-marketing-due-count') || 0) } catch { return 0 }
+  })
   const [isMobileViewport, setIsMobileViewport] = useState(() => window.innerWidth <= 860)
   useEffect(() => {
     const onResize = () => setIsMobileViewport(window.innerWidth <= 860)
+    const onMarketingDue = (event) => setMarketingDueCount(Number(event.detail || 0))
     window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    window.addEventListener('payi-marketing-due', onMarketingDue)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('payi-marketing-due', onMarketingDue)
+    }
   }, [])
 
   // DATE FILTER STATES
@@ -645,7 +653,7 @@ export default function App() {
     MarketingRadar: {
       title: 'เรดาร์การตลาด',
       eyebrow: 'Marketing',
-      subtitle: 'ติดตามงานแก้รูป ลงสินค้าใหม่ ลงคลิป และดูผลยอดขายหลังเปลี่ยนแบบสั้น ๆ'
+      subtitle: 'บันทึกสิ่งที่เปลี่ยน วัดจำนวนชิ้นหลัง 7/30 วัน และส่งงานให้ Boss ตัดสินใจ'
     },
     'Planner Control': {
       title: 'Planner Control',
@@ -767,7 +775,29 @@ export default function App() {
                         </span>
                       )}
                     </div>
-                    {sidebarExpanded && item.dotColor && !isActive && <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: item.dotColor, marginRight: '6px', flexShrink: 0 }} />}
+                    {sidebarExpanded && item.id === 'MarketingRadar' && marketingDueCount > 0 ? (
+                      <span
+                        aria-label={`${marketingDueCount} งานรอตัดสินใจ`}
+                        style={{
+                          minWidth: 20,
+                          height: 20,
+                          padding: '0 6px',
+                          borderRadius: 999,
+                          display: 'grid',
+                          placeItems: 'center',
+                          background: isActive ? 'rgba(255,255,255,0.22)' : 'var(--payi-warning-bg)',
+                          color: isActive ? '#fff' : 'var(--payi-warning)',
+                          fontSize: 10,
+                          fontWeight: 900,
+                          fontVariantNumeric: 'tabular-nums',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {marketingDueCount > 99 ? '99+' : marketingDueCount}
+                      </span>
+                    ) : sidebarExpanded && item.dotColor && !isActive ? (
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: item.dotColor, marginRight: '6px', flexShrink: 0 }} />
+                    ) : null}
                   </button>
                 )
               })}

@@ -298,6 +298,295 @@ body {
   }
 }
 
+.marketing-decision-card {
+  min-width: 0;
+}
+
+/* ---------- Marketing Radar: airy decision cockpit ---------- */
+.marketing-radar-page {
+  --marketing-sky: #5ea7ff;
+  --marketing-blue: #3b82f6;
+  --marketing-teal: #2dd4bf;
+  --marketing-lilac: #a78bfa;
+  --marketing-rose: #fb7185;
+  position: relative;
+  isolation: isolate;
+}
+
+.marketing-radar-page::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -32px;
+  border-radius: 36px;
+  background:
+    radial-gradient(circle at 7% 5%, rgba(147, 197, 253, 0.34), transparent 27%),
+    radial-gradient(circle at 92% 12%, rgba(167, 139, 250, 0.2), transparent 25%),
+    radial-gradient(circle at 72% 60%, rgba(45, 212, 191, 0.18), transparent 30%);
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+.marketing-hero-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 24px !important;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background:
+    radial-gradient(circle at 90% -20%, rgba(94, 234, 212, 0.58), transparent 42%),
+    radial-gradient(circle at 12% 112%, rgba(96, 165, 250, 0.7), transparent 42%),
+    linear-gradient(135deg, #172554 0%, #1d4ed8 52%, #0f766e 118%) !important;
+  box-shadow:
+    0 2px 4px rgba(30, 64, 175, 0.1),
+    0 16px 34px rgba(30, 64, 175, 0.18),
+    0 34px 72px rgba(15, 118, 110, 0.12);
+}
+
+.marketing-hero-card::after {
+  content: "";
+  position: absolute;
+  width: 190px;
+  height: 190px;
+  right: -60px;
+  top: -86px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 0 0 24px rgba(255, 255, 255, 0.04),
+    0 0 0 52px rgba(255, 255, 255, 0.025);
+  pointer-events: none;
+}
+
+.marketing-hero-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.marketing-hero-metric {
+  border-radius: 14px !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  background: rgba(255, 255, 255, 0.11) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(14px);
+}
+
+.marketing-capture-card,
+.marketing-review-shell,
+.marketing-signal-panel,
+.marketing-history-card {
+  border-radius: 22px !important;
+  border: 1px solid rgba(255, 255, 255, 0.86) !important;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(244, 249, 255, 0.68)) !important;
+  box-shadow:
+    0 2px 4px rgba(30, 64, 175, 0.03),
+    0 14px 32px rgba(30, 64, 175, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(24px) saturate(135%) !important;
+}
+
+.marketing-capture-card {
+  position: relative;
+  overflow: visible;
+}
+
+.marketing-capture-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(45, 212, 191, 0.17), transparent 40%),
+    radial-gradient(circle at 0% 100%, rgba(96, 165, 250, 0.14), transparent 42%);
+  pointer-events: none;
+}
+
+.marketing-radar-page input,
+.marketing-radar-page select,
+.marketing-radar-page textarea {
+  min-height: 42px;
+  border-radius: 13px !important;
+  border-color: rgba(148, 163, 184, 0.27) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 5px 16px rgba(59, 130, 246, 0.045);
+  backdrop-filter: blur(16px);
+  transition: border-color 140ms ease-out, box-shadow 140ms ease-out, background-color 140ms ease-out;
+}
+
+.marketing-radar-page input:focus,
+.marketing-radar-page select:focus,
+.marketing-radar-page textarea:focus {
+  outline: 3px solid rgba(59, 130, 246, 0.13) !important;
+  outline-offset: 1px;
+  border-color: rgba(59, 130, 246, 0.62) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.1);
+}
+
+.marketing-radar-page button {
+  transition: transform 120ms ease-out, box-shadow 140ms ease-out, filter 140ms ease-out;
+}
+
+.marketing-radar-page button:focus-visible {
+  outline: 3px solid rgba(59, 130, 246, 0.2);
+  outline-offset: 2px;
+}
+
+.marketing-radar-page button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.marketing-primary-btn {
+  min-height: 44px;
+  border-radius: 14px !important;
+  background:
+    radial-gradient(circle at 84% -45%, rgba(255, 255, 255, 0.42), transparent 48%),
+    linear-gradient(135deg, #3b82f6 0%, #14b8a6 100%) !important;
+  box-shadow:
+    0 2px 4px rgba(37, 99, 235, 0.12),
+    0 12px 24px rgba(20, 184, 166, 0.18) !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .marketing-primary-btn:hover:not(:disabled) {
+    filter: saturate(1.08) brightness(1.03);
+    box-shadow:
+      0 3px 6px rgba(37, 99, 235, 0.14),
+      0 16px 30px rgba(20, 184, 166, 0.23) !important;
+  }
+}
+
+.marketing-view-toolbar {
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.56);
+  box-shadow: 0 10px 26px rgba(30, 64, 175, 0.055);
+  backdrop-filter: blur(18px);
+}
+
+.marketing-review-shell {
+  position: relative;
+  overflow: hidden;
+}
+
+.marketing-review-shell::after {
+  content: "";
+  position: absolute;
+  width: 170px;
+  height: 170px;
+  top: -105px;
+  right: -35px;
+  border-radius: 50%;
+  background: rgba(251, 191, 36, 0.14);
+  filter: blur(12px);
+  pointer-events: none;
+}
+
+.marketing-decision-card {
+  border-radius: 18px !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  background: rgba(255, 255, 255, 0.7) !important;
+  box-shadow:
+    0 2px 4px rgba(15, 23, 42, 0.025),
+    0 12px 28px rgba(59, 130, 246, 0.065) !important;
+  backdrop-filter: blur(16px);
+}
+
+.marketing-tiny-metric {
+  border-radius: 13px !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  background:
+    linear-gradient(145deg, rgba(239, 246, 255, 0.88), rgba(255, 255, 255, 0.7)) !important;
+}
+
+.marketing-radar-column {
+  border-radius: 18px !important;
+  border-color: rgba(255, 255, 255, 0.82) !important;
+  box-shadow:
+    0 2px 4px rgba(15, 23, 42, 0.025),
+    0 12px 26px rgba(30, 64, 175, 0.05);
+  backdrop-filter: blur(18px);
+}
+
+.marketing-radar-column:nth-child(1) {
+  background: linear-gradient(165deg, rgba(255, 251, 235, 0.86), rgba(255, 255, 255, 0.66)) !important;
+}
+
+.marketing-radar-column:nth-child(2) {
+  background: linear-gradient(165deg, rgba(236, 253, 245, 0.88), rgba(255, 255, 255, 0.66)) !important;
+}
+
+.marketing-radar-column:nth-child(3) {
+  background: linear-gradient(165deg, rgba(239, 246, 255, 0.9), rgba(255, 255, 255, 0.66)) !important;
+}
+
+.marketing-radar-column:nth-child(4) {
+  background: linear-gradient(165deg, rgba(245, 243, 255, 0.9), rgba(255, 255, 255, 0.66)) !important;
+}
+
+.marketing-radar-column:nth-child(5) {
+  background: linear-gradient(165deg, rgba(253, 242, 248, 0.9), rgba(255, 255, 255, 0.66)) !important;
+}
+
+.marketing-event-card,
+.marketing-signal-item {
+  border-radius: 15px !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  background: rgba(255, 255, 255, 0.76) !important;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.025),
+    0 8px 20px rgba(30, 64, 175, 0.055) !important;
+  backdrop-filter: blur(14px);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .marketing-event-card:hover,
+  .marketing-signal-item:hover,
+  .marketing-decision-card:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      0 2px 4px rgba(15, 23, 42, 0.035),
+      0 14px 30px rgba(30, 64, 175, 0.09) !important;
+  }
+}
+
+@media (max-width: 1100px) {
+  .marketing-decision-card {
+    grid-template-columns: minmax(180px, 0.8fr) minmax(260px, 1.2fr) !important;
+  }
+
+  .marketing-decision-card > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .marketing-decision-card {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .marketing-decision-card > :last-child {
+    grid-column: auto;
+  }
+
+  .app-kpi-grid.marketing-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marketing-radar-page *,
+  .marketing-radar-page *::before,
+  .marketing-radar-page *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* ---------- bottom tab bar (mobile) — floating glass pill, banking-app style ---------- */
 .payi-bottom-tabbar {
   position: fixed;
