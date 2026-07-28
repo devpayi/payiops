@@ -511,11 +511,15 @@ a new one.
    - ✅ **DONE (2026-07-28) — blind-count order tracking.** Owner clarified the intent
      behind the queue: once ฟ้า reports an arrival, **boss must match it himself, and ฟ้า
      must not see how much was ordered in advance** — otherwise she'd just confirm the
-     expected number instead of doing a genuine physical count. So a new "สั่งของรอบนี้กี่ชิ้น"
-     field on the Inventory edit modal (`Inventory.jsx`) lets boss log the qty he actually
-     ordered — this creates/updates a `stock_in_requests` row with `arrival_date`/
-     `count_date` left blank (`syncOrderToPendingRequest` in `api/_lib/inventory.js`,
-     called from `upsertItem` whenever `reorder_qty > 0`). `loadStockInRequests` computes
+     expected number instead of doing a genuine physical count. First cut put the qty
+     field on the Inventory edit modal, but owner asked to split it into its own button
+     instead (**"แยกปุ่ม สั่งของ กับ แจ้งของเข้า เป็นสองฝั่ง"**) — `StockMovement.jsx` now has
+     a dedicated boss/dev-only **"สั่งของ"** button (`OrderRequestModal`, sku+qty+note only)
+     next to the existing "แจ้งของเข้า" one; the Inventory-edit-modal qty field was removed.
+     Submitting it calls `createOrderRequest` in `api/_lib/inventory.js`, which
+     creates/updates a `stock_in_requests` row with `arrival_date`/`count_date` left blank
+     (matches an existing sku+order-only row instead of duplicating if ordered again before
+     the first lot arrives). `loadStockInRequests` computes
      `order_only: !arrival_date` per row and **filters those out entirely for non-manager
      roles** (`authEnabled() && !canManageOperations(role)`) — enforced server-side, not
      just hidden in the UI, since the whole point is staff/stock literally cannot see the
@@ -530,7 +534,12 @@ a new one.
      was widened to also allow editing `status: 'pending'` rows (previously rejected-only),
      but gated: editing an order-only row (no `arrival_date`) requires
      `canManageOperations`, same as match/reject — editing a real arrival report (has
-     `arrival_date`, whether pending or rejected) stays open to whoever filed it.
+     `arrival_date`, whether pending or rejected) stays open to whoever filed it. Order-only
+     rows also get a **"เสร็จสิ้น"** button (`finishOrderRequest`, boss/dev only) to close
+     them out once the lot has actually arrived and been matched through the normal
+     ฟ้า-reports → boss-matches flow — sets `status: 'done'` without creating a second
+     `stock_movements` row (the real qty already landed through that separate flow; this
+     is purely closing the order-tracking placeholder so it drops off the queue).
 8. ✅ **REMOVED (2026-07-21)** — "PAYI Brain" AI Assistant tab was fake (canned
    if/else replies, no LLM call). Owner decided to delete rather than keep a
    fake-AI page (`AIAssistantView` function, menu item, icon mapping, ternary branch
