@@ -323,7 +323,7 @@ export default function HR() {
             <div><span className="hr-section-kicker">ประวัติ</span><h2 id="history-heading">{isBoss ? 'คำขอลาทั้งหมด' : 'คำขอลาของฉัน'}</h2></div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {isBoss && !!leave.length && <button type="button" className="hr-icon-button" onClick={exportLeaveExcel} aria-label="ส่งออก Excel" title="ส่งออกเป็น Excel (แยกชีทรายคน + สรุปรายเดือน)"><Download size={18} /></button>}
-              {isBoss && people.length > 0 && <select aria-label="กรองตามพนักงาน" value={historyFilterCode} onChange={(e) => setHistoryFilterCode(e.target.value)} style={{ maxWidth: 220 }}>
+              {isBoss && people.length > 0 && <select aria-label="กรองตามพนักงาน" value={historyFilterCode} onChange={(e) => setHistoryFilterCode(e.target.value)} style={{ maxWidth: 220, height: 44, border: '1px solid var(--hr-line)', borderRadius: 14, padding: '0 12px', background: 'var(--hr-surface)', color: 'var(--hr-ink)', font: 'inherit' }}>
                 <option value="">ทุกคน</option>
                 {people.map((person) => <option key={person.code} value={person.code}>{person.name}{person.group ? ` · ${person.group}` : ''}</option>)}
               </select>}
