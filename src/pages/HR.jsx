@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  AlertTriangle, CalendarDays, Check, Clock3, Pencil, Plus, RefreshCw,
+  AlertTriangle, CalendarDays, Check, Clock3, Download, Pencil, Plus, RefreshCw,
   Send, UsersRound, X,
 } from 'lucide-react'
 import './HR.css'
@@ -177,6 +177,50 @@ export default function HR() {
     } catch (e) { setError(e.message) } finally { setSaving(false) }
   }
 
+  const exportLeaveExcel = async () => {
+    const XLSX = await import('xlsx')
+    const byEmployee = new Map()
+    leave.forEach((item) => {
+      const key = item.employee_name || item.username || 'ไม่ระบุ'
+      if (!byEmployee.has(key)) byEmployee.set(key, [])
+      byEmployee.get(key).push(item)
+    })
+    const wb = XLSX.utils.book_new()
+    const usedNames = new Set()
+    byEmployee.forEach((items, name) => {
+      const rows = items.slice().sort((a, b) => String(a.start_date).localeCompare(String(b.start_date))).map((item) => ({
+        วันที่เริ่ม: item.start_date, วันที่สิ้นสุด: item.end_date, ประเภทการลา: item.leave_type,
+        ช่วงเวลา: periodLabel(item.leave_period, item.days), จำนวนวัน: Number(item.days) || 0,
+        สถานะ: STATUS[item.status]?.label || item.status, เหตุผล: item.reason || '',
+      }))
+      let sheetName = name.replace(/[\\/?*[\]:]/g, ' ').slice(0, 31) || 'ไม่ระบุ'
+      let n = 1
+      while (usedNames.has(sheetName)) { sheetName = `${name.slice(0, 28)}_${++n}`; }
+      usedNames.add(sheetName)
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sheetName)
+    })
+    const monthSet = new Set()
+    const summaryByEmployee = new Map()
+    leave.filter((item) => item.status === 'approved').forEach((item) => {
+      const name = item.employee_name || item.username || 'ไม่ระบุ'
+      const month = String(item.start_date).slice(0, 7)
+      monthSet.add(month)
+      if (!summaryByEmployee.has(name)) summaryByEmployee.set(name, {})
+      const bucket = summaryByEmployee.get(name)
+      bucket[month] = (bucket[month] || 0) + (Number(item.days) || 0)
+    })
+    const months = Array.from(monthSet).sort()
+    const summaryRows = Array.from(summaryByEmployee.entries()).map(([name, bucket]) => {
+      const row = { พนักงาน: name }
+      let total = 0
+      months.forEach((month) => { const days = bucket[month] || 0; row[month] = days; total += days })
+      row['รวม (วัน)'] = total
+      return row
+    })
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'สรุปรายเดือน')
+    XLSX.writeFile(wb, `ประวัติวันลา_${today()}.xlsx`)
+  }
+
   const myLeave = isBoss ? leave : leave.filter((item) => item.username === currentUser?.u)
   const visibleLeave = isBoss && historyFilterCode ? myLeave.filter((item) => item.username === `mp:${historyFilterCode}`) : myLeave
   const pendingLeave = leave.filter((item) => item.status === 'pending' || item.edit_pending === '1')
@@ -185,19 +229,37 @@ export default function HR() {
 
   return (
     <main className="hr-page" id="main-content">
-      <header className="hr-page-header" style={{ alignItems: 'center', justifyContent: 'flex-end' }}>
-        <h1 style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>จัดการวันลา</h1>
-        <button className="hr-icon-button" onClick={load} aria-label="รีเฟรชข้อมูล" title="รีเฟรชข้อมูล"><RefreshCw size={18} /></button>
-      </header>
+      <section className="hr-dashboard-hero" aria-labelledby="hr-dashboard-title">
+        <div className="hr-hero-copy">
+          <span>OPERATIONS PLANNING</span>
+          <h1 id="hr-dashboard-title">พนักงาน (ลา)</h1>
+          <p>คำขอลา การอนุมัติ และวันลาพักร้อนคงเหลือ</p>
+        </div>
+        <svg className="hr-magic-link" viewBox="0 0 360 110" aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id="hr-magic-gradient" x1="100%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#fff" />
+              <stop offset="42%" stopColor="#f2ceff" />
+              <stop offset="100%" stopColor="#d692ff" />
+            </linearGradient>
+          </defs>
+          <path className="hr-magic-link-glow" d="M350 29 C282 35 210 66 145 76 S58 80 12 91" />
+          <path className="hr-magic-link-core" d="M350 29 C282 35 210 66 145 76 S58 80 12 91" />
+          <circle cx="13" cy="91" r="4.5" />
+          <circle cx="50" cy="83" r="2.2" />
+        </svg>
+        <header className="hr-page-header">
+          <button className="hr-icon-button" onClick={load} aria-label="รีเฟรชข้อมูล" title="รีเฟรชข้อมูล"><RefreshCw size={18} /></button>
+        </header>
+        <section className="hr-metrics" aria-label="ภาพรวมวันลา">
+          <article className="hr-metric is-emphasis"><div className="hr-metric-icon"><Clock3 size={20} /></div><div><span>รออนุมัติ</span><strong>{pendingLeave.length}</strong><small>รายการที่ต้องจัดการ</small></div></article>
+          <article className="hr-metric"><div className="hr-metric-icon"><CalendarDays size={20} /></div><div><span>ลาวันนี้</span><strong>{peopleOnLeaveToday}</strong><small>คนที่อนุมัติแล้ว</small></div></article>
+          <article className="hr-metric"><div className="hr-metric-icon"><Check size={20} /></div><div><span>อนุมัติเดือนนี้</span><strong>{approvedThisMonth}</strong><small>รายการ</small></div></article>
+          <article className="hr-metric"><div className="hr-metric-icon"><UsersRound size={20} /></div><div><span>พนักงานในระบบ</span><strong>{people.length}</strong><small>คน</small></div></article>
+        </section>
+      </section>
 
       {error && <div className="hr-alert is-error" role="alert"><AlertTriangle size={18} /><span>{error}</span></div>}
-
-      <section className="hr-metrics" aria-label="ภาพรวมวันลา">
-        <article className="hr-metric is-emphasis"><div className="hr-metric-icon"><Clock3 size={20} /></div><div><span>รออนุมัติ</span><strong>{pendingLeave.length}</strong><small>รายการที่ต้องจัดการ</small></div></article>
-        <article className="hr-metric"><div className="hr-metric-icon"><CalendarDays size={20} /></div><div><span>ลาวันนี้</span><strong>{peopleOnLeaveToday}</strong><small>คนที่อนุมัติแล้ว</small></div></article>
-        <article className="hr-metric"><div className="hr-metric-icon"><Check size={20} /></div><div><span>อนุมัติเดือนนี้</span><strong>{approvedThisMonth}</strong><small>รายการ</small></div></article>
-        <article className="hr-metric"><div className="hr-metric-icon"><UsersRound size={20} /></div><div><span>พนักงานในระบบ</span><strong>{people.length}</strong><small>คน</small></div></article>
-      </section>
 
       {!!vacationLeaveBalances.length && <section className="hr-panel" aria-labelledby="balance-heading">
         <div className="hr-section-heading hr-balance-heading">
@@ -259,10 +321,13 @@ export default function HR() {
         <section className="hr-panel" aria-labelledby="history-heading">
           <div className="hr-section-heading">
             <div><span className="hr-section-kicker">ประวัติ</span><h2 id="history-heading">{isBoss ? 'คำขอลาทั้งหมด' : 'คำขอลาของฉัน'}</h2></div>
-            {isBoss && people.length > 0 && <select aria-label="กรองตามพนักงาน" value={historyFilterCode} onChange={(e) => setHistoryFilterCode(e.target.value)} style={{ maxWidth: 220 }}>
-              <option value="">ทุกคน</option>
-              {people.map((person) => <option key={person.code} value={person.code}>{person.name}{person.group ? ` · ${person.group}` : ''}</option>)}
-            </select>}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {isBoss && !!leave.length && <button type="button" className="hr-icon-button" onClick={exportLeaveExcel} aria-label="ส่งออก Excel" title="ส่งออกเป็น Excel (แยกชีทรายคน + สรุปรายเดือน)"><Download size={18} /></button>}
+              {isBoss && people.length > 0 && <select aria-label="กรองตามพนักงาน" value={historyFilterCode} onChange={(e) => setHistoryFilterCode(e.target.value)} style={{ maxWidth: 220 }}>
+                <option value="">ทุกคน</option>
+                {people.map((person) => <option key={person.code} value={person.code}>{person.name}{person.group ? ` · ${person.group}` : ''}</option>)}
+              </select>}
+            </div>
           </div>
           {loading ? <div className="hr-empty">กำลังโหลดข้อมูล…</div> : !visibleLeave.length ? <div className="hr-empty">ยังไม่มีคำขอลา</div> : (
             <div className="hr-history-list">{visibleLeave.slice().reverse().map((item) => (
@@ -316,4 +381,3 @@ export default function HR() {
     </main>
   )
 }
-

@@ -25,6 +25,44 @@ function TypeBadge({ type }) {
 const inputStyle = { border: '1px solid var(--payi-border)', borderRadius: 10, padding: '9px 12px', fontSize: 13, outline: 'none', boxSizing: 'border-box' }
 const labelStyle = { fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 5, display: 'block' }
 
+function itemLabel(it) { return `${it.abc ? `[${it.abc}] ` : ''}${it.display_name} (${it.sku})` }
+
+function SkuPicker({ items, value, onChange, placeholder }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const selected = items.find((it) => it.sku === value)
+  const filtered = query.trim()
+    ? items.filter((it) => `${it.display_name} ${it.sku}`.toLowerCase().includes(query.trim().toLowerCase()))
+    : items
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        value={open ? query : (selected ? itemLabel(selected) : '')}
+        onChange={(e) => { setQuery(e.target.value); if (!open) setOpen(true) }}
+        onFocus={() => { setQuery(''); setOpen(true) }}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder={placeholder || 'พิมพ์ชื่อสินค้าหรือ SKU เพื่อค้นหา...'}
+        style={{ ...inputStyle, width: '100%' }}
+      />
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, maxHeight: 260, overflowY: 'auto', background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 10, boxShadow: '0 12px 32px rgba(15,23,42,0.18)', zIndex: 1000 }}>
+          {filtered.length === 0 && <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--payi-text-faint)' }}>ไม่พบสินค้า</div>}
+          {filtered.map((it) => (
+            <div
+              key={it.sku}
+              onMouseDown={(e) => { e.preventDefault(); onChange(it.sku); setQuery(''); setOpen(false) }}
+              style={{ padding: '9px 12px', fontSize: 13, cursor: 'pointer', background: it.sku === value ? 'var(--payi-mint-soft)' : 'transparent' }}
+            >
+              {itemLabel(it)}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function toCsv(rows) {
   const header = ['วันที่', 'ประเภท', 'สินค้า', 'SKU', 'จำนวน', 'ผู้ทำรายการ', 'หมายเหตุ']
   const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
@@ -682,12 +720,7 @@ function OrderRequestModal({ items, saving, initial, onClose, onSave }) {
             {isEdit ? (
               <div style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', background: 'var(--payi-surface-muted)', color: 'var(--payi-text-muted)' }}>{initial.display_name} ({sku})</div>
             ) : (
-              <select value={sku} onChange={(e) => setSku(e.target.value)} required style={{ ...inputStyle, width: '100%' }}>
-                {items.length === 0 && <option value="">ยังไม่มีสินค้า</option>}
-                {items.map((it) => (
-                  <option key={it.sku} value={it.sku}>{it.abc ? `[${it.abc}] ` : ''}{it.display_name} ({it.sku})</option>
-                ))}
-              </select>
+              <SkuPicker items={items} value={sku} onChange={setSku} />
             )}
           </div>
           <div>
@@ -742,12 +775,7 @@ function StockInRequestModal({ items, saving, initial, onClose, onSave }) {
         <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
             <label style={labelStyle}>สินค้า</label>
-            <select value={sku} onChange={(e) => setSku(e.target.value)} required style={{ ...inputStyle, width: '100%' }}>
-              {items.length === 0 && <option value="">ยังไม่มีสินค้า</option>}
-              {items.map((it) => (
-                <option key={it.sku} value={it.sku}>{it.abc ? `[${it.abc}] ` : ''}{it.display_name} ({it.sku})</option>
-              ))}
-            </select>
+            <SkuPicker items={items} value={sku} onChange={setSku} />
           </div>
           <div>
             <label style={labelStyle}>จำนวนที่เข้า</label>
@@ -868,12 +896,7 @@ function AddMovementModal({ items, saving, initial, onClose, onSave }) {
             {isEdit ? (
               <div style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', background: 'var(--payi-surface-muted)', color: 'var(--payi-text-muted)' }}>{initial.display_name} ({sku})</div>
             ) : (
-              <select value={sku} onChange={(e) => setSku(e.target.value)} required style={{ ...inputStyle, width: '100%' }}>
-                {items.length === 0 && <option value="">ยังไม่มีสินค้า — ไปเพิ่มที่หน้า Inventory ก่อน</option>}
-                {items.map((it) => (
-                  <option key={it.sku} value={it.sku}>{it.abc ? `[${it.abc}] ` : ''}{it.display_name} ({it.sku})</option>
-                ))}
-              </select>
+              <SkuPicker items={items} value={sku} onChange={setSku} placeholder={items.length === 0 ? 'ยังไม่มีสินค้า — ไปเพิ่มที่หน้า Inventory ก่อน' : undefined} />
             )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>

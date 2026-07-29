@@ -19,6 +19,37 @@
   -webkit-font-smoothing: antialiased;
 }
 
+.payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child {
+  position: relative;
+  min-width: min(500px, 52vw);
+  min-height: 136px;
+  overflow: visible;
+  border: 1px solid rgba(179, 129, 196, .55);
+  padding-right: 190px !important;
+  background:
+    radial-gradient(circle at 76% 24%, rgba(214, 167, 255, .34) 0 2px, transparent 3px),
+    radial-gradient(circle at 88% 70%, rgba(255, 255, 255, .5) 0 1px, transparent 2px),
+    linear-gradient(135deg, rgba(33, 25, 37, .94) 0%, rgba(72, 42, 87, .92) 58%, rgba(128, 80, 153, .88) 100%) !important;
+  box-shadow: 0 14px 30px rgba(52, 25, 62, .24) !important;
+  backdrop-filter: blur(18px);
+}
+
+.payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  bottom: -35px;
+  width: 185px;
+  height: 210px;
+  background: url("/hr-fairy-flying.png") center bottom / contain no-repeat;
+  filter: drop-shadow(0 14px 16px rgba(23, 11, 29, .35));
+  pointer-events: none;
+}
+
+.payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child > div:first-child {
+  color: #e6c7ec !important;
+}
+
 .hr-page *, .hr-page *::before, .hr-page *::after { box-sizing: border-box; }
 .hr-page h1, .hr-page h2, .hr-page h3, .hr-page p { margin: 0; }
 .hr-page h1, .hr-page h2, .hr-page h3 { text-wrap: balance; }
@@ -216,4 +247,947 @@
 
 @media (prefers-reduced-motion: reduce) {
   .hr-page *, .hr-page *::before, .hr-page *::after { transition-duration: .01ms !important; }
+}
+
+/* Kuromi-inspired gothic-cute skin. Visual overrides only; page data and behavior stay untouched. */
+.hr-page {
+  --hr-navy: #2c183e;
+  --hr-navy-2: #6f3c8c;
+  --hr-blue: #7d48a0;
+  --hr-blue-soft: #f2e6f6;
+  --hr-mint: #3d856c;
+  --hr-mint-soft: #e5f2ec;
+  --hr-amber: #96601b;
+  --hr-amber-soft: #fff0cf;
+  --hr-red: #b84162;
+  --hr-red-soft: #fde8ef;
+  --hr-ink: #2d2034;
+  --hr-muted: #75627b;
+  --hr-line: #d9bfdf;
+  --hr-surface: #fff9fc;
+  position: relative;
+  isolation: isolate;
+  min-height: calc(100vh - 64px);
+  padding: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(91, 49, 112, .18);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 13% 10%, rgba(255, 255, 255, .8) 0 2px, transparent 3px),
+    radial-gradient(circle at 87% 16%, rgba(255, 255, 255, .7) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at 75% 70%, rgba(255, 255, 255, .55) 0 2px, transparent 3px),
+    linear-gradient(145deg, #d8b9e2 0%, #ecd4e8 36%, #f4dce9 68%, #c8a6dc 100%);
+}
+
+.hr-page::before,
+.hr-page::after {
+  position: absolute;
+  z-index: -1;
+  color: rgba(77, 35, 96, .16);
+  pointer-events: none;
+}
+
+.hr-page::before {
+  content: "☾";
+  top: -62px;
+  left: -20px;
+  font: 220px/1 Georgia, serif;
+  transform: rotate(-18deg);
+}
+
+.hr-page::after {
+  content: "✦  ·  ♡  ·  ✦";
+  right: 26px;
+  bottom: 10px;
+  font-size: 34px;
+  letter-spacing: 12px;
+  opacity: .55;
+}
+
+.hr-page button:focus-visible,
+.hr-page input:focus-visible,
+.hr-page select:focus-visible {
+  outline-color: rgba(111, 60, 140, .38);
+}
+
+.hr-icon-button {
+  border-color: rgba(95, 49, 116, .24);
+  background: rgba(255, 249, 252, .84);
+  box-shadow: 0 6px 18px rgba(58, 29, 69, .11);
+  backdrop-filter: blur(10px);
+}
+
+.hr-metric {
+  border: 1px solid rgba(98, 53, 118, .16);
+  border-radius: 20px;
+  background: rgba(255, 248, 252, .62);
+  box-shadow: 0 2px 4px rgba(53, 24, 64, .05), 0 12px 30px rgba(73, 37, 86, .1);
+  backdrop-filter: blur(12px);
+}
+
+.hr-metric.is-emphasis {
+  background: linear-gradient(145deg, #1d1722, #3b2449 62%, #6c3d82);
+}
+
+.hr-metric-icon { background: #f0e2f4; }
+.hr-metric.is-emphasis span,
+.hr-metric.is-emphasis small { color: #e7cfea; }
+
+.hr-panel {
+  border: 1px solid rgba(93, 48, 112, .17);
+  border-radius: 22px;
+  background: rgba(255, 249, 252, .68);
+  box-shadow: 0 2px 4px rgba(52, 25, 63, .05), 0 14px 38px rgba(67, 32, 80, .1);
+  backdrop-filter: blur(14px);
+}
+
+.hr-approval-panel {
+  background: linear-gradient(180deg, rgba(239, 220, 243, .68) 0, rgba(255, 249, 252, .66) 118px);
+}
+
+.hr-request-card {
+  border-color: var(--hr-line);
+  border-radius: 17px;
+  background: rgba(255, 250, 253, .68);
+  backdrop-filter: blur(12px);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .52);
+}
+
+.hr-avatar {
+  border: 1px solid #8c60a0;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #211925, #664178);
+  color: #ffe9f5;
+  box-shadow: 0 5px 12px rgba(48, 23, 58, .18);
+}
+
+.hr-request-facts > div { background: #f5eaf6; }
+.hr-request-note {
+  border-left-color: #a97cba;
+  background: #faf0f7;
+}
+
+.hr-button.is-primary {
+  background: linear-gradient(135deg, #211925, #553066 68%, #784693);
+  box-shadow: 0 8px 20px rgba(50, 24, 59, .23);
+}
+
+.hr-button.is-secondary { background: #fffafd; }
+.hr-button.is-secondary.is-active {
+  border-color: #b990c7;
+  background: #eedff2;
+}
+
+.hr-field input,
+.hr-field select,
+.hr-alert select,
+.hr-balance-card select,
+.hr-balance-card,
+.hr-edit-form input,
+.hr-edit-form select {
+  background: #fffafd;
+}
+
+.hr-add-employee { background: #f4e8f5; }
+.hr-progress { background: #eaddec; }
+
+.hr-edit-overlay {
+  --hr-navy: #2c183e;
+  --hr-blue: #7d48a0;
+  --hr-blue-soft: #f2e6f6;
+  --hr-ink: #2d2034;
+  --hr-muted: #75627b;
+  --hr-line: #d9bfdf;
+  --hr-red: #b84162;
+  background: rgba(35, 18, 41, .48);
+  backdrop-filter: blur(7px);
+}
+
+.hr-edit-dialog {
+  border: 1px solid rgba(207, 168, 218, .7);
+  background: #fff9fc;
+  box-shadow: 0 24px 80px rgba(38, 18, 45, .32);
+}
+
+.hr-edit-title { background: rgba(255, 249, 252, .96); }
+
+@media (hover: hover) and (pointer: fine) {
+  .hr-button.is-primary:hover {
+    background: linear-gradient(135deg, #17121a, #432550 68%, #693d80);
+  }
+  .hr-request-card:hover { border-color: #b78fc4; }
+  .hr-history-row:hover { background: #fbf0f8; }
+}
+
+@media (max-width: 720px) {
+  .hr-page {
+    padding: 14px;
+    border-radius: 20px;
+  }
+  .hr-page::before {
+    top: -34px;
+    font-size: 140px;
+  }
+  .hr-page::after {
+    right: 10px;
+    font-size: 22px;
+    letter-spacing: 6px;
+  }
+  .payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child {
+    min-width: 0;
+    min-height: 112px;
+    padding-right: 112px !important;
+  }
+  .payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child::after {
+    right: 0;
+    bottom: -18px;
+    width: 118px;
+    height: 142px;
+  }
+}
+
+/* Lighter lavender glow and a restrained magical sparkle layer. */
+.hr-page {
+  background:
+    radial-gradient(circle at 8% 12%, rgba(255, 255, 255, .96) 0 2px, transparent 3px),
+    radial-gradient(circle at 18% 34%, rgba(255, 244, 255, .9) 0 1px, transparent 2px),
+    radial-gradient(circle at 42% 8%, rgba(244, 215, 255, .95) 0 2px, transparent 4px),
+    radial-gradient(circle at 73% 17%, rgba(255, 255, 255, .92) 0 1.5px, transparent 3px),
+    radial-gradient(circle at 91% 36%, rgba(238, 205, 255, .92) 0 2px, transparent 4px),
+    radial-gradient(circle at 81% 78%, rgba(255, 255, 255, .82) 0 2px, transparent 3px),
+    radial-gradient(circle at 20% 92%, rgba(235, 202, 255, .88) 0 1.5px, transparent 3px),
+    radial-gradient(ellipse at 76% 10%, rgba(215, 171, 255, .48), transparent 34%),
+    linear-gradient(145deg, #ead8f2 0%, #f3e4f5 38%, #f8e8f2 68%, #dcc5ed 100%);
+  box-shadow:
+    inset 0 0 70px rgba(255, 255, 255, .34),
+    0 18px 55px rgba(146, 95, 174, .16);
+}
+
+.hr-page::before {
+  color: rgba(135, 82, 164, .13);
+  text-shadow:
+    0 0 24px rgba(233, 196, 255, .7),
+    0 0 52px rgba(207, 150, 246, .45);
+}
+
+.hr-page::after {
+  color: rgba(255, 255, 255, .92);
+  opacity: .86;
+  text-shadow:
+    0 0 5px #fff,
+    0 0 12px rgba(229, 183, 255, .95),
+    0 0 24px rgba(189, 117, 234, .7);
+  animation: hr-sparkle 2.8s ease-in-out infinite alternate;
+}
+
+.payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child {
+  background:
+    radial-gradient(circle at 70% 20%, rgba(255, 255, 255, .82) 0 2px, transparent 4px),
+    radial-gradient(circle at 85% 72%, rgba(255, 231, 255, .9) 0 1px, transparent 3px),
+    radial-gradient(ellipse at 78% 44%, rgba(239, 194, 255, .48), transparent 38%),
+    linear-gradient(135deg, rgba(103, 73, 128, .96) 0%, rgba(146, 102, 174, .92) 58%, rgba(190, 142, 214, .9) 100%) !important;
+  box-shadow:
+    0 14px 32px rgba(114, 65, 139, .24),
+    0 0 30px rgba(211, 163, 239, .32) !important;
+}
+
+.payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child::after {
+  filter:
+    drop-shadow(0 0 5px rgba(255, 255, 255, .8))
+    drop-shadow(0 0 13px rgba(229, 174, 255, .72))
+    drop-shadow(0 16px 18px rgba(85, 42, 102, .3));
+}
+
+.hr-metric {
+  background: rgba(255, 252, 255, .68);
+  box-shadow:
+    0 2px 5px rgba(72, 34, 84, .05),
+    0 12px 30px rgba(123, 74, 145, .1),
+    0 0 22px rgba(237, 205, 255, .18);
+}
+
+.hr-metric.is-emphasis {
+  background: linear-gradient(145deg, #655074, #80608f 58%, #a678ba);
+  box-shadow:
+    0 10px 28px rgba(91, 52, 108, .22),
+    0 0 24px rgba(219, 170, 246, .32);
+}
+
+.hr-panel {
+  background: rgba(255, 252, 255, .7);
+  box-shadow:
+    0 2px 5px rgba(71, 35, 82, .05),
+    0 14px 38px rgba(122, 76, 142, .1),
+    0 0 26px rgba(239, 211, 255, .16);
+}
+
+.hr-approval-panel {
+  background: linear-gradient(180deg, rgba(244, 229, 249, .76) 0, rgba(255, 252, 255, .7) 118px);
+}
+
+@keyframes hr-sparkle {
+  from { opacity: .58; filter: brightness(.92); }
+  to { opacity: 1; filter: brightness(1.25); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hr-page::after { animation: none; }
+}
+
+/* HR navigation and hero composition */
+body:has(.hr-page) .payi-sidebar-nav [data-nav-id="HR"] {
+  background:
+    radial-gradient(circle at 84% 18%, rgba(255, 255, 255, .7) 0 1px, transparent 3px),
+    linear-gradient(135deg, #8060a1 0%, #a774c4 54%, #d49cda 100%) !important;
+  box-shadow:
+    0 7px 18px rgba(142, 91, 170, .3),
+    0 0 17px rgba(211, 159, 239, .35) !important;
+}
+
+.payi-main-content:has(> .hr-page) > .payi-topbar {
+  align-items: center !important;
+  min-height: 176px;
+  margin-bottom: 10px;
+}
+
+.payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child {
+  width: clamp(500px, 46vw, 590px) !important;
+  min-width: 500px;
+  min-height: 158px;
+  padding: 24px 238px 24px 30px !important;
+  border-radius: 26px !important;
+}
+
+.payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child::before {
+  content: "✦";
+  position: absolute;
+  top: 19px;
+  right: 212px;
+  color: rgba(255, 255, 255, .92);
+  font-size: 18px;
+  text-shadow:
+    0 0 7px #fff,
+    0 0 18px rgba(231, 189, 255, .92);
+  pointer-events: none;
+}
+
+.payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child::after {
+  right: 12px;
+  bottom: -26px;
+  width: 230px;
+  height: 250px;
+}
+
+@media (max-width: 1400px) {
+  .payi-main-content:has(> .hr-page) > .payi-topbar {
+    min-height: 152px;
+  }
+  .payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child {
+    width: 500px !important;
+    min-height: 140px;
+    padding: 20px 196px 20px 26px !important;
+  }
+  .payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child::after {
+    width: 195px;
+    height: 215px;
+  }
+  .payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child::before {
+    right: 180px;
+  }
+}
+
+@media (max-width: 860px) {
+  .payi-main-content:has(> .hr-page) > .payi-topbar {
+    min-height: 132px;
+    margin-bottom: 4px;
+  }
+  .payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child {
+    width: 100% !important;
+    min-width: 0;
+    min-height: 124px;
+    padding: 18px 136px 18px 22px !important;
+  }
+  .payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child::after {
+    right: 4px;
+    bottom: -16px;
+    width: 135px;
+    height: 158px;
+  }
+  .payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child::before {
+    right: 126px;
+  }
+}
+
+/* Consolidated dashboard hero: title, mascot, refresh, and KPIs in one balanced surface. */
+body:has(.hr-page) .payi-main-content > .payi-topbar {
+  min-height: 52px !important;
+  margin-bottom: 12px;
+}
+
+body:has(.hr-page) .payi-main-content > .payi-topbar > div:first-child {
+  display: none;
+}
+
+body:has(.hr-page) .payi-main-content > .payi-topbar > div:last-child {
+  margin-left: auto;
+}
+
+.hr-page {
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.hr-page::before,
+.hr-page::after {
+  display: none;
+}
+
+.hr-dashboard-hero {
+  position: relative;
+  min-height: 350px;
+  overflow: hidden;
+  padding: 30px 32px 24px;
+  border: 1px solid rgba(218, 177, 239, .62);
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at 72% 13%, rgba(255, 255, 255, .95) 0 2px, transparent 4px),
+    radial-gradient(circle at 84% 25%, rgba(255, 232, 255, .85) 0 1.5px, transparent 3px),
+    radial-gradient(circle at 57% 19%, rgba(241, 213, 255, .72) 0 2px, transparent 4px),
+    radial-gradient(ellipse at 79% 25%, rgba(240, 197, 255, .42), transparent 31%),
+    linear-gradient(135deg, #785991 0%, #9a70b4 45%, #c28dd0 76%, #e0b5dc 100%);
+  box-shadow:
+    0 18px 50px rgba(126, 78, 149, .22),
+    0 0 34px rgba(220, 173, 247, .3),
+    inset 0 1px 0 rgba(255, 255, 255, .55);
+}
+
+.hr-dashboard-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 5% 38%, rgba(255,255,255,.75) 0 1px, transparent 2px),
+    radial-gradient(circle at 36% 13%, rgba(255,255,255,.7) 0 1.5px, transparent 3px),
+    radial-gradient(circle at 63% 42%, rgba(255,240,255,.72) 0 1px, transparent 2px),
+    radial-gradient(circle at 94% 54%, rgba(255,255,255,.8) 0 1.5px, transparent 3px);
+  pointer-events: none;
+}
+
+.hr-dashboard-hero::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 6px;
+  right: 82px;
+  width: 285px;
+  height: 280px;
+  background: url("/hr-fairy-flying.png") center top / contain no-repeat;
+  filter:
+    drop-shadow(0 0 6px rgba(255,255,255,.82))
+    drop-shadow(0 0 18px rgba(232,181,255,.7))
+    drop-shadow(0 18px 18px rgba(75,39,91,.25));
+  pointer-events: none;
+}
+
+.hr-hero-copy {
+  position: relative;
+  z-index: 2;
+  max-width: calc(100% - 390px);
+  color: #fff;
+}
+
+.hr-hero-copy > span {
+  color: #f4d9ff;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .1em;
+}
+
+.hr-hero-copy h1 {
+  margin-top: 10px;
+  color: #fff;
+  font-size: clamp(28px, 3vw, 40px);
+  line-height: 1.08;
+  letter-spacing: -.025em;
+  text-shadow: 0 3px 18px rgba(66, 32, 78, .3);
+}
+
+.hr-hero-copy p {
+  margin-top: 9px;
+  color: rgba(255,255,255,.86);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hr-dashboard-hero .hr-page-header {
+  top: 22px;
+  right: 22px;
+  z-index: 4;
+}
+
+.hr-dashboard-hero .hr-icon-button {
+  border-color: rgba(255,255,255,.5);
+  background: rgba(255,255,255,.18);
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(79,40,93,.18);
+  backdrop-filter: blur(14px);
+}
+
+.hr-dashboard-hero .hr-metrics {
+  position: absolute;
+  z-index: 3;
+  right: 24px;
+  bottom: 24px;
+  left: 24px;
+  gap: 10px;
+}
+
+.hr-dashboard-hero .hr-metric,
+.hr-dashboard-hero .hr-metric.is-emphasis {
+  min-height: 92px;
+  border: 1px solid rgba(255,255,255,.38);
+  border-radius: 18px;
+  background: rgba(76, 44, 91, .28);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.24),
+    0 10px 26px rgba(72,37,86,.13);
+  backdrop-filter: blur(16px);
+}
+
+.hr-dashboard-hero .hr-metric-icon,
+.hr-dashboard-hero .hr-metric.is-emphasis .hr-metric-icon {
+  background: rgba(255,255,255,.17);
+  color: #fff;
+}
+
+.hr-dashboard-hero .hr-metric span,
+.hr-dashboard-hero .hr-metric small,
+.hr-dashboard-hero .hr-metric.is-emphasis span,
+.hr-dashboard-hero .hr-metric.is-emphasis small {
+  color: rgba(255,255,255,.78);
+}
+
+.hr-page > .hr-alert:first-of-type {
+  margin-right: 0;
+}
+
+@media (max-width: 900px) {
+  .hr-dashboard-hero {
+    min-height: 460px;
+    padding: 24px;
+  }
+  .hr-dashboard-hero::after {
+    top: 40px;
+    right: 28px;
+    width: 190px;
+    height: 205px;
+  }
+  .hr-hero-copy {
+    max-width: calc(100% - 220px);
+  }
+  .hr-dashboard-hero .hr-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .hr-dashboard-hero {
+    min-height: 570px;
+    padding: 22px 18px;
+  }
+  .hr-dashboard-hero::after {
+    top: 94px;
+    right: 8px;
+    width: 142px;
+    height: 154px;
+  }
+  .hr-hero-copy {
+    max-width: calc(100% - 120px);
+  }
+  .hr-hero-copy p {
+    font-size: 12px;
+  }
+  .hr-dashboard-hero .hr-metrics {
+    right: 14px;
+    bottom: 14px;
+    left: 14px;
+  }
+}
+
+/* Split hero: compact information cluster on the left, clear mascot stage on the right. */
+.hr-dashboard-hero {
+  min-height: 350px;
+}
+
+.hr-dashboard-hero::after {
+  top: -8px;
+  right: 24px;
+  width: 360px;
+  height: 420px;
+}
+
+.hr-hero-copy {
+  max-width: min(660px, calc(100% - 390px));
+}
+
+.hr-dashboard-hero .hr-metrics {
+  right: auto;
+  bottom: 24px;
+  left: 28px;
+  width: min(740px, calc(100% - 390px));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.hr-dashboard-hero .hr-metric,
+.hr-dashboard-hero .hr-metric.is-emphasis {
+  min-height: 74px;
+  padding: 11px 14px;
+  border-radius: 16px;
+}
+
+.hr-dashboard-hero .hr-metric-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+}
+
+.hr-dashboard-hero .hr-metric strong {
+  font-size: 24px;
+}
+
+@media (max-width: 1100px) {
+  .hr-dashboard-hero::after {
+    right: 20px;
+    width: 250px;
+    height: 270px;
+  }
+  .hr-hero-copy {
+    max-width: calc(100% - 290px);
+  }
+  .hr-dashboard-hero .hr-metrics {
+    width: calc(100% - 300px);
+  }
+}
+
+@media (max-width: 760px) {
+  .hr-dashboard-hero {
+    min-height: 450px;
+  }
+  .hr-dashboard-hero::after {
+    top: 56px;
+    right: 10px;
+    width: 160px;
+    height: 185px;
+  }
+  .hr-hero-copy {
+    max-width: calc(100% - 150px);
+  }
+  .hr-dashboard-hero .hr-metrics {
+    right: 16px;
+    bottom: 16px;
+    left: 16px;
+    width: auto;
+  }
+}
+
+/* Balance pass: keep the mascot inside the viewport and remove the empty refresh row. */
+.payi-main-content:has(> .hr-page) > .payi-topbar {
+  min-height: 190px;
+}
+
+.payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child {
+  width: clamp(590px, 55vw, 900px) !important;
+  min-height: 178px;
+  padding-right: 260px !important;
+}
+
+.payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child::after {
+  top: 0;
+  right: 22px;
+  bottom: auto;
+  width: 238px;
+  height: 205px;
+}
+
+.hr-page-header {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  z-index: 2;
+  padding: 0;
+}
+
+.hr-page > .hr-alert:first-of-type {
+  margin-right: 58px;
+}
+
+@media (max-width: 1400px) {
+  .payi-main-content:has(> .hr-page) > .payi-topbar {
+    min-height: 150px;
+  }
+  .payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child {
+    width: 500px !important;
+    min-height: 140px;
+    padding-right: 196px !important;
+  }
+  .payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child::after {
+    top: 0;
+    right: 10px;
+    width: 185px;
+    height: 164px;
+  }
+}
+
+@media (max-width: 860px) {
+  .payi-main-content:has(> .hr-page) > .payi-topbar {
+    min-height: 128px;
+  }
+  .payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child {
+    width: 100% !important;
+    min-height: 120px;
+    padding-right: 128px !important;
+  }
+  .payi-main-content:has(> .hr-page) > .payi-topbar > div:first-child::after {
+    top: 0;
+    right: 2px;
+    width: 122px;
+    height: 132px;
+  }
+  .hr-page-header {
+    top: 14px;
+    right: 14px;
+  }
+}
+
+/* Final flying composition: wide glow trail reaches toward the KPI cluster. */
+.hr-dashboard-hero::after {
+  top: 12px;
+  right: 2px;
+  width: 600px;
+  height: 315px;
+  background-image: url("/hr-fairy-flying.png");
+  background-position: center;
+  filter:
+    drop-shadow(0 0 7px rgba(255,255,255,.95))
+    drop-shadow(0 0 22px rgba(228,172,255,.9))
+    drop-shadow(0 0 42px rgba(184,111,229,.58));
+}
+
+@media (max-width: 1100px) {
+  .hr-dashboard-hero::after {
+    top: 22px;
+    right: -24px;
+    width: 500px;
+    height: 280px;
+  }
+}
+
+@media (max-width: 760px) {
+  .hr-dashboard-hero::after {
+    top: 70px;
+    right: -52px;
+    width: 330px;
+    height: 190px;
+  }
+}
+
+/* Lavender landscape stage with a lightweight transform-only floating character. */
+.hr-dashboard-hero {
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(62, 38, 82, .94) 0%, rgba(77, 45, 96, .86) 38%, rgba(107, 65, 126, .46) 64%, rgba(118, 77, 135, .18) 100%),
+    linear-gradient(180deg, rgba(67, 39, 86, .16), rgba(82, 47, 101, .34)),
+    url("/hr-lavender-landscape.png") center 54% / cover no-repeat;
+  box-shadow:
+    0 20px 55px rgba(103, 63, 127, .24),
+    0 0 38px rgba(211, 165, 239, .3),
+    inset 0 1px 0 rgba(255,255,255,.5);
+}
+
+.hr-dashboard-hero::before {
+  z-index: 0;
+  background:
+    radial-gradient(circle at 7% 19%, rgba(255,255,255,.95) 0 1px, transparent 2.5px),
+    radial-gradient(circle at 41% 11%, rgba(244,217,255,.9) 0 1.5px, transparent 3px),
+    radial-gradient(circle at 60% 32%, rgba(255,255,255,.82) 0 1px, transparent 2.5px),
+    radial-gradient(circle at 86% 16%, rgba(255,238,255,.88) 0 1.5px, transparent 3px);
+  animation: hr-landscape-sparkle 3.6s ease-in-out infinite alternate;
+}
+
+.hr-dashboard-hero::after {
+  top: -2px;
+  right: -20px;
+  width: 720px;
+  height: 350px;
+  transform: translate3d(0, 0, 0) rotate(-1deg);
+  transform-origin: 70% 50%;
+  will-change: transform;
+  animation: hr-fairy-breeze 5.2s cubic-bezier(.45, 0, .55, 1) infinite alternate;
+}
+
+@keyframes hr-fairy-breeze {
+  from { transform: translate3d(0, 3px, 0) rotate(-1.2deg) scale(1); }
+  to { transform: translate3d(-8px, -5px, 0) rotate(.4deg) scale(1.015); }
+}
+
+@keyframes hr-landscape-sparkle {
+  from { opacity: .42; filter: brightness(.92); }
+  to { opacity: .9; filter: brightness(1.2); }
+}
+
+@media (max-width: 1100px) {
+  .hr-dashboard-hero::after {
+    top: 12px;
+    right: -72px;
+    width: 610px;
+    height: 320px;
+  }
+}
+
+@media (max-width: 760px) {
+  .hr-dashboard-hero::after {
+    top: 62px;
+    right: -76px;
+    width: 390px;
+    height: 220px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hr-dashboard-hero::before,
+  .hr-dashboard-hero::after {
+    animation: none;
+  }
+}
+
+/* Bring the landscape forward and visually connect the fairy's hand to the KPI cards. */
+.hr-dashboard-hero {
+  background:
+    linear-gradient(90deg, rgba(54, 31, 73, .79) 0%, rgba(68, 39, 86, .68) 38%, rgba(97, 59, 117, .3) 64%, rgba(112, 72, 130, .08) 100%),
+    linear-gradient(180deg, rgba(57, 32, 76, .06), rgba(76, 43, 94, .2)),
+    url("/hr-lavender-landscape.png") center 56% / cover no-repeat;
+}
+
+.hr-dashboard-hero::after {
+  right: 30px;
+}
+
+.hr-magic-link {
+  position: absolute;
+  z-index: 2;
+  top: 88px;
+  left: 47%;
+  width: 25%;
+  height: 112px;
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 0 8px rgba(238, 201, 255, .9));
+}
+
+.hr-magic-link path {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.hr-magic-link-glow {
+  stroke: rgba(221, 165, 255, .45);
+  stroke-width: 10;
+  filter: blur(6px);
+}
+
+.hr-magic-link-core {
+  stroke: url("#hr-magic-gradient");
+  stroke-width: 2.4;
+  animation: hr-magic-flow 2.2s ease-in-out infinite alternate;
+}
+
+.hr-magic-link circle {
+  fill: #fff;
+  filter:
+    drop-shadow(0 0 4px #fff)
+    drop-shadow(0 0 9px #d999ff);
+  animation: hr-magic-pulse 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes hr-magic-flow {
+  from { opacity: .58; filter: brightness(.96); }
+  to { opacity: 1; filter: brightness(1.35); }
+}
+
+@keyframes hr-magic-pulse {
+  from { opacity: .45; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 1100px) {
+  .hr-dashboard-hero::after {
+    right: -18px;
+  }
+  .hr-magic-link {
+    left: 45%;
+    width: 24%;
+  }
+}
+
+@media (max-width: 760px) {
+  .hr-magic-link {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hr-magic-link-core,
+  .hr-magic-link circle {
+    animation: none;
+  }
+}
+
+/* Keep magic away from the face: the glow now travels along the KPI cluster edge. */
+.hr-magic-link {
+  display: none;
+}
+
+.hr-dashboard-hero .hr-metrics::before {
+  content: "";
+  position: absolute;
+  z-index: 5;
+  top: -3px;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg,
+      rgba(255,255,255,.08) 0%,
+      rgba(224,172,255,.45) 24%,
+      rgba(255,255,255,.98) 50%,
+      rgba(224,172,255,.45) 76%,
+      rgba(255,255,255,.08) 100%);
+  background-size: 38% 100%;
+  background-repeat: no-repeat;
+  box-shadow:
+    0 0 7px rgba(255,255,255,.86),
+    0 0 16px rgba(215,145,255,.72);
+  pointer-events: none;
+  animation: hr-card-edge-magic 3.2s ease-in-out infinite alternate;
+}
+
+@keyframes hr-card-edge-magic {
+  from { background-position: -25% 0; opacity: .55; }
+  to { background-position: 125% 0; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hr-dashboard-hero .hr-metrics::before {
+    animation: none;
+    background-position: center;
+  }
 }
