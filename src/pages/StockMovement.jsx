@@ -419,7 +419,7 @@ export default function StockMovement() {
                       <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>สั่งวันที่ {r.order_date || '-'} · สั่งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button onClick={() => finishOrder(r.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
+                      <button onClick={() => finishOrder(r.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg, #2563eb 0%, #34d399 100%)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
                         <Check size={13} /> เสร็จสิ้น
                       </button>
                       <button onClick={() => setEditingRequest(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-text)' }}>
@@ -453,7 +453,7 @@ export default function StockMovement() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button onClick={() => setMatching(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
+                      <button onClick={() => setMatching(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg, #2563eb 0%, #34d399 100%)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
                         <Check size={13} /> Match
                       </button>
                       <button onClick={() => setRejecting(r)} style={{ background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-danger)' }}>
