@@ -1,7 +1,7 @@
 // GET /api/monthly?year=2026
 // สรุปยอดขาย/ออเดอร์ แยกรายเดือน และแยกร้าน (business × platform) จาก raw_orders_*
 import { requireAuth, cacheable } from './_lib/auth.js'
-import { getMeta, batchGetValues } from './_lib/sheets.js'
+import { getMetaCached, batchGetValues } from './_lib/sheets.js'
 
 const isCancelled = (s = '') => s.includes('ยกเลิก') || s.toLowerCase().includes('cancel')
 const isReturned = (s = '') => s.toLowerCase().includes('return')
@@ -25,7 +25,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const meta = await getMeta()
+    const meta = await getMetaCached()
     const tabs = meta.sheets.map((s) => s.properties.title).filter((t) => t.startsWith('raw_orders'))
     // B:F = order_id, order_item_id, date, platform, business ; L:N = qty, revenue, status
     const ranges = tabs.flatMap((t) => [`${t}!B:F`, `${t}!L:N`])

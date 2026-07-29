@@ -1,7 +1,7 @@
 // GET /api/planner-sales
 // ABC และยอดเฉลี่ยต่อวันจากจำนวนชิ้นขาย 90 วันล่าสุด (ยึดวันล่าสุดที่มีข้อมูล)
 import { requireAuth } from './_lib/auth.js'
-import { batchGetValues, getMeta, getSheet, ensureSheet } from './_lib/sheets.js'
+import { batchGetValues, getMetaCached, getSheet, ensureSheet } from './_lib/sheets.js'
 import { getSkuRedirectMap, resolveRedirect } from './_lib/skuMapping.js'
 
 // สินค้า Set (เช่น PY067 [Set สุดคุ้ม]) ไม่ใช่ของจริงที่ track สต็อก — ต้อง "แตก" ยอดขาย Set
@@ -39,7 +39,7 @@ export default async function handler(req, res) {
 
   try {
     await ensureSheet(SET_RECIPES_SHEET, SET_RECIPES_HEADERS)
-    const [meta, aliases, setRecipeRows, redirectMap] = await Promise.all([getMeta(), getSheet('product_aliases'), getSheet(SET_RECIPES_SHEET), getSkuRedirectMap()])
+    const [meta, aliases, setRecipeRows, redirectMap] = await Promise.all([getMetaCached(), getSheet('product_aliases'), getSheet(SET_RECIPES_SHEET), getSkuRedirectMap()])
     const recipesByKey = new Map() // `${set_sku}|${variation_name}` -> [{component_sku, qty_per_unit}]
     const keepSetSalesByKey = new Map() // same key -> true/false
     for (const row of setRecipeRows) {

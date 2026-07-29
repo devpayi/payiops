@@ -3,7 +3,7 @@
 // รองรับกรองแพลตฟอร์ม/ร้าน (กรองแล้ว re-fetch เหมือน products.js)
 // คืนค่ารายเดือน per กลุ่มสินค้า + per SKU สมาชิก (สำหรับกดขยายดู) — % คำนวณฝั่ง frontend
 import { requireAuth, cacheable } from './_lib/auth.js'
-import { getMeta, batchGetValues, getSheet } from './_lib/sheets.js'
+import { getMetaCached, batchGetValues, getSheet } from './_lib/sheets.js'
 import { deriveGroup, buildOverrideMap } from './_lib/productGroup.js'
 import { getSkuRedirectMap, getSetRecipeKeySet, resolveSalesSku } from './_lib/skuMapping.js'
 
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     } catch { /* ไม่มี sheet — ใช้ auto-strip แทน */ }
     const [redirectMap, recipeKeySet] = await Promise.all([getSkuRedirectMap(), getSetRecipeKeySet()])
 
-    const meta = await getMeta()
+    const meta = await getMetaCached()
     const tabs = meta.sheets.map((s) => s.properties.title).filter((t) => t.startsWith('raw_orders'))
 
     // B:F = order_id, order_item_id, date, platform, business ; I:N = variation_name, master_sku, display_name, qty, revenue, status

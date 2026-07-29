@@ -3,7 +3,7 @@
 // เคลมมาจาก sheet "claims", ยอดขาย(units) มาจาก raw_orders_* — จับกลุ่มด้วย deriveGroup
 // ตัวเดียวกันทั้งคู่ (key จึงตรงกัน) ตาม TODO#2/#3
 import { requireManager, cacheable } from './_lib/auth.js'
-import { getMeta, batchGetValues, getSheet } from './_lib/sheets.js'
+import { getMetaCached, batchGetValues, getSheet } from './_lib/sheets.js'
 import { deriveGroup, buildOverrideMap } from './_lib/productGroup.js'
 import { getSkuRedirectMap, getSetRecipeKeySet, resolveSalesSku, resolveRedirect } from './_lib/skuMapping.js'
 
@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     const [redirectMap, recipeKeySet] = await Promise.all([getSkuRedirectMap(), getSetRecipeKeySet()])
 
     // 1) ยอดขาย (units) ต่อกลุ่มสินค้า จาก raw_orders (I:N = variation_name, master_sku, display_name, qty, revenue, status)
-    const meta = await getMeta()
+    const meta = await getMetaCached()
     const tabs = meta.sheets.map((s) => s.properties.title).filter((t) => t.startsWith('raw_orders'))
     const vr = await batchGetValues(tabs.map((t) => `${t}!I:N`))
     const units = new Map() // key -> units

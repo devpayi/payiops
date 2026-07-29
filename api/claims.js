@@ -1,7 +1,7 @@
 // /api/claims?view=summary|monthly|sku|by-product|imports-list|import
 // อ่าน/จัดการข้อมูลเคลมจาก sheet "claims" (Google Sheets)
 import { requireAuth } from './_lib/auth.js'
-import { getSheet, getMeta, batchGetValues, appendRows, overwriteSheet, ensureSheet } from './_lib/sheets.js'
+import { getSheet, getMetaCached, batchGetValues, appendRows, overwriteSheet, ensureSheet } from './_lib/sheets.js'
 import { deriveGroup, buildOverrideMap } from './_lib/productGroup.js'
 import { getSkuRedirectMap, getSetRecipeKeySet, resolveSalesSku, resolveRedirect } from './_lib/skuMapping.js'
 import { buildClaimAliasLookup, resolveClaimAlias } from './_lib/claimMapping.js'
@@ -160,7 +160,7 @@ export default async function handler(req, res) {
       const byBizTotal = {}
 
       // ตัวหารที่ตรวจสอบย้อนกลับได้: qty จาก raw_orders_YYYY_MM เฉพาะรายการที่ไม่ยกเลิก
-      const meta = await getMeta()
+      const meta = await getMetaCached()
       const monthTabs = meta.sheets
         .map((s) => s.properties.title)
         .filter((t) => t.startsWith(`raw_orders_${year}_`))
@@ -336,7 +336,7 @@ export default async function handler(req, res) {
     }
     // ตัวหารรายสินค้า ใช้ flow เดียวกับ Dashboard: raw order -> master_sku/display_name -> deriveGroup
     const unitsByProduct = new Map()
-    const meta = await getMeta()
+    const meta = await getMetaCached()
     const orderTabs = meta.sheets.map((x) => x.properties.title).filter((t) => t.startsWith('raw_orders_'))
     const recipeKeySetClaims = await getSetRecipeKeySet()
     if (orderTabs.length) {

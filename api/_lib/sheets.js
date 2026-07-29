@@ -50,7 +50,7 @@ export async function getMeta() {
 const META_CACHE_MS = 300_000
 let metaCache = null
 let metaCacheAt = 0
-async function getMetaCached() {
+export async function getMetaCached() {
   if (metaCache && Date.now() - metaCacheAt < META_CACHE_MS) return metaCache
   metaCache = await getMeta()
   metaCacheAt = Date.now()

@@ -96,6 +96,13 @@ const Icons = {
   Settings: SettingsIcon,
 }
 
+const KNOWN_TABS = new Set([
+  'Home', 'Executive', 'Monthly', 'FeedProducts', 'Products', 'ProductTrends',
+  'AdsChannels', 'ContentOS', 'MarketingRadar', 'Planner Control', 'Inventory',
+  'Import Tracking', 'Stock Movement', 'Workforce OT', 'HR', 'Claims',
+  'Import Orders', 'Links Hub', 'Dev Hub', 'Settings',
+])
+
 const menuGroups = [
   {
     title: 'ภาพรวมธุรกิจ',
@@ -386,16 +393,16 @@ export default function App() {
     ? allVisibleTabs.map((item) => ({ ...item, label: MOBILE_SHORT_LABELS[item.id] || item.label }))
     : MOBILE_TAB_CANDIDATES.filter((item) => canAccessTab(currentRole, item.id))
   const firstAllowedTab = currentRole === 'stock' ? STOCK_TABS[0] : currentRole === 'staff' ? STAFF_TABS[0] : 'Executive'
-  const [activeTab, setActiveTab] = useState(() => {
-    try {
-      const stored = localStorage.getItem('payi-active-tab') || firstAllowedTab
-      return canAccessTab(currentRole, stored) ? stored : firstAllowedTab
-    } catch {
-      return 'Executive'
-    }
-  })
+  // หน้าแรก = หน้าว่างเสมอทุกครั้งที่เข้าเว็บ (ไม่จำแท็บล่าสุด) กันหน้า Dashboard หนักโหลดช้าทุกครั้ง
+  const [activeTab, setActiveTab] = useState('Home')
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set())
 
   useEffect(() => {
+    setVisitedTabs((prev) => (prev.has(activeTab) ? prev : new Set(prev).add(activeTab)))
+  }, [activeTab])
+
+  useEffect(() => {
+    if (activeTab === 'Home') return
     if (!canAccessTab(currentRole, activeTab)) setActiveTab(firstAllowedTab)
   }, [activeTab, currentRole, firstAllowedTab])
 
@@ -526,11 +533,15 @@ export default function App() {
     }
   }, [business, platform, startDate, endDate])
 
+  const dashFetchSig = useRef(null)
   useEffect(() => {
     if (activeTab === 'Executive' || activeTab === 'FeedProducts') {
+      const sig = JSON.stringify({ business, platform, startDate, endDate })
+      if (dashFetchSig.current === sig) return // แค่สลับแท็บกลับมา ข้อมูลเดิมยังใช้ได้ ไม่ต้องโหลดซ้ำ
+      dashFetchSig.current = sig
       fetchDashboard()
     }
-  }, [activeTab, fetchDashboard])
+  }, [activeTab, business, platform, startDate, endDate, fetchDashboard])
 
   // ─── Get data from commandCenter ──────────────────────────────────────
   const commandCenter = dashData?.commandCenter || {}
@@ -890,7 +901,54 @@ export default function App() {
         )}
 
         <Suspense fallback={<ModuleFallback />}>
-        {(activeTab === 'Executive') ? (
+        {(activeTab === 'Home') ? (
+          <div style={{ maxWidth: 860, margin: '0 auto' }}>
+            <div style={{
+              borderRadius: 20, padding: '26px 28px', marginBottom: 24,
+              background: 'var(--payi-gradient-primary)', color: '#fff',
+              boxShadow: '0 16px 32px rgba(37,99,235,0.18)',
+            }}>
+              <div style={{ fontSize: 13, opacity: 0.85, fontWeight: 600 }}>สวัสดี</div>
+              <div style={{ fontSize: 24, fontWeight: 800, marginTop: 2 }}>
+                {(() => { try { return JSON.parse(localStorage.getItem('payi-user') || 'null')?.name || 'Nook' } catch { return 'Nook' } })()}
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.85, marginTop: 6 }}>เลือกเมนูที่ต้องการด้านล่าง หรือกดจากแถบซ้าย</div>
+            </div>
+
+            {visibleMenuGroups.map((group) => (
+              <div key={group.title} style={{ marginBottom: 22 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--payi-text-muted)', marginBottom: 10, letterSpacing: '0.02em' }}>
+                  {group.title}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
+                  {group.items.map((item) => {
+                    const Icon = item.renderIcon
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setActiveTab(item.group ? item.group[0] : item.id)}
+                        style={{
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
+                          padding: '18px 12px', borderRadius: 16, textAlign: 'center',
+                          border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', cursor: 'pointer',
+                          boxShadow: '0 6px 16px rgba(15,23,42,0.04)',
+                        }}
+                      >
+                        <div style={{
+                          width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center',
+                          background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)',
+                        }}>
+                          {Icon && <Icon size={19} />}
+                        </div>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{item.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (activeTab === 'Executive') ? (
           <div style={{ width: '100%' }}>
             <div className="app-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 16 }}>
               {[
@@ -1215,43 +1273,33 @@ export default function App() {
 
           </>)}
           </div>
-        ) : activeTab === 'Monthly' ? (
-            <MonthlyDashboard />
-        ) : activeTab === 'FeedProducts' ? (
-            <FeedProducts dashData={dashData} loading={isFetching} error={error} onRetry={fetchDashboard} />
-        ) : activeTab === 'Products' ? (
-            <ProductDashboard />
-        ) : activeTab === 'ProductTrends' ? (
-            <ProductTrends />
-        ) : activeTab === 'AdsChannels' ? (
-            <AdsChannels />
-        ) : activeTab === 'ContentOS' ? (
-            <ContentOSPrototype />
-        ) : activeTab === 'MarketingRadar' ? (
-            <MarketingRadar />
-        ) : activeTab === 'Planner Control' ? (
-            <PlannerControl onNavigate={setActiveTab} />
-        ) : activeTab === 'Inventory' ? (
-            <Inventory />
-        ) : activeTab === 'Import Tracking' ? (
-            <ImportTracking />
-        ) : activeTab === 'Stock Movement' ? (
-            <StockMovement />
-        ) : activeTab === 'Workforce OT' ? (
-            <WorkforceOT />
-        ) : activeTab === 'HR' ? (
-            <HR />
-        ) : activeTab === 'Claims' ? (
-            <ClaimView />
-        ) : activeTab === 'Import Orders' ? (
-            <Upload onNavigate={handleNavigate} />
-        ) : activeTab === 'Links Hub' ? (
-            <LinksHub />
-        ) : activeTab === 'Dev Hub' ? (
-          <DevHub />
-        ) : activeTab === 'Settings' ? (
-            <Settings />
-        ) : (
+        ) : null}
+
+        {/* แท็บพวกนี้ mount ค้างไว้เมื่อเคยเปิดแล้ว (ซ่อนด้วย CSS แทนการ unmount) กัน fetch ข้อมูลซ้ำทุกครั้งที่กดสลับแท็บไปมา */}
+        {[
+          ['Monthly', <MonthlyDashboard />],
+          ['FeedProducts', <FeedProducts dashData={dashData} loading={isFetching} error={error} onRetry={fetchDashboard} />],
+          ['Products', <ProductDashboard />],
+          ['ProductTrends', <ProductTrends />],
+          ['AdsChannels', <AdsChannels />],
+          ['ContentOS', <ContentOSPrototype />],
+          ['MarketingRadar', <MarketingRadar />],
+          ['Planner Control', <PlannerControl onNavigate={setActiveTab} />],
+          ['Inventory', <Inventory />],
+          ['Import Tracking', <ImportTracking />],
+          ['Stock Movement', <StockMovement />],
+          ['Workforce OT', <WorkforceOT />],
+          ['HR', <HR />],
+          ['Claims', <ClaimView />],
+          ['Import Orders', <Upload onNavigate={handleNavigate} />],
+          ['Links Hub', <LinksHub />],
+          ['Dev Hub', <DevHub />],
+          ['Settings', <Settings />],
+        ].map(([id, node]) => visitedTabs.has(id) && (
+          <div key={id} style={{ display: activeTab === id ? 'block' : 'none' }}>{node}</div>
+        ))}
+
+        {!KNOWN_TABS.has(activeTab) && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--payi-text-faint)' }}>
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 16, color: 'var(--payi-line)' }}>
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />

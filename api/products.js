@@ -4,7 +4,7 @@
 // ข้อมูลหลัก (totals/groups/trendTopGroups) สโคปตาม "เดือนที่เลือก" (default = เดือนล่าสุด)
 // month=all = รวมทุกเดือน (all-time, ไม่มี MoM) พร้อม MoM % เทียบเดือนก่อนหน้า — เหมือน MonthlyDashboard
 import { requireAuth, cacheable } from './_lib/auth.js'
-import { getMeta, batchGetValues, getSheet } from './_lib/sheets.js'
+import { getMetaCached, batchGetValues, getSheet } from './_lib/sheets.js'
 import { deriveGroup, buildOverrideMap } from './_lib/productGroup.js'
 import { getSkuRedirectMap, getSetRecipeKeySet, resolveSalesSku } from './_lib/skuMapping.js'
 
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     } catch { /* ไม่มี sheet หรืออ่านไม่ได้ — ใช้การ strip อัตโนมัติแทน */ }
     const [redirectMap, recipeKeySet] = await Promise.all([getSkuRedirectMap(), getSetRecipeKeySet()])
 
-    const meta = await getMeta()
+    const meta = await getMetaCached()
     const tabs = meta.sheets.map((s) => s.properties.title).filter((t) => t.startsWith('raw_orders'))
 
     // B:F = order_id, order_item_id, date, platform, business ; I:N = variation_name, master_sku, display_name, qty, revenue, status

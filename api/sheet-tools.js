@@ -3,7 +3,7 @@
 // เป็นฟังก์ชันเดียว — Vercel Hobby จำกัด 12 serverless functions ต่อโปรเจค
 import { requireAuth, cacheable, authEnabled } from './_lib/auth.js'
 import { canManageOperations } from '../shared/roles.js'
-import { getMeta, batchGetValues, getSheet, appendRows, overwriteSheet, ensureSheet } from './_lib/sheets.js'
+import { getMetaCached, batchGetValues, getSheet, appendRows, overwriteSheet, ensureSheet } from './_lib/sheets.js'
 import { verifySignature, pushMessage, replyMessage } from './_lib/line.js'
 import {
   MIN_LOWER_HOUSE_HEADCOUNT, buildCoveragePlan, leaveAbsenceDates, leaveAbsenceSlots,
@@ -1035,7 +1035,7 @@ const isReturned = (status = '') => status.toLowerCase().includes('return')
 async function opSummary(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
   try {
-    const meta = await getMeta()
+    const meta = await getMetaCached()
     const tabs = meta.sheets
       .map(s => s.properties.title)
       .filter(t => t.startsWith('raw_orders'))

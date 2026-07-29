@@ -1,7 +1,7 @@
 // GET /api/dashboard?business=&platform=&startDate=&endDate=
 // สรุปข้อมูลสำหรับหน้า Executive จากทุก tab raw_orders_* (Google Sheets)
 import { requireAuth, cacheable } from './_lib/auth.js'
-import { getMeta, batchGetValues, getSheet } from './_lib/sheets.js'
+import { getMetaCached, batchGetValues, getSheet } from './_lib/sheets.js'
 import { deriveGroup, buildOverrideMap } from './_lib/productGroup.js'
 import { getSkuRedirectMap, getSetRecipeKeySet, resolveSalesSku } from './_lib/skuMapping.js'
 
@@ -46,7 +46,7 @@ export default async function handler(req, res) {
     // sku_redirects/set_recipes แก้ได้จากชีทตรงๆ ไม่ต้องแก้โค้ด — ดู resolveSalesSku ตอนใช้งาน
     const [redirectMap, recipeKeySet] = await Promise.all([getSkuRedirectMap(), getSetRecipeKeySet()])
 
-    const meta = await getMeta()
+    const meta = await getMetaCached()
     const tabs = meta.sheets.map((s) => s.properties.title).filter((t) => t.startsWith('raw_orders'))
 
     // อ่าน B:F (order_id, order_item_id, date, platform, business) และ I:N (variation_name, master_sku,
