@@ -347,9 +347,16 @@ async function opLowStockCron(req, res) {
   }
 }
 
-const getStockOrderSessions = () => getSheet(STOCK_ORDER_SESSION_SHEET)
-async function upsertStockOrderSession(lineUserId, patch) {
+// ต้อง ensureSheet ก่อนอ่านเสมอ — จุดอ่านแรกสุดคือใน opLineWebhook ตอนเช็คว่ามี session ค้างอยู่ไหม
+// (บรรทัด `const stockSession = ... getStockOrderSessions()`) ซึ่งเกิดก่อนจะมีใครเรียก
+// upsertStockOrderSession สร้างชีตเลยสักครั้ง — ถ้าไม่ ensure ตรงนี้ด้วย พิมพ์ "สั่งของ" ครั้งแรกสุด
+// (ตอนชีต stock_order_sessions ยังไม่เคยถูกสร้าง) จะอ่าน sheet ที่ไม่มีอยู่จริง Sheets API throw error
+// ถูก catch เงียบๆ ใน per-event try/catch ของ webhook แล้วไม่ตอบอะไรกลับเลย (บั๊กจริงที่เจอ 2026-07-30)
+async function getStockOrderSessions() {
   await ensureSheet(STOCK_ORDER_SESSION_SHEET, STOCK_ORDER_SESSION_HEADERS)
+  return getSheet(STOCK_ORDER_SESSION_SHEET)
+}
+async function upsertStockOrderSession(lineUserId, patch) {
   const current = await getStockOrderSessions()
   const existing = current.find((r) => r.line_user_id === lineUserId) || { line_user_id: lineUserId, step: '', sku: '', qty: '' }
   const next = { ...existing, ...patch, updated_at: new Date().toISOString() }
@@ -365,11 +372,13 @@ async function clearStockOrderSession(lineUserId) {
   await overwriteSheet(STOCK_ORDER_SESSION_SHEET, STOCK_ORDER_SESSION_HEADERS, rows)
 }
 
-// เฉพาะบอส/dev สั่งของผ่านไลน์ได้ — เทียบ line_user_id -> hr_line_links (username ธรรมดา ไม่ใช่ mp: ของพนักงาน) -> users.role
+// เฉพาะบอส/dev ที่เปิดรับแจ้งเตือนหมวด "ของใกล้หมด" ไว้ (notify_stock) เท่านั้นสั่งของผ่านไลน์ได้ —
+// ผูก 2 อย่างเข้าด้วยกันตามที่ owner ขอ (ปิด checkbox = ปิดทั้งรับการ์ดแจ้งเตือนและสั่งของผ่านแชท)
+// เทียบ line_user_id -> hr_line_links (username ธรรมดา ไม่ใช่ mp: ของพนักงาน) -> users.role
 async function findManagerLink(lineUserId) {
   const links = await getSheet('hr_line_links')
   const link = links.find((l) => l.line_user_id === lineUserId && !String(l.username || '').startsWith('mp:'))
-  if (!link) return null
+  if (!link || String(link.notify_stock) === '0') return null
   const user = (await getSheet('users')).find((u) => u.username === link.username)
   if (!user || !canManageOperations(user.role)) return null
   return { username: link.username, name: user.display_name || link.username, role: user.role }
