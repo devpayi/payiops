@@ -61,13 +61,33 @@ export async function getMetaCached() {
 // header ตรงในโปรเซสนี้ ไม่ต้องเช็คซ้ำอีกจนกว่าจะ restart (header ไม่มีทางเปลี่ยนเองระหว่าง process มีชีวิตอยู่)
 const ensuredSheets = new Set()
 
-// อ่านหลาย range ใน API call เดียว
+// อ่านหลาย range ใน API call เดียว — cache สั้นๆ + กันยิงซ้ำพร้อมกัน (เหมือน getSheet ด้านล่าง) เพราะ
+// endpoint หนักๆแทบทุกตัว (dashboard/monthly/products/claims/planner-sales/opHr ฯลฯ) เรียกตัวนี้ตรงๆ
+// ไม่ผ่าน getSheet เลย จึงไม่เคยได้ cache/dedup มาก่อน — พอมีหลายการ์ด/แท็บ/คนเปิดพร้อมกัน (เช่น หน้า Settings
+// ที่มีหลายการ์ดยิง op=hr ตอน mount พร้อมกัน) จะยิง batchGetValues ซ้ำๆ กันจริงๆ จนชนโควตา "Read requests
+// per minute" ของ Sheets API (เจอจริงตอน owner ทดสอบ 2026-07-30) — cache สั้นแค่ 20s พอกันการยิงซ้ำตอน
+// โหลดพร้อมกัน ไม่ได้ทำให้ข้อมูลเก่าค้างนาน (endpoint ส่วนใหญ่มี cache ของตัวเองที่ยาวกว่านี้อยู่แล้วชั้นบน)
+const BATCH_CACHE_MS = 20_000
+const batchCache = new Map()
+const batchInflight = new Map()
 export async function batchGetValues(ranges) {
-  const res = await getClient().spreadsheets.values.batchGet({
+  const key = ranges.join('')
+  const cached = batchCache.get(key)
+  if (cached && Date.now() - cached.at < BATCH_CACHE_MS) return cached.data
+  if (batchInflight.has(key)) return batchInflight.get(key)
+
+  const pending = getClient().spreadsheets.values.batchGet({
     spreadsheetId: sheetId(),
     ranges,
+  }).then((res) => {
+    batchCache.set(key, { at: Date.now(), data: res.data.valueRanges })
+    return res.data.valueRanges
+  }).finally(() => {
+    if (batchInflight.get(key) === pending) batchInflight.delete(key)
   })
-  return res.data.valueRanges
+
+  batchInflight.set(key, pending)
+  return pending
 }
 
 // อ่านข้อมูลทั้ง sheet → array ของ object (header เป็น key)

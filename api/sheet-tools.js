@@ -57,7 +57,8 @@ const HR_SHEETS = [['hr_leave', LEAVE_HEADERS], ['hr_leave_backups', BACKUP_HEAD
 let hrEnsurePromise
 let hrCache = { at: 0, data: null }
 const ensureHrSheets = () => hrEnsurePromise ||= Promise.all(HR_SHEETS.map(([name, headers]) => ensureSheet(name, headers)))
-const clearHrCache = () => { hrCache = { at: 0, data: null } }
+let hrInflight = null
+const clearHrCache = () => { hrCache = { at: 0, data: null }; hrInflight = null }
 const daysBetween = (start, end) => Math.round((new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`)) / 86400000) + 1
 const currentYearBKK = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }).slice(0, 4)
 const parseJsonObject = (value) => { try { const parsed = JSON.parse(value || '{}'); return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {} } catch { return {} } }
@@ -919,27 +920,36 @@ async function opHrInner(req, res) {
     const isAdminViewer = !authEnabled() || canManageOperations(req.user?.role)
     const withRoleFilter = (data) => ({ ...data, canManage: isAdminViewer, leaveBalances: isAdminViewer ? data.leaveBalancesFull : data.leaveBalancesFull.filter((b) => b.group !== 'ออฟฟิศ') })
     if (hrCache.data && Date.now() - hrCache.at < 20000) return res.status(200).json(withRoleFilter(hrCache.data))
-    const [leaveRange, backupRange, scheduleRange, lineLinkRange, peopleRange] = await batchGetValues(['hr_leave!A:Z', 'hr_leave_backups!A:Z', 'hr_schedule!A:Z', 'hr_line_links!A:Z', 'workforce_people!A:Z'])
-    // เดือนที่แต่ละคนมีงานจริงจากตารางปี 2026 ที่เก็บในระบบ ใช้กรอง dropdown โดยไม่เชื่อมไฟล์ภายนอก
-    const peopleFromSheet = rowsToObjects(peopleRange.values || []).filter((p) => String(p.active) !== '0')
-    const [lowerMapForList, officeMapForList] = await Promise.all([getPersonMap(), getOfficePeopleMap()])
-    let activeMonths = {}
-    try {
-      const manpowerRows = await getCalendarPresence({ ...lowerMapForList, ...officeMapForList }, Object.keys(lowerMapForList), false)
-      for (const r of manpowerRows) (activeMonths[r.code] ||= new Set()).add(String(r.date).slice(0, 7))
-      activeMonths = Object.fromEntries(Object.entries(activeMonths).map(([code, set]) => [code, [...set]]))
-    } catch (e) { console.error('activeMonths:', e.message) }
-    const extraPeople = Object.entries(officeMapForList).map(([code, [name, group]]) => ({ code, name, group }))
-    const backupRows = rowsToObjects(backupRange.values || [])
-    const leaveRows = rowsToObjects(leaveRange.values || []).map((leave) => ({
-      ...leave,
-      backup_assignments: backupRows.filter((row) => String(row.leave_id) === String(leave.id)),
-      edit_proposal: leave.edit_pending === '1' ? pendingLeaveView(leave) : null,
-    }))
-    const leaveBalancesFull = await computeLeaveBalances(leaveRows, true)
-    const data = { success: true, leave: leaveRows, schedule: rowsToObjects(scheduleRange.values || []), lineLinks: rowsToObjects(lineLinkRange.values || []), people: [...peopleFromSheet, ...extraPeople], activeMonths, leaveBalancesFull }
+    // การ์ดหลายใบในหน้า Settings (LineLinkCard/BossLineNotifyCard/StaffLineLinkCard ฯลฯ) ยิง op=hr พร้อมกัน
+    // ตอน mount — ถ้าไม่กันซ้ำ แต่ละใบจะยิง batchGetValues เองหมด (ก่อน cache ด้านบนทันเวลา) ชนโควตา
+    // "Read requests per minute" ของ Sheets API ได้ง่ายๆ (เจอจริงตอน owner ทดสอบ) รวมเป็น request เดียวกัน
+    if (!hrInflight) {
+      hrInflight = (async () => {
+        const [leaveRange, backupRange, scheduleRange, lineLinkRange, peopleRange] = await batchGetValues(['hr_leave!A:Z', 'hr_leave_backups!A:Z', 'hr_schedule!A:Z', 'hr_line_links!A:Z', 'workforce_people!A:Z'])
+        // เดือนที่แต่ละคนมีงานจริงจากตารางปี 2026 ที่เก็บในระบบ ใช้กรอง dropdown โดยไม่เชื่อมไฟล์ภายนอก
+        const peopleFromSheet = rowsToObjects(peopleRange.values || []).filter((p) => String(p.active) !== '0')
+        const [lowerMapForList, officeMapForList] = await Promise.all([getPersonMap(), getOfficePeopleMap()])
+        let activeMonths = {}
+        try {
+          const manpowerRows = await getCalendarPresence({ ...lowerMapForList, ...officeMapForList }, Object.keys(lowerMapForList), false)
+          for (const r of manpowerRows) (activeMonths[r.code] ||= new Set()).add(String(r.date).slice(0, 7))
+          activeMonths = Object.fromEntries(Object.entries(activeMonths).map(([code, set]) => [code, [...set]]))
+        } catch (e) { console.error('activeMonths:', e.message) }
+        const extraPeople = Object.entries(officeMapForList).map(([code, [name, group]]) => ({ code, name, group }))
+        const backupRows = rowsToObjects(backupRange.values || [])
+        const leaveRows = rowsToObjects(leaveRange.values || []).map((leave) => ({
+          ...leave,
+          backup_assignments: backupRows.filter((row) => String(row.leave_id) === String(leave.id)),
+          edit_proposal: leave.edit_pending === '1' ? pendingLeaveView(leave) : null,
+        }))
+        const leaveBalancesFull = await computeLeaveBalances(leaveRows, true)
+        const data = { success: true, leave: leaveRows, schedule: rowsToObjects(scheduleRange.values || []), lineLinks: rowsToObjects(lineLinkRange.values || []), people: [...peopleFromSheet, ...extraPeople], activeMonths, leaveBalancesFull }
+        hrCache = { at: Date.now(), data }
+        return data
+      })().finally(() => { hrInflight = null })
+    }
+    const data = await hrInflight
     res.setHeader('Cache-Control', cacheable('public, s-maxage=20, stale-while-revalidate=60'))
-    hrCache = { at: Date.now(), data }
     return res.status(200).json(withRoleFilter(data))
   }
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' })
