@@ -453,43 +453,51 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
         // มือถือ: เปิดเต็มขนาดจริงเหมือนเดสก์ท็อป ไม่ย่อ — เลื่อนซ้ายขวาได้ + บีบสองนิ้วซูมเอง (ไม่ใช้ native
         // pinch-zoom ทั้งหน้า กัน Safari render เพี้ยนตอนซูมชน fixed sidebar/bottom-tab-bar — ดูเหตุผลเต็มด้านบน)
         overflow: isMobile ? 'auto' : 'hidden', WebkitOverflowScrolling: 'touch', touchAction: isMobile ? 'pan-x pan-y' : undefined,
-      }}><div style={{ width: '100%', minWidth: isMobile ? 700 : 0, zoom: isMobile ? calZoom : 1, transformOrigin: 'top left' }}>
-      {/* gap ต้องเท่ากับกริดวันที่ด้านล่างเป๊ะ (5) ไม่งั้นความกว้างคอลัมน์คำนวณไม่ตรงกัน คอลัมน์จะค่อยๆเยื้องสะสมทีละคอลัมน์
-          จนวันที่ 7 ของสัปดาห์เยื้องจากหัววันไปหลาย px (บั๊กจริงที่เจอ ไม่ใช่แค่ปัญหาการมองภาพ) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', gap: 5, background: 'linear-gradient(180deg,#eef6ff,#f7fbff)', borderRadius: 12 }}>{['อา','จ','อ','พ','พฤ','ศ','ส'].map((d) => <div key={d} style={{ padding: 7, textAlign: 'center', fontSize: 11, fontWeight: 900, color: '#7a94b8' }}>{d}</div>)}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', gap: 5, marginTop: 5 }}>{cells.map((date, i) => {
-        if (!date) return <div key={`blank-${i}`} style={{ minWidth: 0, minHeight: 132, borderRadius: 12, background: 'transparent' }} />
-        const { isPromo, isFeed, partTime, packers, feedNames, regularNames, officePresentNames, regularHeadcount, lowPackingManpower, isToday } = computeDayInfo(date)
-        return <div key={date} style={{ minWidth: 0, minHeight: 132, padding: 7, textAlign: 'left', borderRadius: 12, border: isToday ? '2px solid #355872' : `1px solid ${isPromo ? '#c3b1ea' : isFeed ? '#e4d9f7' : '#e2e8ef'}`, background: isPromo ? 'linear-gradient(135deg,#ede7fb,#f5f1fd)' : isFeed ? 'linear-gradient(180deg,#f5f1fd,#faf8fe)' : 'linear-gradient(180deg,#ffffff,#fbfdff)', boxShadow: isToday ? '0 4px 16px rgba(53,88,114,.20)' : '0 2px 10px rgba(53,88,114,.07)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', overflow: 'visible' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-              <span style={isToday ? { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 18, height: 18, borderRadius: 6, background: '#355872', color: '#fff', fontSize: 11, fontWeight: 900 } : { fontSize: 12, fontWeight: 900, color: '#334155' }}>{Number(date.slice(-2))}</span>
-              <span style={{ color: isPromo ? '#5b4b8a' : '#8a76c0', fontSize: 9 }}>{isPromo ? 'วันโปร' : isFeed ? 'เตรียมฟีด' : ''}</span>
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-              {canEditManpower && <button type="button" onClick={() => openSchedule(date)} aria-label={`แก้ Manpower วันที่ ${date}`} title="แก้คนมาทำงาน" style={{ minWidth: 30, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 3, border: 0, borderRadius: 7, padding: '0 7px', background: '#9CD5FF', color: '#355872', cursor: 'pointer', fontSize: 9, fontWeight: 900 }}><UserRoundPen size={12} /><span>คน</span></button>}
-              <button type="button" onClick={() => openOT(date)} aria-label={`เพิ่ม OT วันที่ ${date}`} title="เพิ่ม OT" style={{ width: 22, height: 22, padding: 0, display: 'grid', placeItems: 'center', border: 0, borderRadius: 6, background: 'transparent', color: '#7AAACE', opacity: .55, cursor: 'pointer' }}><Plus size={13} strokeWidth={2.1} aria-hidden="true" /></button>
-            </span>
+      }}><div style={{ width: '100%', minWidth: isMobile ? 700 : 0, ...(isMobile && calZoom !== 1 ? { zoom: calZoom } : {}) }}>
+      {/* เดิมใช้ CSS Grid (repeat(7,1fr)) ทั้งก้อนเดียวสำหรับทุกสัปดาห์ — Safari มีบั๊กจริง (พิสูจน์แล้วว่าไม่ใช่แค่
+          ปัญหาตาดู): เนื้อหาที่สูงเกินช่อง (เช่นช่องที่มีทั้งชื่อคนและ OT) ไม่ดันให้แถวกริดสูงขึ้นเหมือน Chrome/Firefox
+          กลายเป็นล้นทับแถวถัดไปเห็นเป็นตัวหนังสือซ้อนกัน — เปลี่ยนมาใช้ flex row แยกทีละสัปดาห์แทน ซึ่ง align-items
+          stretch การันตีความสูงเท่ากันในแถวเดียวกันได้จริงข้ามเบราว์เซอร์ ไม่มีบั๊กนี้ */}
+      <div style={{ display: 'flex', gap: 5, background: 'linear-gradient(180deg,#eef6ff,#f7fbff)', borderRadius: 12 }}>{['อา','จ','อ','พ','พฤ','ศ','ส'].map((d) => <div key={d} style={{ flex: '1 1 0', minWidth: 0, padding: 7, textAlign: 'center', fontSize: 11, fontWeight: 900, color: '#7a94b8' }}>{d}</div>)}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 5 }}>
+        {Array.from({ length: cells.length / 7 }, (_, w) => cells.slice(w * 7, w * 7 + 7)).map((week, wi) => (
+          <div key={wi} style={{ display: 'flex', gap: 5, alignItems: 'stretch' }}>
+            {week.map((date, i) => {
+              if (!date) return <div key={`blank-${wi}-${i}`} style={{ flex: '1 1 0', minWidth: 0, minHeight: 132, borderRadius: 12, background: 'transparent' }} />
+              const { isPromo, isFeed, partTime, packers, feedNames, regularNames, officePresentNames, regularHeadcount, lowPackingManpower, isToday } = computeDayInfo(date)
+              return <div key={date} style={{ flex: '1 1 0', minWidth: 0, minHeight: 132, padding: 7, textAlign: 'left', borderRadius: 12, border: isToday ? '2px solid #355872' : `1px solid ${isPromo ? '#c3b1ea' : isFeed ? '#e4d9f7' : '#e2e8ef'}`, background: isPromo ? 'linear-gradient(135deg,#ede7fb,#f5f1fd)' : isFeed ? 'linear-gradient(180deg,#f5f1fd,#faf8fe)' : 'linear-gradient(180deg,#ffffff,#fbfdff)', boxShadow: isToday ? '0 4px 16px rgba(53,88,114,.20)' : '0 2px 10px rgba(53,88,114,.07)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', overflow: 'visible' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                    <span style={isToday ? { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 18, height: 18, borderRadius: 6, background: '#355872', color: '#fff', fontSize: 11, fontWeight: 900 } : { fontSize: 12, fontWeight: 900, color: '#334155' }}>{Number(date.slice(-2))}</span>
+                    <span style={{ color: isPromo ? '#5b4b8a' : '#8a76c0', fontSize: 9 }}>{isPromo ? 'วันโปร' : isFeed ? 'เตรียมฟีด' : ''}</span>
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                    {canEditManpower && <button type="button" onClick={() => openSchedule(date)} aria-label={`แก้ Manpower วันที่ ${date}`} title="แก้คนมาทำงาน" style={{ minWidth: 30, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 3, border: 0, borderRadius: 7, padding: '0 7px', background: '#9CD5FF', color: '#355872', cursor: 'pointer', fontSize: 9, fontWeight: 900 }}><UserRoundPen size={12} /><span>คน</span></button>}
+                    <button type="button" onClick={() => openOT(date)} aria-label={`เพิ่ม OT วันที่ ${date}`} title="เพิ่ม OT" style={{ width: 22, height: 22, padding: 0, display: 'grid', placeItems: 'center', border: 0, borderRadius: 6, background: 'transparent', color: '#7AAACE', opacity: .55, cursor: 'pointer' }}><Plus size={13} strokeWidth={2.1} aria-hidden="true" /></button>
+                  </span>
+                </div>
+                {events.filter((e) => e.date === date).map((e) => <div key={e.id} style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, minWidth: 0, color: '#be185d', fontSize: 10, fontWeight: 900 }}><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.title}>{e.title}</span><span role="button" aria-label={`ลบ ${e.title}`} onClick={(ev) => { ev.stopPropagation(); deleteEvent(e) }} style={{ flexShrink: 0, cursor: 'pointer', color: '#be185d', opacity: .6, padding: '0 3px' }}>×</span></div>)}
+                {(regularNames.length > 0 || feedNames.length > 0 || officePresentNames.length > 0) && <div style={{ marginTop: 4, borderRadius: 8, padding: '4px 6px', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                  {regularNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: 99, background: '#7AAACE', flexShrink: 0 }} />
+                    <span style={{ fontSize: 9, lineHeight: '13px', fontWeight: 700, color: '#355872', minWidth: 0, flex: 1 }}>{regularNames.join(', ')}</span>
+                    {lowPackingManpower && <span style={{ fontSize: 9, fontWeight: 900, color: '#dc2626', flexShrink: 0 }} title={`กำลังคนบ้านล่างเหลือ ${regularHeadcount} คน`}>⚠{regularHeadcount}</span>}
+                  </div>}
+                  {feedNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: 99, background: '#fb923c', flexShrink: 0 }} />
+                    <span style={{ fontSize: 9, lineHeight: '13px', fontWeight: 900, color: '#c2410c', minWidth: 0 }}>{feedNames.join(', ')}</span>
+                  </div>}
+                  {officePresentNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: 99, background: '#6ee7b7', flexShrink: 0 }} />
+                    <span style={{ fontSize: 9, lineHeight: '13px', fontWeight: 700, color: '#047857', minWidth: 0 }}>{officePresentNames.join(', ')}</span>
+                  </div>}
+                </div>}
+                {packers.length > 0 && <DayGroup label="OT คนแพ็ก" rows={packers} />}{partTime.length > 0 && <DayGroup label="OT พาร์ทไทม์" rows={partTime} />}
+              </div>
+            })}
           </div>
-          {events.filter((e) => e.date === date).map((e) => <div key={e.id} style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, minWidth: 0, color: '#be185d', fontSize: 10, fontWeight: 900 }}><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.title}>{e.title}</span><span role="button" aria-label={`ลบ ${e.title}`} onClick={(ev) => { ev.stopPropagation(); deleteEvent(e) }} style={{ flexShrink: 0, cursor: 'pointer', color: '#be185d', opacity: .6, padding: '0 3px' }}>×</span></div>)}
-          {(regularNames.length > 0 || feedNames.length > 0 || officePresentNames.length > 0) && <div style={{ marginTop: 4, borderRadius: 8, padding: '4px 6px', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            {regularNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-              <span style={{ width: 5, height: 5, borderRadius: 99, background: '#7AAACE', flexShrink: 0 }} />
-              <span style={{ fontSize: 9, lineHeight: '13px', fontWeight: 700, color: '#355872', minWidth: 0, flex: 1 }}>{regularNames.join(', ')}</span>
-              {lowPackingManpower && <span style={{ fontSize: 9, fontWeight: 900, color: '#dc2626', flexShrink: 0 }} title={`กำลังคนบ้านล่างเหลือ ${regularHeadcount} คน`}>⚠{regularHeadcount}</span>}
-            </div>}
-            {feedNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-              <span style={{ width: 5, height: 5, borderRadius: 99, background: '#fb923c', flexShrink: 0 }} />
-              <span style={{ fontSize: 9, lineHeight: '13px', fontWeight: 900, color: '#c2410c', minWidth: 0 }}>{feedNames.join(', ')}</span>
-            </div>}
-            {officePresentNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-              <span style={{ width: 5, height: 5, borderRadius: 99, background: '#6ee7b7', flexShrink: 0 }} />
-              <span style={{ fontSize: 9, lineHeight: '13px', fontWeight: 700, color: '#047857', minWidth: 0 }}>{officePresentNames.join(', ')}</span>
-            </div>}
-          </div>}
-          {packers.length > 0 && <DayGroup label="OT คนแพ็ก" rows={packers} />}{partTime.length > 0 && <DayGroup label="OT พาร์ทไทม์" rows={partTime} />}
-        </div>
-      })}</div>
+        ))}
+      </div>
     </div></div>}
     {modal && (() => { const modalDayRows = modal.type === 'ot' ? rows.filter((r) => r.date === modal.date && r.status !== 'cancelled') : []; return <div onMouseDown={() => setModal(null)} style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(15,23,42,.28)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', padding: 18 }}><div onMouseDown={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: 'calc(100vw - 36px)', background: '#fff', borderRadius: 18, padding: 20, boxShadow: '0 24px 70px rgba(15,23,42,.22)', maxHeight: '86vh', overflowY: 'auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}><div><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div style={{ fontSize: 17, fontWeight: 900, color: '#102a43' }}>{modal.type === 'schedule' ? 'แก้ Manpower' : modal.type === 'ot' ? 'เพิ่มแผน OT' : 'เพิ่มวันโปร'}</div>{modalDayRows.length > 0 && <span style={{ background: '#fef3c7', color: '#633806', fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 999 }}>แก้ไข</span>}</div><div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>{modal.date}</div></div><button onClick={() => setModal(null)} aria-label="ปิด" style={{ width: 40, height: 40, display: 'grid', placeItems: 'center', border: 0, background: 'transparent', color: '#64748b', cursor: 'pointer', borderRadius: 10 }}><X size={18}/></button></div>
