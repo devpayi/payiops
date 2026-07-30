@@ -244,7 +244,7 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
     if (e.touches.length !== 2 || !pinchState.current.startDist) return
     e.preventDefault()
     const ratio = touchDist(e.touches) / pinchState.current.startDist
-    setCalZoom(Math.min(2.2, Math.max(0.6, pinchState.current.startZoom * ratio)))
+    setCalZoom(Math.min(3, Math.max(0.5, pinchState.current.startZoom * ratio)))
   }
   const [modal, setModal] = useState(null)
   const [selected, setSelected] = useState([])
@@ -453,7 +453,14 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
         // มือถือ: เปิดเต็มขนาดจริงเหมือนเดสก์ท็อป ไม่ย่อ — เลื่อนซ้ายขวาได้ + บีบสองนิ้วซูมเอง (ไม่ใช้ native
         // pinch-zoom ทั้งหน้า กัน Safari render เพี้ยนตอนซูมชน fixed sidebar/bottom-tab-bar — ดูเหตุผลเต็มด้านบน)
         overflow: isMobile ? 'auto' : 'hidden', WebkitOverflowScrolling: 'touch', touchAction: isMobile ? 'pan-x pan-y' : undefined,
-      }}><div style={{ width: '100%', minWidth: isMobile ? 700 : 0, ...(isMobile && calZoom !== 1 ? { zoom: calZoom } : {}) }}>
+      }}><div style={{
+        width: '100%',
+        // Keep the same readable proportions as the desktop calendar. The mobile
+        // viewport is only a scrollable window over it, so columns never collapse
+        // and text cannot pile on top of neighbouring days.
+        minWidth: isMobile ? 1400 : 0,
+        ...(isMobile && calZoom !== 1 ? { zoom: calZoom } : {}),
+      }}>
       {/* เดิมใช้ CSS Grid (repeat(7,1fr)) ทั้งก้อนเดียวสำหรับทุกสัปดาห์ — Safari มีบั๊กจริง (พิสูจน์แล้วว่าไม่ใช่แค่
           ปัญหาตาดู): เนื้อหาที่สูงเกินช่อง (เช่นช่องที่มีทั้งชื่อคนและ OT) ไม่ดันให้แถวกริดสูงขึ้นเหมือน Chrome/Firefox
           กลายเป็นล้นทับแถวถัดไปเห็นเป็นตัวหนังสือซ้อนกัน — เปลี่ยนมาใช้ flex row แยกทีละสัปดาห์แทน ซึ่ง align-items
