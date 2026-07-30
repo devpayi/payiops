@@ -23,6 +23,9 @@ export default function Settings() {
 function LineLinkCard({ me }) {
   const [lineUserId, setLineUserId] = useState('')
   const [saved, setSaved] = useState('')
+  const [notifyHr, setNotifyHr] = useState(true)
+  const [notifyStock, setNotifyStock] = useState(true)
+  const [savedNotify, setSavedNotify] = useState({ hr: true, stock: true })
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
@@ -30,7 +33,11 @@ function LineLinkCard({ me }) {
   useEffect(() => {
     fetch('/api/sheet-tools?op=hr').then((r) => r.json()).then((d) => {
       const mine = (d.lineLinks || []).find((l) => l.username === me?.u)
-      if (mine) { setLineUserId(mine.line_user_id); setSaved(mine.line_user_id) }
+      if (mine) {
+        setLineUserId(mine.line_user_id); setSaved(mine.line_user_id)
+        const hr = String(mine.notify_hr) !== '0', stock = String(mine.notify_stock) !== '0'
+        setNotifyHr(hr); setNotifyStock(stock); setSavedNotify({ hr, stock })
+      }
     }).catch(() => {}).finally(() => setLoading(false))
   }, [me?.u])
 
@@ -41,11 +48,12 @@ function LineLinkCard({ me }) {
       const res = await fetch('/api/sheet-tools?op=hr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'set-line-id', line_user_id: lineUserId }),
+        body: JSON.stringify({ action: 'set-line-id', line_user_id: lineUserId, notify_hr: notifyHr, notify_stock: notifyStock }),
       })
       const d = await res.json()
       if (!d.success) throw new Error(d.error || 'บันทึกไม่สำเร็จ')
       setSaved(lineUserId)
+      setSavedNotify({ hr: notifyHr, stock: notifyStock })
       setMsg({ ok: true, text: lineUserId ? 'เชื่อม LINE สำเร็จ' : 'ยกเลิกการเชื่อม LINE แล้ว' })
     } catch (err) {
       setMsg({ ok: false, text: err.message })
@@ -54,8 +62,10 @@ function LineLinkCard({ me }) {
     }
   }
 
+  const dirty = lineUserId !== saved || notifyHr !== savedNotify.hr || notifyStock !== savedNotify.stock
+
   return (
-    <Card icon={MessageCircle} title="แจ้งเตือนผ่าน LINE" sub="เชื่อม LINE userId เพื่อรับแจ้งเตือนคำขอลาใหม่ (สำหรับ admin) พร้อมกดอนุมัติ/ปฏิเสธจากแชทได้เลย">
+    <Card icon={MessageCircle} title="แจ้งเตือนผ่าน LINE" sub="เชื่อม LINE userId เพื่อรับแจ้งเตือน พร้อมกดอนุมัติ/สั่งของจากแชทได้เลย">
       {loading ? (
         <div style={{ fontSize: 13, color: 'var(--payi-text-muted)' }}>กำลังโหลด...</div>
       ) : (
@@ -64,12 +74,22 @@ function LineLinkCard({ me }) {
           <div style={{ fontSize: 11.5, color: 'var(--payi-text-faint)', lineHeight: 1.5 }}>
             หา userId ได้จากหน้า LINE Developers Console ของ OA (Basic settings) หรือดูจาก log ตอนทักแชทเข้า OA ครั้งแรก
           </div>
+          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 13, color: 'var(--payi-text)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
+              <input type="checkbox" checked={notifyHr} onChange={(e) => setNotifyHr(e.target.checked)} />
+              รับแจ้งเตือนการลา
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
+              <input type="checkbox" checked={notifyStock} onChange={(e) => setNotifyStock(e.target.checked)} />
+              รับแจ้งเตือนของใกล้หมด
+            </label>
+          </div>
           {msg && (
             <div style={{ fontSize: 12.5, padding: '8px 10px', borderRadius: 8, color: msg.ok ? 'var(--payi-success)' : 'var(--payi-danger)', background: msg.ok ? 'var(--payi-success-bg)' : 'var(--payi-danger-bg)' }}>
               {msg.text}
             </div>
           )}
-          <button type="submit" disabled={busy || lineUserId === saved} style={{ ...primaryBtn, opacity: busy || lineUserId === saved ? 0.6 : 1, justifySelf: 'start' }}>
+          <button type="submit" disabled={busy || !dirty} style={{ ...primaryBtn, opacity: busy || !dirty ? 0.6 : 1, justifySelf: 'start' }}>
             {busy ? <Loader2 size={14} className="payi-spin" /> : <MessageCircle size={14} />} บันทึก
           </button>
         </form>

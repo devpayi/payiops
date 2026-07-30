@@ -41,7 +41,9 @@ const LEAVE_HEADERS = ['id', 'username', 'employee_name', 'leave_type', 'start_d
 const BACKUP_HEADERS = ['leave_id', 'date', 'period', 'office_code', 'created_at']
 const LEAVE_EDIT_HEADERS = ['leave_id', 'mode', 'before_json', 'after_json', 'changed_at', 'changed_by']
 const SCHEDULE_HEADERS = ['id', 'date', 'username', 'employee_name', 'shift_start', 'shift_end', 'role_note', 'created_at', 'created_by']
-const LINE_LINK_HEADERS = ['username', 'line_user_id', 'updated_at']
+// notify_hr/notify_stock: '1'/'' = รับ (default), '0' = ปิด — แยกเปิด/ปิดแจ้งเตือนแต่ละหมวดได้ต่อคน
+// (บอสลาไม่เกี่ยวกับบอสสต็อก คนละคนกัน ไม่อยากให้ได้แจ้งเตือนของอีกฝั่ง)
+const LINE_LINK_HEADERS = ['username', 'line_user_id', 'updated_at', 'notify_hr', 'notify_stock']
 const LINE_SESSION_HEADERS = ['line_user_id', 'step', 'leave_type', 'date', 'date2', 'backup_office', 'updated_at', 'leave_period', 'backup_assignments', 'backup_needs', 'backup_cursor', 'edit_leave_id']
 // โควตาวันลาพักร้อนต่อคนต่อปี — แยกชีตต่างหาก (ไม่ยุ่งกับ workforce_people) เพราะครอบคุมทั้งบ้านล่างและออฟฟิศ แก้ค่าตรงในชีตได้เลย ไม่ต้องแก้โค้ด
 const QUOTA_HEADERS = ['code', 'quota', 'updated_at']
@@ -130,10 +132,18 @@ async function notifyLeaveDecision(record) {
   await pushMessage(link.line_user_id, [leaveFlexMessage(record, variant, await getOfficePeopleMap(), { balance })])
 }
 
-// รายชื่อ admin ที่ผูก LINE ไว้แล้ว (username, line_user_id) — ใช้ตอนแจ้งเตือนคำขอลาใหม่
+// รายชื่อ admin ที่ผูก LINE ไว้แล้ว (username, line_user_id) — ใช้ตอนแจ้งเตือนคำขอลาใหม่ — เฉพาะคนที่ไม่ได้ปิด
+// แจ้งเตือนหมวดการลาไว้ (notify_hr) เพราะบอสฝั่ง HR กับบอสฝั่งสต็อกอาจเป็นคนละคน ไม่อยากให้ได้แจ้งเตือนไขว้กัน
 async function getAdminLineTargets() {
   const [users, links] = await Promise.all([getSheet('users'), getSheet('hr_line_links')])
-  const linkByUsername = Object.fromEntries(links.filter((l) => l.username && l.line_user_id).map((l) => [l.username, l.line_user_id]))
+  const linkByUsername = Object.fromEntries(links.filter((l) => l.username && l.line_user_id && String(l.notify_hr) !== '0').map((l) => [l.username, l.line_user_id]))
+  return users.filter((u) => canManageOperations(u.role) && linkByUsername[u.username]).map((u) => ({ username: u.username, line_user_id: linkByUsername[u.username] }))
+}
+
+// เหมือน getAdminLineTargets แต่กรองด้วย notify_stock — ใช้แจ้งเตือนของใกล้หมด/หมด แยกกลุ่มผู้รับกันชัดเจน
+async function getStockLineTargets() {
+  const [users, links] = await Promise.all([getSheet('users'), getSheet('hr_line_links')])
+  const linkByUsername = Object.fromEntries(links.filter((l) => l.username && l.line_user_id && String(l.notify_stock) !== '0').map((l) => [l.username, l.line_user_id]))
   return users.filter((u) => canManageOperations(u.role) && linkByUsername[u.username]).map((u) => ({ username: u.username, line_user_id: linkByUsername[u.username] }))
 }
 
@@ -326,7 +336,7 @@ async function opLowStockCron(req, res) {
       return res.status(200).json({ success: true, item_count: 0 })
     }
 
-    const targets = await getAdminLineTargets()
+    const targets = await getStockLineTargets()
     if (targets.length) await Promise.all(targets.map((t) => pushMessage(t.line_user_id, [lowStockFlexMessage(lowItems)])))
     await appendRows(STOCK_ALERT_RUNS_SHEET, [[today, new Date().toISOString(), lowItems.length]])
     return res.status(200).json({ success: true, item_count: lowItems.length, notified: targets.length })
@@ -1219,9 +1229,14 @@ async function opHrInner(req, res) {
     }
     const lineUserId = String(body.line_user_id || '').trim()
     const current = await getSheet('hr_line_links')
+    const existing = current.find((r) => r.username === username)
     const now = new Date().toISOString()
     const kept = current.filter((r) => r.username !== username).map((r) => LINE_LINK_HEADERS.map((h) => r[h] ?? ''))
-    const rows = lineUserId ? [...kept, LINE_LINK_HEADERS.map((h) => ({ username, line_user_id: lineUserId, updated_at: now })[h] ?? '')] : kept
+    // notify_hr/notify_stock: ใช้ค่าที่ส่งมาถ้ามี ไม่งั้นสืบต่อจากของเดิม (แก้แค่ userId ไม่ควรรีเซ็ตค่าที่ตั้งไว้) —
+    // ยังไม่เคยมีแถวเดิมเลย (ผูกครั้งแรก) default เปิดทั้งคู่
+    const notifyHr = body.notify_hr !== undefined ? (body.notify_hr ? '1' : '0') : (existing?.notify_hr ?? '1')
+    const notifyStock = body.notify_stock !== undefined ? (body.notify_stock ? '1' : '0') : (existing?.notify_stock ?? '1')
+    const rows = lineUserId ? [...kept, LINE_LINK_HEADERS.map((h) => ({ username, line_user_id: lineUserId, updated_at: now, notify_hr: notifyHr, notify_stock: notifyStock })[h] ?? '')] : kept
     await overwriteSheet('hr_line_links', LINE_LINK_HEADERS, rows)
     clearHrCache()
     return res.status(200).json({ success: true, line_user_id: lineUserId })
