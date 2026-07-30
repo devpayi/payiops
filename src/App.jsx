@@ -1033,9 +1033,10 @@ export default function App() {
                     onClick: () => setActiveTab('AdsChannels'),
                   },
                   {
-                    title: `ROI (ROAS) · ${roiStats.label}`,
+                    title: `ROI · ${roiStats.label}`,
                     value: roiStats.roi !== null ? `${roiStats.roi.toFixed(1)}x` : '-',
-                    note: selectedMonth ? `รวมทุกเดือน ${roiStats.roiOverall !== null ? roiStats.roiOverall.toFixed(1) + 'x' : '-'}` : null,
+                    // บอสงงว่า ROI ไปคิดรวมตัวแปรอื่นด้วยไหม — ใส่สูตรให้เห็นตรงๆ ในการ์ดเลย กันถามซ้ำ
+                    note: `= ยอดขาย ÷ ค่า Ads${selectedMonth ? ` · รวมทุกเดือน ${roiStats.roiOverall !== null ? roiStats.roiOverall.toFixed(1) + 'x' : '-'}` : ''}`,
                     icon: Percent, color: '#1a9c6b',
                     onClick: () => setActiveTab('AdsChannels'),
                   },
