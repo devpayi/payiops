@@ -439,7 +439,7 @@ async function handleStockOrderSearchReply(event, queryOverride = '') {
 
   const { items } = await loadItemsWithBalance({ includeHidden: false })
   const matches = items.filter((it) => it.display_name.toLowerCase().includes(query) || String(it.sku).toLowerCase().includes(query)).slice(0, 10)
-  if (!matches.length) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ค่ะ ลองพิมพ์คำอื่นดู' }])
+  if (!matches.length) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ค่ะ ลองพิมพ์ชื่อสินค้า หรือ SKU ใหม่\nหากต้องการเริ่มใหม่ พิมพ์ “สั่งของ” ได้เลยค่ะ' }])
   if (matches.length === 1) return askOrderQty(replyToken, lineUserId, matches[0])
 
   await upsertStockOrderSession(lineUserId, { step: 'await_sku_pick', sku: '', qty: '' })
@@ -1902,11 +1902,16 @@ async function opLineWebhook(req, res) {
         // ผลค้นหา) หรือกำลังพิมพ์ชื่อ/SKU ค้นหาอยู่ (หลังพิมพ์ "สั่งของ" เปล่าๆ) — เช็คก่อน fallback echo userId
         // ด้านล่าง เพราะบอส/dev ไม่ผ่าน findStaffLink (นั่นสำหรับพนักงาน mp: เท่านั้น)
         const stockSession = lineUserId ? (await getStockOrderSessions()).find((s) => s.line_user_id === lineUserId) : null
+        const initialQuery = stockOrderCommandQuery(event.message.text)
         if (stockSession?.step === 'await_qty') { await handleStockOrderQtyReply(event, stockSession); continue }
-        if (stockSession?.step === 'await_sku_search' || stockSession?.step === 'await_sku_pick') { await handleStockOrderSearchReply(event); continue }
+        if (stockSession?.step === 'await_sku_search' || stockSession?.step === 'await_sku_pick') {
+          // ถ้าพิมพ์ "สั่งของ" ซ้ำระหว่างที่บอตรอชื่อสินค้า ให้เริ่มรอบใหม่ ไม่เอาคำสั่งไปค้นหาเป็นชื่อสินค้า
+          if (initialQuery === '') { await handleStockOrderSearchStart(event); continue }
+          await handleStockOrderSearchReply(event)
+          continue
+        }
         // พิมพ์ "สั่งของ" ได้เลย (ไม่ได้มาจากการ์ดแจ้งเตือน)
         // เพื่อสั่งของที่ยังไม่ใกล้หมดได้ด้วย
-        const initialQuery = stockOrderCommandQuery(event.message.text)
         if (initialQuery !== null && await handleStockOrderSearchStart(event, initialQuery)) continue
         // LINE ID เดียวกันอาจผูกเป็นทั้งพนักงานและ DEV/Boss ได้: ให้คำสั่งสต็อกด้านบน
         // มีสิทธิ์ทำงานก่อน แล้วข้อความอื่นค่อยเข้าขั้นตอนลาของพนักงาน
