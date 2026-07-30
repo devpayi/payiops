@@ -432,42 +432,43 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
       />
     )}
     {(!isMobile || mobileView === 'calendar') && <div style={{
-      width: '100%', minWidth: 0, boxSizing: 'border-box', padding: '4px 8px 12px',
-      // มือถือ: เลื่อน+ซูมได้ในกรอบนี้ (touch-action ปล่อยค่า default = pinch-zoom ใช้ได้ตามเบราว์เซอร์)
-      overflow: isMobile ? 'auto' : 'hidden', WebkitOverflowScrolling: 'touch',
-    }}><div style={{ width: '100%', minWidth: isMobile ? 680 : 0 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', background: 'linear-gradient(180deg,#eef6ff,#f7fbff)', borderRadius: 12 }}>{['อา','จ','อ','พ','พฤ','ศ','ส'].map((d) => <div key={d} style={{ padding: 7, textAlign: 'center', fontSize: 11, fontWeight: 900, color: '#7a94b8' }}>{d}</div>)}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', gap: 5, marginTop: 5 }}>{cells.map((date, i) => {
-        if (!date) return <div key={`blank-${i}`} style={{ minWidth: 0, minHeight: 132, borderRadius: 12, background: 'transparent' }} />
+      width: '100%', minWidth: 0, boxSizing: 'border-box', padding: isMobile ? '4px 4px 12px' : '4px 8px 12px', overflow: 'visible',
+    }}><div style={{ width: '100%', minWidth: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', background: 'linear-gradient(180deg,#eef6ff,#f7fbff)', borderRadius: 12 }}>{['อา','จ','อ','พ','พฤ','ศ','ส'].map((d) => <div key={d} style={{ padding: isMobile ? 3 : 7, textAlign: 'center', fontSize: isMobile ? 9 : 11, fontWeight: 900, color: '#7a94b8' }}>{d}</div>)}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', gap: isMobile ? 2 : 5, marginTop: 5 }}>{cells.map((date, i) => {
+        if (!date) return <div key={`blank-${i}`} style={{ minWidth: 0, minHeight: isMobile ? 46 : 132, borderRadius: isMobile ? 8 : 12, background: 'transparent' }} />
         const { isPromo, isFeed, partTime, packers, feedNames, regularNames, officePresentNames, regularHeadcount, lowPackingManpower, isToday } = computeDayInfo(date)
-        return <div key={date} style={{ minWidth: 0, minHeight: 132, padding: 7, textAlign: 'left', borderRadius: 12, border: isToday ? '2px solid #355872' : `1px solid ${isPromo ? '#c3b1ea' : isFeed ? '#e4d9f7' : '#e2e8ef'}`, background: isPromo ? 'linear-gradient(135deg,#ede7fb,#f5f1fd)' : isFeed ? 'linear-gradient(180deg,#f5f1fd,#faf8fe)' : 'linear-gradient(180deg,#ffffff,#fbfdff)', boxShadow: isToday ? '0 4px 16px rgba(53,88,114,.20)' : '0 2px 10px rgba(53,88,114,.07)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', overflow: 'visible' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-              <span style={isToday ? { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 18, height: 18, borderRadius: 6, background: '#355872', color: '#fff', fontSize: 11, fontWeight: 900 } : { fontSize: 12, fontWeight: 900, color: '#334155' }}>{Number(date.slice(-2))}</span>
-              <span style={{ color: isPromo ? '#5b4b8a' : '#8a76c0', fontSize: 9 }}>{isPromo ? 'วันโปร' : isFeed ? 'เตรียมฟีด' : ''}</span>
+        return <div key={date} style={{ position: 'relative', minWidth: 0, minHeight: isMobile ? 46 : 132, padding: isMobile ? 3 : 7, textAlign: 'left', borderRadius: isMobile ? 8 : 12, border: isToday ? `${isMobile ? 1.5 : 2}px solid #355872` : `1px solid ${isPromo ? '#c3b1ea' : isFeed ? '#e4d9f7' : '#e2e8ef'}`, background: isPromo ? 'linear-gradient(135deg,#ede7fb,#f5f1fd)' : isFeed ? 'linear-gradient(180deg,#f5f1fd,#faf8fe)' : 'linear-gradient(180deg,#ffffff,#fbfdff)', boxShadow: isToday ? '0 4px 16px rgba(53,88,114,.20)' : '0 2px 10px rgba(53,88,114,.07)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', overflow: 'visible' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0 }}>
+              <span style={isToday ? { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: isMobile ? 14 : 18, height: isMobile ? 14 : 18, borderRadius: 6, background: '#355872', color: '#fff', fontSize: isMobile ? 9 : 11, fontWeight: 900 } : { fontSize: isMobile ? 10 : 12, fontWeight: 900, color: '#334155' }}>{Number(date.slice(-2))}</span>
+              {!isMobile && <span style={{ color: isPromo ? '#5b4b8a' : '#8a76c0', fontSize: 9 }}>{isPromo ? 'วันโปร' : isFeed ? 'เตรียมฟีด' : ''}</span>}
             </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            {!isMobile && <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
               {canEditManpower && <button type="button" onClick={() => openSchedule(date)} aria-label={`แก้ Manpower วันที่ ${date}`} title="แก้คนมาทำงาน" style={{ minWidth: 30, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 3, border: 0, borderRadius: 7, padding: '0 7px', background: '#9CD5FF', color: '#355872', cursor: 'pointer', fontSize: 9, fontWeight: 900 }}><UserRoundPen size={12} /><span>คน</span></button>}
               <button type="button" onClick={() => openOT(date)} aria-label={`เพิ่ม OT วันที่ ${date}`} title="เพิ่ม OT" style={{ width: 22, height: 22, padding: 0, display: 'grid', placeItems: 'center', border: 0, borderRadius: 6, background: 'transparent', color: '#7AAACE', opacity: .55, cursor: 'pointer' }}><Plus size={13} strokeWidth={2.1} aria-hidden="true" /></button>
-            </span>
+            </span>}
           </div>
-          {events.filter((e) => e.date === date).map((e) => <div key={e.id} style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, minWidth: 0, color: '#be185d', fontSize: 10, fontWeight: 900 }}><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.title}>{e.title}</span><span role="button" aria-label={`ลบ ${e.title}`} onClick={(ev) => { ev.stopPropagation(); deleteEvent(e) }} style={{ flexShrink: 0, cursor: 'pointer', color: '#be185d', opacity: .6, padding: '0 3px' }}>×</span></div>)}
-          {(regularNames.length > 0 || feedNames.length > 0 || officePresentNames.length > 0) && <div style={{ marginTop: 4, borderRadius: 8, padding: '4px 6px', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            {regularNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-              <span style={{ width: 5, height: 5, borderRadius: 99, background: '#7AAACE', flexShrink: 0 }} />
-              <span style={{ fontSize: 9, lineHeight: '13px', fontWeight: 700, color: '#355872', minWidth: 0, flex: 1 }}>{regularNames.join(', ')}</span>
-              {lowPackingManpower && <span style={{ fontSize: 9, fontWeight: 900, color: '#dc2626', flexShrink: 0 }} title={`กำลังคนบ้านล่างเหลือ ${regularHeadcount} คน`}>⚠{regularHeadcount}</span>}
+          {/* มือถือ: กดที่ตัวช่องเลยเพื่อแก้ (ไม่มีที่พอให้ปุ่ม คน/+ แยก) */}
+          {isMobile && canEditManpower && <button type="button" onClick={() => openSchedule(date)} aria-label={`แก้ Manpower วันที่ ${date}`} style={{ position: 'absolute', inset: 0, zIndex: 1, width: '100%', height: '100%', border: 0, background: 'transparent', padding: 0, margin: 0, cursor: 'pointer' }} />}
+          {events.filter((e) => e.date === date).map((e) => <div key={e.id} style={{ marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, minWidth: 0, color: '#be185d', fontSize: isMobile ? 8 : 10, fontWeight: 900 }}><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.title}>{e.title}</span>{!isMobile && <span role="button" aria-label={`ลบ ${e.title}`} onClick={(ev) => { ev.stopPropagation(); deleteEvent(e) }} style={{ flexShrink: 0, cursor: 'pointer', color: '#be185d', opacity: .6, padding: '0 3px' }}>×</span>}</div>)}
+          {(regularNames.length > 0 || feedNames.length > 0 || officePresentNames.length > 0) && <div style={{ marginTop: 2, borderRadius: isMobile ? 6 : 8, padding: isMobile ? '2px 3px' : '4px 6px', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+            {regularNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0 }}>
+              <span style={{ width: 4, height: 4, borderRadius: 99, background: '#7AAACE', flexShrink: 0 }} />
+              <span style={{ fontSize: isMobile ? 7.5 : 9, lineHeight: isMobile ? '10px' : '13px', fontWeight: 700, color: '#355872', minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'nowrap' : 'normal' }}>{regularNames.join(', ')}</span>
+              {lowPackingManpower && <span style={{ fontSize: isMobile ? 7.5 : 9, fontWeight: 900, color: '#dc2626', flexShrink: 0 }} title={`กำลังคนบ้านล่างเหลือ ${regularHeadcount} คน`}>⚠{regularHeadcount}</span>}
             </div>}
-            {feedNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-              <span style={{ width: 5, height: 5, borderRadius: 99, background: '#fb923c', flexShrink: 0 }} />
-              <span style={{ fontSize: 9, lineHeight: '13px', fontWeight: 900, color: '#c2410c', minWidth: 0 }}>{feedNames.join(', ')}</span>
+            {feedNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0 }}>
+              <span style={{ width: 4, height: 4, borderRadius: 99, background: '#fb923c', flexShrink: 0 }} />
+              <span style={{ fontSize: isMobile ? 7.5 : 9, lineHeight: isMobile ? '10px' : '13px', fontWeight: 900, color: '#c2410c', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'nowrap' : 'normal' }}>{feedNames.join(', ')}</span>
             </div>}
-            {officePresentNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-              <span style={{ width: 5, height: 5, borderRadius: 99, background: '#6ee7b7', flexShrink: 0 }} />
-              <span style={{ fontSize: 9, lineHeight: '13px', fontWeight: 700, color: '#047857', minWidth: 0 }}>{officePresentNames.join(', ')}</span>
+            {officePresentNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0 }}>
+              <span style={{ width: 4, height: 4, borderRadius: 99, background: '#6ee7b7', flexShrink: 0 }} />
+              <span style={{ fontSize: isMobile ? 7.5 : 9, lineHeight: isMobile ? '10px' : '13px', fontWeight: 700, color: '#047857', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'nowrap' : 'normal' }}>{officePresentNames.join(', ')}</span>
             </div>}
           </div>}
-          {packers.length > 0 && <DayGroup label="OT คนแพ็ก" rows={packers} />}{partTime.length > 0 && <DayGroup label="OT พาร์ทไทม์" rows={partTime} />}
+          {!isMobile && <>{packers.length > 0 && <DayGroup label="OT คนแพ็ก" rows={packers} />}{partTime.length > 0 && <DayGroup label="OT พาร์ทไทม์" rows={partTime} />}</>}
+          {isMobile && (packers.length > 0 || partTime.length > 0) && <div style={{ marginTop: 1, fontSize: 7, fontWeight: 900, color: '#8a6d1f' }}>OT ×{packers.length + partTime.length}</div>}
         </div>
       })}</div>
     </div></div>}
