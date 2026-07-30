@@ -233,6 +233,19 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
+  // ปฏิทินมือถือ: บีบสองนิ้วซูมเอง (ไม่พึ่ง native pinch-zoom ของเบราว์เซอร์ทั้งหน้า) — เพราะ native zoom
+  // ระดับทั้งหน้าไปชนกับ sidebar/bottom-tab-bar ที่เป็น position:fixed ทำให้ Safari render เพี้ยน/ทับกัน
+  // ตอนซูม (บั๊กที่ owner เจอซ้ำสองรอบ) ซูมเฉพาะกล่องปฏิทินเองด้วย CSS zoom แทน ไม่แตะ viewport ทั้งหน้า
+  const [calZoom, setCalZoom] = useState(1)
+  const pinchState = useRef({ startDist: 0, startZoom: 1 })
+  const touchDist = (touches) => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY)
+  const onCalTouchStart = (e) => { if (e.touches.length === 2) { pinchState.current = { startDist: touchDist(e.touches), startZoom: calZoom } } }
+  const onCalTouchMove = (e) => {
+    if (e.touches.length !== 2 || !pinchState.current.startDist) return
+    e.preventDefault()
+    const ratio = touchDist(e.touches) / pinchState.current.startDist
+    setCalZoom(Math.min(2.2, Math.max(0.6, pinchState.current.startZoom * ratio)))
+  }
   const [modal, setModal] = useState(null)
   const [selected, setSelected] = useState([])
   const [start, setStart] = useState('17:30')
@@ -412,6 +425,7 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
           <button type="button" onClick={() => setMobileView('calendar')} style={miniTab(mobileView === 'calendar')}>ปฏิทิน</button>
           <button type="button" onClick={() => setMobileView('list')} style={miniTab(mobileView === 'list')}>รายวัน</button>
         </div>}
+        {isMobile && mobileView === 'calendar' && calZoom !== 1 && <button type="button" onClick={() => setCalZoom(1)} style={miniTab(false)}>รีเซ็ตซูม {calZoom.toFixed(1)}x</button>}
         <button onClick={() => { setPromoEnd(`${month}-01`); setPromoTeam('ทุกทีม'); setLeadDays('0'); setLagDays('0'); setModal({ type: 'promo', date: `${month}-01` }) }} style={miniTab(false)}>+ วันโปร</button>
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ ...inputStyle, width: 155 }} />
       </div>
@@ -431,11 +445,15 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
         deleteEvent={deleteEvent}
       />
     )}
-    {(!isMobile || mobileView === 'calendar') && <div style={{
-      width: '100%', minWidth: 0, boxSizing: 'border-box', padding: '4px 8px 12px',
-      // มือถือ: เปิดเต็มขนาดจริงเหมือนเดสก์ท็อป ไม่ย่อ — เลื่อน/ซูมสองนิ้วดูเอา (เหมือนเว็บอ้างอิงที่ owner ส่งมา)
-      overflow: isMobile ? 'auto' : 'hidden', WebkitOverflowScrolling: 'touch',
-    }}><div style={{ width: '100%', minWidth: isMobile ? 700 : 0 }}>
+    {(!isMobile || mobileView === 'calendar') && <div
+      onTouchStart={isMobile ? onCalTouchStart : undefined}
+      onTouchMove={isMobile ? onCalTouchMove : undefined}
+      style={{
+        width: '100%', minWidth: 0, boxSizing: 'border-box', padding: '4px 8px 12px',
+        // มือถือ: เปิดเต็มขนาดจริงเหมือนเดสก์ท็อป ไม่ย่อ — เลื่อนซ้ายขวาได้ + บีบสองนิ้วซูมเอง (ไม่ใช้ native
+        // pinch-zoom ทั้งหน้า กัน Safari render เพี้ยนตอนซูมชน fixed sidebar/bottom-tab-bar — ดูเหตุผลเต็มด้านบน)
+        overflow: isMobile ? 'auto' : 'hidden', WebkitOverflowScrolling: 'touch', touchAction: isMobile ? 'pan-x pan-y' : undefined,
+      }}><div style={{ width: '100%', minWidth: isMobile ? 700 : 0, zoom: isMobile ? calZoom : 1, transformOrigin: 'top left' }}>
       {/* gap ต้องเท่ากับกริดวันที่ด้านล่างเป๊ะ (5) ไม่งั้นความกว้างคอลัมน์คำนวณไม่ตรงกัน คอลัมน์จะค่อยๆเยื้องสะสมทีละคอลัมน์
           จนวันที่ 7 ของสัปดาห์เยื้องจากหัววันไปหลาย px (บั๊กจริงที่เจอ ไม่ใช่แค่ปัญหาการมองภาพ) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', gap: 5, background: 'linear-gradient(180deg,#eef6ff,#f7fbff)', borderRadius: 12 }}>{['อา','จ','อ','พ','พฤ','ศ','ส'].map((d) => <div key={d} style={{ padding: 7, textAlign: 'center', fontSize: 11, fontWeight: 900, color: '#7a94b8' }}>{d}</div>)}</div>
