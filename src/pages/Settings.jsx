@@ -103,6 +103,7 @@ function LineLinkCard({ me }) {
 // (เช่น มีบอส HR กับบอสสต็อกคนละคน ผูก LINE ไว้แล้วทั้งคู่แต่อยากตั้งค่าเริ่มต้นให้จากตรงนี้เลย)
 function BossLineNotifyCard() {
   const [rows, setRows] = useState([]) // [{ username, display_name, role, line_user_id, notify_hr, notify_stock }]
+  const [drafts, setDrafts] = useState({}) // { [username]: input value }
   const [loading, setLoading] = useState(true)
   const [busyUser, setBusyUser] = useState(null)
   const [msg, setMsg] = useState(null)
@@ -116,7 +117,7 @@ function BossLineNotifyCard() {
       if (!u.success) throw new Error(u.error || 'โหลดรายชื่อ user ไม่สำเร็จ')
       const linkByUsername = Object.fromEntries((d.lineLinks || []).filter((l) => l.username && !String(l.username).startsWith('mp:')).map((l) => [l.username, l]))
       const managers = (u.users || []).filter((x) => ['boss', 'dev', 'admin'].includes(x.role))
-      setRows(managers.map((m) => {
+      const next = managers.map((m) => {
         const link = linkByUsername[m.username]
         return {
           username: m.username, display_name: m.display_name || m.username, role: m.role,
@@ -124,10 +125,29 @@ function BossLineNotifyCard() {
           notify_hr: link ? String(link.notify_hr) !== '0' : true,
           notify_stock: link ? String(link.notify_stock) !== '0' : true,
         }
-      }))
+      })
+      setRows(next)
+      setDrafts(Object.fromEntries(next.map((r) => [r.username, r.line_user_id])))
     }).catch((err) => setMsg({ ok: false, text: err.message })).finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [])
+
+  // วาง/แก้ LINE userId แทนคนนั้นเลย (เผื่อบอสไม่สะดวก login เอง) — ผูกใหม่หรือรีเซ็ต userId เดิม default เปิดแจ้งเตือนทั้ง 2 หมวด
+  const saveLink = async (username) => {
+    setBusyUser(username); setMsg(null)
+    try {
+      const res = await fetch('/api/sheet-tools?op=hr', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set-line-id-for', username, line_user_id: drafts[username] || '' }),
+      })
+      const d = await res.json()
+      if (!d.success) throw new Error(d.error || 'บันทึกไม่สำเร็จ')
+      load()
+    } catch (err) {
+      setMsg({ ok: false, text: err.message })
+      setBusyUser(null)
+    }
+  }
 
   const toggle = async (row, field) => {
     if (!row.line_user_id) return
@@ -150,7 +170,7 @@ function BossLineNotifyCard() {
   }
 
   return (
-    <Card icon={MessageCircle} title="หมวดแจ้งเตือน LINE ของบอส/dev" sub="ตั้งจากตรงนี้ให้แต่ละคนได้เลย ไม่ต้องรอให้เขา login เข้ามาตั้งเอง — ต้องผูก LINE (การ์ดด้านบน) ก่อนถึงจะตั้งได้">
+    <Card icon={MessageCircle} title="หมวดแจ้งเตือน LINE ของบอส/dev" sub="วาง LINE userId แทนแต่ละคนได้เลย (ให้เขาทักแชทเข้า OA ก่อน บอทจะตอบ userId กลับมา) ไม่ต้องรอให้ login เข้ามาผูกเอง">
       {loading ? (
         <div style={{ fontSize: 13, color: 'var(--payi-text-muted)' }}>กำลังโหลด...</div>
       ) : (
@@ -163,10 +183,22 @@ function BossLineNotifyCard() {
           {!rows.length && <div style={{ fontSize: 13, color: 'var(--payi-text-faint)' }}>ยังไม่มี user role boss/dev ในระบบ</div>}
           {rows.map((row) => (
             <div key={row.username} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', borderRadius: 10, background: 'var(--payi-surface-muted)' }}>
-              <div style={{ width: 130, flexShrink: 0, fontSize: 13, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{row.display_name}</div>
-              {!row.line_user_id ? (
-                <div style={{ fontSize: 12, color: 'var(--payi-text-faint)' }}>ยังไม่ได้ผูก LINE</div>
-              ) : (
+              <div style={{ width: 110, flexShrink: 0, fontSize: 13, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{row.display_name}{row.line_user_id && <span title="ผูกแล้ว" style={{ color: 'var(--payi-success)', marginLeft: 4 }}>●</span>}</div>
+              <input
+                value={drafts[row.username] ?? ''}
+                onChange={(e) => setDrafts((prev) => ({ ...prev, [row.username]: e.target.value }))}
+                placeholder="LINE userId"
+                style={{ ...inputStyle, flex: '1 1 180px', minWidth: 140 }}
+                autoCapitalize="none"
+              />
+              <button
+                onClick={() => saveLink(row.username)}
+                disabled={busyUser === row.username || (drafts[row.username] ?? '') === row.line_user_id}
+                style={{ ...primaryBtn, padding: '7px 12px', opacity: busyUser === row.username || (drafts[row.username] ?? '') === row.line_user_id ? 0.5 : 1 }}
+              >
+                {busyUser === row.username ? <Loader2 size={13} className="payi-spin" /> : 'บันทึก'}
+              </button>
+              {row.line_user_id && (
                 <div style={{ display: 'flex', gap: 14, fontSize: 12.5, color: 'var(--payi-text)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: busyUser === row.username ? 'default' : 'pointer', opacity: busyUser === row.username ? 0.5 : 1 }}>
                     <input type="checkbox" checked={row.notify_hr} disabled={busyUser === row.username} onChange={() => toggle(row, 'hr')} />

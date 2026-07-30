@@ -1221,9 +1221,12 @@ async function opHrInner(req, res) {
     let username
     if (action === 'set-line-id-for') {
       if (!requireAdmin(req, res)) return
+      // ผูกแทนพนักงาน manpower (employee_code -> mp:<code>) หรือผูกแทนบอส/dev คนอื่นตรงๆ (username) ก็ได้ —
+      // ใช้ตอน dev ผูก LINE แทนบอสที่ไม่สะดวก login เอง (เช่น บอสสต็อกคนละคนกับบอส HR)
       const code = String(body.employee_code || '').trim()
-      if (!code) return res.status(400).json({ success: false, error: 'กรุณาระบุพนักงาน' })
-      username = `mp:${code}`
+      const rawUsername = String(body.username || '').trim()
+      if (!code && !rawUsername) return res.status(400).json({ success: false, error: 'กรุณาระบุพนักงานหรือ username' })
+      username = code ? `mp:${code}` : rawUsername
     } else {
       username = actorUsername() || 'boss'
     }
