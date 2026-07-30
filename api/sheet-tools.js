@@ -405,26 +405,36 @@ async function handleStockOrderPostback(event, sku) {
   await askOrderQty(replyToken, lineUserId, item)
 }
 
-// พิมพ์ "สั่งของ" เฉยๆ (ไม่ต้องรอการ์ดแจ้งเตือน) — สั่งของที่ยังปกติ (ไม่ใกล้หมด) ได้ด้วย ต่างจากปุ่มบนการ์ด
+// รับคำสั่ง "สั่งของ" (และชื่อสินค้าที่พิมพ์ต่อท้ายได้) เพื่อเริ่มสั่งสินค้า
+// (ไม่ต้องรอการ์ดแจ้งเตือน) — สั่งของที่ยังปกติ (ไม่ใกล้หมด) ได้ด้วย ต่างจากปุ่มบนการ์ด
 // ที่จำกัดแค่ของใกล้หมด/หมดเท่านั้น เริ่ม session ถามชื่อ/SKU ก่อน แล้วค่อยถามจำนวนต่อ (handleStockOrderSearchReply)
-async function handleStockOrderSearchStart(event) {
+function stockOrderCommandQuery(text) {
+  const match = String(text || '').trim().match(/^สั่งของ\s*(.*)$/)
+  return match ? match[1].trim() : null
+}
+
+async function handleStockOrderSearchStart(event, initialQuery = '') {
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
   if (!replyToken) return false
   const manager = lineUserId ? await findManagerLink(lineUserId) : null
   if (!manager) return false // ไม่ใช่บอส/dev — ปล่อยให้ตกไป fallback เดิม (echo userId) ไม่ตอบอะไรพิเศษ
   await upsertStockOrderSession(lineUserId, { step: 'await_sku_search', sku: '', qty: '' })
+  if (initialQuery) {
+    await handleStockOrderSearchReply(event, initialQuery)
+    return true
+  }
   await replyMessage(replyToken, [{ type: 'text', text: 'จะสั่งอะไรคะ? พิมพ์ชื่อสินค้าหรือ SKU ได้เลย' }])
   return true
 }
 
 // พิมพ์ชื่อ/SKU ค้นหา (ขั้นตอนต่อจาก handleStockOrderSearchStart หรือพิมพ์ใหม่ตอนเลือกจากรายการเดิมไม่เจอ) —
 // เจอตัวเดียวข้ามไปถามจำนวนเลย เจอหลายตัวโชว์เป็น quick reply ให้เลือก (สูงสุด 10 ตามลิมิต quick reply ของ LINE)
-async function handleStockOrderSearchReply(event) {
+async function handleStockOrderSearchReply(event, queryOverride = '') {
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
   if (!replyToken) return
-  const query = String(event.message?.text || '').trim().toLowerCase()
+  const query = String(queryOverride || event.message?.text || '').trim().toLowerCase()
   if (!query) return replyMessage(replyToken, [{ type: 'text', text: 'พิมพ์ชื่อสินค้าหรือ SKU ได้เลยค่ะ' }])
 
   const { items } = await loadItemsWithBalance({ includeHidden: false })
@@ -1888,15 +1898,19 @@ async function opLineWebhook(req, res) {
       const staffLink = lineUserId ? await findStaffLink(lineUserId) : null
 
       if (event.type === 'message' && event.message?.type === 'text') {
-        if (staffLink) { await handleLeaveWizard(event, staffLink); continue }
         // รอบอส/dev พิมพ์จำนวนสั่งของกลับมาไหม (หลังกดปุ่ม "สั่งของ" จากการ์ดแจ้งเตือนของใกล้หมด หรือหลังเลือกจาก
         // ผลค้นหา) หรือกำลังพิมพ์ชื่อ/SKU ค้นหาอยู่ (หลังพิมพ์ "สั่งของ" เปล่าๆ) — เช็คก่อน fallback echo userId
         // ด้านล่าง เพราะบอส/dev ไม่ผ่าน findStaffLink (นั่นสำหรับพนักงาน mp: เท่านั้น)
         const stockSession = lineUserId ? (await getStockOrderSessions()).find((s) => s.line_user_id === lineUserId) : null
         if (stockSession?.step === 'await_qty') { await handleStockOrderQtyReply(event, stockSession); continue }
         if (stockSession?.step === 'await_sku_search' || stockSession?.step === 'await_sku_pick') { await handleStockOrderSearchReply(event); continue }
-        // พิมพ์ "สั่งของ" เฉยๆ (ไม่ได้มาจากการ์ดแจ้งเตือน) — สั่งของที่ยังไม่ใกล้หมดได้ด้วย
-        if (String(event.message.text || '').includes('สั่งของ') && await handleStockOrderSearchStart(event)) continue
+        // พิมพ์ "สั่งของ" ได้เลย (ไม่ได้มาจากการ์ดแจ้งเตือน)
+        // เพื่อสั่งของที่ยังไม่ใกล้หมดได้ด้วย
+        const initialQuery = stockOrderCommandQuery(event.message.text)
+        if (initialQuery !== null && await handleStockOrderSearchStart(event, initialQuery)) continue
+        // LINE ID เดียวกันอาจผูกเป็นทั้งพนักงานและ DEV/Boss ได้: ให้คำสั่งสต็อกด้านบน
+        // มีสิทธิ์ทำงานก่อน แล้วข้อความอื่นค่อยเข้าขั้นตอนลาของพนักงาน
+        if (staffLink) { await handleLeaveWizard(event, staffLink); continue }
         // ยังไม่ผูกเป็นพนักงาน (หรือเป็น admin) — ตอบ userId กลับไปให้ก็อปไปผูกในหน้า Settings ได้เลย ไม่ต้องเปิด log
         if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `LINE userId ของคุณคือ:\n${lineUserId || '(ไม่พบ)'}\n\nเอาไปวางที่เว็บ Payi Ops > Settings > แจ้งเตือนผ่าน LINE` }])
         continue
