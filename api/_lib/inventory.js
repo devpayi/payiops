@@ -8,6 +8,7 @@ import { isoDate } from './dates.js'
 import { getSkuRedirectMap, resolveRedirect } from './skuMapping.js'
 import { canManageOperations } from '../../shared/roles.js'
 import { authEnabled } from './auth.js'
+import { computeSalesStats } from '../planner-sales.js'
 
 const ITEMS_SHEET = 'inventory_items'
 const MOVEMENTS_SHEET = 'stock_movements'
@@ -62,7 +63,7 @@ function statusOf(balance, safetyStock) {
   return 'ปกติ'
 }
 
-async function loadItemsWithBalance({ includeHidden = false } = {}) {
+export async function loadItemsWithBalance({ includeHidden = false } = {}) {
   await ensureInventorySheets()
   const [items, movements, redirectMap] = await Promise.all([getSheet(ITEMS_SHEET), getSheet(MOVEMENTS_SHEET), getSkuRedirectMap()])
 
@@ -126,6 +127,66 @@ async function loadItemsWithBalance({ includeHidden = false } = {}) {
       transactionsToday,
     },
   }
+}
+
+// SS = ยอดขายเฉลี่ย/วัน × (lead time total + ครึ่งนึงถ้าเป็นของเรือ) — ต้อง "ตรงเป๊ะ" กับสูตรใน
+// Inventory.jsx (ที่มาต้นฉบับ, calcSuggestedSafety/calcRecommendedOrder) ไม่งั้นตัวเลขในไลน์กับ
+// หน้าเว็บจะขัดแย้งกัน — พอร์ตมาไว้ฝั่งเซิร์ฟเวอร์เพราะ cron ไม่มี browser ให้รันโค้ดฝั่ง React
+const calcSuggestedSafety = (dailyAvg, leadTimeTotal, shipFreight) => {
+  if (!dailyAvg || !leadTimeTotal) return null
+  const days = leadTimeTotal + (shipFreight ? leadTimeTotal / 2 : 0)
+  return Math.round(dailyAvg * days)
+}
+const calcRecommendedOrder = (safetyStock, balance, dailyAvg, leadTimeTotal) => {
+  const projectedAtArrival = balance - dailyAvg * leadTimeTotal
+  return Math.max(0, Math.round(safetyStock - projectedAtArrival))
+}
+
+// รายการของใกล้หมด/หมด สำหรับ cron แจ้งเตือนไลน์ — สูตรเดียวกับหน้า Inventory.jsx เป๊ะ (ports จากที่นั่น
+// รวม allocatedSales fallback สำหรับ SKU แยกสี/ไซส์ที่ไม่มียอดขายของตัวเองตรงๆ) ไม่รวมวัสดุแพ็คเกจจิ้ง
+// (ไม่มี balance จริงให้เทียบ เหมือนหน้าเว็บ)
+export async function computeLowStockList() {
+  const { items } = await loadItemsWithBalance({ includeHidden: false })
+  const salesData = await computeSalesStats(30)
+  const salesBySku = new Map((salesData.items || []).map((p) => [String(p.masterSku || '').toUpperCase(), p]))
+
+  const baseSkuOf = (sku) => sku.replace(/-[A-Z]$/, '')
+  const childrenByBase = new Map()
+  for (const it of items) {
+    const sku = String(it.sku).toUpperCase()
+    if (salesBySku.has(sku)) continue
+    const base = baseSkuOf(sku)
+    if (base === sku || !salesBySku.has(base)) continue
+    if (!childrenByBase.has(base)) childrenByBase.set(base, [])
+    childrenByBase.get(base).push(it)
+  }
+  const allocatedSales = new Map()
+  for (const [base, children] of childrenByBase) {
+    const baseItem = items.find((it) => String(it.sku).toUpperCase() === base)
+    const group = baseItem ? [baseItem, ...children] : children
+    const baseSales = salesBySku.get(base)
+    const totalBalance = group.reduce((s, it) => s + (it.balance || 0), 0)
+    for (const it of group) {
+      const share = totalBalance > 0 ? (it.balance || 0) / totalBalance : 1 / group.length
+      allocatedSales.set(String(it.sku).toUpperCase(), { dailyAverage: Math.round(baseSales.dailyAverage * share * 10) / 10 })
+    }
+  }
+
+  const lowItems = []
+  for (const it of items) {
+    if (!it.active || it.category === 'packaging') continue
+    const sku = String(it.sku).toUpperCase()
+    const sales = salesBySku.get(sku) || allocatedSales.get(sku)
+    const dailyAvg = sales?.dailyAverage || 0
+    const leadTimeTotal = (it.lead_time_production || 0) + (it.lead_time_transport || 0)
+    const computedSafety = calcSuggestedSafety(dailyAvg, leadTimeTotal, it.ship_freight)
+    const effectiveSafety = computedSafety !== null ? computedSafety : it.safety_stock
+    const effectiveStatus = statusOf(it.balance, effectiveSafety)
+    if (effectiveStatus === 'ปกติ') continue
+    const recommendedOrder = (dailyAvg && leadTimeTotal) ? calcRecommendedOrder(effectiveSafety, it.balance, dailyAvg, leadTimeTotal) : null
+    lowItems.push({ sku: it.sku, display_name: it.display_name, unit: it.unit, balance: it.balance, effectiveStatus, recommendedOrder })
+  }
+  return lowItems
 }
 
 async function loadMovements({ type, q, from, to }) {
@@ -222,7 +283,7 @@ async function upsertItem(body, actorName) {
 // ที่ arrival_date/count_date ว่างไว้ก่อน ("สั่งแล้ว รอของเข้า") แยกแถวต่อ 1 ลอตเสมอ (ไม่ทับของเดิม)
 // เพื่อให้สั่งซ้อนหลายลอตพร้อมกันได้โดยไม่ทำลอตแรกหาย — เรียงคิว FIFO ตาม created_at ตอน match
 // (ดู loadStockInRequests: available_orders)
-async function createOrderRequest(body, actorName, role) {
+export async function createOrderRequest(body, actorName, role) {
   if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่สั่งของได้')
   const sku = String(body.sku || '').trim()
   const qty = Number(body.qty)

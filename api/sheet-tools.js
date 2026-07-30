@@ -10,7 +10,7 @@ import {
   leavePeriodLabel, normalizeLeavePeriod, officeLeaveConflicts,
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides } from './_lib/scheduleOverrides.js'
-import opInventory from './_lib/inventory.js'
+import opInventory, { computeLowStockList, createOrderRequest, loadItemsWithBalance } from './_lib/inventory.js'
 import opImportTracking from './_lib/importTracking.js'
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
@@ -257,6 +257,208 @@ async function notifyNewLeaveRequest(record) {
 
 async function notifyNewLeaveRequestSafely(record) {
   try { await notifyNewLeaveRequest(record) } catch (e) { console.error('notifyNewLeaveRequest:', e.message) }
+}
+
+// ── แจ้งเตือนของใกล้หมด/หมด ผ่านไลน์ (cron วันละครั้ง) + สั่งของจากในแชทได้เลย ──
+// ใช้ helper การ์ด LINE ชุดเดียวกับ leaveFlexMessage ด้านบน (LINE_CARD/lineCardHeader/lineCardButton/factRow)
+const STOCK_ALERT_RUNS_SHEET = 'stock_alert_runs'
+const STOCK_ALERT_RUNS_HEADERS = ['date', 'sent_at', 'item_count']
+const STOCK_ORDER_SESSION_SHEET = 'stock_order_sessions'
+const STOCK_ORDER_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'updated_at']
+const STOCK_STATUS_ICON = { 'หมด': '🔴', 'ใกล้หมด': '🟠' }
+const todayBKK = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+// ตั้งบน Vercel เป็น URL จริงของเว็บ (เช่น https://payiops.vercel.app) — ใช้สร้างปุ่ม "เปิดเว็บ" ใน LINE
+// ไม่ตั้งไว้ = ข้ามปุ่มนี้เฉยๆ ไม่พัง (เผื่อยังไม่ได้ตั้งตอน deploy รอบแรก)
+const APP_BASE_URL = String(process.env.APP_BASE_URL || '').replace(/\/$/, '')
+const stockWebUrl = () => `${APP_BASE_URL}/?tab=StockMovement`
+
+function lowStockBubble(item) {
+  const facts = [factRow('คงเหลือ', `${item.balance} ${item.unit || 'ชิ้น'}`), factRow('สถานะ', item.effectiveStatus)]
+  if (item.recommendedOrder) facts.push(factRow('แนะนำสั่ง', `${item.recommendedOrder} ${item.unit || 'ชิ้น'}`))
+  return {
+    type: 'bubble', size: 'kilo',
+    header: lineCardHeader('ของใกล้หมด', item.display_name, STOCK_STATUS_ICON[item.effectiveStatus] || '⚠️', item.effectiveStatus),
+    body: { type: 'box', layout: 'vertical', paddingAll: '14px', spacing: 'md', backgroundColor: '#FBFEFF', contents: [
+      { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px', cornerRadius: '14px', backgroundColor: LINE_CARD.skySoft, contents: facts },
+    ] },
+    footer: { type: 'box', layout: 'horizontal', spacing: 'sm', paddingAll: '12px', backgroundColor: LINE_CARD.skySoft, contents: [
+      lineCardButton({ type: 'postback', label: 'สั่งของ', data: `stock-order:${item.sku}`, displayText: `สั่งของ ${item.display_name}` }, true),
+    ] },
+  }
+}
+
+// carousel รองรับสูงสุด 12 การ์ด (ข้อจำกัดของ LINE) — เกินกว่านั้นแปะการ์ดสรุป "+N รายการ" พร้อมลิงก์เข้าเว็บแทน
+function lowStockFlexMessage(items) {
+  const bubbles = items.slice(0, 12).map(lowStockBubble)
+  if (APP_BASE_URL || items.length > 12) {
+    bubbles.push({
+      type: 'bubble', size: 'kilo',
+      body: { type: 'box', layout: 'vertical', paddingAll: '18px', spacing: 'md', justifyContent: 'center', contents: [
+        flexText(items.length > 12 ? `+ อีก ${items.length - 12} รายการ` : 'ดูรายละเอียดทั้งหมดที่เว็บ', { size: 'sm', weight: 'bold', wrap: true }),
+        ...(APP_BASE_URL ? [lineCardButton({ type: 'uri', label: 'เปิดเว็บ', uri: stockWebUrl() }, true)] : []),
+      ] },
+    })
+  }
+  return { type: 'flex', altText: `แจ้งเตือนของใกล้หมด/หมด ${items.length} รายการ`, contents: { type: 'carousel', contents: bubbles } }
+}
+
+// entry point ของ Vercel Cron (vercel.json) — ต้องข้าม requireAuth ปกติเพราะ cron ไม่มี user token
+// (เหมือน line-webhook) ใช้ CRON_SECRET (Vercel ส่ง Authorization: Bearer อัตโนมัติเมื่อตั้ง env ไว้) แทน
+// dry=1 ไว้ทดสอบ local โดยไม่ยิงข้อความจริง — คืนรายการที่คำนวณได้กลับมาเป็น JSON เฉยๆ
+async function opLowStockCron(req, res) {
+  if (req.method !== 'GET') return res.status(405).end()
+  const auth = req.headers.authorization || ''
+  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ error: 'unauthorized' })
+  const dryRun = req.query.dry === '1'
+  try {
+    await ensureSheet(STOCK_ALERT_RUNS_SHEET, STOCK_ALERT_RUNS_HEADERS)
+    const today = todayBKK()
+    if (!dryRun) {
+      const runs = await getSheet(STOCK_ALERT_RUNS_SHEET)
+      if (runs.some((r) => r.date === today)) return res.status(200).json({ success: true, skipped: 'already sent today' })
+    }
+
+    const lowItems = await computeLowStockList()
+    if (dryRun) return res.status(200).json({ success: true, dryRun: true, item_count: lowItems.length, items: lowItems })
+
+    if (!lowItems.length) {
+      await appendRows(STOCK_ALERT_RUNS_SHEET, [[today, new Date().toISOString(), 0]])
+      return res.status(200).json({ success: true, item_count: 0 })
+    }
+
+    const targets = await getAdminLineTargets()
+    if (targets.length) await Promise.all(targets.map((t) => pushMessage(t.line_user_id, [lowStockFlexMessage(lowItems)])))
+    await appendRows(STOCK_ALERT_RUNS_SHEET, [[today, new Date().toISOString(), lowItems.length]])
+    return res.status(200).json({ success: true, item_count: lowItems.length, notified: targets.length })
+  } catch (e) {
+    console.error('opLowStockCron:', e.message)
+    return res.status(500).json({ success: false, error: e.message })
+  }
+}
+
+const getStockOrderSessions = () => getSheet(STOCK_ORDER_SESSION_SHEET)
+async function upsertStockOrderSession(lineUserId, patch) {
+  await ensureSheet(STOCK_ORDER_SESSION_SHEET, STOCK_ORDER_SESSION_HEADERS)
+  const current = await getStockOrderSessions()
+  const existing = current.find((r) => r.line_user_id === lineUserId) || { line_user_id: lineUserId, step: '', sku: '', qty: '' }
+  const next = { ...existing, ...patch, updated_at: new Date().toISOString() }
+  const rows = current.filter((r) => r.line_user_id !== lineUserId).map((r) => STOCK_ORDER_SESSION_HEADERS.map((h) => r[h] ?? ''))
+  rows.push(STOCK_ORDER_SESSION_HEADERS.map((h) => next[h] ?? ''))
+  await overwriteSheet(STOCK_ORDER_SESSION_SHEET, STOCK_ORDER_SESSION_HEADERS, rows)
+  return next
+}
+async function clearStockOrderSession(lineUserId) {
+  await ensureSheet(STOCK_ORDER_SESSION_SHEET, STOCK_ORDER_SESSION_HEADERS)
+  const current = await getStockOrderSessions()
+  const rows = current.filter((r) => r.line_user_id !== lineUserId).map((r) => STOCK_ORDER_SESSION_HEADERS.map((h) => r[h] ?? ''))
+  await overwriteSheet(STOCK_ORDER_SESSION_SHEET, STOCK_ORDER_SESSION_HEADERS, rows)
+}
+
+// เฉพาะบอส/dev สั่งของผ่านไลน์ได้ — เทียบ line_user_id -> hr_line_links (username ธรรมดา ไม่ใช่ mp: ของพนักงาน) -> users.role
+async function findManagerLink(lineUserId) {
+  const links = await getSheet('hr_line_links')
+  const link = links.find((l) => l.line_user_id === lineUserId && !String(l.username || '').startsWith('mp:'))
+  if (!link) return null
+  const user = (await getSheet('users')).find((u) => u.username === link.username)
+  if (!user || !canManageOperations(user.role)) return null
+  return { username: link.username, name: user.display_name || link.username, role: user.role }
+}
+
+// กดปุ่ม "สั่งของ" บนการ์ดแจ้งเตือน — เริ่ม session รอบอสพิมพ์จำนวนกลับมาในแชท (ไม่ใช้ปุ่มจำนวนสำเร็จรูป
+// ตามที่ owner ขอ ให้พิมพ์เองได้ยืดหยุ่นกว่า) ต่างจาก approve/reject วันลาที่กดปุ่มจบในทีเดียว
+// ใช้ร่วมกันทั้งกดปุ่มจากการ์ดแจ้งเตือน (handleStockOrderPostback) และเลือกจากผลค้นหา (handleStockPickPostback)
+async function askOrderQty(replyToken, lineUserId, item) {
+  await upsertStockOrderSession(lineUserId, { step: 'await_qty', sku: item.sku, qty: '' })
+  await replyMessage(replyToken, [{ type: 'text', text: `สั่ง "${item.display_name}" กี่${item.unit || 'ชิ้น'}คะ? พิมพ์ตัวเลขได้เลย\nคงเหลือตอนนี้ ${item.balance} ${item.unit || 'ชิ้น'}` }])
+}
+
+async function handleStockOrderPostback(event, sku) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return
+  const manager = lineUserId ? await findManagerLink(lineUserId) : null
+  if (!manager) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะบอส/dev สั่งของผ่านไลน์ได้ค่ะ' }])
+
+  const { items } = await loadItemsWithBalance({ includeHidden: false })
+  const item = items.find((it) => String(it.sku).toUpperCase() === String(sku).toUpperCase())
+  if (!item) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ในระบบแล้วค่ะ' }])
+  await askOrderQty(replyToken, lineUserId, item)
+}
+
+// พิมพ์ "สั่งของ" เฉยๆ (ไม่ต้องรอการ์ดแจ้งเตือน) — สั่งของที่ยังปกติ (ไม่ใกล้หมด) ได้ด้วย ต่างจากปุ่มบนการ์ด
+// ที่จำกัดแค่ของใกล้หมด/หมดเท่านั้น เริ่ม session ถามชื่อ/SKU ก่อน แล้วค่อยถามจำนวนต่อ (handleStockOrderSearchReply)
+async function handleStockOrderSearchStart(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return false
+  const manager = lineUserId ? await findManagerLink(lineUserId) : null
+  if (!manager) return false // ไม่ใช่บอส/dev — ปล่อยให้ตกไป fallback เดิม (echo userId) ไม่ตอบอะไรพิเศษ
+  await upsertStockOrderSession(lineUserId, { step: 'await_sku_search', sku: '', qty: '' })
+  await replyMessage(replyToken, [{ type: 'text', text: 'จะสั่งอะไรคะ? พิมพ์ชื่อสินค้าหรือ SKU ได้เลย' }])
+  return true
+}
+
+// พิมพ์ชื่อ/SKU ค้นหา (ขั้นตอนต่อจาก handleStockOrderSearchStart หรือพิมพ์ใหม่ตอนเลือกจากรายการเดิมไม่เจอ) —
+// เจอตัวเดียวข้ามไปถามจำนวนเลย เจอหลายตัวโชว์เป็น quick reply ให้เลือก (สูงสุด 10 ตามลิมิต quick reply ของ LINE)
+async function handleStockOrderSearchReply(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return
+  const query = String(event.message?.text || '').trim().toLowerCase()
+  if (!query) return replyMessage(replyToken, [{ type: 'text', text: 'พิมพ์ชื่อสินค้าหรือ SKU ได้เลยค่ะ' }])
+
+  const { items } = await loadItemsWithBalance({ includeHidden: false })
+  const matches = items.filter((it) => it.display_name.toLowerCase().includes(query) || String(it.sku).toLowerCase().includes(query)).slice(0, 10)
+  if (!matches.length) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ค่ะ ลองพิมพ์คำอื่นดู' }])
+  if (matches.length === 1) return askOrderQty(replyToken, lineUserId, matches[0])
+
+  await upsertStockOrderSession(lineUserId, { step: 'await_sku_pick', sku: '', qty: '' })
+  await replyMessage(replyToken, [{
+    type: 'text', text: `พบ ${matches.length} รายการ เลือกได้เลยค่ะ`,
+    quickReply: { items: matches.map((it) => ({ type: 'action', action: { type: 'postback', label: it.display_name.slice(0, 20), data: `stock-pick:${it.sku}`, displayText: it.display_name } })) },
+  }])
+}
+
+async function handleStockPickPostback(event, sku) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return
+  const manager = lineUserId ? await findManagerLink(lineUserId) : null
+  if (!manager) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะบอส/dev สั่งของผ่านไลน์ได้ค่ะ' }])
+  const { items } = await loadItemsWithBalance({ includeHidden: false })
+  const item = items.find((it) => String(it.sku).toUpperCase() === String(sku).toUpperCase())
+  if (!item) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ในระบบแล้วค่ะ' }])
+  await askOrderQty(replyToken, lineUserId, item)
+}
+
+// พิมพ์จำนวนกลับมาในแชท (ขั้นตอนต่อจาก handleStockOrderPostback) — createOrderRequest ตัวเดียวกับที่
+// ปุ่ม "สั่งของ" บนหน้า Stock Movement ใช้ (StockMovement.jsx) ผลลัพธ์เลยไปโผล่ที่ "สั่งไว้ รอของเข้า" เหมือนกันเป๊ะ
+async function handleStockOrderQtyReply(event, session) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return
+  const text = String(event.message?.text || '').trim().replace(/,/g, '')
+  const qty = Number(text)
+  if (!Number.isFinite(qty) || qty <= 0) return replyMessage(replyToken, [{ type: 'text', text: 'กรุณาพิมพ์เป็นตัวเลขค่ะ เช่น 100' }])
+
+  const manager = await findManagerLink(lineUserId)
+  if (!manager) { await clearStockOrderSession(lineUserId); return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะบอส/dev สั่งของผ่านไลน์ได้ค่ะ' }]) }
+
+  try {
+    await createOrderRequest({ sku: session.sku, qty, note: 'สั่งจาก LINE' }, manager.name, manager.role)
+    await clearStockOrderSession(lineUserId)
+    const footerButtons = APP_BASE_URL ? [lineCardButton({ type: 'uri', label: 'เปิดเว็บ', uri: stockWebUrl() }, true)] : []
+    await replyMessage(replyToken, [{
+      type: 'flex', altText: `สั่งของ ${session.sku} x${qty} เรียบร้อย`,
+      contents: {
+        type: 'bubble', size: 'kilo',
+        header: lineCardHeader('สั่งของเรียบร้อย', `${session.sku} × ${qty}`, '✅', 'บันทึกแล้ว'),
+        ...(footerButtons.length ? { footer: { type: 'box', layout: 'horizontal', spacing: 'sm', paddingAll: '12px', backgroundColor: LINE_CARD.skySoft, contents: footerButtons } } : {}),
+      },
+    }])
+  } catch (e) {
+    await replyMessage(replyToken, [{ type: 'text', text: `สั่งของไม่สำเร็จ: ${e.message}` }])
+  }
 }
 
 const PLANNER_CONFIG_SHEET = 'planner_config'
@@ -1633,6 +1835,14 @@ async function opLineWebhook(req, res) {
 
       if (event.type === 'message' && event.message?.type === 'text') {
         if (staffLink) { await handleLeaveWizard(event, staffLink); continue }
+        // รอบอส/dev พิมพ์จำนวนสั่งของกลับมาไหม (หลังกดปุ่ม "สั่งของ" จากการ์ดแจ้งเตือนของใกล้หมด หรือหลังเลือกจาก
+        // ผลค้นหา) หรือกำลังพิมพ์ชื่อ/SKU ค้นหาอยู่ (หลังพิมพ์ "สั่งของ" เปล่าๆ) — เช็คก่อน fallback echo userId
+        // ด้านล่าง เพราะบอส/dev ไม่ผ่าน findStaffLink (นั่นสำหรับพนักงาน mp: เท่านั้น)
+        const stockSession = lineUserId ? (await getStockOrderSessions()).find((s) => s.line_user_id === lineUserId) : null
+        if (stockSession?.step === 'await_qty') { await handleStockOrderQtyReply(event, stockSession); continue }
+        if (stockSession?.step === 'await_sku_search' || stockSession?.step === 'await_sku_pick') { await handleStockOrderSearchReply(event); continue }
+        // พิมพ์ "สั่งของ" เฉยๆ (ไม่ได้มาจากการ์ดแจ้งเตือน) — สั่งของที่ยังไม่ใกล้หมดได้ด้วย
+        if (String(event.message.text || '').includes('สั่งของ') && await handleStockOrderSearchStart(event)) continue
         // ยังไม่ผูกเป็นพนักงาน (หรือเป็น admin) — ตอบ userId กลับไปให้ก็อปไปผูกในหน้า Settings ได้เลย ไม่ต้องเปิด log
         if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `LINE userId ของคุณคือ:\n${lineUserId || '(ไม่พบ)'}\n\nเอาไปวางที่เว็บ Payi Ops > Settings > แจ้งเตือนผ่าน LINE` }])
         continue
@@ -1641,6 +1851,8 @@ async function opLineWebhook(req, res) {
       if (event.type !== 'postback') continue
       const data = String(event.postback?.data || '')
       if (data.startsWith('hr-wiz-')) { await handleLeaveWizard(event, staffLink); continue }
+      if (data.startsWith('stock-order:')) { await handleStockOrderPostback(event, data.slice('stock-order:'.length)); continue }
+      if (data.startsWith('stock-pick:')) { await handleStockPickPostback(event, data.slice('stock-pick:'.length)); continue }
 
       const [, kind, id] = data.match(/^hr-(approve|reject):(.+)$/) || []
       if (!kind || !id) continue
@@ -1671,6 +1883,8 @@ export default async function handler(req, res) {
   }
   const op = String(req.query.op || '')
   if (op === 'line-webhook') return opLineWebhook(req, res)
+  // Vercel Cron เรียกไม่มี user token — ข้าม requireAuth เหมือน line-webhook แล้วเช็ค CRON_SECRET แทนในตัวมันเอง
+  if (op === 'inventory' && req.query.cron === 'low-stock') return opLowStockCron(req, res)
   if (!requireAuth(req, res)) return
   // Staff only needs the data behind its operational areas (now includes
   // inventory, per owner request to open Inventory/Stock Movement to staff).

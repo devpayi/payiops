@@ -439,8 +439,19 @@ export default function App() {
     ? allVisibleTabs.map((item) => ({ ...item, label: MOBILE_SHORT_LABELS[item.id] || item.label }))
     : MOBILE_TAB_CANDIDATES.filter((item) => canAccessTab(currentRole, item.id))
   const firstAllowedTab = currentRole === 'stock' ? STOCK_TABS[0] : currentRole === 'staff' ? STAFF_TABS[0] : 'Executive'
-  // หน้าแรก = หน้าว่างเสมอทุกครั้งที่เข้าเว็บ (ไม่จำแท็บล่าสุด) กันหน้า Dashboard หนักโหลดช้าทุกครั้ง
-  const [activeTab, setActiveTab] = useState('Home')
+  // หน้าแรก = หน้าว่างเสมอทุกครั้งที่เข้าเว็บ (ไม่จำแท็บล่าสุด) กันหน้า Dashboard หนักโหลดช้าทุกครั้ง —
+  // ยกเว้นมี ?tab=... ติดมาใน URL (ใช้เป็น deep link จากปุ่ม "เปิดเว็บ" ในการ์ดแจ้งเตือนไลน์ เช่น สั่งของ
+  // เสร็จแล้วอยากเด้งตรงไปหน้า Stock Movement เลย ไม่ต้องผ่านหน้าแรกก่อน) เช็คสิทธิ์ตามปกติที่ effect ด้านล่างอยู่แล้ว
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const tab = new URLSearchParams(window.location.search).get('tab')
+      return tab || 'Home'
+    } catch { return 'Home' }
+  })
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).get('tab')) return
+    window.history.replaceState({}, '', window.location.pathname)
+  }, [])
   const [visitedTabs, setVisitedTabs] = useState(() => new Set())
 
   useEffect(() => {

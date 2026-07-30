@@ -27,115 +27,119 @@ const addDays = (iso, days) => {
   return date.toISOString().slice(0, 10)
 }
 
+// แยกเป็นฟังก์ชันเรียกตรงได้ (ไม่ผ่าน HTTP) — เพื่อให้โค้ดฝั่งเซิร์ฟเวอร์อื่น (เช่น cron เช็คของใกล้หมด)
+// ใช้ dailyAverage ชุดเดียวกับหน้าเว็บได้โดยไม่ต้องยิง fetch ภายในซึ่งจะติด requireAuth (ไม่มี token ให้)
+export async function computeSalesStats(days) {
+  const cache = cacheByDays.get(days)
+  if (cache && Date.now() - cache.at < CACHE_MS) return cache.data
+
+  await ensureSheet(SET_RECIPES_SHEET, SET_RECIPES_HEADERS)
+  const [meta, aliases, setRecipeRows, redirectMap] = await Promise.all([getMetaCached(), getSheet('product_aliases'), getSheet(SET_RECIPES_SHEET), getSkuRedirectMap()])
+  const recipesByKey = new Map() // `${set_sku}|${variation_name}` -> [{component_sku, qty_per_unit}]
+  const keepSetSalesByKey = new Map() // same key -> true/false
+  for (const row of setRecipeRows) {
+    const setSku = String(row.set_sku || '').trim().toUpperCase()
+    const variation = String(row.variation_name || '').trim()
+    const componentSku = String(row.component_sku || '').trim().toUpperCase()
+    const qtyPerUnit = Number(row.qty_per_unit) || 0
+    if (!setSku || !variation || !componentSku || qtyPerUnit <= 0) continue
+    const key = `${setSku}|${variation}`
+    if (!recipesByKey.has(key)) recipesByKey.set(key, [])
+    recipesByKey.get(key).push({ componentSku, qtyPerUnit })
+    const keepRaw = String(row.keep_set_sales ?? '').trim()
+    keepSetSalesByKey.set(key, keepRaw === '' ? true : keepRaw === '1' || keepRaw.toLowerCase() === 'true')
+  }
+  const mapped = new Map()
+  for (const row of aliases) {
+    const masterSku = String(row.master_sku || '').trim().toUpperCase()
+    if (!/^PY/.test(masterSku)) continue
+    const displayName = String(row.display_name || '').trim() || masterSku
+    if (!mapped.has(masterSku)) mapped.set(masterSku, { masterSku, displayName })
+  }
+  const productMapping = [...mapped.values()].sort((a, b) => a.masterSku.localeCompare(b.masterSku, undefined, { numeric: true }))
+  const allTabs = meta.sheets.map((sheet) => sheet.properties.title).filter((title) => title.startsWith('raw_orders')).sort()
+  if (!allTabs.length) return { success: true, items: [], productMapping, anchor: '', start: '', days, fetchedAt: new Date().toISOString() }
+
+  // ห้ามเดาว่า 4 tab ท้ายสุด (เรียงตามชื่อ) = 4 เดือนล่าสุดที่มีข้อมูลจริง — import-orders.js/ensureSheet
+  // สร้าง tab เดือนล่วงหน้าไว้ล่วงหน้าได้ (ว่างเปล่า, แค่ header) ซึ่งจะอยู่ท้ายสุดตามชื่อเสมอ
+  // เช็คคอลัมน์ D (วันที่) ของทุก tab ก่อน (เบา แค่คอลัมน์เดียว) แล้วค่อยเลือก 4 tab ที่มีข้อมูลจริงล่าสุด
+  const dateCols = await batchGetValues(allTabs.map((tab) => `${tab}!D:D`))
+  const dataTabs = allTabs.filter((tab, i) => (dateCols[i]?.values || []).length > 1)
+  const tabs = dataTabs.slice(-4)
+  if (!tabs.length) return { success: true, items: [], productMapping, anchor: '', start: '', days, fetchedAt: new Date().toISOString() }
+
+  // I:N แทน J:N เดิม — เพิ่มคอลัมน์ variation_name (I) เข้ามาด้วย เพื่อแตกยอด Set ตาม variation
+  const productCols = await batchGetValues(tabs.map((tab) => `${tab}!I:N`))
+  const raw = []
+  let anchor = ''
+
+  for (let index = 0; index < tabs.length; index += 1) {
+    const dates = dateCols[allTabs.indexOf(tabs[index])]?.values || []
+    const products = productCols[index]?.values || []
+    const length = Math.max(dates.length, products.length)
+    for (let rowIndex = 1; rowIndex < length; rowIndex += 1) {
+      const date = String(dates[rowIndex]?.[0] || '').slice(0, 10)
+      const row = products[rowIndex] || []
+      const variationName = String(row[0] || '').trim()
+      let masterSku = String(row[1] || '').trim().toUpperCase()
+      const name = String(row[2] || masterSku).trim()
+      const qty = parseInt(row[3], 10) || 0
+      // แพลนฟีดอ้างอิงงานที่ออกทั้งหมด จึงนับจำนวนชิ้นรวมสถานะยกเลิก/ตีคืนด้วย
+      if (!date || !name || qty <= 0) continue
+      if (date > anchor) anchor = date
+
+      // เช็ค set_recipes ด้วยโค้ด "เดิม" ก่อนเสมอ (สูตรอ้างอิงโค้ดเดิมที่ปนกัน เช่น PY075) — ต้องทำ
+      // ก่อน redirect ไม่งั้นโค้ดจะเปลี่ยนไปแล้วหาสูตรไม่เจอ (เช่น PY075→PY077 จะทำให้หา 'PY077|...' ไม่เจอ)
+      const key = `${masterSku}|${variationName}`
+      const recipe = recipesByKey.get(key)
+      if (recipe) {
+        // Set จริง (เช่น PY067) ยังนับยอดของตัวเองด้วยเสมอ เพราะต้องวัดว่า Set นั้นขายดีไหม —
+        // เว้นแต่ตั้ง keep_set_sales=0 ไว้ (เคส SKU ปนกันผิด ไม่ใช่ Set จริง เช่น PY075)
+        if (keepSetSalesByKey.get(key) !== false) raw.push({ date, masterSku, name, qty })
+        for (const { componentSku, qtyPerUnit } of recipe) {
+          const componentName = mapped.get(componentSku)?.displayName || componentSku
+          raw.push({ date, masterSku: componentSku, name: componentName, qty: qty * qtyPerUnit })
+        }
+      } else {
+        // ไม่ตรงสูตร Set — เป็นยอดขายจริงของ SKU นี้ ค่อย redirect โค้ดที่ย้ายไปแล้ว (แก้ได้จากชีท sku_redirects)
+        const redirectedSku = resolveRedirect(masterSku, redirectMap)
+        raw.push({ date, masterSku: redirectedSku, name, qty })
+      }
+    }
+  }
+
+  const start = anchor ? addDays(anchor, -(days - 1)) : ''
+  const aggregated = new Map()
+  for (const row of raw) {
+    if (!start || row.date < start || row.date > anchor) continue
+    const key = row.masterSku.toUpperCase() || normalizeName(row.name)
+    let item = aggregated.get(key)
+    if (!item) aggregated.set(key, (item = { key, name: row.name, masterSku: row.masterSku, units90: 0, lastDate: '' }))
+    item.units90 += row.qty
+    if (row.date > item.lastDate) item.lastDate = row.date
+  }
+
+  const ranked = [...aggregated.values()].sort((a, b) => b.units90 - a.units90)
+  const totalUnits = ranked.reduce((sum, item) => sum + item.units90, 0)
+  let cumulative = 0
+  const items = ranked.map((item) => {
+    const before = totalUnits ? cumulative / totalUnits : 1
+    const abc = before < 0.8 ? 'A' : before < 0.95 ? 'B' : 'C'
+    cumulative += item.units90
+    return { ...item, abc, dailyAverage: Math.round((item.units90 / days) * 10) / 10, cumulativePercent: totalUnits ? Math.round((cumulative / totalUnits) * 1000) / 10 : 0 }
+  })
+
+  const data = { success: true, items, productMapping, anchor, start, days, totalUnits, includesCancelledReturned: true, fetchedAt: new Date().toISOString() }
+  cacheByDays.set(days, { at: Date.now(), data })
+  return data
+}
+
 export default async function handler(req, res) {
   if (!requireAuth(req, res)) return
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' })
   const days = Math.min(180, Math.max(7, parseInt(req.query.days, 10) || 90))
-  const cache = cacheByDays.get(days)
-  if (cache && Date.now() - cache.at < CACHE_MS) {
-    res.setHeader('Cache-Control', 'private, max-age=300, stale-while-revalidate=21600')
-    return res.status(200).json(cache.data)
-  }
-
   try {
-    await ensureSheet(SET_RECIPES_SHEET, SET_RECIPES_HEADERS)
-    const [meta, aliases, setRecipeRows, redirectMap] = await Promise.all([getMetaCached(), getSheet('product_aliases'), getSheet(SET_RECIPES_SHEET), getSkuRedirectMap()])
-    const recipesByKey = new Map() // `${set_sku}|${variation_name}` -> [{component_sku, qty_per_unit}]
-    const keepSetSalesByKey = new Map() // same key -> true/false
-    for (const row of setRecipeRows) {
-      const setSku = String(row.set_sku || '').trim().toUpperCase()
-      const variation = String(row.variation_name || '').trim()
-      const componentSku = String(row.component_sku || '').trim().toUpperCase()
-      const qtyPerUnit = Number(row.qty_per_unit) || 0
-      if (!setSku || !variation || !componentSku || qtyPerUnit <= 0) continue
-      const key = `${setSku}|${variation}`
-      if (!recipesByKey.has(key)) recipesByKey.set(key, [])
-      recipesByKey.get(key).push({ componentSku, qtyPerUnit })
-      const keepRaw = String(row.keep_set_sales ?? '').trim()
-      keepSetSalesByKey.set(key, keepRaw === '' ? true : keepRaw === '1' || keepRaw.toLowerCase() === 'true')
-    }
-    const mapped = new Map()
-    for (const row of aliases) {
-      const masterSku = String(row.master_sku || '').trim().toUpperCase()
-      if (!/^PY/.test(masterSku)) continue
-      const displayName = String(row.display_name || '').trim() || masterSku
-      if (!mapped.has(masterSku)) mapped.set(masterSku, { masterSku, displayName })
-    }
-    const productMapping = [...mapped.values()].sort((a, b) => a.masterSku.localeCompare(b.masterSku, undefined, { numeric: true }))
-    const allTabs = meta.sheets.map((sheet) => sheet.properties.title).filter((title) => title.startsWith('raw_orders')).sort()
-    if (!allTabs.length) return res.status(200).json({ success: true, items: [], productMapping, anchor: '', start: '', days, fetchedAt: new Date().toISOString() })
-
-    // ห้ามเดาว่า 4 tab ท้ายสุด (เรียงตามชื่อ) = 4 เดือนล่าสุดที่มีข้อมูลจริง — import-orders.js/ensureSheet
-    // สร้าง tab เดือนล่วงหน้าไว้ล่วงหน้าได้ (ว่างเปล่า, แค่ header) ซึ่งจะอยู่ท้ายสุดตามชื่อเสมอ
-    // เช็คคอลัมน์ D (วันที่) ของทุก tab ก่อน (เบา แค่คอลัมน์เดียว) แล้วค่อยเลือก 4 tab ที่มีข้อมูลจริงล่าสุด
-    const dateCols = await batchGetValues(allTabs.map((tab) => `${tab}!D:D`))
-    const dataTabs = allTabs.filter((tab, i) => (dateCols[i]?.values || []).length > 1)
-    const tabs = dataTabs.slice(-4)
-    if (!tabs.length) return res.status(200).json({ success: true, items: [], productMapping, anchor: '', start: '', days, fetchedAt: new Date().toISOString() })
-
-    // I:N แทน J:N เดิม — เพิ่มคอลัมน์ variation_name (I) เข้ามาด้วย เพื่อแตกยอด Set ตาม variation
-    const productCols = await batchGetValues(tabs.map((tab) => `${tab}!I:N`))
-    const raw = []
-    let anchor = ''
-
-    for (let index = 0; index < tabs.length; index += 1) {
-      const dates = dateCols[allTabs.indexOf(tabs[index])]?.values || []
-      const products = productCols[index]?.values || []
-      const length = Math.max(dates.length, products.length)
-      for (let rowIndex = 1; rowIndex < length; rowIndex += 1) {
-        const date = String(dates[rowIndex]?.[0] || '').slice(0, 10)
-        const row = products[rowIndex] || []
-        const variationName = String(row[0] || '').trim()
-        let masterSku = String(row[1] || '').trim().toUpperCase()
-        const name = String(row[2] || masterSku).trim()
-        const qty = parseInt(row[3], 10) || 0
-        // แพลนฟีดอ้างอิงงานที่ออกทั้งหมด จึงนับจำนวนชิ้นรวมสถานะยกเลิก/ตีคืนด้วย
-        if (!date || !name || qty <= 0) continue
-        if (date > anchor) anchor = date
-
-        // เช็ค set_recipes ด้วยโค้ด "เดิม" ก่อนเสมอ (สูตรอ้างอิงโค้ดเดิมที่ปนกัน เช่น PY075) — ต้องทำ
-        // ก่อน redirect ไม่งั้นโค้ดจะเปลี่ยนไปแล้วหาสูตรไม่เจอ (เช่น PY075→PY077 จะทำให้หา 'PY077|...' ไม่เจอ)
-        const key = `${masterSku}|${variationName}`
-        const recipe = recipesByKey.get(key)
-        if (recipe) {
-          // Set จริง (เช่น PY067) ยังนับยอดของตัวเองด้วยเสมอ เพราะต้องวัดว่า Set นั้นขายดีไหม —
-          // เว้นแต่ตั้ง keep_set_sales=0 ไว้ (เคส SKU ปนกันผิด ไม่ใช่ Set จริง เช่น PY075)
-          if (keepSetSalesByKey.get(key) !== false) raw.push({ date, masterSku, name, qty })
-          for (const { componentSku, qtyPerUnit } of recipe) {
-            const componentName = mapped.get(componentSku)?.displayName || componentSku
-            raw.push({ date, masterSku: componentSku, name: componentName, qty: qty * qtyPerUnit })
-          }
-        } else {
-          // ไม่ตรงสูตร Set — เป็นยอดขายจริงของ SKU นี้ ค่อย redirect โค้ดที่ย้ายไปแล้ว (แก้ได้จากชีท sku_redirects)
-          const redirectedSku = resolveRedirect(masterSku, redirectMap)
-          raw.push({ date, masterSku: redirectedSku, name, qty })
-        }
-      }
-    }
-
-    const start = anchor ? addDays(anchor, -(days - 1)) : ''
-    const aggregated = new Map()
-    for (const row of raw) {
-      if (!start || row.date < start || row.date > anchor) continue
-      const key = row.masterSku.toUpperCase() || normalizeName(row.name)
-      let item = aggregated.get(key)
-      if (!item) aggregated.set(key, (item = { key, name: row.name, masterSku: row.masterSku, units90: 0, lastDate: '' }))
-      item.units90 += row.qty
-      if (row.date > item.lastDate) item.lastDate = row.date
-    }
-
-    const ranked = [...aggregated.values()].sort((a, b) => b.units90 - a.units90)
-    const totalUnits = ranked.reduce((sum, item) => sum + item.units90, 0)
-    let cumulative = 0
-    const items = ranked.map((item) => {
-      const before = totalUnits ? cumulative / totalUnits : 1
-      const abc = before < 0.8 ? 'A' : before < 0.95 ? 'B' : 'C'
-      cumulative += item.units90
-      return { ...item, abc, dailyAverage: Math.round((item.units90 / days) * 10) / 10, cumulativePercent: totalUnits ? Math.round((cumulative / totalUnits) * 1000) / 10 : 0 }
-    })
-
-    const data = { success: true, items, productMapping, anchor, start, days, totalUnits, includesCancelledReturned: true, fetchedAt: new Date().toISOString() }
-    cacheByDays.set(days, { at: Date.now(), data })
+    const data = await computeSalesStats(days)
     res.setHeader('Cache-Control', 'private, max-age=300, stale-while-revalidate=21600')
     return res.status(200).json(data)
   } catch (error) {
