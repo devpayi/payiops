@@ -26,6 +26,7 @@ const inputStyle = { border: '1px solid var(--payi-border)', borderRadius: 10, p
 const labelStyle = { fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 5, display: 'block' }
 
 function itemLabel(it) { return `${it.abc ? `[${it.abc}] ` : ''}${it.display_name} (${it.sku})` }
+const isPackagingItem = (item) => item.category === 'packaging' || /^(PKG-|BOXMJ-|BOXP-)/i.test(String(item.sku || ''))
 
 function SkuPicker({ items, value, onChange, placeholder }) {
   const [open, setOpen] = useState(false)
@@ -154,7 +155,7 @@ export default function StockMovement() {
         // วัสดุแพ็คเกจจิ้ง (สติกเกอร์/กล่อง) ไม่ track ยอดคงเหลือจริง — คนหน้างานเช็คสต็อกเอง
         // ตัดออกจากรายการบันทึกรับเข้า-เบิกออกตรงนี้ไปเลย
         const withAbc = (itemData.items || [])
-          .filter((it) => it.category !== 'packaging')
+          .filter((it) => !isPackagingItem(it))
           .map((it) => ({ ...it, abc: abcBySku.get(String(it.sku).toUpperCase()) || null }))
         withAbc.sort((a, b) => {
           const rankA = ABC_RANK[a.abc] ?? 3

@@ -41,6 +41,7 @@ const STOCK_IN_REQUESTS_SHEET = 'stock_in_requests'
 // (order_only) ที่ boss เลือก match ด้วยตอนกดยืนยัน ใช้ตรวจสอบย้อนหลังว่าของล็อตนี้คือของที่สั่งลอตไหน
 const STOCK_IN_REQUESTS_HEADERS = ['id', 'sku', 'arrival_date', 'count_date', 'qty', 'note', 'status', 'created_by', 'created_at', 'matched_by', 'matched_at', 'movement_id', 'reject_reason', 'linked_order_id', 'order_date']
 const STOCK_IN_STATUSES = new Set(['pending', 'matched', 'rejected'])
+const isPackagingItem = (item) => item.category === 'packaging' || /^(PKG-|BOXMJ-|BOXP-)/i.test(String(item.sku || ''))
 
 let ensurePromise
 const ensureInventorySheets = () => ensurePromise ||= Promise.all([
@@ -292,7 +293,9 @@ export async function createOrderRequest(body, actorName, role) {
 
   await ensureInventorySheets()
   const items = await getSheet(ITEMS_SHEET)
-  if (!items.some((it) => String(it.sku) === sku)) throw new Error('ไม่พบสินค้านี้ในระบบ')
+  const item = items.find((it) => String(it.sku) === sku)
+  if (!item) throw new Error('ไม่พบสินค้านี้ในระบบ')
+  if (isPackagingItem(item)) throw new Error('วัสดุแพ็คเกจจิ้ง/กล่อง/พัสดุ ไม่อยู่ในรายการแจ้งของเข้า')
 
   const now = new Date().toISOString()
   const row = {
