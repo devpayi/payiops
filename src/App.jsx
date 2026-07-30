@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import payiLogo from './assets/payi-logo.png'
 import { canAccessTab, normalizeRole, STAFF_TABS, STOCK_TABS } from '../shared/roles.js'
 import {
-  Bell, Search, UserCircle2, DollarSign, ShoppingBag, Package, TrendingUp,
+  Bell, Search, UserCircle2, ShoppingBag, Package, TrendingUp, Percent,
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
   LayoutDashboard, UploadCloud, Radar, Megaphone, CalendarClock, Boxes,
   ArrowLeftRight, Users, ShieldAlert, BookOpen, Link2,
@@ -237,6 +237,52 @@ function TrendingCard({ title, items, isUp }) {
       </div>
     </div>
   )
+}
+
+const ROI_THAI_MONTH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+const roiMonthLabel = (ym) => `${ROI_THAI_MONTH[Number(ym.slice(5, 7)) - 1]} ${ym.slice(2, 4)}`
+
+// ROI (ROAS) เทียบ Ads spend (marketing_inputs, กรอกมือ) กับยอดขายจริง (raw_orders) —
+// เดินตาม filter เดียวกับตัวกรองเดือนบน Executive (filterMonth = '' คือ "ทั้งหมด" รวมทุกเดือนที่มีค่า Ads,
+// filterMonth = 'YYYY-MM' คือเจาะจงเดือนนั้นตามที่ผู้ใช้เลือกบน dropdown) — คืน null ถ้ายังไม่มีใครกรอกค่า
+// Ads เลย หรือเดือนที่เลือกยังไม่มีค่า Ads (กันการ์ดโชว์เลขเปล่า)
+function useRoiStats(filterMonth) {
+  const [state, setState] = useState({ loading: true, months: [] })
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      fetch('/api/marketing?kind=inputs').then((r) => r.json()),
+      fetch('/api/monthly').then((r) => r.json()),
+    ]).then(([mi, mo]) => {
+      if (cancelled) return
+      if (!mi.success || !mo.success) throw new Error(mi.error || mo.error || 'โหลดไม่สำเร็จ')
+      const adsByMonth = {}
+      for (const r of mi.inputs || []) {
+        if (r.metric !== 'ads') continue
+        adsByMonth[r.month] = (adsByMonth[r.month] || 0) + r.value
+      }
+      const salesByMonth = {}
+      for (const t of mo.trend || []) salesByMonth[t.month] = t.sales
+      const months = Object.keys(adsByMonth).filter((m) => adsByMonth[m] > 0).sort()
+      setState({ loading: false, months, adsByMonth, salesByMonth })
+    }).catch(() => { if (!cancelled) setState({ loading: false, months: [] }) })
+    return () => { cancelled = true }
+  }, [])
+
+  if (state.loading || state.months.length === 0) return null
+  const { months, adsByMonth, salesByMonth } = state
+  const totalAds = months.reduce((s, m) => s + adsByMonth[m], 0)
+  const totalSales = months.reduce((s, m) => s + (salesByMonth[m] || 0), 0)
+  const roiOverall = totalAds > 0 ? totalSales / totalAds : null
+
+  if (filterMonth) {
+    // เจาะจงเดือน — ยังไม่มีค่า Ads กรอกไว้เดือนนี้ก็ไม่โชว์การ์ด (กันตัวเลข 0/ว่างที่เข้าใจผิดว่าเป็นค่าจริง)
+    const ads = adsByMonth[filterMonth]
+    if (!ads) return null
+    const sales = salesByMonth[filterMonth] || 0
+    return { label: roiMonthLabel(filterMonth), ads, roi: sales / ads, totalAds, roiOverall }
+  }
+  return { label: 'ทั้งหมด', ads: totalAds, roi: roiOverall, totalAds, roiOverall }
 }
 
 // ============================================================
@@ -549,6 +595,7 @@ export default function App() {
   const trendingUp = commandCenter.trendingUp || []
   const trendingDown = commandCenter.trendingDown || []
   const trendCompare = commandCenter.trendCompare || null
+  const roiStats = useRoiStats(selectedMonth)
 
   // ─── Original KPI data ────────────────────────────────────────────────
   const totalRevenue = dashData?.revenue ?? 0
@@ -842,15 +889,14 @@ export default function App() {
       {/* MAIN CONTENT AREA */}
       <div className="payi-main-content" style={{ flex: 1, minHeight: '100vh', overflow: 'auto', padding: isLinksHubMode ? '32px 34px 40px' : '24px 32px 40px', boxSizing: 'border-box', width: '100%' }}>
 
-        {/* HEADER TOP ROW — กล่องหัวไล่สีมนๆ สไตล์แอพธนาคาร ทั้ง desktop และมือถือ */}
+        {/* HEADER TOP ROW — เดิมเป็นกล่องไล่สีมนๆ เหมือน hero การ์ดยอดขายด้านล่าง (Executive) ทำให้ดูซ้ำ
+            หลุดโฟกัส (feedback เจ้าของ 2026-07-29) — เปลี่ยนเป็น header เรียบๆ แค่ตัวหนังสือ ให้ gradient
+            เหลือแค่การ์ดตัวเลขสำคัญจริงๆ (เช่น Total Revenue) เด่นแทน */}
         {!isLinksHubMode && <div className="payi-topbar" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: hidePageTitleCard ? 'flex-end' : 'space-between', gap: 18, marginBottom: hidePageTitleCard ? 12 : 18, alignItems: 'center' }}>
-          {!hidePageTitleCard && <div style={{
-            width: isMobileViewport ? '100%' : 'auto', background: isSwanPastelPage ? 'linear-gradient(120deg, #7198d5 0%, #a782da 52%, #dc87b7 100%)' : 'linear-gradient(120deg, var(--payi-mint) 0%, #34d399 100%)',
-            borderRadius: isMobileViewport ? 24 : 20, padding: isMobileViewport ? '18px 20px 20px' : '16px 26px', boxShadow: isSwanPastelPage ? '0 14px 30px rgba(146,111,195,0.2)' : '0 14px 30px rgba(37,99,235,0.18)', boxSizing: 'border-box',
-          }}>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)', marginBottom: 6 }}>{pageMeta.eyebrow}</div>
-            <div style={{ fontSize: 28, fontWeight: 850, letterSpacing: 0, color: '#fff', marginBottom: 4 }}>{pageMeta.title}</div>
-            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.88)' }}>{pageMeta.subtitle}</div>
+          {!hidePageTitleCard && <div style={{ width: isMobileViewport ? '100%' : 'auto' }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: isSwanPastelPage ? '#a782da' : 'var(--payi-mint-strong)', marginBottom: 4 }}>{pageMeta.eyebrow}</div>
+            <div style={{ fontSize: 24, fontWeight: 850, letterSpacing: 0, color: 'var(--payi-text-strong)', marginBottom: 2 }}>{pageMeta.title}</div>
+            <div style={{ fontSize: 13, color: 'var(--payi-text-muted)' }}>{pageMeta.subtitle}</div>
           </div>}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <div className="payi-topbar-search" style={{ display: 'flex', alignItems: 'center', gap: 10, width: 280, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.6)', borderRadius: 999, padding: '10px 14px', boxShadow: '0 8px 20px rgba(16,24,40,0.06)' }}>
@@ -950,32 +996,72 @@ export default function App() {
           </div>
         ) : (activeTab === 'Executive') ? (
           <div style={{ width: '100%' }}>
-            <div className="app-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 16 }}>
+            {/* HERO — ยอดขายรวม เด่นสุด ตัวใหญ่สุด เหมือนแอพธนาคารเปิดมาเจอยอดเงินก่อน */}
+            <div style={{
+              borderRadius: 20, padding: '26px 28px', marginBottom: 14,
+              background: 'var(--payi-gradient-primary)', color: '#fff',
+              boxShadow: '0 16px 36px rgba(37,99,235,0.22)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ fontSize: 13, opacity: 0.85, fontWeight: 700 }}>Total Revenue · {rangeLabel}</div>
+                {fmtTrend(revenueTrend) && (
+                  <span style={{
+                    fontSize: 12.5, fontWeight: 800, padding: '3px 10px', borderRadius: 999,
+                    background: 'rgba(255,255,255,0.18)',
+                    color: (revenueTrend === null || revenueTrend >= 0) ? '#baffd9' : '#ffd0d0',
+                  }}>{fmtTrend(revenueTrend)}</span>
+                )}
+              </div>
+              <div style={{ fontSize: 42, fontWeight: 850, marginTop: 8, lineHeight: 1.05, letterSpacing: '-0.01em' }}>
+                THB {fmt(totalRevenue)}
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.85, marginTop: 8 }}>รวมยกเลิก/ตีคืน THB {fmt(totalGrossRevenue)}</div>
+            </div>
+
+            {/* รอง — Orders/Units/AOV/Ads/ROI สีต่างกันให้แยกง่ายด้วยตาแวบเดียว */}
+            <div className="app-kpi-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${roiStats ? 5 : 3}, minmax(0, 1fr))`, gap: 12, marginBottom: 16 }}>
               {[
-                { title: 'Total Revenue', value: `THB ${fmt(totalRevenue)}`, subtitle: rangeLabel, note: `(รวมยกเลิก/ตีคืน THB ${fmt(totalGrossRevenue)})`, icon: DollarSign, trend: fmtTrend(revenueTrend), isPositive: revenueTrend === null || revenueTrend >= 0 },
-                { title: 'Orders', value: fmt(totalOrders), subtitle: rangeLabel, icon: ShoppingBag, trend: fmtTrend(ordersTrend), isPositive: ordersTrend === null || ordersTrend >= 0 },
-                { title: 'Units', value: fmt(totalQty), subtitle: rangeLabel, icon: Package, trend: fmtTrend(unitsTrend), isPositive: unitsTrend === null || unitsTrend >= 0 },
-                { title: 'AOV', value: `THB ${fmt(avgOrder)}`, subtitle: rangeLabel, icon: TrendingUp, trend: fmtTrend(aovTrend), isPositive: aovTrend === null || aovTrend >= 0 },
+                { title: 'Orders', value: fmt(totalOrders), icon: ShoppingBag, color: '#2f6fe0', trend: fmtTrend(ordersTrend), isPositive: ordersTrend === null || ordersTrend >= 0 },
+                { title: 'Units', value: fmt(totalQty), icon: Package, color: '#7a6fce', trend: fmtTrend(unitsTrend), isPositive: unitsTrend === null || unitsTrend >= 0 },
+                { title: 'AOV', value: `THB ${fmt(avgOrder)}`, icon: TrendingUp, color: '#3f7f6f', trend: fmtTrend(aovTrend), isPositive: aovTrend === null || aovTrend >= 0 },
+                ...(roiStats ? [
+                  {
+                    title: `ค่า Ads · ${roiStats.label}`,
+                    value: `THB ${fmt(roiStats.ads || 0)}`,
+                    note: selectedMonth ? `รวมทุกเดือน THB ${fmt(roiStats.totalAds || 0)}` : null,
+                    icon: Megaphone, color: '#d64545',
+                    onClick: () => setActiveTab('AdsChannels'),
+                  },
+                  {
+                    title: `ROI (ROAS) · ${roiStats.label}`,
+                    value: roiStats.roi !== null ? `${roiStats.roi.toFixed(1)}x` : '-',
+                    note: selectedMonth ? `รวมทุกเดือน ${roiStats.roiOverall !== null ? roiStats.roiOverall.toFixed(1) + 'x' : '-'}` : null,
+                    icon: Percent, color: '#1a9c6b',
+                    onClick: () => setActiveTab('AdsChannels'),
+                  },
+                ] : []),
               ].map((item) => {
                 const Icon = item.icon
                 return (
-                  <div key={item.title} style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 12, padding: '14px 16px', minHeight: 92, boxShadow: '0 10px 26px rgba(15,23,42,0.04)', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', fontWeight: 800, marginBottom: 8 }}>{item.title}</div>
-                      <div style={{ fontSize: 22, lineHeight: 1.05, color: 'var(--payi-text-strong)', fontWeight: 850, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value}</div>
-                      <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 8 }}>{item.subtitle}</div>
-                      {item.note && (
-                        <div style={{ fontSize: 10.5, color: 'var(--payi-text-muted)', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.note}</div>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 12, background: 'var(--payi-gradient-primary)', color: '#fff', display: 'grid', placeItems: 'center', boxShadow: '0 6px 14px rgba(37,99,235,0.24)' }}>
-                        <Icon size={17} />
+                  <div key={item.title} onClick={item.onClick} className="app-stat-tile" style={{
+                    background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 14, padding: '14px 16px', minHeight: 82,
+                    boxShadow: '0 8px 20px rgba(15,23,42,0.04)', cursor: item.onClick ? 'pointer' : 'default',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <div style={{ width: 26, height: 26, borderRadius: 8, background: `${item.color}1a`, color: item.color, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                        <Icon size={14} />
                       </div>
+                      <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={{ fontSize: 18, lineHeight: 1.05, color: 'var(--payi-text-strong)', fontWeight: 850, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value}</div>
                       {item.trend && (
-                        <span style={{ fontSize: 11, fontWeight: 850, color: item.isPositive ? 'var(--payi-success)' : 'var(--payi-danger)' }}>{item.trend}</span>
+                        <span style={{ fontSize: 10.5, fontWeight: 850, color: item.isPositive ? 'var(--payi-success)' : 'var(--payi-danger)', flexShrink: 0 }}>{item.trend}</span>
                       )}
                     </div>
+                    {item.note && (
+                      <div style={{ fontSize: 10, color: 'var(--payi-text-faint)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.note}</div>
+                    )}
                   </div>
                 )
               })}

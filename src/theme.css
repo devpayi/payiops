@@ -235,6 +235,14 @@ body {
   background-color: var(--payi-surface-muted);
 }
 
+.app-stat-tile {
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.app-stat-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.09);
+}
+
 /* Manpower & OT is an operational screen viewed from a distance.
  * Keep the larger type scoped to this page so the rest of Payi Ops is unchanged. */
 .workforce-page {

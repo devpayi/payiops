@@ -399,15 +399,26 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
   const [mobileSelectedDate, setMobileSelectedDate] = useState(defaultMobileDate)
   const activeMobileDate = monthDates.includes(mobileSelectedDate) ? mobileSelectedDate : defaultMobileDate
   const WEEKDAY_TH = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
+  // มือถือ: เดิมสลับปฏิทินตารางเป็นรายการรายวันเพราะ 7 คอลัมน์บีบจนอ่านไม่ออก — ตอนนี้ owner ขอปฏิทินตารางกลับมา
+  // (เหมือนหน้าเว็ป) แต่ให้ซูมเข้าออกได้แทนการบีบคอลัมน์ จึงคงขนาดกริดเท่าเดสก์ท็อปไว้ แล้วห่อด้วยกล่องเลื่อน/ซูมแนวนอน
+  // มุมมองรายวัน (MobileDayAgenda) ยังเก็บไว้เป็นตัวเลือกสำรอง สลับได้จากปุ่มด้านบน ไม่ได้ตัดทิ้ง
+  const [mobileView, setMobileView] = useState('calendar')
 
   return <section style={{ ...card, width: '100%', minWidth: 0, maxWidth: '100%', boxSizing: 'border-box', overflow: 'hidden', borderRadius: 22, background: 'linear-gradient(180deg,#ffffff,#f7fbff)' }}>
     <div style={{ padding: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-      <div><div style={{ fontSize: 17, fontWeight: 900, color: '#102a43' }}>ปฏิทิน Manpower & OT</div><div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>ปุ่ม “คน” ใช้แก้รายชื่อมาทำงาน · ปุ่ม + ใช้เพิ่ม OT</div></div>
-      <div style={{ display: 'flex', gap: 8 }}><button onClick={() => { setPromoEnd(`${month}-01`); setPromoTeam('ทุกทีม'); setLeadDays('0'); setLagDays('0'); setModal({ type: 'promo', date: `${month}-01` }) }} style={miniTab(false)}>+ วันโปร</button><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ ...inputStyle, width: 155 }} /></div>
+      <div><div style={{ fontSize: 17, fontWeight: 900, color: '#102a43' }}>ปฏิทิน Manpower & OT</div><div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>ปุ่ม “คน” ใช้แก้รายชื่อมาทำงาน · ปุ่ม + ใช้เพิ่ม OT{isMobile && mobileView === 'calendar' ? ' · บีบสองนิ้วเพื่อซูม' : ''}</div></div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {isMobile && <div style={{ display: 'flex', gap: 4 }}>
+          <button type="button" onClick={() => setMobileView('calendar')} style={miniTab(mobileView === 'calendar')}>ปฏิทิน</button>
+          <button type="button" onClick={() => setMobileView('list')} style={miniTab(mobileView === 'list')}>รายวัน</button>
+        </div>}
+        <button onClick={() => { setPromoEnd(`${month}-01`); setPromoTeam('ทุกทีม'); setLeadDays('0'); setLagDays('0'); setModal({ type: 'promo', date: `${month}-01` }) }} style={miniTab(false)}>+ วันโปร</button>
+        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ ...inputStyle, width: 155 }} />
+      </div>
     </div>
     {warning && <div style={{ margin: '0 18px 12px', padding: '10px 14px', background: '#fef6da', color: '#8a6d1f', border: '1px solid #fbe6a8', borderRadius: 10, fontSize: 12, fontWeight: 800 }}>{warning}</div>}
     <div style={{ padding: '9px 16px', display: 'flex', gap: 14, flexWrap: 'wrap', background: '#f8fbff', fontSize: 11, color: '#64748b' }}><Legend color="#d3c2f2" text="วันโปร"/><Legend color="#f0eafb" text="ช่วงเตรียมฟีด (กำหนดเองได้)"/></div>
-    {isMobile && (
+    {isMobile && mobileView === 'list' && (
       <MobileDayAgenda
         monthDates={monthDates}
         activeDate={activeMobileDate}
@@ -420,7 +431,11 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
         deleteEvent={deleteEvent}
       />
     )}
-    {!isMobile && <div style={{ width: '100%', minWidth: 0, overflow: 'hidden', boxSizing: 'border-box', padding: '4px 8px 12px' }}><div style={{ width: '100%', minWidth: 0 }}>
+    {(!isMobile || mobileView === 'calendar') && <div style={{
+      width: '100%', minWidth: 0, boxSizing: 'border-box', padding: '4px 8px 12px',
+      // มือถือ: เลื่อน+ซูมได้ในกรอบนี้ (touch-action ปล่อยค่า default = pinch-zoom ใช้ได้ตามเบราว์เซอร์)
+      overflow: isMobile ? 'auto' : 'hidden', WebkitOverflowScrolling: 'touch',
+    }}><div style={{ width: '100%', minWidth: isMobile ? 680 : 0 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', background: 'linear-gradient(180deg,#eef6ff,#f7fbff)', borderRadius: 12 }}>{['อา','จ','อ','พ','พฤ','ศ','ส'].map((d) => <div key={d} style={{ padding: 7, textAlign: 'center', fontSize: 11, fontWeight: 900, color: '#7a94b8' }}>{d}</div>)}</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', gap: 5, marginTop: 5 }}>{cells.map((date, i) => {
         if (!date) return <div key={`blank-${i}`} style={{ minWidth: 0, minHeight: 132, borderRadius: 12, background: 'transparent' }} />
