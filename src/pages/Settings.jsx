@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Loader2, KeyRound, UserPlus, Trash2, Users, ShieldCheck, MessageCircle } from 'lucide-react'
 import { isDev } from '../../shared/roles.js'
 
@@ -6,41 +6,61 @@ const getMe = () => {
   try { return JSON.parse(localStorage.getItem('payi-user') || 'null') } catch { return null }
 }
 
+// เดิมแต่ละการ์ด (LineLinkCard/BossLineNotifyCard/StaffLineLinkCard) ยิง op=hr เอง, UserManagementCard
+// กับ BossLineNotifyCard ยิง list-users เอง — เปิดหน้านี้ทีเดียวจึงยิง Sheets API 5 รอบพร้อมกัน ชนโควตา
+// "Read requests per minute" จริง (แม้ฝั่ง server จะ dedup แล้วก็ตาม เพราะ Vercel serverless แต่ละ request
+// อาจไปคนละ instance ไม่แชร์หน่วยความจำกัน — dedup ฝั่ง server ช่วยไม่ได้ 100% ต้องตัดที่ต้นตอคือจำนวน
+// request จากฝั่ง browser เอง) ย้าย fetch มารวมไว้ที่นี่ที่เดียว แล้วส่งผ่าน props ให้ทุกการ์ดใช้ร่วมกัน
 export default function Settings() {
   const me = getMe()
   const isAdmin = isDev(me?.role)
 
+  const [hrData, setHrData] = useState(null)
+  const [hrLoading, setHrLoading] = useState(true)
+  const [usersData, setUsersData] = useState(null)
+  const [usersLoading, setUsersLoading] = useState(true)
+
+  const reloadHr = () => {
+    setHrLoading(true)
+    fetch('/api/sheet-tools?op=hr').then((r) => r.json()).then(setHrData).catch(() => {}).finally(() => setHrLoading(false))
+  }
+  const reloadUsers = () => {
+    setUsersLoading(true)
+    fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list-users' }) })
+      .then((r) => r.json()).then(setUsersData).catch(() => {}).finally(() => setUsersLoading(false))
+  }
+  useEffect(() => { reloadHr() }, [])
+  useEffect(() => { if (isAdmin) reloadUsers() }, [isAdmin])
+
   return (
     <div style={{ width: '100%', display: 'grid', gap: 20, maxWidth: 720 }}>
       <ChangePasswordCard me={me} />
-      <LineLinkCard me={me} />
-      {isAdmin && <BossLineNotifyCard />}
-      {isAdmin && <StaffLineLinkCard />}
-      {isAdmin && <UserManagementCard me={me} />}
+      <LineLinkCard me={me} hrData={hrData} hrLoading={hrLoading} reloadHr={reloadHr} />
+      {isAdmin && <BossLineNotifyCard hrData={hrData} hrLoading={hrLoading} usersData={usersData} usersLoading={usersLoading} reloadHr={reloadHr} />}
+      {isAdmin && <StaffLineLinkCard hrData={hrData} hrLoading={hrLoading} reloadHr={reloadHr} />}
+      {isAdmin && <UserManagementCard me={me} usersData={usersData} usersLoading={usersLoading} reloadUsers={reloadUsers} />}
     </div>
   )
 }
 
-function LineLinkCard({ me }) {
+function LineLinkCard({ me, hrData, hrLoading, reloadHr }) {
   const [lineUserId, setLineUserId] = useState('')
   const [saved, setSaved] = useState('')
   const [notifyHr, setNotifyHr] = useState(true)
   const [notifyStock, setNotifyStock] = useState(true)
   const [savedNotify, setSavedNotify] = useState({ hr: true, stock: true })
-  const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
 
   useEffect(() => {
-    fetch('/api/sheet-tools?op=hr').then((r) => r.json()).then((d) => {
-      const mine = (d.lineLinks || []).find((l) => l.username === me?.u)
-      if (mine) {
-        setLineUserId(mine.line_user_id); setSaved(mine.line_user_id)
-        const hr = String(mine.notify_hr) !== '0', stock = String(mine.notify_stock) !== '0'
-        setNotifyHr(hr); setNotifyStock(stock); setSavedNotify({ hr, stock })
-      }
-    }).catch(() => {}).finally(() => setLoading(false))
-  }, [me?.u])
+    if (!hrData) return
+    const mine = (hrData.lineLinks || []).find((l) => l.username === me?.u)
+    if (mine) {
+      setLineUserId(mine.line_user_id); setSaved(mine.line_user_id)
+      const hr = String(mine.notify_hr) !== '0', stock = String(mine.notify_stock) !== '0'
+      setNotifyHr(hr); setNotifyStock(stock); setSavedNotify({ hr, stock })
+    }
+  }, [hrData, me?.u])
 
   const submit = async (e) => {
     e.preventDefault()
@@ -56,6 +76,7 @@ function LineLinkCard({ me }) {
       setSaved(lineUserId)
       setSavedNotify({ hr: notifyHr, stock: notifyStock })
       setMsg({ ok: true, text: lineUserId ? 'เชื่อม LINE สำเร็จ' : 'ยกเลิกการเชื่อม LINE แล้ว' })
+      reloadHr()
     } catch (err) {
       setMsg({ ok: false, text: err.message })
     } finally {
@@ -67,7 +88,7 @@ function LineLinkCard({ me }) {
 
   return (
     <Card icon={MessageCircle} title="แจ้งเตือนผ่าน LINE" sub="เชื่อม LINE userId เพื่อรับแจ้งเตือน พร้อมกดอนุมัติ/สั่งของจากแชทได้เลย">
-      {loading ? (
+      {hrLoading ? (
         <div style={{ fontSize: 13, color: 'var(--payi-text-muted)' }}>กำลังโหลด...</div>
       ) : (
         <form onSubmit={submit} style={{ display: 'grid', gap: 10, maxWidth: 420 }}>
@@ -101,36 +122,35 @@ function LineLinkCard({ me }) {
 
 // admin ดู/แก้หมวดแจ้งเตือน LINE ของบอส/dev ทุกคนจากที่เดียว — ไม่ต้องให้แต่ละคน login เข้ามาตั้งเอง
 // (เช่น มีบอส HR กับบอสสต็อกคนละคน ผูก LINE ไว้แล้วทั้งคู่แต่อยากตั้งค่าเริ่มต้นให้จากตรงนี้เลย)
-function BossLineNotifyCard() {
-  const [rows, setRows] = useState([]) // [{ username, display_name, role, line_user_id, notify_hr, notify_stock }]
+function BossLineNotifyCard({ hrData, hrLoading, usersData, usersLoading, reloadHr }) {
   const [drafts, setDrafts] = useState({}) // { [username]: input value }
-  const [loading, setLoading] = useState(true)
   const [busyUser, setBusyUser] = useState(null)
   const [msg, setMsg] = useState(null)
 
-  const load = () => {
-    setLoading(true); setMsg(null)
-    Promise.all([
-      fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list-users' }) }).then((r) => r.json()),
-      fetch('/api/sheet-tools?op=hr').then((r) => r.json()),
-    ]).then(([u, d]) => {
-      if (!u.success) throw new Error(u.error || 'โหลดรายชื่อ user ไม่สำเร็จ')
-      const linkByUsername = Object.fromEntries((d.lineLinks || []).filter((l) => l.username && !String(l.username).startsWith('mp:')).map((l) => [l.username, l]))
-      const managers = (u.users || []).filter((x) => ['boss', 'dev', 'admin'].includes(x.role))
-      const next = managers.map((m) => {
-        const link = linkByUsername[m.username]
-        return {
-          username: m.username, display_name: m.display_name || m.username, role: m.role,
-          line_user_id: link?.line_user_id || '',
-          notify_hr: link ? String(link.notify_hr) !== '0' : true,
-          notify_stock: link ? String(link.notify_stock) !== '0' : true,
-        }
-      })
-      setRows(next)
-      setDrafts(Object.fromEntries(next.map((r) => [r.username, r.line_user_id])))
-    }).catch((err) => setMsg({ ok: false, text: err.message })).finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [])
+  const rows = useMemo(() => {
+    if (!hrData || !usersData) return []
+    const linkByUsername = Object.fromEntries((hrData.lineLinks || []).filter((l) => l.username && !String(l.username).startsWith('mp:')).map((l) => [l.username, l]))
+    const managers = (usersData.users || []).filter((x) => ['boss', 'dev', 'admin'].includes(x.role))
+    return managers.map((m) => {
+      const link = linkByUsername[m.username]
+      return {
+        username: m.username, display_name: m.display_name || m.username, role: m.role,
+        line_user_id: link?.line_user_id || '',
+        notify_hr: link ? String(link.notify_hr) !== '0' : true,
+        notify_stock: link ? String(link.notify_stock) !== '0' : true,
+      }
+    })
+  }, [hrData, usersData])
+
+  useEffect(() => {
+    setDrafts((prev) => {
+      const next = { ...prev }
+      for (const r of rows) if (next[r.username] === undefined) next[r.username] = r.line_user_id
+      return next
+    })
+  }, [rows])
+
+  const loading = hrLoading || usersLoading
 
   // วาง/แก้ LINE userId แทนคนนั้นเลย (เผื่อบอสไม่สะดวก login เอง) — ผูกใหม่หรือรีเซ็ต userId เดิม default เปิดแจ้งเตือนทั้ง 2 หมวด
   const saveLink = async (username) => {
@@ -142,9 +162,10 @@ function BossLineNotifyCard() {
       })
       const d = await res.json()
       if (!d.success) throw new Error(d.error || 'บันทึกไม่สำเร็จ')
-      load()
+      reloadHr()
     } catch (err) {
       setMsg({ ok: false, text: err.message })
+    } finally {
       setBusyUser(null)
     }
   }
@@ -161,7 +182,7 @@ function BossLineNotifyCard() {
       })
       const d = await res.json()
       if (!d.success) throw new Error(d.error || 'บันทึกไม่สำเร็จ')
-      setRows((prev) => prev.map((r) => (r.username === row.username ? { ...r, notify_hr: nextHr, notify_stock: nextStock } : r)))
+      reloadHr()
     } catch (err) {
       setMsg({ ok: false, text: err.message })
     } finally {
@@ -218,30 +239,25 @@ function BossLineNotifyCard() {
   )
 }
 
-function StaffLineLinkCard() {
-  const [people, setPeople] = useState([])
-  const [activeMonths, setActiveMonths] = useState({})
+function StaffLineLinkCard({ hrData, hrLoading, reloadHr }) {
   const [month, setMonth] = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }).slice(0, 7))
-  const [links, setLinks] = useState({}) // { [code]: line_user_id }
   const [drafts, setDrafts] = useState({}) // { [code]: input value }
-  const [loading, setLoading] = useState(true)
   const [busyCode, setBusyCode] = useState(null)
   const [msg, setMsg] = useState(null)
 
-  const load = () => {
-    setLoading(true)
-    fetch('/api/sheet-tools?op=hr').then((r) => r.json()).then((d) => {
-      const linkMap = {}
-      for (const l of d.lineLinks || []) {
-        if (String(l.username || '').startsWith('mp:')) linkMap[l.username.slice(3)] = l.line_user_id
-      }
-      setPeople(d.people || [])
-      setActiveMonths(d.activeMonths || {})
-      setLinks(linkMap)
-      setDrafts((prev) => ({ ...linkMap, ...prev }))
-    }).catch(() => {}).finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [])
+  const people = hrData?.people || []
+  const activeMonths = hrData?.activeMonths || {}
+  const links = useMemo(() => {
+    const map = {}
+    for (const l of hrData?.lineLinks || []) {
+      if (String(l.username || '').startsWith('mp:')) map[l.username.slice(3)] = l.line_user_id
+    }
+    return map
+  }, [hrData])
+
+  useEffect(() => {
+    setDrafts((prev) => ({ ...links, ...prev }))
+  }, [links])
 
   // เอาเฉพาะคนที่มีชื่อในตารางพนักงานปี 2026 เดือนที่เลือกจริง
   const monthOptions = [...new Set(Object.values(activeMonths).flat())].sort().reverse()
@@ -257,8 +273,8 @@ function StaffLineLinkCard() {
       })
       const d = await res.json()
       if (!d.success) throw new Error(d.error || 'บันทึกไม่สำเร็จ')
-      setLinks((prev) => ({ ...prev, [code]: drafts[code] || '' }))
       setMsg({ ok: true, text: `บันทึก LINE ของ${people.find((p) => p.code === code)?.name || code} แล้ว` })
+      reloadHr()
     } catch (err) {
       setMsg({ ok: false, text: err.message })
     } finally {
@@ -268,7 +284,7 @@ function StaffLineLinkCard() {
 
   return (
     <Card icon={MessageCircle} title="ผูก LINE พนักงาน (manpower)" sub="ให้พนักงานทักแชทเข้า OA 1 ครั้ง (บอทจะตอบ userId กลับมา) แล้วเอามาวางที่นี่ให้แต่ละคน — เชื่อมแล้วยื่นลาผ่านไลน์ได้เลย พิมพ์ &quot;ลา&quot; ในแชท">
-      {loading ? (
+      {hrLoading ? (
         <div style={{ fontSize: 13, color: 'var(--payi-text-muted)' }}>กำลังโหลด...</div>
       ) : (
         <div style={{ display: 'grid', gap: 8 }}>
@@ -359,22 +375,11 @@ function ChangePasswordCard({ me }) {
   )
 }
 
-function UserManagementCard({ me }) {
-  const [users, setUsers] = useState(null)
-  const [loading, setLoading] = useState(true)
+function UserManagementCard({ me, usersData, usersLoading, reloadUsers }) {
   const [error, setError] = useState('')
   const [draft, setDraft] = useState({ username: '', display_name: '', password: '', role: 'staff' })
   const [busy, setBusy] = useState(false)
-
-  const load = () => {
-    setLoading(true); setError('')
-    fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list-users' }) })
-      .then((r) => r.json())
-      .then((d) => { if (!d.success) throw new Error(d.error); setUsers(d.users) })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [])
+  const users = usersData?.users || []
 
   const addUser = async (e) => {
     e.preventDefault()
@@ -388,7 +393,7 @@ function UserManagementCard({ me }) {
       const d = await res.json()
       if (!d.success) throw new Error(d.error || 'เพิ่มผู้ใช้ไม่สำเร็จ')
       setDraft({ username: '', display_name: '', password: '', role: 'staff' })
-      load()
+      reloadUsers()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -407,7 +412,7 @@ function UserManagementCard({ me }) {
       })
       const d = await res.json()
       if (!d.success) throw new Error(d.error || 'ลบไม่สำเร็จ')
-      load()
+      reloadUsers()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -434,11 +439,11 @@ function UserManagementCard({ me }) {
         </button>
       </form>
 
-      {loading ? (
+      {usersLoading ? (
         <div style={{ fontSize: 13, color: 'var(--payi-text-muted)' }}>กำลังโหลด...</div>
       ) : (
         <div style={{ display: 'grid', gap: 8 }}>
-          {(users || []).map((u) => (
+          {users.map((u) => (
             <div key={u.username} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--payi-surface-muted)', border: '1px solid var(--payi-border)', borderRadius: 10 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--payi-text-strong)', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -457,7 +462,7 @@ function UserManagementCard({ me }) {
               </button>
             </div>
           ))}
-          {!users?.length && <div style={{ fontSize: 13, color: 'var(--payi-text-faint)' }}>ไม่มีผู้ใช้อื่น</div>}
+          {!users.length && <div style={{ fontSize: 13, color: 'var(--payi-text-faint)' }}>ไม่มีผู้ใช้อื่น</div>}
         </div>
       )}
     </Card>
