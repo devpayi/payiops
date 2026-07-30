@@ -813,7 +813,10 @@ export default function App() {
           overflow: 'hidden', position: 'sticky', zIndex: 20, transition: 'width 180ms ease, box-shadow 180ms ease',
         }}
       >
-        <div style={{ marginBottom: 10, paddingLeft: 3, display: 'flex', alignItems: 'center', gap: 9 }}>
+        <button
+          type="button" onClick={() => setActiveTab('Home')} title="กลับหน้าแรก"
+          style={{ marginBottom: 10, paddingLeft: 3, display: 'flex', alignItems: 'center', gap: 9, border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', padding: 0 }}
+        >
           <img src={payiLogo} alt="Payi Ops" style={{ width: 39, height: 39, borderRadius: 9, objectFit: 'cover', boxShadow: '0 9px 22px rgba(37, 99, 235, 0.14)', flexShrink: 0 }} />
           {sidebarExpanded && (
             <div style={{ whiteSpace: 'nowrap' }}>
@@ -821,7 +824,7 @@ export default function App() {
               <div style={{ fontSize: '9.5px', fontWeight: '700', color: '#334155', letterSpacing: 0, marginTop: '2px' }}>Business Command Center</div>
             </div>
           )}
-        </div>
+        </button>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', paddingRight: 0 }}>
           {visibleMenuGroups.map((group, gi) => (
             <div

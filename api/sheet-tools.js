@@ -1241,6 +1241,23 @@ async function opHrInner(req, res) {
     clearHrCache()
     return res.status(200).json({ success: true, line_user_id: lineUserId })
   }
+  // admin ตั้งค่าหมวดแจ้งเตือน (การลา/สต็อก) ให้คนอื่นได้เลย ไม่ต้องให้แต่ละคน login เข้ามาตั้งเอง —
+  // ใช้ตอนบอสหลายคน (เช่น บอส HR กับบอสสต็อกคนละคน) ผูก LINE ไว้แล้วแต่ตั้งหมวดเริ่มต้นให้แต่ละคนจากที่เดียว
+  if (action === 'admin-set-notify') {
+    if (!requireAdmin(req, res)) return
+    const username = String(body.username || '').trim()
+    if (!username) return res.status(400).json({ success: false, error: 'ต้องระบุ username' })
+    const current = await getSheet('hr_line_links')
+    const idx = current.findIndex((r) => r.username === username)
+    if (idx === -1) return res.status(400).json({ success: false, error: 'คนนี้ยังไม่ได้ผูก LINE' })
+    const now = new Date().toISOString()
+    const rows = current.map((r, i) => LINE_LINK_HEADERS.map((h) => (i === idx
+      ? { ...r, notify_hr: body.notify_hr ? '1' : '0', notify_stock: body.notify_stock ? '1' : '0', updated_at: now }
+      : r)[h] ?? ''))
+    await overwriteSheet('hr_line_links', LINE_LINK_HEADERS, rows)
+    clearHrCache()
+    return res.status(200).json({ success: true })
+  }
   return res.status(400).json({ success: false, error: `Unknown hr action: ${action || '(empty)'}` })
 }
 
