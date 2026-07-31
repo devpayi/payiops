@@ -10,7 +10,7 @@ import {
   leavePeriodLabel, normalizeLeavePeriod, officeLeaveConflicts,
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides } from './_lib/scheduleOverrides.js'
-import opInventory, { computeLowStockList, createOrderRequest, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
+import opInventory, { computeLowStockList, createOrderRequest, addStockInRequest, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
 import opImportTracking from './_lib/importTracking.js'
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
@@ -277,6 +277,15 @@ const STOCK_ALERT_RUNS_HEADERS = ['date', 'sent_at', 'item_count']
 const STOCK_ORDER_SESSION_SHEET = 'stock_order_sessions'
 // items_json: ต่อท้ายล่าสุด — เก็บรายการหลายชิ้นตอนสั่งของแบบ batch (พิมพ์ทีเดียวหลายบรรทัด "ชื่อ/SKU = จำนวน")
 const STOCK_ORDER_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'order_date', 'updated_at', 'items_json', 'pending_json']
+// items_json: ต่อท้ายล่าสุด — เก็บรายการหลายชิ้นตอนแจ้งของเข้าแบบ batch (เหมือนตะกร้าสั่งของ)
+// แยกชีต/session จาก stock_order_sessions เพื่อกันคนที่กำลังสั่งของค้างอยู่แล้วมาแจ้งของเข้าพร้อมกัน
+// (หรือกลับกัน) ไม่ให้ session ของทั้งสอง flow ทับกัน
+const STOCK_IN_SESSION_SHEET = 'stock_in_sessions'
+const STOCK_IN_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'arrival_date', 'updated_at', 'items_json', 'pending_json']
+// เก็บ groupId ของกลุ่มไลน์ทีมงาน (แถวเดียว) — ลงทะเบียนอัตโนมัติทันทีที่มีข้อความจากกลุ่มเข้ามา ไม่ต้อง
+// ตั้งค่าเอง แค่เพิ่มบอทเข้ากลุ่มแล้วมีคนพิมพ์อะไรสักครั้ง ใช้ push การ์ด "แจ้งของเข้า" ให้ทั้งทีมเห็นพร้อมกัน
+const LINE_GROUP_LINK_SHEET = 'line_group_link'
+const LINE_GROUP_LINK_HEADERS = ['group_id', 'updated_at']
 const STOCK_STATUS_ICON = { 'หมด': '🔴', 'ใกล้หมด': '🟠' }
 const todayBKK = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
 // ตั้งบน Vercel เป็น URL จริงของเว็บ (เช่น https://payiops.vercel.app) — ใช้สร้างปุ่ม "เปิดเว็บ" ใน LINE
@@ -391,6 +400,43 @@ async function clearStockOrderSession(lineUserId) {
   await overwriteSheet(STOCK_ORDER_SESSION_SHEET, STOCK_ORDER_SESSION_HEADERS, rows)
 }
 
+// session สำหรับ flow "แจ้งของเข้า" (ตะกร้าเหมือนสั่งของ แต่คนละชีต) — ensureSheet ก่อนอ่านเสมอ เหตุผลเดียวกับ
+// getStockOrderSessions ด้านบน (กัน error เงียบตอนอ่านชีตที่ยังไม่เคยถูกสร้าง)
+async function getStockInSessions() {
+  await ensureSheet(STOCK_IN_SESSION_SHEET, STOCK_IN_SESSION_HEADERS)
+  return getSheet(STOCK_IN_SESSION_SHEET)
+}
+async function upsertStockInSession(lineUserId, patch) {
+  const current = await getStockInSessions()
+  const existing = current.find((r) => r.line_user_id === lineUserId) || { line_user_id: lineUserId, step: '', sku: '', qty: '' }
+  const next = { ...existing, ...patch, updated_at: new Date().toISOString() }
+  const rows = current.filter((r) => r.line_user_id !== lineUserId).map((r) => STOCK_IN_SESSION_HEADERS.map((h) => r[h] ?? ''))
+  rows.push(STOCK_IN_SESSION_HEADERS.map((h) => next[h] ?? ''))
+  await overwriteSheet(STOCK_IN_SESSION_SHEET, STOCK_IN_SESSION_HEADERS, rows)
+  return next
+}
+async function clearStockInSession(lineUserId) {
+  await ensureSheet(STOCK_IN_SESSION_SHEET, STOCK_IN_SESSION_HEADERS)
+  const current = await getStockInSessions()
+  const rows = current.filter((r) => r.line_user_id !== lineUserId).map((r) => STOCK_IN_SESSION_HEADERS.map((h) => r[h] ?? ''))
+  await overwriteSheet(STOCK_IN_SESSION_SHEET, STOCK_IN_SESSION_HEADERS, rows)
+}
+
+// ลงทะเบียน groupId อัตโนมัติ (ดู comment บน LINE_GROUP_LINK_SHEET) — เขียนเฉพาะตอน id เปลี่ยนจริง กันยิง
+// เขียนชีตทุกข้อความในกลุ่ม (overwriteSheet ทั้งชีตทุกครั้งมีต้นทุน ไม่ควรทำถี่เกินจำเป็น)
+async function registerLineGroup(groupId) {
+  if (!groupId) return
+  await ensureSheet(LINE_GROUP_LINK_SHEET, LINE_GROUP_LINK_HEADERS)
+  const rows = await getSheet(LINE_GROUP_LINK_SHEET)
+  if (rows.some((r) => r.group_id === groupId)) return
+  await overwriteSheet(LINE_GROUP_LINK_SHEET, LINE_GROUP_LINK_HEADERS, [[groupId, new Date().toISOString()]])
+}
+async function getGroupTarget() {
+  await ensureSheet(LINE_GROUP_LINK_SHEET, LINE_GROUP_LINK_HEADERS)
+  const rows = await getSheet(LINE_GROUP_LINK_SHEET)
+  return rows[0]?.group_id || null
+}
+
 // เฉพาะบอส/dev ที่เปิดรับแจ้งเตือนหมวด "ของใกล้หมด" ไว้ (notify_stock) เท่านั้นสั่งของผ่านไลน์ได้ —
 // ผูก 2 อย่างเข้าด้วยกันตามที่ owner ขอ (ปิด checkbox = ปิดทั้งรับการ์ดแจ้งเตือนและสั่งของผ่านแชท)
 // เทียบ line_user_id -> hr_line_links (username ธรรมดา ไม่ใช่ mp: ของพนักงาน) -> users.role
@@ -401,6 +447,20 @@ async function findManagerLink(lineUserId) {
   const user = (await getSheet('users')).find((u) => u.username === link.username)
   if (!user || !canManageOperations(user.role)) return null
   return { username: link.username, name: user.display_name || link.username, role: user.role }
+}
+
+// แจ้งของเข้าเปิดให้ "ใครก็ได้ที่ล็อกอินได้" เหมือนปุ่มบนเว็บ (addStockInRequest ไม่มี role gate) — ต่างจาก
+// findManagerLink (สั่งของ ต้องบอส/dev + เปิด notify_stock เท่านั้น) เช็คทั้งฝั่งพนักงาน (mp: ผ่าน findStaffLink
+// ตัวเดียวกับ flow ลา) และฝั่งบอส/dev (username ธรรมดา แต่ไม่บังคับ notify_stock/role เหมือน findManagerLink)
+async function resolveArrivalReporter(lineUserId) {
+  const staff = await findStaffLink(lineUserId)
+  if (staff) return { name: staff.name }
+  const links = await getSheet('hr_line_links')
+  const link = links.find((l) => l.line_user_id === lineUserId && !String(l.username || '').startsWith('mp:'))
+  if (!link) return null
+  const user = (await getSheet('users')).find((u) => u.username === link.username)
+  if (!user) return null
+  return { name: user.display_name || link.username }
 }
 
 // สั่งของผ่านไลน์ได้เฉพาะสินค้าขายจริง — วัสดุแพ็คเกจจิ้ง/กล่อง/พัสดุ (category=packaging หรือ SKU ขึ้นต้น
@@ -737,6 +797,214 @@ async function handleStockOrderDatePostback(event, choice) {
   const orderDate = choice === 'today' ? todayBKK() : String(event.postback?.params?.date || '')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return replyMessage(replyToken, [{ type: 'text', text: 'กรุณาเลือกวันที่จากปฏิทินอีกครั้งค่ะ' }])
   await completeStockOrderBatch(replyToken, lineUserId, session, orderDate)
+}
+
+// ── "แจ้งของเข้า" ผ่านไลน์ — มิเรอร์ flow "สั่งของ" ด้านบนแทบทุกจุด (ตะกร้า/ค้นหา/ถามจำนวน/เลือกวันที่)
+// ใช้ parser ตัวเดียวกัน (searchItemsByQuery/parseOrderBatchLines ฯลฯ) ต่างกันแค่: session คนละชีต
+// (stock_in_sessions), เข้าถึงได้ทุกคนที่ผูกไลน์ไว้แล้ว (resolveArrivalReporter ไม่บังคับบอส/dev เหมือน
+// findManagerLink), และปลายทางเรียก addStockInRequest แทน createOrderRequest (ไม่ผ่านการอนุมัติ แค่สร้างแถว
+// pending รอบอส Match จากหน้าเว็บ — เหมือนปุ่ม "แจ้งของเข้า" บนเว็บทุกประการ)
+async function mergeIntoStockInCart(lineUserId, newItems) {
+  if (!newItems.length) return
+  const session = (await getStockInSessions()).find((s) => s.line_user_id === lineUserId)
+  let cart = []
+  try { cart = JSON.parse(session?.items_json || '[]') } catch { cart = [] }
+  cart = [...cart, ...newItems]
+  await upsertStockInSession(lineUserId, { items_json: JSON.stringify(cart) })
+}
+
+async function addToStockInCartAndAskMore(replyToken, lineUserId, newItems, prefixText = '') {
+  const session = (await getStockInSessions()).find((s) => s.line_user_id === lineUserId)
+  let cart = []
+  try { cart = JSON.parse(session?.items_json || '[]') } catch { cart = [] }
+  cart = [...cart, ...newItems]
+  await upsertStockInSession(lineUserId, { step: 'await_item', items_json: JSON.stringify(cart), sku: '', pending_json: '' })
+  const summary = cart.map((it) => `• ${it.display_name} × ${it.qty} ${it.unit}`).join('\n')
+  const text = `${prefixText ? prefixText + '\n\n' : ''}ตะกร้าตอนนี้ (${cart.length} รายการ):\n${summary}\n\nแจ้งเพิ่มไหม? พิมพ์ชื่อสินค้าหรือ SKU ต่อไปได้เลย หรือกด "เสร็จแล้ว" เพื่อเลือกวันที่ของเข้า`
+  await replyMessage(replyToken, [{
+    type: 'text', text,
+    quickReply: { items: [{ type: 'action', action: { type: 'postback', label: '✅ เสร็จแล้ว แจ้งของเข้า', data: 'stockin-cart-done', displayText: 'เสร็จแล้ว แจ้งของเข้า' } }] },
+  }])
+}
+
+async function askStockInQty(replyToken, lineUserId, item) {
+  await upsertStockInSession(lineUserId, { step: 'await_item_qty', sku: item.sku, qty: '' })
+  await replyMessage(replyToken, [{ type: 'text', text: `"${item.display_name}" เข้ากี่${item.unit || 'ชิ้น'}คะ? พิมพ์ตัวเลขได้เลย\nคงเหลือตอนนี้ ${item.balance} ${item.unit || 'ชิ้น'}` }])
+}
+
+async function askStockInPendingQueue(replyToken, lineUserId, pendingList, prefixText = '') {
+  await upsertStockInSession(lineUserId, { step: 'await_item_qty', sku: pendingList[0].sku, pending_json: JSON.stringify(pendingList) })
+  const more = pendingList.length > 1 ? `\n(ถามทีละตัว เหลืออีก ${pendingList.length - 1} รายการที่ยังไม่ระบุจำนวน)` : ''
+  const text = `${prefixText ? prefixText + '\n\n' : ''}"${pendingList[0].display_name}" เข้ากี่${pendingList[0].unit}คะ? พิมพ์ตัวเลขได้เลย${more}`
+  await replyMessage(replyToken, [{ type: 'text', text }])
+}
+
+// รับคำสั่ง "แจ้งของเข้า" (พิมพ์ชื่อสินค้าต่อท้ายได้เลย) — เริ่ม session ตะกร้าใหม่เสมอ
+function stockInCommandQuery(text) {
+  const match = String(text || '').trim().match(/^(?:แจ้ง)?ของเข้า\s*(.*)$/)
+  return match ? match[1].trim() : null
+}
+
+async function handleStockInStart(event, initialQuery = '') {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return false
+  const reporter = lineUserId ? await resolveArrivalReporter(lineUserId) : null
+  if (!reporter) return false // ยังไม่ได้ผูกไลน์ — ปล่อยตกไป fallback เดิม (echo userId)
+  await upsertStockInSession(lineUserId, { step: 'await_item', sku: '', qty: '', items_json: '', pending_json: '' })
+  if (initialQuery) {
+    await handleStockInSearchReply(event, initialQuery)
+    return true
+  }
+  await replyMessage(replyToken, [{ type: 'text', text: 'ของเข้าอะไรคะ? พิมพ์ชื่อสินค้าหรือ SKU ได้เลย (แจ้งได้หลายรายการต่อเนื่องกัน ระบบจะถามทีละรายการให้เอง)' }])
+  return true
+}
+
+async function handleStockInSearchReply(event, queryOverride = '') {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return
+  const rawText = String(queryOverride || event.message?.text || '')
+  const query = rawText.trim().toLowerCase()
+  if (!query) return replyMessage(replyToken, [{ type: 'text', text: 'พิมพ์ชื่อสินค้าหรือ SKU ได้เลยค่ะ (แจ้งหลายรายการทีเดียวก็ได้ บรรทัดละ 1 รายการ เช่น sky 35-36 = 10 หรือ 37-38 20)' }])
+
+  const items = await loadOrderableItems()
+  const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const singleLineHasQty = lines.length === 1 && splitQueryAndQty(lines[0]).qtyText !== null
+  if (lines.length > 1 || singleLineHasQty) {
+    const { resolved, pending, errors } = parseOrderBatchLines(rawText, items)
+    if (!resolved.length && !pending.length) {
+      const text = errors.length ? errors.join('\n') + '\n\nลองพิมพ์ใหม่ได้เลยค่ะ' : 'ไม่พบรายการที่จะแจ้งเลยค่ะ ลองพิมพ์ใหม่'
+      return replyMessage(replyToken, [{ type: 'text', text }])
+    }
+    await mergeIntoStockInCart(lineUserId, resolved)
+    const prefixText = errors.length ? `⚠️ บางบรรทัดมีปัญหา:\n${errors.join('\n')}` : ''
+    if (pending.length) return askStockInPendingQueue(replyToken, lineUserId, pending, prefixText)
+    return addToStockInCartAndAskMore(replyToken, lineUserId, [], prefixText)
+  }
+
+  const matches = searchItemsByQuery(rawText, items).slice(0, 10)
+  if (!matches.length) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ค่ะ ลองพิมพ์สั้นลง หรือใช้ชื่อ/SKU ที่ตรงกับหน้าเว็บมากขึ้น\nหากต้องการเริ่มใหม่ พิมพ์ “แจ้งของเข้า” ได้เลยค่ะ' }])
+  if (matches.length === 1) return askStockInQty(replyToken, lineUserId, matches[0])
+
+  await upsertStockInSession(lineUserId, { step: 'await_item_pick', sku: '', qty: '' })
+  await replyMessage(replyToken, [{
+    type: 'text', text: `พบ ${matches.length} รายการ เลือกได้เลยค่ะ`,
+    quickReply: { items: matches.map((it) => ({ type: 'action', action: { type: 'postback', label: it.display_name.slice(0, 20), data: `stockin-pick:${it.sku}`, displayText: it.display_name } })) },
+  }])
+}
+
+async function handleStockInPickPostback(event, sku) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return
+  const reporter = lineUserId ? await resolveArrivalReporter(lineUserId) : null
+  if (!reporter) return replyMessage(replyToken, [{ type: 'text', text: 'ต้องผูกไลน์กับระบบก่อนถึงจะแจ้งของเข้าได้ค่ะ' }])
+  const items = await loadOrderableItems()
+  const item = items.find((it) => String(it.sku).toUpperCase() === String(sku).toUpperCase())
+  if (!item) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ในระบบแล้วค่ะ' }])
+  await askStockInQty(replyToken, lineUserId, item)
+}
+
+async function handleStockInQtyReply(event, session) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return
+  const text = String(event.message?.text || '').trim().replace(/,/g, '')
+  const qty = Number(text)
+  if (!Number.isFinite(qty) || qty <= 0) return replyMessage(replyToken, [{ type: 'text', text: 'กรุณาพิมพ์เป็นตัวเลขค่ะ เช่น 100' }])
+
+  const reporter = await resolveArrivalReporter(lineUserId)
+  if (!reporter) { await clearStockInSession(lineUserId); return replyMessage(replyToken, [{ type: 'text', text: 'ต้องผูกไลน์กับระบบก่อนถึงจะแจ้งของเข้าได้ค่ะ' }]) }
+
+  let pending = []
+  try { pending = JSON.parse(session.pending_json || '[]') } catch { pending = [] }
+  if (pending.length) {
+    const done = { ...pending[0], qty }
+    const remaining = pending.slice(1)
+    await mergeIntoStockInCart(lineUserId, [done])
+    if (remaining.length) return askStockInPendingQueue(replyToken, lineUserId, remaining)
+    return addToStockInCartAndAskMore(replyToken, lineUserId, [])
+  }
+
+  const items = await loadOrderableItems()
+  const item = items.find((it) => String(it.sku).toUpperCase() === String(session.sku).toUpperCase())
+  if (!item) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ในระบบแล้วค่ะ กรุณาเริ่มใหม่ด้วย “แจ้งของเข้า”' }])
+  await addToStockInCartAndAskMore(replyToken, lineUserId, [{ sku: item.sku, display_name: item.display_name, unit: item.unit || 'ชิ้น', qty }])
+}
+
+async function handleStockInCartDonePostback(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken || !lineUserId) return
+  const session = (await getStockInSessions()).find((s) => s.line_user_id === lineUserId)
+  let cart = []
+  try { cart = JSON.parse(session?.items_json || '[]') } catch { cart = [] }
+  if (!cart.length) return replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่มีรายการในตะกร้าเลยค่ะ พิมพ์ชื่อสินค้าหรือ SKU ที่จะแจ้งได้เลย' }])
+  await upsertStockInSession(lineUserId, { step: 'await_batch_date' })
+  await replyMessage(replyToken, [{
+    type: 'text', text: 'ของเข้าวันไหนคะ?',
+    quickReply: { items: [
+      { type: 'action', action: { type: 'postback', label: 'วันนี้', data: 'stockin-date:today', displayText: 'วันนี้' } },
+      { type: 'action', action: { type: 'datetimepicker', label: 'เลือกวันที่', data: 'stockin-date:pick', mode: 'date', initial: todayBKK() } },
+    ] },
+  }])
+}
+
+// บันทึกของเข้าทั้งตะกร้า (1 รายการขึ้นไป) — สร้างทีละแถวด้วย addStockInRequest ตัวเดียวกับปุ่ม "แจ้งของเข้า"
+// บนหน้า Stock Movement (ยังไม่ตัดสต็อกจริง — สร้างแค่แถว pending รอบอส/dev กด Match จากเว็บ) แล้ว push
+// การ์ดสรุปเข้ากลุ่มไลน์ทีม (ถ้าเคยลงทะเบียนกลุ่มไว้แล้ว) ให้บอส/dev เห็นว่ามีของรอ Match
+async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate) {
+  let items = []
+  try { items = JSON.parse(session.items_json || '[]') } catch { items = [] }
+  if (!Array.isArray(items) || !items.length) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการแจ้งของเข้าค่ะ กรุณาเริ่มใหม่ด้วย “แจ้งของเข้า”' }])
+  const reporter = await resolveArrivalReporter(lineUserId)
+  if (!reporter) { await clearStockInSession(lineUserId); return replyMessage(replyToken, [{ type: 'text', text: 'ต้องผูกไลน์กับระบบก่อนถึงจะแจ้งของเข้าได้ค่ะ' }]) }
+
+  const done = []
+  const failed = []
+  for (const it of items) {
+    try {
+      await addStockInRequest({ sku: it.sku, qty: it.qty, arrival_date: arrivalDate, note: 'แจ้งจาก LINE' }, reporter.name)
+      done.push(it)
+    } catch (e) { failed.push(`${it.display_name}: ${e.message}`) }
+  }
+  await clearStockInSession(lineUserId)
+
+  const facts = done.map((it) => stockFactRow(it.display_name, `× ${it.qty} ${it.unit}`))
+  const footerButtons = APP_BASE_URL ? [stockCardButton({ type: 'uri', label: 'เปิดเว็บ', uri: stockWebUrl() }, true)] : []
+  const summaryCard = {
+    type: 'flex', altText: `แจ้งของเข้า ${done.length} รายการ`,
+    contents: {
+      type: 'bubble', size: 'micro',
+      header: stockCardHeader('แจ้งของเข้าแล้ว', `${done.length} รายการ · ${arrivalDate} · โดย ${reporter.name}`, '📦'),
+      body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
+        { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base, contents: facts.length ? facts : [stockFlexText('ไม่มีรายการสำเร็จ', {})] },
+        ...(failed.length ? [stockFlexText(`ล้มเหลว: ${failed.join('; ')}`, { color: '#C0392B', size: 'xxs', margin: 'sm', wrap: true })] : []),
+      ] },
+      ...(footerButtons.length ? { footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: footerButtons } } : {}),
+    },
+  }
+  await replyMessage(replyToken, [summaryCard])
+
+  if (done.length) {
+    const groupId = await getGroupTarget()
+    if (groupId) {
+      try { await pushMessage(groupId, [{ ...summaryCard, altText: `ของเข้ารอ Match: ${done.length} รายการ (แจ้งโดย ${reporter.name})` }]) }
+      catch (e) { console.error('push arrival card to group:', e.message) }
+    }
+  }
+}
+
+async function handleStockInDatePostback(event, choice) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken || !lineUserId) return
+  const session = (await getStockInSessions()).find((s) => s.line_user_id === lineUserId)
+  if (session?.step !== 'await_batch_date') return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการแจ้งของเข้าที่รอเลือกวันที่ค่ะ กรุณาเริ่มใหม่ด้วย “แจ้งของเข้า”' }])
+  const arrivalDate = choice === 'today' ? todayBKK() : String(event.postback?.params?.date || '')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(arrivalDate)) return replyMessage(replyToken, [{ type: 'text', text: 'กรุณาเลือกวันที่จากปฏิทินอีกครั้งค่ะ' }])
+  await completeStockInBatch(replyToken, lineUserId, session, arrivalDate)
 }
 
 const PLANNER_CONFIG_SHEET = 'planner_config'
@@ -2142,6 +2410,9 @@ async function opLineWebhook(req, res) {
   const events = Array.isArray(req.body?.events) ? req.body.events : []
   for (const event of events) {
     try {
+      // ลงทะเบียน groupId ของกลุ่มไลน์ทีมงานอัตโนมัติ ถ้า event นี้มาจากกลุ่ม (ดู comment บน LINE_GROUP_LINK_SHEET)
+      if (event.source?.type === 'group' && event.source.groupId) await registerLineGroup(event.source.groupId)
+
       const lineUserId = event.source?.userId
       const staffLink = lineUserId ? await findStaffLink(lineUserId) : null
 
@@ -2150,19 +2421,29 @@ async function opLineWebhook(req, res) {
         // ผลค้นหา) หรือกำลังพิมพ์ชื่อ/SKU ค้นหาอยู่ (หลังพิมพ์ "สั่งของ" เปล่าๆ) — เช็คก่อน fallback echo userId
         // ด้านล่าง เพราะบอส/dev ไม่ผ่าน findStaffLink (นั่นสำหรับพนักงาน mp: เท่านั้น)
         const stockSession = lineUserId ? (await getStockOrderSessions()).find((s) => s.line_user_id === lineUserId) : null
+        const stockInSession = lineUserId ? (await getStockInSessions()).find((s) => s.line_user_id === lineUserId) : null
         const initialQuery = stockOrderCommandQuery(event.message.text)
-        // คำสั่ง “สั่งของ” เริ่มใหม่ได้จากทุกขั้นตอน รวมถึงตอนที่รอจำนวนหรือรอเลือกวันที่
+        const initialInQuery = stockInCommandQuery(event.message.text)
+        // คำสั่ง “สั่งของ”/“แจ้งของเข้า” เริ่มใหม่ได้จากทุกขั้นตอน รวมถึงตอนที่รอจำนวนหรือรอเลือกวันที่
         if (initialQuery === '') { await handleStockOrderSearchStart(event); continue }
+        if (initialInQuery === '') { await handleStockInStart(event); continue }
         if (stockSession?.step === 'await_item_qty') { await handleStockOrderQtyReply(event, stockSession); continue }
+        if (stockInSession?.step === 'await_item_qty') { await handleStockInQtyReply(event, stockInSession); continue }
         if (stockSession?.step === 'await_batch_date') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดเลือกวันที่จากข้อความก่อนหน้านี้ หรือพิมพ์ “สั่งของ” เพื่อเริ่มใหม่ค่ะ' }]); continue }
+        if (stockInSession?.step === 'await_batch_date') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดเลือกวันที่จากข้อความก่อนหน้านี้ หรือพิมพ์ “แจ้งของเข้า” เพื่อเริ่มใหม่ค่ะ' }]); continue }
         if (stockSession?.step === 'await_item' || stockSession?.step === 'await_item_pick') {
           // ถ้าพิมพ์ "สั่งของ" ซ้ำระหว่างที่บอตรอชื่อสินค้า ให้เริ่มรอบใหม่ ไม่เอาคำสั่งไปค้นหาเป็นชื่อสินค้า
           await handleStockOrderSearchReply(event)
           continue
         }
-        // พิมพ์ "สั่งของ" ได้เลย (ไม่ได้มาจากการ์ดแจ้งเตือน)
+        if (stockInSession?.step === 'await_item' || stockInSession?.step === 'await_item_pick') {
+          await handleStockInSearchReply(event)
+          continue
+        }
+        // พิมพ์ "สั่งของ"/"แจ้งของเข้า" ได้เลย (ไม่ได้มาจากการ์ดแจ้งเตือน)
         // เพื่อสั่งของที่ยังไม่ใกล้หมดได้ด้วย
         if (initialQuery !== null && await handleStockOrderSearchStart(event, initialQuery)) continue
+        if (initialInQuery !== null && await handleStockInStart(event, initialInQuery)) continue
         // LINE ID เดียวกันอาจผูกเป็นทั้งพนักงานและ DEV/Boss ได้: ให้คำสั่งสต็อกด้านบน
         // มีสิทธิ์ทำงานก่อน แล้วข้อความอื่นค่อยเข้าขั้นตอนลาของพนักงาน
         if (staffLink) { await handleLeaveWizard(event, staffLink); continue }
@@ -2178,6 +2459,9 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stock-pick:')) { await handleStockPickPostback(event, data.slice('stock-pick:'.length)); continue }
       if (data.startsWith('stock-order-date:')) { await handleStockOrderDatePostback(event, data.slice('stock-order-date:'.length)); continue }
       if (data === 'stock-cart-done') { await handleStockCartDonePostback(event); continue }
+      if (data.startsWith('stockin-pick:')) { await handleStockInPickPostback(event, data.slice('stockin-pick:'.length)); continue }
+      if (data.startsWith('stockin-date:')) { await handleStockInDatePostback(event, data.slice('stockin-date:'.length)); continue }
+      if (data === 'stockin-cart-done') { await handleStockInCartDonePostback(event); continue }
 
       const [, kind, id] = data.match(/^hr-(approve|reject):(.+)$/) || []
       if (!kind || !id) continue

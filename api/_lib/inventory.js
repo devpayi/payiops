@@ -476,7 +476,7 @@ async function loadStockInRequests({ status, role } = {}) {
   return out
 }
 
-async function addStockInRequest(body, actorName) {
+export async function addStockInRequest(body, actorName) {
   const sku = String(body.sku || '').trim()
   const qty = Number(body.qty)
   if (!sku) throw new Error('ต้องระบุสินค้า')
