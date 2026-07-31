@@ -517,10 +517,28 @@ function splitQueryAndQty(line) {
   return { queryRaw: line, qtyText: null }
 }
 
+// ไซส์ล้วนๆ ไม่มีชื่อสินค้าด้วย (เช่นพิมพ์ต่อจากบรรทัดที่ระบุชื่อสินค้าไปแล้ว วางแค่ไซส์+จำนวนบรรทัดถัดๆไป)
+const SIZE_ONLY_RE = /^(xxxl|xxl|xl|xs|s|m|l)$/i
+
+// ตัดไซส์ท้ายคำค้นออก เอาไว้จำเป็น "ชื่อสินค้าฐาน" ให้บรรทัดถัดไปที่พิมพ์แค่ไซส์เฉยๆ สืบทอดชื่อสินค้าต่อได้
+function stripTrailingSize(queryRaw) {
+  const tokens = queryRaw.trim().split(/\s+/)
+  if (tokens.length > 1 && SIZE_ONLY_RE.test(tokens[tokens.length - 1])) return tokens.slice(0, -1).join(' ')
+  return queryRaw.trim()
+}
+
+// เจอไซส์แบบขอบคำจริง (word boundary) ไม่ใช่ substring ธรรมดา — กัน "l" ไปแมตช์มั่วกับ "XL" (ตัว l ที่อยู่ใน
+// "xl" ไม่ใช่ตัวเดียวกับไซส์ L) จำเป็นเพราะ tokenMatches ทั่วไปเป็น substring เฉยๆ ใช้กับไซส์ตรงๆ ไม่ได้
+function matchesSizeWord(haystack, sizeToken) {
+  return new RegExp(`(^|[^a-z0-9])${sizeToken.toLowerCase()}([^a-z0-9]|$)`, 'i').test(haystack)
+}
+
 // พิมพ์หลายรายการทีเดียว บรรทัดละ 1 รายการ ระบุจำนวนได้ทั้ง "ชื่อ/SKU = จำนวน" หรือ "ชื่อ/SKU จำนวน" เช่น
 //   sky 35-36 = 10
 //   37-38 20
 // หรือไม่ระบุจำนวนเลยก็ได้ (แค่ชื่อสินค้าเฉยๆ บรรทัดละตัว) — เดี๋ยวถามจำนวนทีหลังทีละตัว (ดู pending ด้านล่าง)
+// บรรทัดที่เป็นแค่ "ไซส์ จำนวน" เฉยๆ (เช่น "L 1000" ต่อจาก "ถุงเท้าฝ่า M 500") จะสืบชื่อสินค้าจากบรรทัดล่าสุดที่
+// ระบุชื่อเต็มไว้ (lastBaseQuery) มาแทน — พิมพ์ไซส์ต่างๆ ต่อกันได้โดยไม่ต้องพิมพ์ชื่อสินค้าซ้ำทุกบรรทัด
 // เจอ SKU ตรงตัวก่อนเสมอ (ไม่ทับซ้อน) ไม่งั้นค้นด้วย searchItemsByQuery — เจอ 0 หรือมากกว่า 1 ตัวถือเป็น
 // error ของบรรทัดนั้น (ไม่เดา กันสั่งผิดตัว)
 function parseOrderBatchLines(text, items) {
@@ -528,17 +546,25 @@ function parseOrderBatchLines(text, items) {
   const resolved = [] // มีจำนวนแล้ว พร้อมเข้าตะกร้าเลย
   const pending = [] // รู้ตัวสินค้าแล้วแต่ยังไม่รู้จำนวน ต้องถามทีหลัง
   const errors = []
+  let lastBaseQuery = ''
   for (const line of lines) {
     const { queryRaw, qtyText } = splitQueryAndQty(line)
     if (!queryRaw) { errors.push(`บรรทัด "${line}" ไม่มีชื่อสินค้า`); continue }
-    const query = queryRaw.toLowerCase()
+    const isSizeOnly = SIZE_ONLY_RE.test(queryRaw.trim())
+    const effectiveQuery = isSizeOnly && lastBaseQuery ? `${lastBaseQuery} ${queryRaw.trim()}` : queryRaw
+    const query = effectiveQuery.toLowerCase()
     let match = items.find((it) => String(it.sku).toLowerCase() === query)
     if (!match) {
-      const matches = searchItemsByQuery(queryRaw, items)
+      // ไซส์ล้วนสืบทอดชื่อสินค้า: ค้นชื่อฐานแบบ fuzzy ก่อน แล้วกรองไซส์ด้วย word-boundary แยกต่างหาก
+      // (ไม่ใช้ searchItemsByQuery ตรงๆ เพราะ token ไซส์สั้นๆ อย่าง "l" จะ substring-match "XL" ผิดตัว)
+      const matches = isSizeOnly && lastBaseQuery
+        ? searchItemsByQuery(lastBaseQuery, items).filter((it) => matchesSizeWord(`${it.display_name} ${it.sku}`, queryRaw.trim()))
+        : searchItemsByQuery(effectiveQuery, items)
       if (matches.length === 1) match = matches[0]
-      else if (!matches.length) { errors.push(`ไม่พบสินค้า "${queryRaw}"`); continue }
-      else { errors.push(`"${queryRaw}" ตรงกับหลายรายการ สินค้าไหนคะ?\n${matches.slice(0, 5).map((m) => `- ${m.display_name} (${m.sku})`).join('\n')}${matches.length > 5 ? '\n...' : ''}`); continue }
+      else if (!matches.length) { errors.push(`ไม่พบสินค้า "${effectiveQuery}"`); continue }
+      else { errors.push(`"${effectiveQuery}" ตรงกับหลายรายการ สินค้าไหนคะ?\n${matches.slice(0, 5).map((m) => `- ${m.display_name} (${m.sku})`).join('\n')}${matches.length > 5 ? '\n...' : ''}`); continue }
     }
+    if (!isSizeOnly) lastBaseQuery = stripTrailingSize(queryRaw)
     const base = { sku: match.sku, display_name: match.display_name, unit: match.unit || 'ชิ้น' }
     if (qtyText === null) { pending.push(base); continue }
     const qty = Number(qtyText.replace(/,/g, ''))
