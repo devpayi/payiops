@@ -2530,13 +2530,29 @@ async function opLineWebhook(req, res) {
         const rejected = []
         const failed = []
         for (const id of ids) {
-          try { await rejectStockInRequest({ id }, approver.name, approver.role); rejected.push(id) }
+          try { rejected.push(await rejectStockInRequest({ id }, approver.name, approver.role)) }
           catch (e) { failed.push(e.message) }
         }
+        // ปุ่ม "แจ้งใหม่" ต่อรายการที่โดนปฏิเสธ — กดแล้วยิงตรงไปหน้าจำนวนของ SKU นั้นเลย (ใช้ postback
+        // เดียวกับตอนเลือกจากผลค้นหา stockin-pick:<sku>) ข้ามขั้นตอนพิมพ์ค้นหาใหม่ทั้งหมด กันไม่ให้ต้องพึ่ง
+        // เว็บเลยตามที่ owner ขอ (2026-07-31) — ใครก็ได้ที่ผูกไลน์แล้วกดได้ ไม่จำกัดว่าต้องเป็นคนแจ้งเดิม
+        let retryQuickReply
+        if (rejected.length) {
+          const items = await loadOrderableItems()
+          retryQuickReply = {
+            items: rejected.slice(0, 13).map((r) => {
+              const item = items.find((it) => String(it.sku).toUpperCase() === String(r.sku).toUpperCase())
+              const label = item?.display_name || r.sku
+              return { type: 'action', action: { type: 'postback', label: `🔁 ${label.slice(0, 16)}`, data: `stockin-pick:${r.sku}`, displayText: `แจ้งของเข้าใหม่: ${label}` } }
+            }),
+          }
+        }
         if (event.replyToken) await replyMessage(event.replyToken, [{
-          type: 'text', text: failed.length
+          type: 'text',
+          text: failed.length
             ? `ปฏิเสธสำเร็จ ${rejected.length} รายการ\nไม่สำเร็จ: ${failed.join('; ')}`
-            : `ปฏิเสธสำเร็จ ${rejected.length} รายการ โดย ${approver.name} (ให้แจ้งของเข้าใหม่)`,
+            : `ปฏิเสธสำเร็จ ${rejected.length} รายการ โดย ${approver.name} — กดปุ่มด้านล่างเพื่อแจ้งของเข้าใหม่ได้เลย`,
+          ...(retryQuickReply ? { quickReply: retryQuickReply } : {}),
         }])
         continue
       }
