@@ -412,22 +412,23 @@ export default function StockMovement() {
             {orderOnlyRequests.length === 0 ? (
               <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>ยังไม่มีรายการสั่งของ</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {orderOnlyRequests.map((r) => (
-                  <div key={r.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 14px' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name} <span style={{ fontWeight: 800, color: 'var(--payi-text-muted)' }}>{fmt(r.qty)}</span></div>
-                      <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>สั่งวันที่ {r.order_date || '-'} · สั่งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</div>
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 4px', borderBottom: '1px solid var(--payi-border)', fontSize: 12.5 }}>
+                    <div style={{ minWidth: 0, flex: '1 1 auto', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }} title={`${r.display_name} ${fmt(r.qty)} · สั่งวันที่ ${r.order_date || '-'} · สั่งโดย ${r.created_by || '-'}${r.note ? ` · ${r.note}` : ''}`}>
+                      <span style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name}</span>{' '}
+                      <span style={{ fontWeight: 800, color: 'var(--payi-text-muted)' }}>{fmt(r.qty)}</span>{' '}
+                      <span style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>· {r.order_date || '-'} · {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</span>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button onClick={() => finishOrder(r.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg, #2563eb 0%, #34d399 100%)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
-                        <Check size={13} /> เสร็จสิ้น
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      <button onClick={() => finishOrder(r.id)} title="เสร็จสิ้น" style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'linear-gradient(135deg, #2563eb 0%, #34d399 100%)', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 9px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}>
+                        <Check size={11} /> เสร็จสิ้น
                       </button>
-                      <button onClick={() => setEditingRequest(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-text)' }}>
-                        <Pencil size={13} /> แก้ไข
+                      <button onClick={() => setEditingRequest(r)} title="แก้ไข" style={{ border: 'none', background: 'var(--payi-surface-muted)', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: 'var(--payi-text)' }}>
+                        <Pencil size={11} />
                       </button>
-                      <button onClick={() => setRejecting(r)} style={{ background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-danger)' }}>
-                        ยกเลิก
+                      <button onClick={() => setRejecting(r)} title="ยกเลิก" style={{ border: 'none', background: 'var(--payi-surface-muted)', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: 'var(--payi-danger)' }}>
+                        <X size={11} />
                       </button>
                     </div>
                   </div>
@@ -444,21 +445,20 @@ export default function StockMovement() {
             {pendingRequests.length === 0 ? (
               <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>ยังไม่มีของเข้ารอ match</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {pendingRequests.map((r) => (
-                  <div key={r.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 14px' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name} <span style={{ fontWeight: 800, color: 'var(--payi-mint-strong)' }}>+{fmt(r.qty)}</span></div>
-                      <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>
-                        เข้า {r.arrival_date || '-'} · นับ {r.count_date || '-'} · แจ้งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}
-                      </div>
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 4px', borderBottom: '1px solid var(--payi-border)', fontSize: 12.5 }}>
+                    <div style={{ minWidth: 0, flex: '1 1 auto', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }} title={`${r.display_name} +${fmt(r.qty)} · เข้า ${r.arrival_date || '-'} · นับ ${r.count_date || '-'} · แจ้งโดย ${r.created_by || '-'}${r.note ? ` · ${r.note}` : ''}`}>
+                      <span style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name}</span>{' '}
+                      <span style={{ fontWeight: 800, color: 'var(--payi-mint-strong)' }}>+{fmt(r.qty)}</span>{' '}
+                      <span style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>· เข้า {r.arrival_date || '-'} · แจ้งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</span>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button onClick={() => setMatching(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg, #2563eb 0%, #34d399 100%)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
-                        <Check size={13} /> Match
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      <button onClick={() => setMatching(r)} title="Match" style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'linear-gradient(135deg, #2563eb 0%, #34d399 100%)', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 9px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}>
+                        <Check size={11} /> Match
                       </button>
-                      <button onClick={() => setRejecting(r)} style={{ background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-danger)' }}>
-                        ปฏิเสธ
+                      <button onClick={() => setRejecting(r)} title="ปฏิเสธ" style={{ border: 'none', background: 'var(--payi-surface-muted)', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: 'var(--payi-danger)' }}>
+                        <X size={11} />
                       </button>
                     </div>
                   </div>
@@ -473,15 +473,12 @@ export default function StockMovement() {
             <Truck size={16} style={{ color: 'var(--payi-mint-strong)' }} />
             <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>ของเข้ารอ Match ({pendingRequests.length})</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
             {pendingRequests.map((r) => (
-              <div key={r.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 14px' }}>
-                <div>
-                  <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name} <span style={{ fontWeight: 800, color: 'var(--payi-mint-strong)' }}>+{fmt(r.qty)}</span></div>
-                  <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>
-                    เข้า {r.arrival_date || '-'} · นับ {r.count_date || '-'} · แจ้งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}
-                  </div>
-                </div>
+              <div key={r.id} style={{ padding: '7px 4px', borderBottom: '1px solid var(--payi-border)', fontSize: 12.5, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }} title={`${r.display_name} +${fmt(r.qty)} · เข้า ${r.arrival_date || '-'} · นับ ${r.count_date || '-'} · แจ้งโดย ${r.created_by || '-'}${r.note ? ` · ${r.note}` : ''}`}>
+                <span style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name}</span>{' '}
+                <span style={{ fontWeight: 800, color: 'var(--payi-mint-strong)' }}>+{fmt(r.qty)}</span>{' '}
+                <span style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>· เข้า {r.arrival_date || '-'} · แจ้งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</span>
               </div>
             ))}
           </div>
@@ -494,25 +491,22 @@ export default function StockMovement() {
             <X size={16} style={{ color: 'var(--payi-danger)' }} />
             <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>ถูกปฏิเสธ — แก้ไขแล้วส่งใหม่ได้ ({rejectedRequests.length})</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
             {rejectedRequests.map((r) => (
-              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 14px' }}>
-                <div>
-                  <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name} <span style={{ fontWeight: 800, color: 'var(--payi-text-muted)' }}>{fmt(r.qty)}</span></div>
-                  <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)' }}>
-                    เข้า {r.arrival_date || '-'} · นับ {r.count_date || '-'} · แจ้งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}
-                  </div>
-                  {r.reject_reason && (
-                    <div style={{ fontSize: 11.5, color: 'var(--payi-danger)', marginTop: 3 }}>เหตุผลปฏิเสธ: {r.reject_reason}</div>
-                  )}
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 4px', borderBottom: '1px solid var(--payi-border)', fontSize: 12.5 }}>
+                <div style={{ minWidth: 0, flex: '1 1 auto', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }} title={`${r.display_name} ${fmt(r.qty)} · เข้า ${r.arrival_date || '-'} · แจ้งโดย ${r.created_by || '-'}${r.note ? ` · ${r.note}` : ''}${r.reject_reason ? ` · เหตุผล: ${r.reject_reason}` : ''}`}>
+                  <span style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name}</span>{' '}
+                  <span style={{ fontWeight: 800, color: 'var(--payi-text-muted)' }}>{fmt(r.qty)}</span>{' '}
+                  <span style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>· {r.arrival_date || '-'} · {r.created_by || '-'}</span>
+                  {r.reject_reason && <span style={{ fontSize: 11, color: 'var(--payi-danger)' }}> · {r.reject_reason}</span>}
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => setEditingRequest(r)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>
-                    <Pencil size={13} /> แก้ไข & ส่งใหม่
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  <button onClick={() => setEditingRequest(r)} title="แก้ไข & ส่งใหม่" style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 9px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}>
+                    <Pencil size={11} /> แก้ไข
                   </button>
                   {isBoss && (
-                    <button onClick={() => deleteRequest(r.id)} style={{ background: 'var(--payi-surface-muted)', border: 'none', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-danger)' }}>
-                      ลบ
+                    <button onClick={() => deleteRequest(r.id)} title="ลบ" style={{ border: 'none', background: 'var(--payi-surface-muted)', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', color: 'var(--payi-danger)' }}>
+                      <X size={11} />
                     </button>
                   )}
                 </div>
