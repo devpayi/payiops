@@ -2498,7 +2498,7 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stockin-approve:')) {
         const approver = lineUserId ? await findStockApprover(lineUserId) : null
         if (!approver) {
-          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ Approve: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ' }])
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ไม่มีสิทธิ์ Approve: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ\n(userId ของคุณ: ${lineUserId || '-'})` }])
           continue
         }
         const ids = data.slice('stockin-approve:'.length).split(',').map((id) => id.trim()).filter(Boolean)
@@ -2518,7 +2518,7 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stockin-reject:')) {
         const approver = lineUserId ? await findStockApprover(lineUserId) : null
         if (!approver) {
-          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ปฏิเสธ: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ' }])
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ไม่มีสิทธิ์ปฏิเสธ: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ\n(userId ของคุณ: ${lineUserId || '-'})` }])
           continue
         }
         const ids = data.slice('stockin-reject:'.length).split(',').map((id) => id.trim()).filter(Boolean)
