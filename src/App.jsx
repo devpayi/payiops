@@ -1,6 +1,9 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import payiLogo from './assets/payi-logo.png'
 import { canAccessTab, normalizeRole, STAFF_TABS, STOCK_TABS } from '../shared/roles.js'
+import { avatarGradient } from '../shared/avatar.js'
+
+const getMeUser = () => { try { return JSON.parse(localStorage.getItem('payi-user') || 'null') } catch { return null } }
 import {
   Bell, Search, UserCircle2, ShoppingBag, Package, TrendingUp, Percent,
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
@@ -934,11 +937,15 @@ export default function App() {
                 }
               }}
               style={{ display: 'flex', alignItems: 'center', gap: 9, border: '1px solid rgba(255,255,255,0.6)', borderRadius: 999, padding: '9px 14px 9px 9px', background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', boxShadow: '0 8px 20px rgba(16,24,40,0.06)', color: 'var(--payi-surface-dark)', cursor: 'pointer' }}>
-              <span style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--payi-gradient-primary)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                <UserCircle2 size={16} color="#fff" />
+              <span style={{
+                width: 26, height: 26, borderRadius: '50%', display: 'grid', placeItems: 'center', flexShrink: 0,
+                background: getMeUser()?.avatar_emoji ? avatarGradient(getMeUser()?.avatar_color) : 'var(--payi-gradient-primary)',
+                fontSize: 13,
+              }}>
+                {getMeUser()?.avatar_emoji || <UserCircle2 size={16} color="#fff" />}
               </span>
               <span style={{ fontSize: 13, fontWeight: 700 }}>
-                {(() => { try { return JSON.parse(localStorage.getItem('payi-user') || 'null')?.name || 'Nook' } catch { return 'Nook' } })()}
+                {getMeUser()?.name || 'Nook'}
               </span>
             </button>
           </div>
@@ -965,14 +972,21 @@ export default function App() {
           <div style={{ maxWidth: 860, margin: '0 auto' }}>
             <div style={{
               borderRadius: 20, padding: '26px 28px', marginBottom: 24,
-              background: 'var(--payi-gradient-primary)', color: '#fff',
-              boxShadow: '0 16px 32px rgba(37,99,235,0.18)',
+              background: getMeUser()?.avatar_emoji ? avatarGradient(getMeUser()?.avatar_color) : 'var(--payi-gradient-primary)', color: '#fff',
+              boxShadow: '0 16px 32px rgba(37,99,235,0.18)', display: 'flex', alignItems: 'center', gap: 18,
             }}>
-              <div style={{ fontSize: 13, opacity: 0.85, fontWeight: 600 }}>สวัสดี</div>
-              <div style={{ fontSize: 24, fontWeight: 800, marginTop: 2 }}>
-                {(() => { try { return JSON.parse(localStorage.getItem('payi-user') || 'null')?.name || 'Nook' } catch { return 'Nook' } })()}
+              {getMeUser()?.avatar_emoji && (
+                <div style={{ width: 56, height: 56, borderRadius: 18, background: 'rgba(255,255,255,0.25)', display: 'grid', placeItems: 'center', fontSize: 30, flexShrink: 0 }}>
+                  {getMeUser().avatar_emoji}
+                </div>
+              )}
+              <div>
+                <div style={{ fontSize: 13, opacity: 0.85, fontWeight: 600 }}>สวัสดี</div>
+                <div style={{ fontSize: 24, fontWeight: 800, marginTop: 2 }}>
+                  {getMeUser()?.name || 'Nook'}
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 6 }}>เลือกเมนูที่ต้องการด้านล่าง หรือกดจากแถบซ้าย</div>
               </div>
-              <div style={{ fontSize: 12, opacity: 0.85, marginTop: 6 }}>เลือกเมนูที่ต้องการด้านล่าง หรือกดจากแถบซ้าย</div>
             </div>
 
             {visibleMenuGroups.map((group) => (

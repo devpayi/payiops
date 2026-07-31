@@ -7,13 +7,15 @@
 //   - list-users:      (ต้องเป็น admin) → { users: [{ username, display_name, role, created_at }] }
 //   - delete-user:     (ต้องเป็น admin) { username } — ลบไม่ได้ถ้าเป็นตัวเอง หรือ admin คนสุดท้าย
 //   - change-password: (ต้อง login แล้ว) { current_password, new_password }
+//   - update-avatar:   (ต้อง login แล้ว) { emoji, color } — ตัวเลือกอยู่ใน shared/avatar.js
 // หมายเหตุ: ไฟล์นี้จงใจไม่มี requireAuth ครอบทั้ง handler — login ต้องเข้าถึงได้ก่อนมี token
 import { ensureSheet, getSheet, appendRows, overwriteSheet } from './_lib/sheets.js'
 import { authEnabled, hashPassword, verifyPassword, signToken, verifyToken } from './_lib/auth.js'
 import { isDev, normalizeRole, ROLES } from '../shared/roles.js'
+import { AVATAR_EMOJIS, AVATAR_COLOR_KEYS } from '../shared/avatar.js'
 
 const SHEET = 'users'
-const HEADERS = ['username', 'password_hash', 'salt', 'display_name', 'role', 'created_at']
+const HEADERS = ['username', 'password_hash', 'salt', 'display_name', 'role', 'created_at', 'avatar_emoji', 'avatar_color']
 
 const norm = (s) => String(s || '').trim().toLowerCase()
 
@@ -56,7 +58,7 @@ export default async function handler(req, res) {
       if (!u || !verifyPassword(password, u.salt, u.password_hash)) {
         return res.status(401).json({ success: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' })
       }
-      const user = { u: norm(u.username), name: u.display_name || u.username, role: normalizeRole(u.role) }
+      const user = { u: norm(u.username), name: u.display_name || u.username, role: normalizeRole(u.role), avatar_emoji: u.avatar_emoji || '', avatar_color: u.avatar_color || '' }
       return res.status(200).json({ success: true, token: signToken(user), user })
     }
 
@@ -113,6 +115,20 @@ export default async function handler(req, res) {
       const kept = users.filter((x) => norm(x.username) !== username)
       await overwriteSheet(SHEET, HEADERS, kept.map((u) => HEADERS.map((h) => u[h] || '')))
       return res.status(200).json({ success: true })
+    }
+
+    if (action === 'update-avatar') {
+      const caller = verifyToken(req.headers['x-api-token'])
+      if (!caller) return res.status(401).json({ success: false, error: 'unauthorized' })
+      const emoji = String(body.emoji || '')
+      const color = String(body.color || '')
+      if (!AVATAR_EMOJIS.includes(emoji) || !AVATAR_COLOR_KEYS.includes(color)) {
+        return res.status(400).json({ success: false, error: 'ตัวการ์ตูนหรือสีไม่ถูกต้อง' })
+      }
+      const users = await getUsers()
+      const next = users.map((u) => (norm(u.username) === norm(caller.u) ? { ...u, avatar_emoji: emoji, avatar_color: color } : u))
+      await overwriteSheet(SHEET, HEADERS, next.map((u) => HEADERS.map((h) => u[h] || '')))
+      return res.status(200).json({ success: true, avatar_emoji: emoji, avatar_color: color })
     }
 
     if (action === 'change-password') {
