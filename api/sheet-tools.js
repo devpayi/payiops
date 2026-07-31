@@ -10,7 +10,7 @@ import {
   leavePeriodLabel, normalizeLeavePeriod, officeLeaveConflicts,
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides } from './_lib/scheduleOverrides.js'
-import opInventory, { computeLowStockList, createOrderRequest, loadItemsWithBalance } from './_lib/inventory.js'
+import opInventory, { computeLowStockList, createOrderRequest, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
 import opImportTracking from './_lib/importTracking.js'
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
@@ -403,6 +403,14 @@ async function findManagerLink(lineUserId) {
   return { username: link.username, name: user.display_name || link.username, role: user.role }
 }
 
+// สั่งของผ่านไลน์ได้เฉพาะสินค้าขายจริง — วัสดุแพ็คเกจจิ้ง/กล่อง/พัสดุ (category=packaging หรือ SKU ขึ้นต้น
+// PKG-/BOXMJ-/BOXP-) ไม่ให้ค้นเจอหรือเลือกได้เลยตั้งแต่ต้น (createOrderRequest ก็ block ซ้ำอยู่แล้วฝั่ง backend
+// แต่กันไว้ตั้งแต่การค้นหาให้บอสไม่เห็นตัวเลือกที่สั่งไม่ได้ตั้งแต่แรก)
+async function loadOrderableItems() {
+  const { items } = await loadItemsWithBalance({ includeHidden: false })
+  return items.filter((it) => !isPackagingItem(it))
+}
+
 // ตะกร้าสั่งของ — เพิ่มได้หลายรายการก่อนค่อยเลือกวันที่แล้วจบทีเดียว (เพิ่มทีละตัวผ่านค้นหา/เลือกจาก quick reply
 // หรือวางข้อความ "ชื่อ = จำนวน" หลายบรรทัดทีเดียวก็ได้ ผสมกันได้ในตะกร้าเดียวกัน) — เก็บใน session.items_json
 // เพิ่มรายการแล้วถามต่อทุกครั้งว่าจะสั่งเพิ่มไหม หรือกด "เสร็จแล้ว" เพื่อไปเลือกวันที่ (เดิมพอเลือก/พิมพ์ได้ 1
@@ -436,7 +444,7 @@ async function handleStockOrderPostback(event, sku) {
   const manager = lineUserId ? await findManagerLink(lineUserId) : null
   if (!manager) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะบอส/dev สั่งของผ่านไลน์ได้ค่ะ' }])
 
-  const { items } = await loadItemsWithBalance({ includeHidden: false })
+  const items = await loadOrderableItems()
   const item = items.find((it) => String(it.sku).toUpperCase() === String(sku).toUpperCase())
   if (!item) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ในระบบแล้วค่ะ' }])
   await upsertStockOrderSession(lineUserId, { items_json: '', pending_json: '' }) // เริ่มตะกร้าใหม่ทุกครั้งที่กดจากการ์ด
@@ -466,6 +474,22 @@ async function handleStockOrderSearchStart(event, initialQuery = '') {
   return true
 }
 
+// คำเดียวยาวๆ (>=4 ตัวอักษร) ที่ไม่เจอ substring ตรงๆ ให้ลองแบบ "subsequence" แทน (ตัวอักษรของ query ต้องเจอ
+// ในชื่อสินค้าตามลำดับเดิม แต่มีคำอื่นแทรกกลางได้) — ภาษาไทยไม่มีเว้นวรรคระหว่างคำ พิมพ์ติดกันเช่น "ถุงเท้าส้น"
+// จะไม่ใช่ substring ตรงตัวของ "ถุงเท้าเจลส้น" (มีคำว่า "เจล" คั่นอยู่) แต่เป็น subsequence ได้ — จำกัดความยาวขั้นต่ำ
+// ไว้ที่ 4 ตัวอักษรกันจับคู่มั่ว (คำสั้นๆ ตัวอักษรไทยซ้ำกันบ่อย โอกาส false positive สูง)
+function tokenMatches(haystack, token) {
+  if (haystack.includes(token)) return true
+  if (token.length < 4) return false
+  let cursor = 0
+  for (const ch of token) {
+    const found = haystack.indexOf(ch, cursor)
+    if (found === -1) return false
+    cursor = found + 1
+  }
+  return true
+}
+
 // ค้นด้วย "ทุกคำต้องเจอ" (AND ต่อคำ ไม่สนลำดับ) แทน substring ทั้งวลีตรงๆ — พิมพ์ "sky 35-36" ต้องเจอ
 // "รองเท้าเพื่อสุขภาพ Sky(ฟ้าอ่อน) 35-36" ได้ทั้งที่คำไม่ติดกัน (เจอบั๊กจริงจาก owner: ข้อความยาวที่ตัดบรรทัด
 // เอง เช่น "ถุงเท้าส้น\nซิลิโคนโป้ง\nผ้ายืด" กลายเป็น query ก้อนเดียวมี \n ติดมาด้วย ไม่ตรงกับชื่อสินค้าจริงเป๊ะๆ
@@ -475,7 +499,7 @@ function searchItemsByQuery(query, items) {
   if (!tokens.length) return []
   return items.filter((it) => {
     const haystack = `${it.display_name} ${it.sku}`.toLowerCase()
-    return tokens.every((t) => haystack.includes(t))
+    return tokens.every((t) => tokenMatches(haystack, t))
   })
 }
 
@@ -513,7 +537,7 @@ function parseOrderBatchLines(text, items) {
       const matches = searchItemsByQuery(queryRaw, items)
       if (matches.length === 1) match = matches[0]
       else if (!matches.length) { errors.push(`ไม่พบสินค้า "${queryRaw}"`); continue }
-      else { errors.push(`"${queryRaw}" ตรงกับหลายรายการ (${matches.slice(0, 5).map((m) => m.sku).join(', ')}) ระบุให้ชัดเจนกว่านี้`); continue }
+      else { errors.push(`"${queryRaw}" ตรงกับหลายรายการ สินค้าไหนคะ?\n${matches.slice(0, 5).map((m) => `- ${m.display_name} (${m.sku})`).join('\n')}${matches.length > 5 ? '\n...' : ''}`); continue }
     }
     const base = { sku: match.sku, display_name: match.display_name, unit: match.unit || 'ชิ้น' }
     if (qtyText === null) { pending.push(base); continue }
@@ -555,7 +579,7 @@ async function handleStockOrderSearchReply(event, queryOverride = '') {
   const query = rawText.trim().toLowerCase()
   if (!query) return replyMessage(replyToken, [{ type: 'text', text: 'พิมพ์ชื่อสินค้าหรือ SKU ได้เลยค่ะ (สั่งหลายรายการทีเดียวก็ได้ บรรทัดละ 1 รายการ เช่น sky 35-36 = 10 หรือ 37-38 20)' }])
 
-  const { items } = await loadItemsWithBalance({ includeHidden: false })
+  const items = await loadOrderableItems()
   const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
   const singleLineHasQty = lines.length === 1 && splitQueryAndQty(lines[0]).qtyText !== null
   if (lines.length > 1 || singleLineHasQty) {
@@ -587,7 +611,7 @@ async function handleStockPickPostback(event, sku) {
   if (!replyToken) return
   const manager = lineUserId ? await findManagerLink(lineUserId) : null
   if (!manager) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะบอส/dev สั่งของผ่านไลน์ได้ค่ะ' }])
-  const { items } = await loadItemsWithBalance({ includeHidden: false })
+  const items = await loadOrderableItems()
   const item = items.find((it) => String(it.sku).toUpperCase() === String(sku).toUpperCase())
   if (!item) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ในระบบแล้วค่ะ' }])
   await askOrderQty(replyToken, lineUserId, item)
@@ -653,7 +677,7 @@ async function handleStockOrderQtyReply(event, session) {
     return addToCartAndAskMore(replyToken, lineUserId, [])
   }
 
-  const { items } = await loadItemsWithBalance({ includeHidden: false })
+  const items = await loadOrderableItems()
   const item = items.find((it) => String(it.sku).toUpperCase() === String(session.sku).toUpperCase())
   if (!item) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ในระบบแล้วค่ะ กรุณาเริ่มใหม่ด้วย “สั่งของ”' }])
   await addToCartAndAskMore(replyToken, lineUserId, [{ sku: item.sku, display_name: item.display_name, unit: item.unit || 'ชิ้น', qty }])

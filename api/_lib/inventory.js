@@ -41,7 +41,7 @@ const STOCK_IN_REQUESTS_SHEET = 'stock_in_requests'
 // (order_only) ที่ boss เลือก match ด้วยตอนกดยืนยัน ใช้ตรวจสอบย้อนหลังว่าของล็อตนี้คือของที่สั่งลอตไหน
 const STOCK_IN_REQUESTS_HEADERS = ['id', 'sku', 'arrival_date', 'count_date', 'qty', 'note', 'status', 'created_by', 'created_at', 'matched_by', 'matched_at', 'movement_id', 'reject_reason', 'linked_order_id', 'order_date']
 const STOCK_IN_STATUSES = new Set(['pending', 'matched', 'rejected'])
-const isPackagingItem = (item) => item.category === 'packaging' || /^(PKG-|BOXMJ-|BOXP-)/i.test(String(item.sku || ''))
+export const isPackagingItem = (item) => item.category === 'packaging' || /^(PKG-|BOXMJ-|BOXP-)/i.test(String(item.sku || ''))
 
 let ensurePromise
 const ensureInventorySheets = () => ensurePromise ||= Promise.all([
