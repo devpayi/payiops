@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import payiLogo from './assets/payi-logo.png'
 import { canAccessTab, normalizeRole, STAFF_TABS, STOCK_TABS } from '../shared/roles.js'
 import { avatarGradient } from '../shared/avatar.js'
+import AvatarPicker from './components/AvatarPicker.jsx'
 
 const getMeUser = () => { try { return JSON.parse(localStorage.getItem('payi-user') || 'null') } catch { return null } }
 import {
@@ -988,6 +989,8 @@ export default function App() {
                 <div style={{ fontSize: 12, opacity: 0.85, marginTop: 6 }}>เลือกเมนูที่ต้องการด้านล่าง หรือกดจากแถบซ้าย</div>
               </div>
             </div>
+
+            <AvatarPicker me={getMeUser()} />
 
             {visibleMenuGroups.map((group) => (
               <div key={group.title} style={{ marginBottom: 22 }}>

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, KeyRound, UserPlus, Trash2, Users, ShieldCheck, MessageCircle, Smile } from 'lucide-react'
+import { Loader2, KeyRound, UserPlus, Trash2, Users, ShieldCheck, MessageCircle } from 'lucide-react'
 import { isDev } from '../../shared/roles.js'
-import { AVATAR_EMOJIS, AVATAR_COLORS, AVATAR_COLOR_KEYS, avatarGradient } from '../../shared/avatar.js'
 
 const getMe = () => {
   try { return JSON.parse(localStorage.getItem('payi-user') || 'null') } catch { return null }
@@ -35,7 +34,6 @@ export default function Settings() {
 
   return (
     <div style={{ width: '100%', display: 'grid', gap: 20, maxWidth: 720 }}>
-      <AvatarPickerCard me={me} />
       <ChangePasswordCard me={me} />
       {isAdmin && <BossLineNotifyCard hrData={hrData} hrLoading={hrLoading} usersData={usersData} usersLoading={usersLoading} reloadHr={reloadHr} />}
       {isAdmin && <StockCounterLineCard hrData={hrData} hrLoading={hrLoading} reloadHr={reloadHr} />}
@@ -315,97 +313,6 @@ function StockCounterLineCard({ hrData, hrLoading, reloadHr }) {
           </div>
         </div>
       )}
-    </Card>
-  )
-}
-
-// เลือกอวาตาร์ (emoji + สีพื้นหลัง) ของตัวเอง — self-service ทุก role ไม่ใช่แค่ admin เก็บที่ users sheet
-// ข้ามเครื่องได้ (ต่างจาก localStorage) กดเลือกแล้วบันทึกเลย ไม่ต้องมีปุ่มแยก ให้ความรู้สึกแบบเลือกธีมในแอพมือถือ
-function AvatarPickerCard({ me }) {
-  const [emoji, setEmoji] = useState(me?.avatar_emoji || AVATAR_EMOJIS[0])
-  const [color, setColor] = useState(me?.avatar_color || AVATAR_COLOR_KEYS[0])
-  const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState(null)
-  const savedRef = { emoji: me?.avatar_emoji || AVATAR_EMOJIS[0], color: me?.avatar_color || AVATAR_COLOR_KEYS[0] }
-  const isDirty = emoji !== savedRef.emoji || color !== savedRef.color
-
-  const save = async () => {
-    setBusy(true); setMsg(null)
-    try {
-      const res = await fetch('/api/auth', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update-avatar', emoji, color }),
-      })
-      const d = await res.json()
-      if (!d.success) throw new Error(d.error || 'บันทึกไม่สำเร็จ')
-      const nextMe = { ...(me || {}), avatar_emoji: emoji, avatar_color: color }
-      localStorage.setItem('payi-user', JSON.stringify(nextMe))
-      // reload ให้แน่ใจว่า badge มุมขวาบน + หน้า Home (อ่าน localStorage ตอน render ของ App.jsx) อัปเดตตาม —
-      // ทั้งสองจุดนั้นเป็น component คนละที่ ไม่มี state กลางให้ sync สด ๆ ระหว่างที่ยังอยู่หน้า Settings
-      window.location.reload()
-    } catch (err) {
-      setMsg({ ok: false, text: err.message })
-      setBusy(false)
-    }
-  }
-
-  const glassTile = (active) => ({
-    width: 46, height: 46, borderRadius: 16, display: 'grid', placeItems: 'center', cursor: 'pointer',
-    fontSize: 22, border: active ? '2px solid var(--payi-mint-strong)' : '1px solid rgba(255,255,255,0.5)',
-    background: active ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.55)',
-    backdropFilter: 'blur(10px)', boxShadow: active ? '0 6px 16px rgba(37,99,235,0.22)' : '0 4px 10px rgba(16,24,40,0.06)',
-    transition: 'transform 0.12s, box-shadow 0.12s', transform: active ? 'scale(1.06)' : 'scale(1)',
-  })
-
-  return (
-    <Card icon={Smile} title="อวาตาร์ของฉัน" sub="เลือกตัวการ์ตูน + สีพื้นหลัง ติดตัวข้ามเครื่อง เห็นตรงมุมขวาบนกับหน้า Home">
-      <div style={{ display: 'grid', gap: 14 }}>
-        {msg && (
-          <div style={{ fontSize: 12.5, padding: '8px 10px', borderRadius: 8, color: msg.ok ? 'var(--payi-success)' : 'var(--payi-danger)', background: msg.ok ? 'var(--payi-success-bg)' : 'var(--payi-danger-bg)' }}>
-            {msg.text}
-          </div>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{
-            width: 64, height: 64, borderRadius: 22, display: 'grid', placeItems: 'center', fontSize: 30,
-            background: avatarGradient(color), boxShadow: '0 10px 22px rgba(16,24,40,0.14)', flexShrink: 0,
-          }}>
-            {emoji}
-          </div>
-          <div style={{ fontSize: 12.5, color: 'var(--payi-text-muted)' }}>ตัวอย่างอวาตาร์ปัจจุบัน</div>
-        </div>
-
-        <div>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 8 }}>เลือกตัวการ์ตูน</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {AVATAR_EMOJIS.map((e) => (
-              <div key={e} role="button" onClick={() => setEmoji(e)} style={glassTile(emoji === e)}>{e}</div>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 8 }}>เลือกสี</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {AVATAR_COLOR_KEYS.map((c) => (
-              <div
-                key={c} role="button" onClick={() => setColor(c)} title={AVATAR_COLORS[c].label}
-                style={{ ...glassTile(color === c), background: avatarGradient(c), color: '#fff' }}
-              >
-                {color === c ? '✓' : ''}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <button
-          onClick={save}
-          disabled={busy || !isDirty}
-          style={{ ...primaryBtn, padding: '9px 16px', width: 'fit-content', opacity: busy || !isDirty ? 0.5 : 1 }}
-        >
-          {busy ? <Loader2 size={13} className="payi-spin" /> : 'บันทึกอวาตาร์'}
-        </button>
-      </div>
     </Card>
   )
 }
