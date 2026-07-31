@@ -10,7 +10,7 @@ import {
   leavePeriodLabel, normalizeLeavePeriod, officeLeaveConflicts,
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides } from './_lib/scheduleOverrides.js'
-import opInventory, { computeLowStockList, createOrderRequest, addStockInRequest, matchStockInRequest, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
+import opInventory, { computeLowStockList, createOrderRequest, addStockInRequest, matchStockInRequest, rejectStockInRequest, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
 import opImportTracking from './_lib/importTracking.js'
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
@@ -311,6 +311,16 @@ const stockCardHeader = (title, subtitle, icon) => ({
   ],
 })
 const stockCardButton = (action, primary = false) => ({ type: 'button', style: primary ? 'primary' : 'secondary', color: primary ? STOCK_CARD.amber : '#FDF3D8', height: 'sm', scaling: true, action })
+// แถวรายการแบบมีปุ่ม ✓/✗ ต่อรายการ — ให้ boss ยืนยันทีละรายการ กันเคสของเข้าหลายรายการแต่ตรงไม่หมด
+// (ต่างจาก stockFactRow ที่เป็นแค่ข้อความอย่างเดียว ไม่มีปุ่ม)
+const stockInItemRow = (id, label, value) => ({
+  type: 'box', layout: 'horizontal', spacing: 'xs', alignItems: 'center', margin: 'sm',
+  contents: [
+    { type: 'box', layout: 'vertical', flex: 5, contents: [stockFactRow(label, value)] },
+    { type: 'button', style: 'primary', color: STOCK_CARD.amber, height: 'sm', flex: 2, gravity: 'center', action: { type: 'postback', label: '✓', data: `stockin-approve:${id}`, displayText: `Approve ${label}` } },
+    { type: 'button', style: 'secondary', color: '#FDF3D8', height: 'sm', flex: 2, gravity: 'center', action: { type: 'postback', label: '✗', data: `stockin-reject:${id}`, displayText: `ปฏิเสธ ${label}` } },
+  ],
+})
 
 const lowStockRow = (item) => ({
   type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'sm', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base,
@@ -968,20 +978,17 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
   }
   await clearStockInSession(lineUserId)
 
-  const facts = done.map((it) => stockFactRow(it.display_name, `× ${it.qty} ${it.unit}`))
-  const footerButtons = done.length ? [stockCardButton({
-    type: 'postback', label: `Approve ทั้งหมด (${done.length})`, data: `stockin-approve:${done.map((it) => it.request.id).join(',')}`, displayText: `Approve ของเข้า ${done.length} รายการ`,
-  }, true)] : []
+  // ปุ่ม ✓/✗ แยกต่อรายการ แทนปุ่ม "Approve ทั้งหมด" เดียว — ของเข้าหลายรายการอาจตรงไม่หมดทุกอัน
+  const itemRows = done.map((it) => stockInItemRow(it.request.id, it.display_name, `× ${it.qty} ${it.unit}`))
   const summaryCard = {
     type: 'flex', altText: `แจ้งของเข้า ${done.length} รายการ`,
     contents: {
       type: 'bubble', size: 'giga',
       header: stockCardHeader('แจ้งของเข้าแล้ว', `${done.length} รายการ · เข้า ${arrivalDate} · นับ ${countDate} · โดย ${reporter.name}`, '📦'),
       body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
-        { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base, contents: facts.length ? facts : [stockFlexText('ไม่มีรายการสำเร็จ', {})] },
+        { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base, contents: itemRows.length ? itemRows : [stockFlexText('ไม่มีรายการสำเร็จ', {})] },
         ...(failed.length ? [stockFlexText(`ล้มเหลว: ${failed.join('; ')}`, { color: '#C0392B', size: 'xxs', margin: 'sm', wrap: true })] : []),
       ] },
-      ...(footerButtons.length ? { footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: footerButtons } } : {}),
     },
   }
   await replyMessage(replyToken, [summaryCard])
@@ -2499,6 +2506,26 @@ async function opLineWebhook(req, res) {
           type: 'text', text: failed.length
             ? `Approve สำเร็จ ${approved.length} รายการ\nไม่สำเร็จ: ${failed.join('; ')}`
             : `Approve สำเร็จ ${approved.length} รายการ โดย ${approver.name}`,
+        }])
+        continue
+      }
+      if (data.startsWith('stockin-reject:')) {
+        const approver = lineUserId ? await findStockApprover(lineUserId) : null
+        if (!approver) {
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ปฏิเสธ: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ' }])
+          continue
+        }
+        const ids = data.slice('stockin-reject:'.length).split(',').map((id) => id.trim()).filter(Boolean)
+        const rejected = []
+        const failed = []
+        for (const id of ids) {
+          try { await rejectStockInRequest({ id }, approver.name, approver.role); rejected.push(id) }
+          catch (e) { failed.push(e.message) }
+        }
+        if (event.replyToken) await replyMessage(event.replyToken, [{
+          type: 'text', text: failed.length
+            ? `ปฏิเสธสำเร็จ ${rejected.length} รายการ\nไม่สำเร็จ: ${failed.join('; ')}`
+            : `ปฏิเสธสำเร็จ ${rejected.length} รายการ โดย ${approver.name} (ให้แจ้งของเข้าใหม่)`,
         }])
         continue
       }

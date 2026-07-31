@@ -551,7 +551,7 @@ export async function matchStockInRequest(body, actorName, role) {
   return requests[idx]
 }
 
-async function rejectStockInRequest(body, actorName, role) {
+export async function rejectStockInRequest(body, actorName, role) {
   if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ปฏิเสธได้')
   const id = String(body.id || '').trim()
   if (!id) throw new Error('ต้องระบุ id')
