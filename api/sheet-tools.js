@@ -276,7 +276,7 @@ const STOCK_ALERT_RUNS_SHEET = 'stock_alert_runs'
 const STOCK_ALERT_RUNS_HEADERS = ['date', 'sent_at', 'item_count']
 const STOCK_ORDER_SESSION_SHEET = 'stock_order_sessions'
 // items_json: ต่อท้ายล่าสุด — เก็บรายการหลายชิ้นตอนสั่งของแบบ batch (พิมพ์ทีเดียวหลายบรรทัด "ชื่อ/SKU = จำนวน")
-const STOCK_ORDER_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'order_date', 'updated_at', 'items_json']
+const STOCK_ORDER_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'order_date', 'updated_at', 'items_json', 'pending_json']
 const STOCK_STATUS_ICON = { 'หมด': '🔴', 'ใกล้หมด': '🟠' }
 const todayBKK = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
 // ตั้งบน Vercel เป็น URL จริงของเว็บ (เช่น https://payiops.vercel.app) — ใช้สร้างปุ่ม "เปิดเว็บ" ใน LINE
@@ -403,11 +403,29 @@ async function findManagerLink(lineUserId) {
   return { username: link.username, name: user.display_name || link.username, role: user.role }
 }
 
-// กดปุ่ม "สั่งของ" บนการ์ดแจ้งเตือน — เริ่ม session รอบอสพิมพ์จำนวนกลับมาในแชท (ไม่ใช้ปุ่มจำนวนสำเร็จรูป
-// ตามที่ owner ขอ ให้พิมพ์เองได้ยืดหยุ่นกว่า) ต่างจาก approve/reject วันลาที่กดปุ่มจบในทีเดียว
-// ใช้ร่วมกันทั้งกดปุ่มจากการ์ดแจ้งเตือน (handleStockOrderPostback) และเลือกจากผลค้นหา (handleStockPickPostback)
+// ตะกร้าสั่งของ — เพิ่มได้หลายรายการก่อนค่อยเลือกวันที่แล้วจบทีเดียว (เพิ่มทีละตัวผ่านค้นหา/เลือกจาก quick reply
+// หรือวางข้อความ "ชื่อ = จำนวน" หลายบรรทัดทีเดียวก็ได้ ผสมกันได้ในตะกร้าเดียวกัน) — เก็บใน session.items_json
+// เพิ่มรายการแล้วถามต่อทุกครั้งว่าจะสั่งเพิ่มไหม หรือกด "เสร็จแล้ว" เพื่อไปเลือกวันที่ (เดิมพอเลือก/พิมพ์ได้ 1
+// รายการก็จบเลย ไม่มีทางสั่งได้มากกว่า 1 SKU ต่อครั้ง — owner แจ้งว่านี่คือปัญหาหลัก จึงรื้อ flow ใหม่ทั้งหมด)
+async function addToCartAndAskMore(replyToken, lineUserId, newItems, prefixText = '') {
+  const session = (await getStockOrderSessions()).find((s) => s.line_user_id === lineUserId)
+  let cart = []
+  try { cart = JSON.parse(session?.items_json || '[]') } catch { cart = [] }
+  cart = [...cart, ...newItems]
+  await upsertStockOrderSession(lineUserId, { step: 'await_item', items_json: JSON.stringify(cart), sku: '', pending_json: '' })
+  const summary = cart.map((it) => `• ${it.display_name} × ${it.qty} ${it.unit}`).join('\n')
+  const text = `${prefixText ? prefixText + '\n\n' : ''}ตะกร้าตอนนี้ (${cart.length} รายการ):\n${summary}\n\nจะสั่งเพิ่มไหม? พิมพ์ชื่อสินค้าหรือ SKU ต่อไปได้เลย หรือกด "เสร็จแล้ว" เพื่อเลือกวันที่`
+  await replyMessage(replyToken, [{
+    type: 'text', text,
+    quickReply: { items: [{ type: 'action', action: { type: 'postback', label: '✅ เสร็จแล้ว สั่งของ', data: 'stock-cart-done', displayText: 'เสร็จแล้ว สั่งของ' } }] },
+  }])
+}
+
+// ถามจำนวนของ 1 รายการที่เพิ่งค้นหา/เลือกได้ — พอตอบจำนวนแล้วเข้าตะกร้า (addToCartAndAskMore) ไม่จบทันที
+// ต่างจาก approve/reject วันลาที่กดปุ่มจบในทีเดียว ใช้ร่วมกันทั้งกดปุ่มจากการ์ดแจ้งเตือน (handleStockOrderPostback)
+// และเลือกจากผลค้นหา (handleStockPickPostback)
 async function askOrderQty(replyToken, lineUserId, item) {
-  await upsertStockOrderSession(lineUserId, { step: 'await_qty', sku: item.sku, qty: '', order_date: '' })
+  await upsertStockOrderSession(lineUserId, { step: 'await_item_qty', sku: item.sku, qty: '' })
   await replyMessage(replyToken, [{ type: 'text', text: `สั่ง "${item.display_name}" กี่${item.unit || 'ชิ้น'}คะ? พิมพ์ตัวเลขได้เลย\nคงเหลือตอนนี้ ${item.balance} ${item.unit || 'ชิ้น'}` }])
 }
 
@@ -421,6 +439,7 @@ async function handleStockOrderPostback(event, sku) {
   const { items } = await loadItemsWithBalance({ includeHidden: false })
   const item = items.find((it) => String(it.sku).toUpperCase() === String(sku).toUpperCase())
   if (!item) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ในระบบแล้วค่ะ' }])
+  await upsertStockOrderSession(lineUserId, { items_json: '', pending_json: '' }) // เริ่มตะกร้าใหม่ทุกครั้งที่กดจากการ์ด
   await askOrderQty(replyToken, lineUserId, item)
 }
 
@@ -438,84 +457,124 @@ async function handleStockOrderSearchStart(event, initialQuery = '') {
   if (!replyToken) return false
   const manager = lineUserId ? await findManagerLink(lineUserId) : null
   if (!manager) return false // ไม่ใช่บอส/dev — ปล่อยให้ตกไป fallback เดิม (echo userId) ไม่ตอบอะไรพิเศษ
-  await upsertStockOrderSession(lineUserId, { step: 'await_sku_search', sku: '', qty: '' })
+  await upsertStockOrderSession(lineUserId, { step: 'await_item', sku: '', qty: '', items_json: '', pending_json: '' }) // เริ่มตะกร้าใหม่เสมอ
   if (initialQuery) {
     await handleStockOrderSearchReply(event, initialQuery)
     return true
   }
-  await replyMessage(replyToken, [{ type: 'text', text: 'จะสั่งอะไรคะ? พิมพ์ชื่อสินค้าหรือ SKU ได้เลย' }])
+  await replyMessage(replyToken, [{ type: 'text', text: 'จะสั่งอะไรคะ? พิมพ์ชื่อสินค้าหรือ SKU ได้เลย (สั่งได้หลายรายการต่อเนื่องกัน ระบบจะถามทีละรายการให้เอง)' }])
   return true
 }
 
-// พิมพ์หลายรายการทีเดียว บรรทัดละ 1 รายการ "ชื่อ/SKU = จำนวน" เช่น
+// ค้นด้วย "ทุกคำต้องเจอ" (AND ต่อคำ ไม่สนลำดับ) แทน substring ทั้งวลีตรงๆ — พิมพ์ "sky 35-36" ต้องเจอ
+// "รองเท้าเพื่อสุขภาพ Sky(ฟ้าอ่อน) 35-36" ได้ทั้งที่คำไม่ติดกัน (เจอบั๊กจริงจาก owner: ข้อความยาวที่ตัดบรรทัด
+// เอง เช่น "ถุงเท้าส้น\nซิลิโคนโป้ง\nผ้ายืด" กลายเป็น query ก้อนเดียวมี \n ติดมาด้วย ไม่ตรงกับชื่อสินค้าจริงเป๊ะๆ
+// เลยไม่เจอเลย) — normalize \n เป็นช่องว่างก่อนตัดคำด้วย เผื่อเคสนี้
+function searchItemsByQuery(query, items) {
+  const tokens = String(query || '').replace(/[\r\n]+/g, ' ').toLowerCase().split(/\s+/).filter(Boolean)
+  if (!tokens.length) return []
+  return items.filter((it) => {
+    const haystack = `${it.display_name} ${it.sku}`.toLowerCase()
+    return tokens.every((t) => haystack.includes(t))
+  })
+}
+
+// ตัดจำนวนออกจากท้ายบรรทัด รองรับ 2 แบบ: "ชื่อ = จำนวน" (คั่นด้วย =) หรือ "ชื่อ จำนวน" (เลขล้วนท้ายบรรทัด
+// ไม่ต้องสลับภาษาพิมพ์ =) เช่น "sky 35-36 10" — คืน queryRaw/qtyText แยกกัน (qtyText เป็น null ถ้าไม่มีจำนวนระบุ
+// มาด้วยเลย แปลว่าเป็นแค่ชื่อสินค้าเฉยๆ ต้องถามจำนวนทีหลัง)
+function splitQueryAndQty(line) {
+  const eqIdx = line.lastIndexOf('=')
+  if (eqIdx !== -1) return { queryRaw: line.slice(0, eqIdx).trim(), qtyText: line.slice(eqIdx + 1).trim() }
+  const tokens = line.split(/\s+/)
+  const last = tokens[tokens.length - 1]
+  if (tokens.length > 1 && /^[\d,]+(\.\d+)?$/.test(last)) {
+    return { queryRaw: tokens.slice(0, -1).join(' '), qtyText: last }
+  }
+  return { queryRaw: line, qtyText: null }
+}
+
+// พิมพ์หลายรายการทีเดียว บรรทัดละ 1 รายการ ระบุจำนวนได้ทั้ง "ชื่อ/SKU = จำนวน" หรือ "ชื่อ/SKU จำนวน" เช่น
 //   sky 35-36 = 10
-//   37-38 = 20
-// เจอ SKU ตรงตัวก่อนเสมอ (ไม่ทับซ้อน) ไม่งั้น substring หา display_name/sku — เจอ 0 หรือมากกว่า 1 ตัวถือเป็น
-// error ของบรรทัดนั้น (ไม่เดา กันสั่งผิดตัว) ยังไม่ครบทุกบรรทัดจะไม่ให้ผ่านไปขั้นตอนวันที่เลย ต้องแก้แล้วส่งใหม่ทั้งชุด
+//   37-38 20
+// หรือไม่ระบุจำนวนเลยก็ได้ (แค่ชื่อสินค้าเฉยๆ บรรทัดละตัว) — เดี๋ยวถามจำนวนทีหลังทีละตัว (ดู pending ด้านล่าง)
+// เจอ SKU ตรงตัวก่อนเสมอ (ไม่ทับซ้อน) ไม่งั้นค้นด้วย searchItemsByQuery — เจอ 0 หรือมากกว่า 1 ตัวถือเป็น
+// error ของบรรทัดนั้น (ไม่เดา กันสั่งผิดตัว)
 function parseOrderBatchLines(text, items) {
   const lines = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-  const resolved = []
+  const resolved = [] // มีจำนวนแล้ว พร้อมเข้าตะกร้าเลย
+  const pending = [] // รู้ตัวสินค้าแล้วแต่ยังไม่รู้จำนวน ต้องถามทีหลัง
   const errors = []
   for (const line of lines) {
-    const eqIdx = line.lastIndexOf('=')
-    if (eqIdx === -1) { errors.push(`ไม่เข้าใจบรรทัด "${line}" (ต้องมี = คั่นจำนวน เช่น sky 35-36 = 10)`); continue }
-    const queryRaw = line.slice(0, eqIdx).trim()
-    const qty = Number(line.slice(eqIdx + 1).trim().replace(/,/g, ''))
+    const { queryRaw, qtyText } = splitQueryAndQty(line)
     if (!queryRaw) { errors.push(`บรรทัด "${line}" ไม่มีชื่อสินค้า`); continue }
-    if (!Number.isFinite(qty) || qty <= 0) { errors.push(`บรรทัด "${line}" จำนวนไม่ถูกต้อง`); continue }
     const query = queryRaw.toLowerCase()
     let match = items.find((it) => String(it.sku).toLowerCase() === query)
     if (!match) {
-      const matches = items.filter((it) => it.display_name.toLowerCase().includes(query) || String(it.sku).toLowerCase().includes(query))
+      const matches = searchItemsByQuery(queryRaw, items)
       if (matches.length === 1) match = matches[0]
       else if (!matches.length) { errors.push(`ไม่พบสินค้า "${queryRaw}"`); continue }
       else { errors.push(`"${queryRaw}" ตรงกับหลายรายการ (${matches.slice(0, 5).map((m) => m.sku).join(', ')}) ระบุให้ชัดเจนกว่านี้`); continue }
     }
-    resolved.push({ sku: match.sku, display_name: match.display_name, unit: match.unit || 'ชิ้น', qty })
+    const base = { sku: match.sku, display_name: match.display_name, unit: match.unit || 'ชิ้น' }
+    if (qtyText === null) { pending.push(base); continue }
+    const qty = Number(qtyText.replace(/,/g, ''))
+    if (!Number.isFinite(qty) || qty <= 0) { errors.push(`บรรทัด "${line}" จำนวนไม่ถูกต้อง`); continue }
+    resolved.push({ ...base, qty })
   }
-  return { resolved, errors }
+  return { resolved, pending, errors }
 }
 
-async function handleStockOrderBatchReply(replyToken, lineUserId, rawText, items) {
-  const { resolved, errors } = parseOrderBatchLines(rawText, items)
-  if (errors.length) {
-    const lines = [...errors]
-    if (resolved.length) lines.push('', `เข้าใจแล้ว ${resolved.length} รายการ: ` + resolved.map((r) => `${r.display_name} × ${r.qty}`).join(', '))
-    lines.push('', 'แก้ไขแล้วพิมพ์ส่งรายการทั้งหมดมาใหม่อีกครั้งได้เลยค่ะ')
-    return replyMessage(replyToken, [{ type: 'text', text: lines.join('\n') }])
-  }
-  if (!resolved.length) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการที่จะสั่งเลยค่ะ ลองพิมพ์ใหม่' }])
+// เพิ่มรายการที่มีจำนวนแล้วเข้าตะกร้าเงียบๆ (ไม่ตอบกลับ) — ใช้ต่อกับ askPendingQueue/addToCartAndAskMore
+// เพื่อไม่ให้ตอบซ้ำหลายข้อความในทัวน์เดียว (LINE reply token ใช้ได้ครั้งเดียว)
+async function mergeIntoCart(lineUserId, newItems) {
+  if (!newItems.length) return
+  const session = (await getStockOrderSessions()).find((s) => s.line_user_id === lineUserId)
+  let cart = []
+  try { cart = JSON.parse(session?.items_json || '[]') } catch { cart = [] }
+  cart = [...cart, ...newItems]
+  await upsertStockOrderSession(lineUserId, { items_json: JSON.stringify(cart) })
+}
 
-  await upsertStockOrderSession(lineUserId, { step: 'await_batch_date', items_json: JSON.stringify(resolved), sku: '', qty: '' })
-  const summary = resolved.map((r) => `• ${r.display_name} × ${r.qty} ${r.unit}`).join('\n')
-  await replyMessage(replyToken, [{
-    type: 'text', text: `สรุป ${resolved.length} รายการ:\n${summary}\n\nวันที่สั่งของวันไหนคะ?`,
-    quickReply: { items: [
-      { type: 'action', action: { type: 'postback', label: 'วันนี้', data: 'stock-order-date:today', displayText: 'วันนี้' } },
-      { type: 'action', action: { type: 'datetimepicker', label: 'เลือกวันที่', data: 'stock-order-date:pick', mode: 'date', initial: todayBKK() } },
-    ] },
-  }])
+// ถามจำนวนของรายการถัดไปในคิว (สินค้าที่รู้ตัวแล้วแต่ยังไม่รู้จำนวน) — เก็บคิวที่เหลือไว้ใน pending_json
+// พอตอบจำนวนของตัวแรกแล้ว handleStockOrderQtyReply จะ pop มาถามตัวถัดไปเองจนกว่าคิวจะหมด
+async function askPendingQueue(replyToken, lineUserId, pendingList, prefixText = '') {
+  await upsertStockOrderSession(lineUserId, { step: 'await_item_qty', sku: pendingList[0].sku, pending_json: JSON.stringify(pendingList) })
+  const more = pendingList.length > 1 ? `\n(ถามทีละตัว เหลืออีก ${pendingList.length - 1} รายการที่ยังไม่ระบุจำนวน)` : ''
+  const text = `${prefixText ? prefixText + '\n\n' : ''}สั่ง "${pendingList[0].display_name}" กี่${pendingList[0].unit}คะ? พิมพ์ตัวเลขได้เลย${more}`
+  await replyMessage(replyToken, [{ type: 'text', text }])
 }
 
 // พิมพ์ชื่อ/SKU ค้นหา (ขั้นตอนต่อจาก handleStockOrderSearchStart หรือพิมพ์ใหม่ตอนเลือกจากรายการเดิมไม่เจอ) —
-// มี "=" ในข้อความ = โหมดสั่งหลายรายการทีเดียว (handleStockOrderBatchReply) ไม่มี = สั่งทีละตัวแบบเดิม:
-// เจอตัวเดียวข้ามไปถามจำนวนเลย เจอหลายตัวโชว์เป็น quick reply ให้เลือก (สูงสุด 10 ตามลิมิต quick reply ของ LINE)
+// หลายบรรทัด หรือมีจำนวนระบุมาด้วย (= หรือเลขท้ายบรรทัด) ใช้โหมดหลายรายการ (parseOrderBatchLines) ส่วน
+// บรรทัดเดียวไม่มีจำนวนยังใช้โหมดค้นหาแบบเดิม (เจอตัวเดียวถามจำนวนเลย เจอหลายตัวโชว์ quick reply ให้เลือก)
 async function handleStockOrderSearchReply(event, queryOverride = '') {
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
   if (!replyToken) return
   const rawText = String(queryOverride || event.message?.text || '')
   const query = rawText.trim().toLowerCase()
-  if (!query) return replyMessage(replyToken, [{ type: 'text', text: 'พิมพ์ชื่อสินค้าหรือ SKU ได้เลยค่ะ (สั่งหลายรายการทีเดียวก็ได้ บรรทัดละ 1 รายการ เช่น sky 35-36 = 10)' }])
+  if (!query) return replyMessage(replyToken, [{ type: 'text', text: 'พิมพ์ชื่อสินค้าหรือ SKU ได้เลยค่ะ (สั่งหลายรายการทีเดียวก็ได้ บรรทัดละ 1 รายการ เช่น sky 35-36 = 10 หรือ 37-38 20)' }])
 
   const { items } = await loadItemsWithBalance({ includeHidden: false })
-  if (rawText.includes('=')) return handleStockOrderBatchReply(replyToken, lineUserId, rawText, items)
+  const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const singleLineHasQty = lines.length === 1 && splitQueryAndQty(lines[0]).qtyText !== null
+  if (lines.length > 1 || singleLineHasQty) {
+    const { resolved, pending, errors } = parseOrderBatchLines(rawText, items)
+    if (!resolved.length && !pending.length) {
+      const text = errors.length ? errors.join('\n') + '\n\nลองพิมพ์ใหม่ได้เลยค่ะ' : 'ไม่พบรายการที่จะสั่งเลยค่ะ ลองพิมพ์ใหม่'
+      return replyMessage(replyToken, [{ type: 'text', text }])
+    }
+    await mergeIntoCart(lineUserId, resolved)
+    const prefixText = errors.length ? `⚠️ บางบรรทัดมีปัญหา:\n${errors.join('\n')}` : ''
+    if (pending.length) return askPendingQueue(replyToken, lineUserId, pending, prefixText)
+    return addToCartAndAskMore(replyToken, lineUserId, [], prefixText)
+  }
 
-  const matches = items.filter((it) => it.display_name.toLowerCase().includes(query) || String(it.sku).toLowerCase().includes(query)).slice(0, 10)
-  if (!matches.length) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ค่ะ ลองพิมพ์ชื่อสินค้า หรือ SKU ใหม่\nหากต้องการเริ่มใหม่ พิมพ์ “สั่งของ” ได้เลยค่ะ' }])
+  const matches = searchItemsByQuery(rawText, items).slice(0, 10)
+  if (!matches.length) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ค่ะ ลองพิมพ์สั้นลง หรือใช้ชื่อ/SKU ที่ตรงกับหน้าเว็บมากขึ้น\nหากต้องการเริ่มใหม่ พิมพ์ “สั่งของ” ได้เลยค่ะ' }])
   if (matches.length === 1) return askOrderQty(replyToken, lineUserId, matches[0])
 
-  await upsertStockOrderSession(lineUserId, { step: 'await_sku_pick', sku: '', qty: '' })
+  await upsertStockOrderSession(lineUserId, { step: 'await_item_pick', sku: '', qty: '' })
   await replyMessage(replyToken, [{
     type: 'text', text: `พบ ${matches.length} รายการ เลือกได้เลยค่ะ`,
     quickReply: { items: matches.map((it) => ({ type: 'action', action: { type: 'postback', label: it.display_name.slice(0, 20), data: `stock-pick:${it.sku}`, displayText: it.display_name } })) },
@@ -534,31 +593,8 @@ async function handleStockPickPostback(event, sku) {
   await askOrderQty(replyToken, lineUserId, item)
 }
 
-// บันทึกคำสั่งซื้อหลังเลือกจำนวนและวันที่ — ใช้ createOrderRequest ตัวเดียวกับปุ่มบนหน้า Stock Movement
-async function completeStockOrder(replyToken, lineUserId, session, orderDate) {
-  const qty = Number(session.qty)
-  if (!Number.isFinite(qty) || qty <= 0) return replyMessage(replyToken, [{ type: 'text', text: 'จำนวนสั่งซื้อไม่ถูกต้องค่ะ กรุณาเริ่มใหม่ด้วย “สั่งของ”' }])
-  const manager = await findManagerLink(lineUserId)
-  if (!manager) { await clearStockOrderSession(lineUserId); return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะบอส/dev สั่งของผ่านไลน์ได้ค่ะ' }]) }
-
-  try {
-    await createOrderRequest({ sku: session.sku, qty, order_date: orderDate, note: 'สั่งจาก LINE' }, manager.name, manager.role)
-    await clearStockOrderSession(lineUserId)
-    const footerButtons = APP_BASE_URL ? [stockCardButton({ type: 'uri', label: 'เปิดเว็บ', uri: stockWebUrl() }, true)] : []
-    await replyMessage(replyToken, [{
-      type: 'flex', altText: `สั่งของ ${session.sku} x${qty} เรียบร้อย`,
-      contents: {
-        type: 'bubble', size: 'micro',
-        header: stockCardHeader('สั่งของเรียบร้อย', `${session.sku} × ${qty} · ${orderDate}`, '✅'),
-        ...(footerButtons.length ? { footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: footerButtons } } : {}),
-      },
-    }])
-  } catch (e) {
-    await replyMessage(replyToken, [{ type: 'text', text: `สั่งของไม่สำเร็จ: ${e.message}` }])
-  }
-}
-
-// บันทึกคำสั่งซื้อหลายรายการทีเดียว (batch) — สร้างทีละแถวด้วย createOrderRequest ตัวเดียวกับข้างบน
+// บันทึกคำสั่งซื้อทั้งตะกร้า (1 รายการขึ้นไป) — สร้างทีละแถวด้วย createOrderRequest ตัวเดียวกับปุ่มบนหน้า
+// Stock Movement (ไม่แยก "สั่งทีละตัว" กับ "สั่งหลายตัว" อีกต่อไป — ตะกร้า 1 รายการก็ผ่าน path เดียวกันนี้)
 async function completeStockOrderBatch(replyToken, lineUserId, session, orderDate) {
   let items = []
   try { items = JSON.parse(session.items_json || '[]') } catch { items = [] }
@@ -592,7 +628,8 @@ async function completeStockOrderBatch(replyToken, lineUserId, session, orderDat
   }])
 }
 
-// พิมพ์จำนวนกลับมาในแชท แล้วเลือกวันที่สั่งด้วยปฏิทิน LINE
+// พิมพ์จำนวนกลับมาในแชท (ของรายการที่เพิ่งค้นหา/เลือกไว้) — เข้าตะกร้าแล้วถามว่าจะสั่งเพิ่มไหม
+// (addToCartAndAskMore) ไม่ใช่ไปขั้นตอนวันที่ทันที ต้องกด "เสร็จแล้ว" ก่อนถึงจะไปเลือกวันที่
 async function handleStockOrderQtyReply(event, session) {
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
@@ -604,7 +641,34 @@ async function handleStockOrderQtyReply(event, session) {
   const manager = await findManagerLink(lineUserId)
   if (!manager) { await clearStockOrderSession(lineUserId); return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะบอส/dev สั่งของผ่านไลน์ได้ค่ะ' }]) }
 
-  await upsertStockOrderSession(lineUserId, { step: 'await_order_date', sku: session.sku, qty: String(qty), order_date: '' })
+  // ถ้ากำลังไล่ถามจำนวนทีละตัวจากคิว pending (พิมพ์หลายชื่อสินค้ามาแบบไม่ระบุจำนวน) — ตอบจำนวนตัวแรกในคิว
+  // เข้าตะกร้าแล้ว pop ไปถามตัวถัดไป จนกว่าคิวจะหมดค่อยโชว์สรุปตะกร้า+ถามว่าจะสั่งเพิ่มไหม
+  let pending = []
+  try { pending = JSON.parse(session.pending_json || '[]') } catch { pending = [] }
+  if (pending.length) {
+    const done = { ...pending[0], qty }
+    const remaining = pending.slice(1)
+    await mergeIntoCart(lineUserId, [done])
+    if (remaining.length) return askPendingQueue(replyToken, lineUserId, remaining)
+    return addToCartAndAskMore(replyToken, lineUserId, [])
+  }
+
+  const { items } = await loadItemsWithBalance({ includeHidden: false })
+  const item = items.find((it) => String(it.sku).toUpperCase() === String(session.sku).toUpperCase())
+  if (!item) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ในระบบแล้วค่ะ กรุณาเริ่มใหม่ด้วย “สั่งของ”' }])
+  await addToCartAndAskMore(replyToken, lineUserId, [{ sku: item.sku, display_name: item.display_name, unit: item.unit || 'ชิ้น', qty }])
+}
+
+// กด "เสร็จแล้ว สั่งของ" — ปิดรับรายการเพิ่ม ไปถามวันที่ (ครั้งเดียวสำหรับทั้งตะกร้า ไม่ใช่ต่อรายการ)
+async function handleStockCartDonePostback(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken || !lineUserId) return
+  const session = (await getStockOrderSessions()).find((s) => s.line_user_id === lineUserId)
+  let cart = []
+  try { cart = JSON.parse(session?.items_json || '[]') } catch { cart = [] }
+  if (!cart.length) return replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่มีรายการในตะกร้าเลยค่ะ พิมพ์ชื่อสินค้าหรือ SKU ที่จะสั่งได้เลย' }])
+  await upsertStockOrderSession(lineUserId, { step: 'await_batch_date' })
   await replyMessage(replyToken, [{
     type: 'text', text: 'วันที่สั่งของวันไหนคะ?',
     quickReply: { items: [
@@ -619,11 +683,10 @@ async function handleStockOrderDatePostback(event, choice) {
   const replyToken = event.replyToken
   if (!replyToken || !lineUserId) return
   const session = (await getStockOrderSessions()).find((s) => s.line_user_id === lineUserId)
-  if (session?.step !== 'await_order_date' && session?.step !== 'await_batch_date') return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการสั่งของที่รอเลือกวันที่ค่ะ กรุณาเริ่มใหม่ด้วย “สั่งของ”' }])
+  if (session?.step !== 'await_batch_date') return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการสั่งของที่รอเลือกวันที่ค่ะ กรุณาเริ่มใหม่ด้วย “สั่งของ”' }])
   const orderDate = choice === 'today' ? todayBKK() : String(event.postback?.params?.date || '')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return replyMessage(replyToken, [{ type: 'text', text: 'กรุณาเลือกวันที่จากปฏิทินอีกครั้งค่ะ' }])
-  if (session.step === 'await_batch_date') return completeStockOrderBatch(replyToken, lineUserId, session, orderDate)
-  await completeStockOrder(replyToken, lineUserId, session, orderDate)
+  await completeStockOrderBatch(replyToken, lineUserId, session, orderDate)
 }
 
 const PLANNER_CONFIG_SHEET = 'planner_config'
@@ -2040,9 +2103,9 @@ async function opLineWebhook(req, res) {
         const initialQuery = stockOrderCommandQuery(event.message.text)
         // คำสั่ง “สั่งของ” เริ่มใหม่ได้จากทุกขั้นตอน รวมถึงตอนที่รอจำนวนหรือรอเลือกวันที่
         if (initialQuery === '') { await handleStockOrderSearchStart(event); continue }
-        if (stockSession?.step === 'await_qty') { await handleStockOrderQtyReply(event, stockSession); continue }
-        if (stockSession?.step === 'await_order_date' || stockSession?.step === 'await_batch_date') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดเลือกวันที่จากข้อความก่อนหน้านี้ หรือพิมพ์ “สั่งของ” เพื่อเริ่มใหม่ค่ะ' }]); continue }
-        if (stockSession?.step === 'await_sku_search' || stockSession?.step === 'await_sku_pick') {
+        if (stockSession?.step === 'await_item_qty') { await handleStockOrderQtyReply(event, stockSession); continue }
+        if (stockSession?.step === 'await_batch_date') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดเลือกวันที่จากข้อความก่อนหน้านี้ หรือพิมพ์ “สั่งของ” เพื่อเริ่มใหม่ค่ะ' }]); continue }
+        if (stockSession?.step === 'await_item' || stockSession?.step === 'await_item_pick') {
           // ถ้าพิมพ์ "สั่งของ" ซ้ำระหว่างที่บอตรอชื่อสินค้า ให้เริ่มรอบใหม่ ไม่เอาคำสั่งไปค้นหาเป็นชื่อสินค้า
           await handleStockOrderSearchReply(event)
           continue
@@ -2064,6 +2127,7 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stock-order:')) { await handleStockOrderPostback(event, data.slice('stock-order:'.length)); continue }
       if (data.startsWith('stock-pick:')) { await handleStockPickPostback(event, data.slice('stock-pick:'.length)); continue }
       if (data.startsWith('stock-order-date:')) { await handleStockOrderDatePostback(event, data.slice('stock-order-date:'.length)); continue }
+      if (data === 'stock-cart-done') { await handleStockCartDonePostback(event); continue }
 
       const [, kind, id] = data.match(/^hr-(approve|reject):(.+)$/) || []
       if (!kind || !id) continue
