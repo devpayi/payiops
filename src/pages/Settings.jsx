@@ -255,6 +255,7 @@ function StockCounterLineCard({ hrData, hrLoading, reloadHr }) {
 
   const currentLink = useMemo(() => (hrData?.lineLinks || []).find((l) => l.username === username), [hrData, username])
   useEffect(() => { setLineUserId(currentLink?.line_user_id || '') }, [currentLink])
+  const isDirty = lineUserId.trim() !== (currentLink?.line_user_id || '')
 
   const save = async () => {
     const u = username.trim()
@@ -304,8 +305,8 @@ function StockCounterLineCard({ hrData, hrLoading, reloadHr }) {
             />
             <button
               onClick={save}
-              disabled={busy || !username.trim()}
-              style={{ ...primaryBtn, padding: '7px 12px', opacity: busy || !username.trim() ? 0.5 : 1 }}
+              disabled={busy || !username.trim() || !isDirty}
+              style={{ ...primaryBtn, padding: '7px 12px', opacity: busy || !username.trim() || !isDirty ? 0.5 : 1 }}
             >
               {busy ? <Loader2 size={13} className="payi-spin" /> : 'บันทึก'}
             </button>
