@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import payiLogo from './assets/payi-logo.png'
 import { canAccessTab, normalizeRole, STAFF_TABS, STOCK_TABS } from '../shared/roles.js'
-import { avatarGradient } from '../shared/avatar.js'
+import { avatarGradient, AVATAR_COLORS } from '../shared/avatar.js'
 import AvatarPicker from './components/AvatarPicker.jsx'
 
 const getMeUser = () => { try { return JSON.parse(localStorage.getItem('payi-user') || 'null') } catch { return null } }
@@ -812,6 +812,11 @@ export default function App() {
         className="payi-sidebar-nav"
         style={{
           width: sidebarExpanded ? 240 : 68, height: '100vh', top: 0, background: '#ffffff', borderRight: '1px solid #e2e8f0',
+          // แถบบนสุด — สีตามอวาตาร์ที่แต่ละคนเลือกไว้ (Settings ถูกย้ายไปหน้า Home แล้ว) ให้ theme ส่วนตัว
+          // มีผลกับหน้าตาแอพจริง ไม่ใช่แค่ badge เล็กๆ มุมขวาบน แต่จงใจไม่แตะสี active menu item (ผูกกับ
+          // หมวดหมู่จริง เช่น ฟ้า=Marketing, ม่วง-ชมพู=Inventory อยู่แล้ว จะสับสนถ้าทับกัน)
+          borderTop: getMeUser()?.avatar_emoji ? `4px solid transparent` : 'none',
+          borderImage: getMeUser()?.avatar_emoji ? `${avatarGradient(getMeUser()?.avatar_color)} 1` : 'none',
           display: 'flex', flexDirection: 'column', padding: '12px 11px 10px', boxSizing: 'border-box', flexShrink: 0,
           boxShadow: sidebarExpanded ? '18px 0 48px rgba(15, 23, 42, 0.08)' : '18px 0 48px rgba(15, 23, 42, 0.04)',
           overflow: 'hidden', position: 'sticky', zIndex: 20, transition: 'width 180ms ease, box-shadow 180ms ease',
@@ -926,7 +931,9 @@ export default function App() {
                 style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: 13, color: 'var(--payi-surface-dark)', background: 'transparent' }}
               />
             </div>
-            <button title="Notifications" style={{ width: 40, height: 40, borderRadius: 999, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.6)', display: 'grid', placeItems: 'center', boxShadow: '0 8px 20px rgba(16,24,40,0.06)' }}><Bell size={18} color="var(--payi-mint-strong)" /></button>
+            <button title="Notifications" style={{ width: 40, height: 40, borderRadius: 999, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.6)', display: 'grid', placeItems: 'center', boxShadow: '0 8px 20px rgba(16,24,40,0.06)' }}>
+              <Bell size={18} color={getMeUser()?.avatar_emoji ? AVATAR_COLORS[getMeUser()?.avatar_color]?.to : 'var(--payi-mint-strong)'} />
+            </button>
             <button
               title="ออกจากระบบ"
               onClick={() => {
@@ -970,60 +977,66 @@ export default function App() {
 
         <Suspense fallback={<ModuleFallback />}>
         {(activeTab === 'Home') ? (
-          <div style={{ maxWidth: 860, margin: '0 auto' }}>
-            <div style={{
-              borderRadius: 20, padding: '26px 28px', marginBottom: 24,
-              background: getMeUser()?.avatar_emoji ? avatarGradient(getMeUser()?.avatar_color) : 'var(--payi-gradient-primary)', color: '#fff',
-              boxShadow: '0 16px 32px rgba(37,99,235,0.18)', display: 'flex', alignItems: 'center', gap: 18,
-            }}>
-              {getMeUser()?.avatar_emoji && (
-                <div style={{ width: 56, height: 56, borderRadius: 18, background: 'rgba(255,255,255,0.25)', display: 'grid', placeItems: 'center', fontSize: 30, flexShrink: 0 }}>
-                  {getMeUser().avatar_emoji}
+          <div style={{ maxWidth: 1140, margin: '0 auto', display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 640px', minWidth: 0 }}>
+              <div style={{
+                borderRadius: 20, padding: '26px 28px', marginBottom: 24,
+                background: getMeUser()?.avatar_emoji ? avatarGradient(getMeUser()?.avatar_color) : 'var(--payi-gradient-primary)', color: '#fff',
+                boxShadow: '0 16px 32px rgba(37,99,235,0.18)', display: 'flex', alignItems: 'center', gap: 18,
+              }}>
+                {getMeUser()?.avatar_emoji && (
+                  <div style={{ width: 56, height: 56, borderRadius: 18, background: 'rgba(255,255,255,0.25)', display: 'grid', placeItems: 'center', fontSize: 30, flexShrink: 0 }}>
+                    {getMeUser().avatar_emoji}
+                  </div>
+                )}
+                <div>
+                  <div style={{ fontSize: 13, opacity: 0.85, fontWeight: 600 }}>สวัสดี</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 2 }}>
+                    {getMeUser()?.name || 'Nook'}
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.85, marginTop: 6 }}>เลือกเมนูที่ต้องการด้านล่าง หรือกดจากแถบซ้าย</div>
                 </div>
-              )}
-              <div>
-                <div style={{ fontSize: 13, opacity: 0.85, fontWeight: 600 }}>สวัสดี</div>
-                <div style={{ fontSize: 24, fontWeight: 800, marginTop: 2 }}>
-                  {getMeUser()?.name || 'Nook'}
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 6 }}>เลือกเมนูที่ต้องการด้านล่าง หรือกดจากแถบซ้าย</div>
               </div>
+
+              {visibleMenuGroups.map((group) => (
+                <div key={group.title} style={{ marginBottom: 22 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--payi-text-muted)', marginBottom: 10, letterSpacing: '0.02em' }}>
+                    {group.title}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
+                    {group.items.map((item) => {
+                      const Icon = item.renderIcon
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => setActiveTab(item.group ? item.group[0] : item.id)}
+                          style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
+                            padding: '18px 12px', borderRadius: 16, textAlign: 'center',
+                            border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', cursor: 'pointer',
+                            boxShadow: '0 6px 16px rgba(15,23,42,0.04)',
+                          }}
+                        >
+                          <div style={{
+                            width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center',
+                            background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)',
+                          }}>
+                            {Icon && <Icon size={19} />}
+                          </div>
+                          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{item.label}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
 
-            <AvatarPicker me={getMeUser()} />
-
-            {visibleMenuGroups.map((group) => (
-              <div key={group.title} style={{ marginBottom: 22 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--payi-text-muted)', marginBottom: 10, letterSpacing: '0.02em' }}>
-                  {group.title}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
-                  {group.items.map((item) => {
-                    const Icon = item.renderIcon
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => setActiveTab(item.group ? item.group[0] : item.id)}
-                        style={{
-                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
-                          padding: '18px 12px', borderRadius: 16, textAlign: 'center',
-                          border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', cursor: 'pointer',
-                          boxShadow: '0 6px 16px rgba(15,23,42,0.04)',
-                        }}
-                      >
-                        <div style={{
-                          width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center',
-                          background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)',
-                        }}>
-                          {Icon && <Icon size={19} />}
-                        </div>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{item.label}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
+            {/* แถบขวา — ย่อ AvatarPicker ลงมาเป็น compact widget ตามที่ owner ขอ (เดิมเป็นการ์ดเต็มความกว้าง
+                ใหญ่เกินไปเมื่อเทียบกับความสำคัญ) แถบนี้ยุบไปกองไว้ใต้เมนูตอนจอแคบ (flex-wrap) แทนการซ่อน */}
+            <div style={{ flex: '0 1 260px', minWidth: 240 }}>
+              <AvatarPicker me={getMeUser()} compact />
+            </div>
           </div>
         ) : (activeTab === 'Executive') ? (
           <div style={{ width: '100%' }}>

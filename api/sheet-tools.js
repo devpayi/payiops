@@ -997,14 +997,17 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
       ...(footerButtons.length ? { footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: footerButtons } } : {}),
     },
   }
-  await replyMessage(replyToken, [summaryCard])
-
-  if (done.length) {
-    const groupId = await getGroupTarget()
-    if (groupId) {
-      try { await pushMessage(groupId, [{ ...summaryCard, altText: `ของเข้ารอ Match: ${done.length} รายการ (แจ้งโดย ${reporter.name})` }]) }
-      catch (e) { console.error('push arrival card to group:', e.message) }
-    }
+  // การ์ดจริง (มีปุ่ม ✓/✗) ให้ขึ้นในกลุ่มที่เดียว — บอส/dev ตรวจ/กดจากตรงนั้นพอ ไม่ต้องส่งซ้ำเข้าไปหาคนแจ้งเอง
+  // ด้วย (เดิม reply การ์ดเต็มกลับไปหาคนแจ้งเสมอ ถ้าคนแจ้งทักบอต 1:1 บอส/dev จะไม่เห็นการ์ดเลยนอกจาก
+  // เคยลงทะเบียนกลุ่มไว้ ซึ่งพอลงทะเบียนแล้วก็กลายเป็นเห็นซ้ำสองที่ — owner ขอให้เหลือกลุ่มที่เดียว 2026-07-31)
+  const groupId = done.length ? await getGroupTarget() : null
+  if (groupId) {
+    try { await pushMessage(groupId, [{ ...summaryCard, altText: `ของเข้ารอ Match: ${done.length} รายการ (แจ้งโดย ${reporter.name})` }]) }
+    catch (e) { console.error('push arrival card to group:', e.message) }
+    await replyMessage(replyToken, [{ type: 'text', text: `แจ้งของเข้า ${done.length} รายการเรียบร้อยค่ะ ส่งเข้ากลุ่มให้ตรวจแล้ว` }])
+  } else {
+    // ยังไม่เคยลงทะเบียนกลุ่มไว้เลย — ส่งการ์ดเต็มกลับไปหาคนแจ้งแทน ไม่งั้นไม่มีใครเห็นการ์ดนี้เลย
+    await replyMessage(replyToken, [summaryCard])
   }
 }
 
