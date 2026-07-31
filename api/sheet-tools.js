@@ -10,7 +10,7 @@ import {
   leavePeriodLabel, normalizeLeavePeriod, officeLeaveConflicts,
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides } from './_lib/scheduleOverrides.js'
-import opInventory, { computeLowStockList, createOrderRequest, addStockInRequest, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
+import opInventory, { computeLowStockList, createOrderRequest, addStockInRequest, matchStockInRequest, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
 import opImportTracking from './_lib/importTracking.js'
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
@@ -281,7 +281,7 @@ const STOCK_ORDER_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'orde
 // แยกชีต/session จาก stock_order_sessions เพื่อกันคนที่กำลังสั่งของค้างอยู่แล้วมาแจ้งของเข้าพร้อมกัน
 // (หรือกลับกัน) ไม่ให้ session ของทั้งสอง flow ทับกัน
 const STOCK_IN_SESSION_SHEET = 'stock_in_sessions'
-const STOCK_IN_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'arrival_date', 'updated_at', 'items_json', 'pending_json']
+const STOCK_IN_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'arrival_date', 'count_date', 'updated_at', 'items_json', 'pending_json']
 // เก็บ groupId ของกลุ่มไลน์ทีมงาน (แถวเดียว) — ลงทะเบียนอัตโนมัติทันทีที่มีข้อความจากกลุ่มเข้ามา ไม่ต้อง
 // ตั้งค่าเอง แค่เพิ่มบอทเข้ากลุ่มแล้วมีคนพิมพ์อะไรสักครั้ง ใช้ push การ์ด "แจ้งของเข้า" ให้ทั้งทีมเห็นพร้อมกัน
 const LINE_GROUP_LINK_SHEET = 'line_group_link'
@@ -312,33 +312,30 @@ const stockCardHeader = (title, subtitle, icon) => ({
 })
 const stockCardButton = (action, primary = false) => ({ type: 'button', style: primary ? 'primary' : 'secondary', color: primary ? STOCK_CARD.amber : '#FDF3D8', height: 'sm', scaling: true, action })
 
-function lowStockBubble(item) {
-  const facts = [stockFactRow('คงเหลือ', `${item.balance} ${item.unit || 'ชิ้น'}`), stockFactRow('สถานะ', item.effectiveStatus)]
-  return {
-    type: 'bubble', size: 'micro',
-    header: stockCardHeader('ของใกล้หมด', item.display_name, STOCK_STATUS_ICON[item.effectiveStatus] || '⚠️'),
-    body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
-      { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base, contents: facts },
-    ] },
-    footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: [
-      stockCardButton({ type: 'postback', label: 'สั่งของ', data: `stock-order:${item.sku}`, displayText: `สั่งของ ${item.display_name}` }, true),
-    ] },
-  }
-}
+const lowStockRow = (item) => ({
+  type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'sm', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base,
+  contents: [
+    stockFlexText(STOCK_STATUS_ICON[item.effectiveStatus] || '⚠️', { size: 'sm', flex: 0 }),
+    stockFlexText(item.display_name, { size: 'xs', weight: 'bold', flex: 4, wrap: true }),
+    stockFlexText(`${item.balance} ${item.unit || 'ชิ้น'}`, { size: 'xs', weight: 'bold', align: 'end', flex: 2, wrap: true }),
+    { type: 'button', style: 'primary', color: STOCK_CARD.amber, height: 'sm', flex: 0, action: { type: 'postback', label: 'สั่ง', data: `stock-order:${item.sku}`, displayText: `สั่งของ ${item.display_name}` } },
+  ],
+})
 
-// carousel รองรับสูงสุด 12 การ์ด (ข้อจำกัดของ LINE) — เกินกว่านั้นแปะการ์ดสรุป "+N รายการ" พร้อมลิงก์เข้าเว็บแทน
+// แจ้งเตือนรวมในใบเดียวแบบกว้าง: อ่านเป็นรายการต่อบรรทัดและกดสั่งได้จากบรรทัดนั้นเลย
 function lowStockFlexMessage(items) {
-  const bubbles = items.slice(0, 12).map(lowStockBubble)
-  if (APP_BASE_URL || items.length > 12) {
-    bubbles.push({
-      type: 'bubble', size: 'micro',
-      body: { type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm', justifyContent: 'center', backgroundColor: STOCK_CARD.soft, contents: [
-        stockFlexText(items.length > 12 ? `+ อีก ${items.length - 12} รายการ` : 'ดูทั้งหมดที่เว็บ', { size: 'xs', weight: 'bold', wrap: true }),
-        ...(APP_BASE_URL ? [stockCardButton({ type: 'uri', label: 'เปิดเว็บ', uri: stockWebUrl() }, true)] : []),
+  const visible = items.slice(0, 10)
+  return {
+    type: 'flex', altText: `แจ้งเตือนของใกล้หมด/หมด ${items.length} รายการ`,
+    contents: {
+      type: 'bubble', size: 'giga',
+      header: stockCardHeader('ของใกล้หมด / หมด', `${items.length} รายการ · กด “สั่ง” ในบรรทัดที่ต้องการ`, '⚠️'),
+      body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
+        ...visible.map(lowStockRow),
+        ...(items.length > visible.length ? [stockFlexText(`+ อีก ${items.length - visible.length} รายการ`, { size: 'xs', color: STOCK_CARD.muted, align: 'center', margin: 'sm' })] : []),
       ] },
-    })
+    },
   }
-  return { type: 'flex', altText: `แจ้งเตือนของใกล้หมด/หมด ${items.length} รายการ`, contents: { type: 'carousel', contents: bubbles } }
 }
 
 // entry point ของ Vercel Cron (vercel.json) — ต้องข้าม requireAuth ปกติเพราะ cron ไม่มี user token
@@ -727,7 +724,7 @@ async function completeStockOrderBatch(replyToken, lineUserId, session, orderDat
   await replyMessage(replyToken, [{
     type: 'flex', altText: `สั่งของ ${done.length} รายการ เรียบร้อย`,
     contents: {
-      type: 'bubble', size: 'micro',
+      type: 'bubble', size: 'giga',
       header: stockCardHeader('สั่งของเรียบร้อย', `${done.length} รายการ · ${orderDate}`, '✅'),
       body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
         { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base, contents: facts.length ? facts : [stockFlexText('ไม่มีรายการสำเร็จ', {})] },
@@ -941,9 +938,9 @@ async function handleStockInCartDonePostback(event) {
   let cart = []
   try { cart = JSON.parse(session?.items_json || '[]') } catch { cart = [] }
   if (!cart.length) return replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่มีรายการในตะกร้าเลยค่ะ พิมพ์ชื่อสินค้าหรือ SKU ที่จะแจ้งได้เลย' }])
-  await upsertStockInSession(lineUserId, { step: 'await_batch_date' })
+  await upsertStockInSession(lineUserId, { step: 'await_arrival_date', arrival_date: '', count_date: '' })
   await replyMessage(replyToken, [{
-    type: 'text', text: 'ของเข้าวันไหนคะ?',
+    type: 'text', text: 'ขั้นตอนวันที่ (1/2): ของเข้าวันไหนคะ?',
     quickReply: { items: [
       { type: 'action', action: { type: 'postback', label: 'วันนี้', data: 'stockin-date:today', displayText: 'วันนี้' } },
       { type: 'action', action: { type: 'datetimepicker', label: 'เลือกวันที่', data: 'stockin-date:pick', mode: 'date', initial: todayBKK() } },
@@ -954,7 +951,7 @@ async function handleStockInCartDonePostback(event) {
 // บันทึกของเข้าทั้งตะกร้า (1 รายการขึ้นไป) — สร้างทีละแถวด้วย addStockInRequest ตัวเดียวกับปุ่ม "แจ้งของเข้า"
 // บนหน้า Stock Movement (ยังไม่ตัดสต็อกจริง — สร้างแค่แถว pending รอบอส/dev กด Match จากเว็บ) แล้ว push
 // การ์ดสรุปเข้ากลุ่มไลน์ทีม (ถ้าเคยลงทะเบียนกลุ่มไว้แล้ว) ให้บอส/dev เห็นว่ามีของรอ Match
-async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate) {
+async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate, countDate) {
   let items = []
   try { items = JSON.parse(session.items_json || '[]') } catch { items = [] }
   if (!Array.isArray(items) || !items.length) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการแจ้งของเข้าค่ะ กรุณาเริ่มใหม่ด้วย “แจ้งของเข้า”' }])
@@ -965,19 +962,21 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
   const failed = []
   for (const it of items) {
     try {
-      await addStockInRequest({ sku: it.sku, qty: it.qty, arrival_date: arrivalDate, note: 'แจ้งจาก LINE' }, reporter.name)
-      done.push(it)
+      const request = await addStockInRequest({ sku: it.sku, qty: it.qty, arrival_date: arrivalDate, count_date: countDate, note: 'แจ้งจาก LINE' }, reporter.name)
+      done.push({ ...it, request })
     } catch (e) { failed.push(`${it.display_name}: ${e.message}`) }
   }
   await clearStockInSession(lineUserId)
 
   const facts = done.map((it) => stockFactRow(it.display_name, `× ${it.qty} ${it.unit}`))
-  const footerButtons = APP_BASE_URL ? [stockCardButton({ type: 'uri', label: 'เปิดเว็บ', uri: stockWebUrl() }, true)] : []
+  const footerButtons = done.length ? [stockCardButton({
+    type: 'postback', label: `Approve ทั้งหมด (${done.length})`, data: `stockin-approve:${done.map((it) => it.request.id).join(',')}`, displayText: `Approve ของเข้า ${done.length} รายการ`,
+  }, true)] : []
   const summaryCard = {
     type: 'flex', altText: `แจ้งของเข้า ${done.length} รายการ`,
     contents: {
-      type: 'bubble', size: 'micro',
-      header: stockCardHeader('แจ้งของเข้าแล้ว', `${done.length} รายการ · ${arrivalDate} · โดย ${reporter.name}`, '📦'),
+      type: 'bubble', size: 'giga',
+      header: stockCardHeader('แจ้งของเข้าแล้ว', `${done.length} รายการ · เข้า ${arrivalDate} · นับ ${countDate} · โดย ${reporter.name}`, '📦'),
       body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
         { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base, contents: facts.length ? facts : [stockFlexText('ไม่มีรายการสำเร็จ', {})] },
         ...(failed.length ? [stockFlexText(`ล้มเหลว: ${failed.join('; ')}`, { color: '#C0392B', size: 'xxs', margin: 'sm', wrap: true })] : []),
@@ -1001,10 +1000,31 @@ async function handleStockInDatePostback(event, choice) {
   const replyToken = event.replyToken
   if (!replyToken || !lineUserId) return
   const session = (await getStockInSessions()).find((s) => s.line_user_id === lineUserId)
-  if (session?.step !== 'await_batch_date') return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการแจ้งของเข้าที่รอเลือกวันที่ค่ะ กรุณาเริ่มใหม่ด้วย “แจ้งของเข้า”' }])
-  const arrivalDate = choice === 'today' ? todayBKK() : String(event.postback?.params?.date || '')
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(arrivalDate)) return replyMessage(replyToken, [{ type: 'text', text: 'กรุณาเลือกวันที่จากปฏิทินอีกครั้งค่ะ' }])
-  await completeStockInBatch(replyToken, lineUserId, session, arrivalDate)
+  if (!['await_arrival_date', 'await_count_date'].includes(session?.step)) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการแจ้งของเข้าที่รอเลือกวันที่ค่ะ กรุณาเริ่มใหม่ด้วย “แจ้งของเข้า”' }])
+  const selectedDate = choice === 'same' ? session.arrival_date : choice === 'today' ? todayBKK() : String(event.postback?.params?.date || '')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return replyMessage(replyToken, [{ type: 'text', text: 'กรุณาเลือกวันที่จากปฏิทินอีกครั้งค่ะ' }])
+  if (session.step === 'await_arrival_date') {
+    await upsertStockInSession(lineUserId, { step: 'await_count_date', arrival_date: selectedDate })
+    return replyMessage(replyToken, [{
+      type: 'text', text: `ขั้นตอนวันที่ (2/2): วันที่นับสต็อกวันไหนคะ?\nวันที่เข้าที่เลือก: ${selectedDate}`,
+      quickReply: { items: [
+        { type: 'action', action: { type: 'postback', label: 'วันเดียวกับของเข้า', data: 'stockin-date:same', displayText: 'วันเดียวกับของเข้า' } },
+        { type: 'action', action: { type: 'datetimepicker', label: 'เลือกวันที่นับ', data: 'stockin-date:pick', mode: 'date', initial: selectedDate } },
+      ] },
+    }])
+  }
+  await completeStockInBatch(replyToken, lineUserId, session, session.arrival_date, selectedDate)
+}
+
+// สิทธิ์กด Approve ของเข้าในกลุ่ม LINE ดูจาก users.role โดยตรง ไม่ผูกกับชนิด username
+// เพราะบัญชีพนักงาน (เช่น mp:...) อาจได้รับสิทธิ์ Dev/Boss ได้เช่นกัน
+async function findStockApprover(lineUserId) {
+  const links = await getSheet('hr_line_links')
+  const link = links.find((l) => l.line_user_id === lineUserId)
+  if (!link) return null
+  const user = (await getSheet('users')).find((u) => u.username === link.username)
+  if (!user || !canManageOperations(user.role)) return null
+  return { name: user.display_name || link.username, role: user.role }
 }
 
 const PLANNER_CONFIG_SHEET = 'planner_config'
@@ -2462,6 +2482,26 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stockin-pick:')) { await handleStockInPickPostback(event, data.slice('stockin-pick:'.length)); continue }
       if (data.startsWith('stockin-date:')) { await handleStockInDatePostback(event, data.slice('stockin-date:'.length)); continue }
       if (data === 'stockin-cart-done') { await handleStockInCartDonePostback(event); continue }
+      if (data.startsWith('stockin-approve:')) {
+        const approver = lineUserId ? await findStockApprover(lineUserId) : null
+        if (!approver) {
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ Approve: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ' }])
+          continue
+        }
+        const ids = data.slice('stockin-approve:'.length).split(',').map((id) => id.trim()).filter(Boolean)
+        const approved = []
+        const failed = []
+        for (const id of ids) {
+          try { await matchStockInRequest({ id }, approver.name, approver.role); approved.push(id) }
+          catch (e) { failed.push(e.message) }
+        }
+        if (event.replyToken) await replyMessage(event.replyToken, [{
+          type: 'text', text: failed.length
+            ? `Approve สำเร็จ ${approved.length} รายการ\nไม่สำเร็จ: ${failed.join('; ')}`
+            : `Approve สำเร็จ ${approved.length} รายการ โดย ${approver.name}`,
+        }])
+        continue
+      }
 
       const [, kind, id] = data.match(/^hr-(approve|reject):(.+)$/) || []
       if (!kind || !id) continue

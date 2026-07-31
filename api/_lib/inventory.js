@@ -507,7 +507,7 @@ export async function addStockInRequest(body, actorName) {
 // order_request_id (ไม่บังคับ) — ถ้า boss เลือกจับคู่กับลอต "สั่งของ" ที่ค้างอยู่ (ดู available_orders
 // จาก loadStockInRequests) ปิดลอตนั้นให้เป็น matched ในคำสั่งเดียวกันเลย ไม่ต้องกด "เสร็จสิ้น" แยกอีกที
 // ฟ้าแจ้งของเข้าได้ตามปกติแม้พี่หยกยังไม่ได้กด "สั่งของ" ไว้ในระบบ (ไม่มีลอตให้เลือกก็ match เดี่ยวๆ ได้)
-async function matchStockInRequest(body, actorName, role) {
+export async function matchStockInRequest(body, actorName, role) {
   if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ match ได้')
   const id = String(body.id || '').trim()
   if (!id) throw new Error('ต้องระบุ id')
