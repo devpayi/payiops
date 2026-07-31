@@ -10,7 +10,7 @@ import {
   leavePeriodLabel, normalizeLeavePeriod, officeLeaveConflicts,
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides } from './_lib/scheduleOverrides.js'
-import opInventory, { computeLowStockList, createOrderRequest, addStockInRequest, matchStockInRequest, rejectStockInRequest, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
+import opInventory, { computeLowStockList, createOrderRequest, addStockInRequest, matchStockInRequest, rejectStockInRequest, editStockInRequest, getStockInRequestById, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
 import opImportTracking from './_lib/importTracking.js'
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
@@ -281,7 +281,7 @@ const STOCK_ORDER_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'orde
 // แยกชีต/session จาก stock_order_sessions เพื่อกันคนที่กำลังสั่งของค้างอยู่แล้วมาแจ้งของเข้าพร้อมกัน
 // (หรือกลับกัน) ไม่ให้ session ของทั้งสอง flow ทับกัน
 const STOCK_IN_SESSION_SHEET = 'stock_in_sessions'
-const STOCK_IN_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'arrival_date', 'count_date', 'updated_at', 'items_json', 'pending_json']
+const STOCK_IN_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'arrival_date', 'count_date', 'updated_at', 'items_json', 'pending_json', 'edit_target_id']
 // เก็บ groupId ของกลุ่มไลน์ทีมงาน (แถวเดียว) — ลงทะเบียนอัตโนมัติทันทีที่มีข้อความจากกลุ่มเข้ามา ไม่ต้อง
 // ตั้งค่าเอง แค่เพิ่มบอทเข้ากลุ่มแล้วมีคนพิมพ์อะไรสักครั้ง ใช้ push การ์ด "แจ้งของเข้า" ให้ทั้งทีมเห็นพร้อมกัน
 const LINE_GROUP_LINK_SHEET = 'line_group_link'
@@ -940,6 +940,126 @@ async function handleStockInQtyReply(event, session) {
   await addToStockInCartAndAskMore(replyToken, lineUserId, [{ sku: item.sku, display_name: item.display_name, unit: item.unit || 'ชิ้น', qty }])
 }
 
+// ── แก้ไขรายการที่โดนปฏิเสธ ผ่าน 1:1 กับคนนับของ (owner ขอ 2026-07-31 กันไม่ให้แก้ไขในกลุ่มแล้วรก) ──
+// จำ username คงที่ของ "คนนับของ" ไว้ตรงนี้ (ค่าเดียวกับ default ในการ์ด StockCounterLineCard ฝั่งเว็บ
+// Settings.jsx) — ยังไม่ทำเป็นค่าตั้งค่าแยก เพราะมีคนเดียวจริง ๆ ตอนนี้ ถ้าเปลี่ยนคนวันหน้า แก้ userId
+// ในการ์ดนั้นได้เลย ไม่ต้องแก้โค้ด (ยกเว้นเปลี่ยน username ล็อกอินไปด้วย ถึงจะต้องแก้ค่านี้ตาม)
+const STOCK_COUNTER_USERNAME = 'fah'
+async function getStockCounterLineUserId() {
+  const links = await getSheet('hr_line_links')
+  return links.find((l) => l.username === STOCK_COUNTER_USERNAME)?.line_user_id || null
+}
+
+function stockInEditMenuMessage(request, item) {
+  const label = item?.display_name || request.sku
+  const unit = item?.unit || 'ชิ้น'
+  return {
+    type: 'text',
+    text: `❗ "${label}" ถูกปฏิเสธค่ะ (แจ้งไว้ ${request.qty} ${unit} · เข้า ${request.arrival_date} · นับ ${request.count_date})\n\nต้องการแก้ไขอะไรคะ?`,
+    quickReply: { items: [
+      { type: 'action', action: { type: 'postback', label: 'จำนวน', data: `stockin-editmenu:qty:${request.id}`, displayText: 'แก้จำนวน' } },
+      { type: 'action', action: { type: 'postback', label: 'วันที่', data: `stockin-editmenu:date:${request.id}`, displayText: 'แก้วันที่' } },
+      { type: 'action', action: { type: 'postback', label: 'สินค้า', data: `stockin-editmenu:item:${request.id}`, displayText: 'แก้สินค้า' } },
+      { type: 'action', action: { type: 'postback', label: 'ยกเลิก', data: `stockin-editmenu:cancel:${request.id}`, displayText: 'ยกเลิก ไม่แก้ไข' } },
+    ] },
+  }
+}
+
+async function handleStockInEditMenu(event, payload) {
+  const [kind, id] = String(payload || '').split(':')
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken || !lineUserId || !id) return
+  if (kind === 'cancel') {
+    await clearStockInSession(lineUserId)
+    return replyMessage(replyToken, [{ type: 'text', text: 'ไม่แก้ไขค่ะ รายการนี้ยังถูกปฏิเสธอยู่' }])
+  }
+  if (kind === 'qty') {
+    await upsertStockInSession(lineUserId, { step: 'await_edit_qty', edit_target_id: id })
+    return replyMessage(replyToken, [{ type: 'text', text: 'จำนวนใหม่เท่าไหร่คะ? พิมพ์ตัวเลขได้เลย' }])
+  }
+  if (kind === 'date') {
+    await upsertStockInSession(lineUserId, { step: 'await_edit_arrival_date', edit_target_id: id, arrival_date: '', count_date: '' })
+    return replyMessage(replyToken, [{
+      type: 'text', text: 'ขั้นตอนวันที่ (1/2): ของเข้าวันไหนคะ?',
+      quickReply: { items: [
+        { type: 'action', action: { type: 'postback', label: 'วันนี้', data: 'stockin-date:today', displayText: 'วันนี้' } },
+        { type: 'action', action: { type: 'datetimepicker', label: 'เลือกวันที่', data: 'stockin-date:pick', mode: 'date', initial: todayBKK() } },
+      ] },
+    }])
+  }
+  if (kind === 'item') {
+    await upsertStockInSession(lineUserId, { step: 'await_edit_item', edit_target_id: id })
+    return replyMessage(replyToken, [{ type: 'text', text: 'พิมพ์ชื่อสินค้าหรือ SKU ใหม่ได้เลยค่ะ' }])
+  }
+}
+
+async function handleStockInEditQtyReply(event, session) {
+  const replyToken = event.replyToken
+  const lineUserId = event.source?.userId
+  if (!replyToken) return
+  const text = String(event.message?.text || '').trim().replace(/,/g, '')
+  const qty = Number(text)
+  if (!Number.isFinite(qty) || qty <= 0) return replyMessage(replyToken, [{ type: 'text', text: 'กรุณาพิมพ์เป็นตัวเลขค่ะ เช่น 100' }])
+  await finishStockInEdit(replyToken, lineUserId, session.edit_target_id, { qty })
+}
+
+async function handleStockInEditItemReply(event, session) {
+  const replyToken = event.replyToken
+  const lineUserId = event.source?.userId
+  if (!replyToken) return
+  const query = String(event.message?.text || '').trim()
+  if (!query) return replyMessage(replyToken, [{ type: 'text', text: 'พิมพ์ชื่อสินค้าหรือ SKU ได้เลยค่ะ' }])
+  const items = await loadOrderableItems()
+  const matches = searchItemsByQuery(query, items).slice(0, 10)
+  if (!matches.length) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ค่ะ ลองพิมพ์ใหม่' }])
+  if (matches.length === 1) return finishStockInEdit(replyToken, lineUserId, session.edit_target_id, { sku: matches[0].sku })
+  await replyMessage(replyToken, [{
+    type: 'text', text: `พบ ${matches.length} รายการ เลือกได้เลยค่ะ`,
+    quickReply: { items: matches.map((it) => ({ type: 'action', action: { type: 'postback', label: it.display_name.slice(0, 20), data: `stockin-edititempick:${session.edit_target_id}:${it.sku}`, displayText: it.display_name } })) },
+  }])
+}
+
+// รวมทุกทางแก้ไขให้จบที่เดียว — เติมฟิลด์ที่ไม่ได้แก้จากค่าเดิมเสมอ (editStockInRequest ต้องการ qty
+// ครบทุกครั้งไม่ว่าจะแก้อะไรก็ตาม) แล้ว push การ์ด 1 รายการกลับเข้ากลุ่มให้ตรวจใหม่ เหมือน flow แจ้งของเข้ารอบแรก
+async function finishStockInEdit(replyToken, lineUserId, id, patch) {
+  const editor = lineUserId ? await resolveArrivalReporter(lineUserId) : null
+  try {
+    const original = await getStockInRequestById(id)
+    if (!original) throw new Error('ไม่พบรายการนี้ อาจถูกจัดการไปแล้ว')
+    const body = { id, sku: original.sku, qty: original.qty, arrival_date: original.arrival_date, count_date: original.count_date, ...patch }
+    const updated = await editStockInRequest(body, editor?.name || 'LINE', editor?.role)
+    await clearStockInSession(lineUserId)
+    const items = await loadOrderableItems()
+    const item = items.find((it) => String(it.sku).toUpperCase() === String(updated.sku).toUpperCase())
+    await pushEditedStockInResult(replyToken, updated, item, editor?.name || 'ทีม')
+  } catch (e) {
+    await replyMessage(replyToken, [{ type: 'text', text: `แก้ไขไม่สำเร็จ: ${e.message}` }])
+  }
+}
+
+async function pushEditedStockInResult(replyToken, request, item, editorName) {
+  const label = item?.display_name || request.sku
+  const unit = item?.unit || 'ชิ้น'
+  const card = {
+    type: 'flex', altText: `แก้ไขของเข้าแล้ว: ${label}`,
+    contents: {
+      type: 'bubble', size: 'giga',
+      header: stockCardHeader('แก้ไขแล้ว รอตรวจอีกครั้ง', `เข้า ${request.arrival_date} · นับ ${request.count_date} · โดย ${editorName}`, '✏️'),
+      body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
+        { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base, contents: [stockInItemRow(request.id, label, `× ${request.qty} ${unit}`)] },
+      ] },
+    },
+  }
+  const groupId = await getGroupTarget()
+  if (groupId) {
+    try { await pushMessage(groupId, [card]) } catch (e) { console.error('push edited card to group:', e.message) }
+    await replyMessage(replyToken, [{ type: 'text', text: 'แก้ไขแล้วค่ะ ส่งเข้ากลุ่มให้ตรวจใหม่แล้ว' }])
+  } else {
+    await replyMessage(replyToken, [card])
+  }
+}
+
 async function handleStockInCartDonePostback(event) {
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
@@ -1016,11 +1136,16 @@ async function handleStockInDatePostback(event, choice) {
   const replyToken = event.replyToken
   if (!replyToken || !lineUserId) return
   const session = (await getStockInSessions()).find((s) => s.line_user_id === lineUserId)
-  if (!['await_arrival_date', 'await_count_date'].includes(session?.step)) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการแจ้งของเข้าที่รอเลือกวันที่ค่ะ กรุณาเริ่มใหม่ด้วย “แจ้งของเข้า”' }])
+  const isEdit = ['await_edit_arrival_date', 'await_edit_count_date'].includes(session?.step)
+  if (!isEdit && !['await_arrival_date', 'await_count_date'].includes(session?.step)) {
+    return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการแจ้งของเข้าที่รอเลือกวันที่ค่ะ กรุณาเริ่มใหม่ด้วย “แจ้งของเข้า”' }])
+  }
   const selectedDate = choice === 'same' ? session.arrival_date : choice === 'today' ? todayBKK() : String(event.postback?.params?.date || '')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return replyMessage(replyToken, [{ type: 'text', text: 'กรุณาเลือกวันที่จากปฏิทินอีกครั้งค่ะ' }])
-  if (session.step === 'await_arrival_date') {
-    await upsertStockInSession(lineUserId, { step: 'await_count_date', arrival_date: selectedDate })
+  const firstStep = isEdit ? 'await_edit_arrival_date' : 'await_arrival_date'
+  const nextStep = isEdit ? 'await_edit_count_date' : 'await_count_date'
+  if (session.step === firstStep) {
+    await upsertStockInSession(lineUserId, { step: nextStep, arrival_date: selectedDate })
     return replyMessage(replyToken, [{
       type: 'text', text: `ขั้นตอนวันที่ (2/2): วันที่นับสต็อกวันไหนคะ?\nวันที่เข้าที่เลือก: ${selectedDate}`,
       quickReply: { items: [
@@ -1029,6 +1154,7 @@ async function handleStockInDatePostback(event, choice) {
       ] },
     }])
   }
+  if (isEdit) return finishStockInEdit(replyToken, lineUserId, session.edit_target_id, { arrival_date: session.arrival_date, count_date: selectedDate })
   await completeStockInBatch(replyToken, lineUserId, session, session.arrival_date, selectedDate)
 }
 
@@ -2467,6 +2593,8 @@ async function opLineWebhook(req, res) {
         if (initialInQuery === '') { await handleStockInStart(event); continue }
         if (stockSession?.step === 'await_item_qty') { await handleStockOrderQtyReply(event, stockSession); continue }
         if (stockInSession?.step === 'await_item_qty') { await handleStockInQtyReply(event, stockInSession); continue }
+        if (stockInSession?.step === 'await_edit_qty') { await handleStockInEditQtyReply(event, stockInSession); continue }
+        if (stockInSession?.step === 'await_edit_item') { await handleStockInEditItemReply(event, stockInSession); continue }
         if (stockSession?.step === 'await_batch_date') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดเลือกวันที่จากข้อความก่อนหน้านี้ หรือพิมพ์ “สั่งของ” เพื่อเริ่มใหม่ค่ะ' }]); continue }
         if (stockInSession?.step === 'await_batch_date') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดเลือกวันที่จากข้อความก่อนหน้านี้ หรือพิมพ์ “แจ้งของเข้า” เพื่อเริ่มใหม่ค่ะ' }]); continue }
         if (stockSession?.step === 'await_item' || stockSession?.step === 'await_item_pick') {
@@ -2500,6 +2628,12 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stockin-pick:')) { await handleStockInPickPostback(event, data.slice('stockin-pick:'.length)); continue }
       if (data.startsWith('stockin-date:')) { await handleStockInDatePostback(event, data.slice('stockin-date:'.length)); continue }
       if (data === 'stockin-cart-done') { await handleStockInCartDonePostback(event); continue }
+      if (data.startsWith('stockin-editmenu:')) { await handleStockInEditMenu(event, data.slice('stockin-editmenu:'.length)); continue }
+      if (data.startsWith('stockin-edititempick:')) {
+        const [id, sku] = data.slice('stockin-edititempick:'.length).split(':')
+        await finishStockInEdit(event.replyToken, event.source?.userId, id, { sku })
+        continue
+      }
       if (data.startsWith('stockin-approve:')) {
         const approver = lineUserId ? await findStockApprover(lineUserId) : null
         if (!approver) {
@@ -2533,26 +2667,29 @@ async function opLineWebhook(req, res) {
           try { rejected.push(await rejectStockInRequest({ id }, approver.name, approver.role)) }
           catch (e) { failed.push(e.message) }
         }
-        // ปุ่ม "แจ้งใหม่" ต่อรายการที่โดนปฏิเสธ — กดแล้วยิงตรงไปหน้าจำนวนของ SKU นั้นเลย (ใช้ postback
-        // เดียวกับตอนเลือกจากผลค้นหา stockin-pick:<sku>) ข้ามขั้นตอนพิมพ์ค้นหาใหม่ทั้งหมด กันไม่ให้ต้องพึ่ง
-        // เว็บเลยตามที่ owner ขอ (2026-07-31) — ใครก็ได้ที่ผูกไลน์แล้วกดได้ ไม่จำกัดว่าต้องเป็นคนแจ้งเดิม
-        let retryQuickReply
+        // แก้ไขให้เกิดขึ้น 1:1 กับคนนับของเท่านั้น (owner ขอ 2026-07-31) — กันกลุ่มรกด้วยเมนูแก้ไขที่ไม่
+        // เกี่ยวกับบอส/dev เลย กลุ่มเห็นแค่สรุปสั้นๆ ว่าปฏิเสธแล้วและแจ้งใครไปให้แก้ไข ส่วนเมนูแก้ไขจริง
+        // (จำนวน/วันที่/สินค้า/ยกเลิก) ส่งตรงเข้าแชท 1:1 ของคนนับของ ผ่าน pushMessage
+        let notifyResult = ''
         if (rejected.length) {
-          const items = await loadOrderableItems()
-          retryQuickReply = {
-            items: rejected.slice(0, 13).map((r) => {
+          const counterId = await getStockCounterLineUserId()
+          if (counterId) {
+            const items = await loadOrderableItems()
+            for (const r of rejected) {
               const item = items.find((it) => String(it.sku).toUpperCase() === String(r.sku).toUpperCase())
-              const label = item?.display_name || r.sku
-              return { type: 'action', action: { type: 'postback', label: `🔁 ${label.slice(0, 16)}`, data: `stockin-pick:${r.sku}`, displayText: `แจ้งของเข้าใหม่: ${label}` } }
-            }),
+              try { await pushMessage(counterId, [stockInEditMenuMessage(r, item)]) }
+              catch (e) { console.error('push edit-menu to stock counter:', e.message) }
+            }
+            notifyResult = ' — แจ้งคนนับของให้แก้ไขทาง LINE 1:1 แล้ว'
+          } else {
+            notifyResult = ' — ยังไม่ได้ผูกไลน์คนนับของ (ตั้งค่าที่หน้า Settings > คนนับของ) ให้แจ้งด้วยตนเองนะคะ'
           }
         }
         if (event.replyToken) await replyMessage(event.replyToken, [{
           type: 'text',
           text: failed.length
             ? `ปฏิเสธสำเร็จ ${rejected.length} รายการ\nไม่สำเร็จ: ${failed.join('; ')}`
-            : `ปฏิเสธสำเร็จ ${rejected.length} รายการ โดย ${approver.name} — กดปุ่มด้านล่างเพื่อแจ้งของเข้าใหม่ได้เลย`,
-          ...(retryQuickReply ? { quickReply: retryQuickReply } : {}),
+            : `ปฏิเสธสำเร็จ ${rejected.length} รายการ โดย ${approver.name}${notifyResult}`,
         }])
         continue
       }

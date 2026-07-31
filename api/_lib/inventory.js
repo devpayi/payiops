@@ -476,6 +476,13 @@ async function loadStockInRequests({ status, role } = {}) {
   return out
 }
 
+// อ่านแถวเดียวตรงๆ ด้วย id — ใช้ตอนสร้างเมนูแก้ไข (LINE 1:1) ที่ต้องรู้ sku/qty/วันที่เดิมก่อนถาม
+export async function getStockInRequestById(id) {
+  await ensureInventorySheets()
+  const requests = await getSheet(STOCK_IN_REQUESTS_SHEET)
+  return requests.find((r) => String(r.id) === String(id)) || null
+}
+
 export async function addStockInRequest(body, actorName) {
   const sku = String(body.sku || '').trim()
   const qty = Number(body.qty)
@@ -571,7 +578,7 @@ export async function rejectStockInRequest(body, actorName, role) {
 // ฟ้าแก้ไขคำขอที่ถูกปฏิเสธแล้วส่งกลับเข้าคิวรอ match ใหม่ (ไม่ต้องพิมพ์แจ้งของเข้าใหม่ทั้งหมด)
 // หรือแก้ไขคำขอที่ยัง pending อยู่ — กรณีนี้ใช้ตอนพี่หยกสั่งของไว้ก่อน (ยังไม่มีวันของเข้า/วันนับ)
 // แล้วฟ้ามากรอกวันที่จริงทีหลังตอนของมาถึง
-async function editStockInRequest(body, actorName, role) {
+export async function editStockInRequest(body, actorName, role) {
   const id = String(body.id || '').trim()
   if (!id) throw new Error('ต้องระบุ id')
 
