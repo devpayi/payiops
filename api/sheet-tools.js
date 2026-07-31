@@ -1030,25 +1030,18 @@ async function handleStockInDatePostback(event, choice) {
 }
 
 // สิทธิ์กด Approve ของเข้าในกลุ่ม LINE ดูจาก users.role โดยตรง ไม่ผูกกับชนิด username
-// เพราะบัญชีพนักงาน (เช่น mp:...) อาจได้รับสิทธิ์ Dev/Boss ได้เช่นกัน
+// เพราะบัญชีพนักงาน (เช่น mp:...) อาจได้รับสิทธิ์ Dev/Boss ได้เช่นกัน — คนเดียวอาจมีหลายแถวผูก LINE id
+// เดียวกัน (เช่น mp:MO สำหรับลา + dev สำหรับสิทธิ์จริง) ต้องไล่เช็คทุกแถว ไม่ใช่หยุดที่แถวแรกที่เจอ (บั๊กจริง
+// ที่เจอ 2026-07-31: .find() เจอแถว mp: ก่อน ซึ่งไม่มีใน users sheet เลย fail ทั้งที่มีแถว dev ที่ถูกต้องอยู่ด้วย)
 async function findStockApprover(lineUserId) {
-  const links = await getSheet('hr_line_links')
-  const link = links.find((l) => l.line_user_id === lineUserId)
-  if (!link) return null
-  const user = (await getSheet('users')).find((u) => u.username === link.username)
-  if (!user || !canManageOperations(user.role)) return null
-  return { name: user.display_name || link.username, role: user.role }
+  const links = (await getSheet('hr_line_links')).filter((l) => l.line_user_id === lineUserId)
+  const users = await getSheet('users')
+  for (const link of links) {
+    const user = users.find((u) => u.username === link.username)
+    if (user && canManageOperations(user.role)) return { name: user.display_name || link.username, role: user.role }
+  }
+  return null
 }
-// ชั่วคราว เพื่อไล่บั๊กสิทธิ์ Approve ของเข้าที่ id ตรงแล้วแต่ยังเช็คไม่ผ่าน (2026-07-31) — ลบทิ้งหลังแก้เสร็จ
-async function debugStockApprover(lineUserId) {
-  const links = await getSheet('hr_line_links')
-  const link = links.find((l) => l.line_user_id === lineUserId)
-  if (!link) return `ไม่พบ hr_line_links row สำหรับ id นี้เลย`
-  const user = (await getSheet('users')).find((u) => u.username === link.username)
-  if (!user) return `link.username="${link.username}" แต่ไม่พบใน users sheet`
-  return `link.username="${link.username}" user.role="${user.role}" canManage=${canManageOperations(user.role)}`
-}
-
 const PLANNER_CONFIG_SHEET = 'planner_config'
 const PLANNER_DAILY_SHEET = 'planner_daily'
 const PLANNER_CONFIG_HEADERS = ['master_sku', 'enabled', 'reserve_days', 'safety_percent', 'updated_at', 'updated_by']
@@ -2507,7 +2500,7 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stockin-approve:')) {
         const approver = lineUserId ? await findStockApprover(lineUserId) : null
         if (!approver) {
-          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ไม่มีสิทธิ์ Approve: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ\n(debug: ${lineUserId ? await debugStockApprover(lineUserId) : 'ไม่มี lineUserId'})` }])
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ Approve: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ' }])
           continue
         }
         const ids = data.slice('stockin-approve:'.length).split(',').map((id) => id.trim()).filter(Boolean)
@@ -2527,7 +2520,7 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stockin-reject:')) {
         const approver = lineUserId ? await findStockApprover(lineUserId) : null
         if (!approver) {
-          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ไม่มีสิทธิ์ปฏิเสธ: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ\n(debug: ${lineUserId ? await debugStockApprover(lineUserId) : 'ไม่มี lineUserId'})` }])
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ปฏิเสธ: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ' }])
           continue
         }
         const ids = data.slice('stockin-reject:'.length).split(',').map((id) => id.trim()).filter(Boolean)
