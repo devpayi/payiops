@@ -318,7 +318,7 @@ const stockInItemRow = (id, label, value) => ({
   contents: [
     { type: 'box', layout: 'vertical', flex: 5, contents: [stockFactRow(label, value)] },
     { type: 'button', style: 'primary', color: STOCK_CARD.amber, height: 'sm', flex: 2, gravity: 'center', action: { type: 'postback', label: '✓', data: `stockin-approve:${id}`, displayText: `Approve ${label}` } },
-    { type: 'button', style: 'secondary', color: '#FDF3D8', height: 'sm', flex: 2, gravity: 'center', action: { type: 'postback', label: '✗', data: `stockin-reject:${id}`, displayText: `ปฏิเสธ ${label}` } },
+    { type: 'button', style: 'secondary', color: '#FDF3D8', height: 'sm', flex: 2, gravity: 'center', action: { type: 'postback', label: '✗', data: `stockin-reject:${id}`, displayText: `${label} ไม่ตรง` } },
   ],
 })
 
@@ -978,8 +978,13 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
   }
   await clearStockInSession(lineUserId)
 
-  // ปุ่ม ✓/✗ แยกต่อรายการ แทนปุ่ม "Approve ทั้งหมด" เดียว — ของเข้าหลายรายการอาจตรงไม่หมดทุกอัน
+  // ปุ่ม ✓/✗ แยกต่อรายการ (ของเข้าหลายรายการอาจตรงไม่หมดทุกอัน) + ปุ่ม "Approve ทั้งหมด" รวม
+  // ไว้ตรงกดจบทีเดียวถ้าตรงหมด — สองแบบอยู่ด้วยกันได้ กด ✗ รายการไหนไปแล้ว กด "ทั้งหมด" ซ้ำ
+  // แค่รายการนั้นจะ error เฉยๆ (เช็ค status pending อยู่แล้วใน matchStockInRequest)
   const itemRows = done.map((it) => stockInItemRow(it.request.id, it.display_name, `× ${it.qty} ${it.unit}`))
+  const footerButtons = done.length > 1 ? [stockCardButton({
+    type: 'postback', label: `Approve ทั้งหมด (${done.length})`, data: `stockin-approve:${done.map((it) => it.request.id).join(',')}`, displayText: `Approve ของเข้า ${done.length} รายการ`,
+  }, true)] : []
   const summaryCard = {
     type: 'flex', altText: `แจ้งของเข้า ${done.length} รายการ`,
     contents: {
@@ -989,6 +994,7 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
         { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base, contents: itemRows.length ? itemRows : [stockFlexText('ไม่มีรายการสำเร็จ', {})] },
         ...(failed.length ? [stockFlexText(`ล้มเหลว: ${failed.join('; ')}`, { color: '#C0392B', size: 'xxs', margin: 'sm', wrap: true })] : []),
       ] },
+      ...(footerButtons.length ? { footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: footerButtons } } : {}),
     },
   }
   await replyMessage(replyToken, [summaryCard])

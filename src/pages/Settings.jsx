@@ -36,6 +36,7 @@ export default function Settings() {
     <div style={{ width: '100%', display: 'grid', gap: 20, maxWidth: 720 }}>
       <ChangePasswordCard me={me} />
       {isAdmin && <BossLineNotifyCard hrData={hrData} hrLoading={hrLoading} usersData={usersData} usersLoading={usersLoading} reloadHr={reloadHr} />}
+      {isAdmin && <StockCounterLineCard hrData={hrData} hrLoading={hrLoading} reloadHr={reloadHr} />}
       {isAdmin && <StaffLineLinkCard hrData={hrData} hrLoading={hrLoading} reloadHr={reloadHr} />}
       {isAdmin && <UserManagementCard me={me} usersData={usersData} usersLoading={usersLoading} reloadUsers={reloadUsers} />}
     </div>
@@ -236,6 +237,79 @@ function StaffLineLinkCard({ hrData, hrLoading, reloadHr }) {
               </button>
             </div>
           ))}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+// ช่องเดียวคงที่สำหรับ "คนนับของ/แจ้งของเข้า" — ต่างจาก BossLineNotifyCard (บอส/dev เท่านั้น) เพราะ
+// resolveArrivalReporter (sheet-tools.js) ไม่เช็ค role เลย แค่หา username ใน users sheet ได้ก็พอ ใช้ username
+// login จริงของคนนับของตรงๆ (เช่น "fah") เปลี่ยนคนวันหน้าก็แก้ username + userId ที่นี่ที่เดียว ไม่ต้องหาในตาราง
+// manpower ยาวๆ ที่การ์ด "ผูก LINE พนักงาน (manpower)" ใช้อยู่ (การ์ดนั้นมีไว้เพื่อยื่นลา คนละจุดประสงค์)
+function StockCounterLineCard({ hrData, hrLoading, reloadHr }) {
+  const [username, setUsername] = useState('fah')
+  const [lineUserId, setLineUserId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+
+  const currentLink = useMemo(() => (hrData?.lineLinks || []).find((l) => l.username === username), [hrData, username])
+  useEffect(() => { setLineUserId(currentLink?.line_user_id || '') }, [currentLink])
+
+  const save = async () => {
+    const u = username.trim()
+    if (!u) return
+    setBusy(true); setMsg(null)
+    try {
+      const res = await fetch('/api/sheet-tools?op=hr', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set-line-id-for', username: u, line_user_id: lineUserId.trim() }),
+      })
+      const d = await res.json()
+      if (!d.success) throw new Error(d.error || 'บันทึกไม่สำเร็จ')
+      setMsg({ ok: true, text: 'บันทึกแล้ว' })
+      reloadHr()
+    } catch (err) {
+      setMsg({ ok: false, text: err.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card icon={MessageCircle} title="คนนับของ (แจ้งของเข้า)" sub="username ล็อกอินจริงของคนที่กด &quot;แจ้งของเข้า&quot; ในแชท + LINE userId ของเขา (ให้ทักแชทเข้า OA ก่อน บอทจะตอบ userId กลับมา) เปลี่ยนคนวันหน้าแก้ที่นี่ที่เดียว">
+      {hrLoading ? (
+        <div style={{ fontSize: 13, color: 'var(--payi-text-muted)' }}>กำลังโหลด...</div>
+      ) : (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {msg && (
+            <div style={{ fontSize: 12.5, padding: '8px 10px', borderRadius: 8, color: msg.ok ? 'var(--payi-success)' : 'var(--payi-danger)', background: msg.ok ? 'var(--payi-success-bg)' : 'var(--payi-danger-bg)' }}>
+              {msg.text}
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="username ล็อกอิน"
+              style={{ ...inputStyle, width: 140 }}
+              autoCapitalize="none"
+            />
+            <input
+              value={lineUserId}
+              onChange={(e) => setLineUserId(e.target.value)}
+              placeholder="LINE userId"
+              style={{ ...inputStyle, flex: '1 1 180px', minWidth: 140 }}
+              autoCapitalize="none"
+            />
+            <button
+              onClick={save}
+              disabled={busy || !username.trim()}
+              style={{ ...primaryBtn, padding: '7px 12px', opacity: busy || !username.trim() ? 0.5 : 1 }}
+            >
+              {busy ? <Loader2 size={13} className="payi-spin" /> : 'บันทึก'}
+            </button>
+          </div>
         </div>
       )}
     </Card>
