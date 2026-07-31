@@ -1039,6 +1039,15 @@ async function findStockApprover(lineUserId) {
   if (!user || !canManageOperations(user.role)) return null
   return { name: user.display_name || link.username, role: user.role }
 }
+// ชั่วคราว เพื่อไล่บั๊กสิทธิ์ Approve ของเข้าที่ id ตรงแล้วแต่ยังเช็คไม่ผ่าน (2026-07-31) — ลบทิ้งหลังแก้เสร็จ
+async function debugStockApprover(lineUserId) {
+  const links = await getSheet('hr_line_links')
+  const link = links.find((l) => l.line_user_id === lineUserId)
+  if (!link) return `ไม่พบ hr_line_links row สำหรับ id นี้เลย`
+  const user = (await getSheet('users')).find((u) => u.username === link.username)
+  if (!user) return `link.username="${link.username}" แต่ไม่พบใน users sheet`
+  return `link.username="${link.username}" user.role="${user.role}" canManage=${canManageOperations(user.role)}`
+}
 
 const PLANNER_CONFIG_SHEET = 'planner_config'
 const PLANNER_DAILY_SHEET = 'planner_daily'
@@ -2498,7 +2507,7 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stockin-approve:')) {
         const approver = lineUserId ? await findStockApprover(lineUserId) : null
         if (!approver) {
-          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ไม่มีสิทธิ์ Approve: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ\n(userId ของคุณ: ${lineUserId || '-'})` }])
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ไม่มีสิทธิ์ Approve: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ\n(debug: ${lineUserId ? await debugStockApprover(lineUserId) : 'ไม่มี lineUserId'})` }])
           continue
         }
         const ids = data.slice('stockin-approve:'.length).split(',').map((id) => id.trim()).filter(Boolean)
@@ -2518,7 +2527,7 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stockin-reject:')) {
         const approver = lineUserId ? await findStockApprover(lineUserId) : null
         if (!approver) {
-          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ไม่มีสิทธิ์ปฏิเสธ: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ\n(userId ของคุณ: ${lineUserId || '-'})` }])
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ไม่มีสิทธิ์ปฏิเสธ: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ\n(debug: ${lineUserId ? await debugStockApprover(lineUserId) : 'ไม่มี lineUserId'})` }])
           continue
         }
         const ids = data.slice('stockin-reject:'.length).split(',').map((id) => id.trim()).filter(Boolean)
