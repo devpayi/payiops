@@ -443,13 +443,14 @@ export default function App() {
     ? allVisibleTabs.map((item) => ({ ...item, label: MOBILE_SHORT_LABELS[item.id] || item.label }))
     : MOBILE_TAB_CANDIDATES.filter((item) => canAccessTab(currentRole, item.id))
   const firstAllowedTab = currentRole === 'stock' ? STOCK_TABS[0] : currentRole === 'staff' ? STAFF_TABS[0] : 'Executive'
-  // หน้าแรก = หน้าว่างเสมอทุกครั้งที่เข้าเว็บ (ไม่จำแท็บล่าสุด) กันหน้า Dashboard หนักโหลดช้าทุกครั้ง —
-  // ยกเว้นมี ?tab=... ติดมาใน URL (ใช้เป็น deep link จากปุ่ม "เปิดเว็บ" ในการ์ดแจ้งเตือนไลน์ เช่น สั่งของ
-  // เสร็จแล้วอยากเด้งตรงไปหน้า Stock Movement เลย ไม่ต้องผ่านหน้าแรกก่อน) เช็คสิทธิ์ตามปกติที่ effect ด้านล่างอยู่แล้ว
+  // จำแท็บล่าสุดไว้ข้าม refresh (localStorage `payi-active-tab`) — เดิมรีเซ็ตกลับ Home ทุกครั้งเพื่อกัน
+  // หน้า Dashboard หนักโหลดช้าซ้ำ แต่ owner ขอเปลี่ยนกลับ (2026-07-31) ยอมรับเวลาโหลดที่อาจช้ากว่า Home
+  // แลกกับไม่ต้องกดกลับไปหน้าเดิมทุกครั้งที่ refresh ?tab=... ใน URL (deep link จากการ์ดไลน์) ยังชนะเสมอ
   const [activeTab, setActiveTab] = useState(() => {
     try {
       const tab = new URLSearchParams(window.location.search).get('tab')
-      return tab || 'Home'
+      if (tab) return tab
+      return localStorage.getItem('payi-active-tab') || 'Home'
     } catch { return 'Home' }
   })
   useEffect(() => {
