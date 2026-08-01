@@ -2613,8 +2613,9 @@ async function opLineWebhook(req, res) {
         // LINE ID เดียวกันอาจผูกเป็นทั้งพนักงานและ DEV/Boss ได้: ให้คำสั่งสต็อกด้านบน
         // มีสิทธิ์ทำงานก่อน แล้วข้อความอื่นค่อยเข้าขั้นตอนลาของพนักงาน
         if (staffLink) { await handleLeaveWizard(event, staffLink); continue }
-        // ยังไม่ผูกเป็นพนักงาน (หรือเป็น admin) — ตอบ userId กลับไปให้ก็อปไปผูกในหน้า Settings ได้เลย ไม่ต้องเปิด log
-        if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `LINE userId ของคุณคือ:\n${lineUserId || '(ไม่พบ)'}\n\nเอาไปวางที่เว็บ Payi Ops > Settings > แจ้งเตือนผ่าน LINE` }])
+        // เดิมตอบ userId กลับให้ทุกข้อความที่ไม่เข้าเงื่อนไขไหนเลย (เผื่อเอาไปผูก LINE) — เอาออกตามที่ owner
+        // ขอ (2026-07-31) เพราะคนที่ผูกไลน์แล้ว (เช่น บอส ที่ผูกแบบ non-mp: ไม่เข้าเงื่อนไข staffLink) พิมพ์
+        // อะไรเล่นๆ ในกลุ่มแล้วโดนบอทตอบ userId ใส่หน้า งงว่าเกิดอะไรขึ้น ไม่ตอบอะไรเลยดีกว่าถ้าไม่เข้าคำสั่งไหน
         continue
       }
 
