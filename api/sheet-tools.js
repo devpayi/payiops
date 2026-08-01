@@ -10,7 +10,7 @@ import {
   leavePeriodLabel, normalizeLeavePeriod, officeLeaveConflicts,
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides } from './_lib/scheduleOverrides.js'
-import opInventory, { computeLowStockList, createOrderRequest, addStockInRequest, matchStockInRequest, rejectStockInRequest, editStockInRequest, getStockInRequestById, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
+import opInventory, { computeLowStockList, createOrderRequest, addStockInRequest, matchStockInRequest, rejectStockInRequest, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
 import opImportTracking from './_lib/importTracking.js'
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
@@ -2642,6 +2642,30 @@ async function opLineWebhook(req, res) {
           continue
         }
         const ids = data.slice('stockin-approve:'.length).split(',').map((id) => id.trim()).filter(Boolean)
+        // กด ✓ ทีละรายการ (ไม่ใช่ "Approve ทั้งหมด" แบบ batch) — เช็คก่อนว่ามีลอต "สั่งของ" ค้างรอของ sku
+        // เดียวกันไหม (FIFO เหมือนหน้าเว็บ) ถ้ามีให้เลือกจับคู่ก่อน ไม่ match ทันที กันพลาดจับผิดลอต —
+        // batch หลายรายการพร้อมกันไม่รองรับเลือกลอต (ซับซ้อนเกินไปใน LINE) match แบบไม่ผูกลอตไปเลย
+        if (ids.length === 1) {
+          const pending = await loadStockInRequests({ status: 'pending', role: approver.role })
+          const target = pending.find((r) => String(r.id) === ids[0])
+          if (target?.available_orders?.length) {
+            const lots = target.available_orders.slice(0, 12)
+            const lotButtons = lots.map((o, i) => ({
+              type: 'action', action: {
+                type: 'postback',
+                label: `${i === 0 ? '⭐' : ''}${o.qty}${target.unit || ''} ${(o.order_date || o.created_at || '').slice(5, 10)}`.slice(0, 20),
+                data: `stockin-matchlot:${target.id}:${o.id}`, displayText: `จับคู่ลอต ${o.qty} (${o.order_date || '-'})`,
+              },
+            }))
+            lotButtons.push({ type: 'action', action: { type: 'postback', label: 'ไม่ผูกลอต', data: `stockin-matchlot:${target.id}:none`, displayText: 'ไม่ผูกลอต' } })
+            await replyMessage(event.replyToken, [{
+              type: 'text',
+              text: `"${target.display_name}" มีลอต "สั่งของ" ค้างรอ Match อยู่ ${lots.length} ลอต\nเลือกลอตที่ตรงกับของที่เข้ามาจริง (⭐ = สั่งก่อนสุด ตามคิว FIFO) หรือ "ไม่ผูกลอต" ถ้าไม่ตรงกับลอตไหนเลย`,
+              quickReply: { items: lotButtons },
+            }])
+            continue
+          }
+        }
         const approved = []
         const failed = []
         for (const id of ids) {
@@ -2653,6 +2677,21 @@ async function opLineWebhook(req, res) {
             ? `Approve สำเร็จ ${approved.length} รายการ\nไม่สำเร็จ: ${failed.join('; ')}`
             : `Approve สำเร็จ ${approved.length} รายการ โดย ${approver.name}`,
         }])
+        continue
+      }
+      if (data.startsWith('stockin-matchlot:')) {
+        const approver = lineUserId ? await findStockApprover(lineUserId) : null
+        if (!approver) {
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ Approve: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ' }])
+          continue
+        }
+        const [reqId, lotId] = data.slice('stockin-matchlot:'.length).split(':')
+        try {
+          await matchStockInRequest({ id: reqId, order_request_id: lotId === 'none' ? undefined : lotId }, approver.name, approver.role)
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `Approve สำเร็จ โดย ${approver.name}${lotId !== 'none' ? ' (จับคู่ลอตแล้ว)' : ''}` }])
+        } catch (e) {
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
+        }
         continue
       }
       if (data.startsWith('stockin-reject:')) {

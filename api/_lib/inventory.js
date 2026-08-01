@@ -426,7 +426,7 @@ async function updateMovement(body, actorName) {
 // Inventory เอง) ให้ boss/dev เห็นเท่านั้น — ตั้งใจไม่ให้ฟ้า(คนรับของ)เห็นจำนวนที่สั่งไว้ล่วงหน้า
 // จะได้นับสต็อกจริงแบบ blind count ไม่ใช่แค่เช็คให้ตรงกับเลขที่คาดไว้ (แถวที่มี arrival_date
 // แล้ว = มีคนแจ้งของเข้าจริงแล้ว ปลอดภัยให้ทุกคนเห็น เพราะเป็นเลขนับจริง ไม่ใช่เลขคาดการณ์)
-async function loadStockInRequests({ status, role } = {}) {
+export async function loadStockInRequests({ status, role } = {}) {
   await ensureInventorySheets()
   const [rows, items] = await Promise.all([getSheet(STOCK_IN_REQUESTS_SHEET), getSheet(ITEMS_SHEET)])
   const nameBySku = new Map(items.map((it) => [String(it.sku), it.display_name || it.sku]))
