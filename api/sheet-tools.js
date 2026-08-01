@@ -950,6 +950,15 @@ async function getStockCounterLineUserId() {
   return links.find((l) => l.username === STOCK_COUNTER_USERNAME)?.line_user_id || null
 }
 
+// สรุปผล Approve/ปฏิเสธ/จับคู่ลอต เป็นข้อความสั้นเข้ากลุ่ม — การ์ดจริงกับปุ่มกดทั้งหมดย้ายไปอยู่ 1:1 กับ
+// boss/dev แล้ว (2026-08-01) กลุ่มเลยไม่เห็นอะไรเลยถ้าไม่ประกาศผลตรงนี้ ไม่มีกลุ่มลงทะเบียนไว้ก็แค่ข้ามเงียบๆ
+async function announceStockInResultToGroup(text) {
+  const groupId = await getGroupTarget()
+  if (!groupId) return
+  try { await pushMessage(groupId, [{ type: 'text', text }]) }
+  catch (e) { console.error('announce stock-in result to group:', e.message) }
+}
+
 function stockInEditMenuMessage(request, item) {
   const label = item?.display_name || request.sku
   const unit = item?.unit || 'ชิ้น'
@@ -1117,16 +1126,18 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
       ...(footerButtons.length ? { footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: footerButtons } } : {}),
     },
   }
-  // การ์ดจริง (มีปุ่ม ✓/✗) ให้ขึ้นในกลุ่มที่เดียว — บอส/dev ตรวจ/กดจากตรงนั้นพอ ไม่ต้องส่งซ้ำเข้าไปหาคนแจ้งเอง
-  // ด้วย (เดิม reply การ์ดเต็มกลับไปหาคนแจ้งเสมอ ถ้าคนแจ้งทักบอต 1:1 บอส/dev จะไม่เห็นการ์ดเลยนอกจาก
-  // เคยลงทะเบียนกลุ่มไว้ ซึ่งพอลงทะเบียนแล้วก็กลายเป็นเห็นซ้ำสองที่ — owner ขอให้เหลือกลุ่มที่เดียว 2026-07-31)
-  const groupId = done.length ? await getGroupTarget() : null
-  if (groupId) {
-    try { await pushMessage(groupId, [{ ...summaryCard, altText: `ของเข้ารอ Match: ${done.length} รายการ (แจ้งโดย ${reporter.name})` }]) }
-    catch (e) { console.error('push arrival card to group:', e.message) }
-    await replyMessage(replyToken, [{ type: 'text', text: `แจ้งของเข้า ${done.length} รายการเรียบร้อยค่ะ ส่งเข้ากลุ่มให้ตรวจแล้ว` }])
+  // การ์ดจริง (มีปุ่ม ✓/✗) ส่ง 1:1 หา boss/dev ทุกคนที่เปิด notify_stock ไว้ (ใช้ target ชุดเดียวกับ
+  // แจ้งเตือนของใกล้หมด getStockLineTargets()) แทนการโพสต์เข้ากลุ่ม — กลุ่มเห็นแค่ผลลัพธ์หลัง boss กด
+  // ✓/✗ เสร็จแล้ว (ดู stockin-approve/-reject/-matchlot) ไม่ต้องมีปุ่มโชว์ในกลุ่มเลย กันรกตามที่ owner ขอ
+  // (2026-08-01 กลับทิศจาก push-to-group เดิมเมื่อวาน) ถ้ายังไม่มีใครเปิด notify_stock เลย fallback ส่ง
+  // การ์ดเต็มกลับไปหาคนแจ้งแทน ไม่งั้นไม่มีใครเห็นการ์ดนี้เลย
+  const targets = done.length ? await getStockLineTargets() : []
+  if (targets.length) {
+    const altText = `ของเข้ารอ Match: ${done.length} รายการ (แจ้งโดย ${reporter.name})`
+    await Promise.all(targets.map((t) => pushMessage(t.line_user_id, [{ ...summaryCard, altText }]).catch((e) => console.error('push arrival card to boss/dev:', e.message))))
+    await replyMessage(replyToken, [{ type: 'text', text: `แจ้งของเข้า ${done.length} รายการเรียบร้อยค่ะ ส่งให้ Boss/Dev ตรวจแล้ว` }])
   } else {
-    // ยังไม่เคยลงทะเบียนกลุ่มไว้เลย — ส่งการ์ดเต็มกลับไปหาคนแจ้งแทน ไม่งั้นไม่มีใครเห็นการ์ดนี้เลย
+    // ยังไม่มีใครเปิด notify_stock เลย — ส่งการ์ดเต็มกลับไปหาคนแจ้งแทน ไม่งั้นไม่มีใครเห็นการ์ดนี้เลย
     await replyMessage(replyToken, [summaryCard])
   }
 }
@@ -2677,6 +2688,8 @@ async function opLineWebhook(req, res) {
             ? `Approve สำเร็จ ${approved.length} รายการ\nไม่สำเร็จ: ${failed.join('; ')}`
             : `Approve สำเร็จ ${approved.length} รายการ โดย ${approver.name}`,
         }])
+        // การ์ดจริงส่ง 1:1 ไม่ได้ขึ้นในกลุ่มแล้ว — แจ้งผลสั้นๆ เข้ากลุ่มแทน ให้ทีมเห็นว่า Match ไปแล้ว
+        if (approved.length) await announceStockInResultToGroup(`✅ Approve ${approved.length} รายการ โดย ${approver.name}`)
         continue
       }
       if (data.startsWith('stockin-matchlot:')) {
@@ -2689,6 +2702,7 @@ async function opLineWebhook(req, res) {
         try {
           await matchStockInRequest({ id: reqId, order_request_id: lotId === 'none' ? undefined : lotId }, approver.name, approver.role)
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `Approve สำเร็จ โดย ${approver.name}${lotId !== 'none' ? ' (จับคู่ลอตแล้ว)' : ''}` }])
+          await announceStockInResultToGroup(`✅ Approve สำเร็จ โดย ${approver.name}${lotId !== 'none' ? ' (จับคู่ลอตแล้ว)' : ''}`)
         } catch (e) {
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
         }
@@ -2731,6 +2745,7 @@ async function opLineWebhook(req, res) {
             ? `ปฏิเสธสำเร็จ ${rejected.length} รายการ\nไม่สำเร็จ: ${failed.join('; ')}`
             : `ปฏิเสธสำเร็จ ${rejected.length} รายการ โดย ${approver.name}${notifyResult}`,
         }])
+        if (rejected.length) await announceStockInResultToGroup(`❌ ปฏิเสธ ${rejected.length} รายการ โดย ${approver.name}${notifyResult}`)
         continue
       }
 
