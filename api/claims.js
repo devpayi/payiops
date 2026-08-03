@@ -1,4 +1,4 @@
-// /api/claims?view=summary|monthly|sku|by-product|imports-list|import|create-claim
+// /api/claims?view=summary|monthly|sku|by-product|imports-list|import|create-claim|create-claims-bulk
 // อ่าน/จัดการข้อมูลเคลมจาก sheet "claims" (Google Sheets)
 import { requireAuth } from './_lib/auth.js'
 import { getSheet, getMetaCached, batchGetValues, appendRows, overwriteSheet, ensureSheet } from './_lib/sheets.js'
@@ -140,26 +140,52 @@ export default async function handler(req, res) {
     }
 
     // ---- กรอกเคลมเองจากหน้าเว็บ (owner ขอ 2026-08-01) — ไม่ต้องผ่าน Excel import เลย ----
-    if (view === 'create-claim' && req.method === 'POST') {
-      const b = req.body || {}
+    // buildManualClaimRecord ใช้ร่วมกันทั้งกรอกทีละรายการ (create-claim) และหลายรายการพร้อมกัน
+    // (create-claims-bulk เหมือนวางแถวในชีท) — ต้องมี aliasByMasterSku มาให้แล้ว กันแต่ละแถวยิง getSheet ซ้ำ
+    function buildManualClaimRecord(b, aliasByMasterSku, seq = 0) {
       const date = String(b.date || '').trim()
       const masterSku = String(b.master_sku || '').trim()
-      if (!date) return res.status(400).json({ success: false, error: 'ต้องระบุวันที่' })
-      if (!masterSku) return res.status(400).json({ success: false, error: 'ต้องระบุสินค้า' })
-      const aliases = await getSheet('product_aliases')
-      const product = aliases.find((a) => String(a.master_sku).trim() === masterSku)
+      if (!date) throw new Error('ต้องระบุวันที่')
+      if (!masterSku) throw new Error('ต้องระบุสินค้า')
+      const product = aliasByMasterSku.get(masterSku)
       const displayName = product?.display_name || masterSku
-      const record = {
-        id: `claim-manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      return {
+        id: `claim-manual-${Date.now().toString(36)}-${seq}-${Math.random().toString(36).slice(2, 7)}`,
         date, business: String(b.business || 'Payi').trim(),
         product_name: displayName, free_item: String(b.free_item || '').trim(), claim_value: String(num(b.claim_value)),
         is_damaged: b.is_damaged ? '1' : '', is_incomplete: b.is_incomplete ? '1' : '', is_wrong_item: b.is_wrong_item ? '1' : '',
         note: String(b.note || '').trim(), master_sku: masterSku, display_name: displayName,
         imported_at: new Date().toISOString(), import_id: '', source_file: 'กรอกเองจากหน้าเว็บ',
       }
+    }
+
+    if (view === 'create-claim' && req.method === 'POST') {
+      const aliases = await getSheet('product_aliases')
+      const aliasByMasterSku = new Map(aliases.map((a) => [String(a.master_sku).trim(), a]))
+      let record
+      try { record = buildManualClaimRecord(req.body || {}, aliasByMasterSku) }
+      catch (e) { return res.status(400).json({ success: false, error: e.message }) }
       await appendRows('claims', [CLAIMS_HEADERS.map((h) => record[h] ?? '')])
       clearClaimsCache()
       return res.status(200).json({ success: true, claim: record })
+    }
+
+    // ---- กรอกหลายรายการพร้อมกัน (เหมือนวางแถวในชีท) — เขียนครั้งเดียวด้วย appendRows แถวเดียว
+    // กันปัญหา race condition ที่เจอมาแล้วตอนยิง write หลายคำขอพร้อมกัน (ดูโน้ตใน CLAUDE.md เรื่อง
+    // stock_in_requests) ล้มเหลวแถวไหนไม่เขียนอะไรเลยทั้งชุด ให้แก้ไขแล้วลองใหม่ ไม่เขียนครึ่งๆ กลางๆ ----
+    if (view === 'create-claims-bulk' && req.method === 'POST') {
+      const rows = Array.isArray(req.body?.rows) ? req.body.rows : []
+      if (!rows.length) return res.status(400).json({ success: false, error: 'ไม่มีรายการที่จะบันทึก' })
+      const aliases = await getSheet('product_aliases')
+      const aliasByMasterSku = new Map(aliases.map((a) => [String(a.master_sku).trim(), a]))
+      const records = []
+      for (let i = 0; i < rows.length; i++) {
+        try { records.push(buildManualClaimRecord(rows[i], aliasByMasterSku, i)) }
+        catch (e) { return res.status(400).json({ success: false, error: `แถวที่ ${i + 1}: ${e.message}` }) }
+      }
+      await appendRows('claims', records.map((record) => CLAIMS_HEADERS.map((h) => record[h] ?? '')))
+      clearClaimsCache()
+      return res.status(200).json({ success: true, count: records.length, claims: records })
     }
 
     // view หนักที่เหลือ (monthly/sku/by-product/summary) ต้องอ่าน raw_orders_* ทั้งหมด — cache ไว้

@@ -485,15 +485,19 @@ function SkuDetailPanel({ masterSku, productKey, displayName, skuCount, startDat
 // COMPONENT: กรอกเคลมเองจากหน้าเว็บ (ไม่ต้องผ่าน Excel import) — owner ขอ 2026-08-01
 // ============================================================
 const BUSINESS_OPTIONS = ['Payi', 'Payi Outlet', 'กรอบรูป']
+// แถวว่างใหม่ — สืบ วันที่/ธุรกิจ จากแถวล่าสุด (สะดวกเวลากรอกทีละหลายแถวของวันเดียวกัน) เหมือนลากสูตรในชีท
+const emptyClaimRow = (last) => ({
+  _key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  date: last?.date || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }),
+  business: last?.business || BUSINESS_OPTIONS[0],
+  master_sku: '', claim_value: '', free_item: '',
+  is_damaged: false, is_incomplete: false, is_wrong_item: false, note: '',
+})
+
 function AddClaimModal({ onClose, onSaved }) {
-  const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
   const [products, setProducts] = useState([])
   const [productsLoading, setProductsLoading] = useState(true)
-  const [productSearch, setProductSearch] = useState('')
-  const [form, setForm] = useState({
-    date: today(), business: BUSINESS_OPTIONS[0], master_sku: '', claim_value: '', free_item: '',
-    is_damaged: false, is_incomplete: false, is_wrong_item: false, note: '',
-  })
+  const [rows, setRows] = useState([emptyClaimRow()])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -503,20 +507,50 @@ function AddClaimModal({ onClose, onSaved }) {
     }).catch(() => {}).finally(() => setProductsLoading(false))
   }, [])
 
-  const filteredProducts = productSearch.trim()
-    ? products.filter((p) => `${p.master_sku} ${p.display_name}`.toLowerCase().includes(productSearch.trim().toLowerCase()))
-    : products
-  const selectedProduct = products.find((p) => p.master_sku === form.master_sku)
+  const productByKey = (sku) => products.find((p) => p.master_sku === sku)
+  const patchRow = (key, patch) => setRows((current) => current.map((r) => (r._key === key ? { ...r, ...patch } : r)))
+  const addRow = () => setRows((current) => [...current, emptyClaimRow(current[current.length - 1])])
+  const removeRow = (key) => setRows((current) => (current.length > 1 ? current.filter((r) => r._key !== key) : current))
 
   const handleBackdrop = (e) => { if (e.target === e.currentTarget) onClose() }
 
+  // วางจากชีต/Excel — แต่ละแถวคั่นด้วย tab ลำดับคอลัมน์: วันที่, SKU, มูลค่า, ของแถม, หมายเหตุ (เว้นได้)
+  // จับคู่ SKU ด้วยการหาคำที่ขึ้นต้นตรงกับ master_sku ก่อน ไม่ตรงค่อย fallback ไปหาในชื่อสินค้า
+  const handlePaste = (e) => {
+    const text = e.clipboardData?.getData('text') || ''
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+    if (lines.length < 2) return // แถวเดียว/พิมพ์ปกติ ปล่อยให้พฤติกรรม paste เดิมของ input ทำงานต่อ
+    e.preventDefault()
+    const pasted = lines.map((line) => {
+      const cols = line.split('\t')
+      const [date, skuRaw, claimValue, freeItem, note] = cols
+      const skuGuess = String(skuRaw || '').trim()
+      const match = products.find((p) => p.master_sku.toLowerCase() === skuGuess.toLowerCase())
+        || products.find((p) => p.display_name.toLowerCase().includes(skuGuess.toLowerCase()))
+      return {
+        ...emptyClaimRow(),
+        date: date?.trim() || emptyClaimRow().date,
+        master_sku: match?.master_sku || '',
+        claim_value: (claimValue || '').trim(),
+        free_item: (freeItem || '').trim(),
+        note: (note || '').trim(),
+      }
+    })
+    setRows((current) => {
+      const withoutBlankLast = current.length === 1 && !current[0].master_sku && !current[0].claim_value ? [] : current
+      return [...withoutBlankLast, ...pasted]
+    })
+  }
+
   const submit = async (e) => {
     e.preventDefault()
-    if (!form.master_sku) { setError('กรุณาเลือกสินค้า'); return }
+    const missing = rows.findIndex((r) => !r.master_sku)
+    if (missing !== -1) { setError(`แถวที่ ${missing + 1}: กรุณาเลือกสินค้า`); return }
     setSaving(true); setError('')
     try {
-      const r = await fetch(`${API_BASE_C}/claims?view=create-claim`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
+      const r = await fetch(`${API_BASE_C}/claims?view=create-claims-bulk`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: rows.map(({ _key, ...rest }) => rest) }),
       })
       const d = await r.json()
       if (!d.success) { setError(d.error || 'บันทึกไม่สำเร็จ'); return }
@@ -524,89 +558,98 @@ function AddClaimModal({ onClose, onSaved }) {
     } catch (err) { setError(err.message) } finally { setSaving(false) }
   }
 
-  const inputStyle = { border: '1px solid #e2e8f0', borderRadius: 10, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' }
-  const labelStyle = { fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }
+  const cellStyle = { border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 8px', fontSize: 12.5, width: '100%', boxSizing: 'border-box' }
+  const thStyle = { fontSize: 11, fontWeight: 700, color: '#64748b', textAlign: 'left', padding: '0 6px 6px', whiteSpace: 'nowrap' }
+  const tdStyle = { padding: '4px 6px', verticalAlign: 'top' }
 
   return (
     <div onClick={handleBackdrop} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.38)', backdropFilter: 'blur(3px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <form onSubmit={submit} style={{ background: '#fff', borderRadius: 20, width: 'min(520px, 94vw)', maxHeight: '88vh', overflow: 'auto', boxShadow: '0 24px 60px rgba(0,0,0,0.18)' }}>
-        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: '#111827' }}>เพิ่มเคลม</div>
+      <form onSubmit={submit} onPaste={handlePaste} style={{ background: '#fff', borderRadius: 20, width: 'min(1080px, 96vw)', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,0.18)' }}>
+        <div style={{ padding: '20px 24px 12px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#111827' }}>เพิ่มเคลม</div>
+            <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>เพิ่มได้หลายรายการพร้อมกัน หรือคัดลอกจากชีต/Excel มาวางได้เลย (คอลัมน์: วันที่, SKU, มูลค่า, ของแถม, หมายเหตุ)</div>
+          </div>
           <button type="button" onClick={onClose} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center' }}><X size={16} /></button>
         </div>
 
-        <div style={{ padding: 24, display: 'grid', gap: 14 }}>
-          {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 14px', color: '#dc2626', fontSize: 12.5 }}>{error}</div>}
+        <div style={{ padding: '14px 24px', overflow: 'auto', flex: 1 }}>
+          {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 14px', color: '#dc2626', fontSize: 12.5, marginBottom: 12 }}>{error}</div>}
+          {productsLoading && <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>กำลังโหลดรายชื่อสินค้า...</div>}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>วันที่</label>
-              <input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>ธุรกิจ</label>
-              <select value={form.business} onChange={(e) => setForm({ ...form, business: e.target.value })} style={inputStyle}>
-                {BUSINESS_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label style={labelStyle}>สินค้า{productsLoading ? ' (กำลังโหลด...)' : ''}</label>
-            {selectedProduct ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #bfdbfe', background: '#eff6ff', borderRadius: 10, padding: '9px 12px' }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#1d4ed8' }}>{selectedProduct.master_sku} · {selectedProduct.display_name}</span>
-                <button type="button" onClick={() => setForm({ ...form, master_sku: '' })} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 12 }}>เปลี่ยน</button>
-              </div>
-            ) : (
-              <>
-                <input placeholder="ค้นหาชื่อสินค้าหรือ SKU" value={productSearch} onChange={(e) => setProductSearch(e.target.value)} style={inputStyle} />
-                {productSearch.trim() && (
-                  <div style={{ marginTop: 6, maxHeight: 160, overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 10 }}>
-                    {filteredProducts.length === 0 ? (
-                      <div style={{ padding: 10, fontSize: 12, color: '#94a3b8' }}>ไม่พบสินค้า</div>
-                    ) : filteredProducts.slice(0, 30).map((p) => (
-                      <div key={p.master_sku} onClick={() => { setForm({ ...form, master_sku: p.master_sku }); setProductSearch('') }} style={{ padding: '8px 12px', fontSize: 12.5, cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}>
-                        <strong>{p.master_sku}</strong> · {p.display_name}
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 900 }}>
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, width: 130 }}>วันที่</th>
+                <th style={{ ...thStyle, width: 110 }}>ธุรกิจ</th>
+                <th style={{ ...thStyle, width: 220 }}>สินค้า</th>
+                <th style={{ ...thStyle, width: 100 }}>มูลค่า</th>
+                <th style={{ ...thStyle, width: 140 }}>ของแถม</th>
+                <th style={{ ...thStyle, width: 150 }}>สาเหตุ</th>
+                <th style={thStyle}>หมายเหตุ</th>
+                <th style={{ ...thStyle, width: 30 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const product = productByKey(row.master_sku)
+                return (
+                  <tr key={row._key}>
+                    <td style={tdStyle}><input type="date" required value={row.date} onChange={(e) => patchRow(row._key, { date: e.target.value })} style={cellStyle} /></td>
+                    <td style={tdStyle}>
+                      <select value={row.business} onChange={(e) => patchRow(row._key, { business: e.target.value })} style={cellStyle}>
+                        {BUSINESS_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        list="add-claim-products"
+                        value={product ? `${product.master_sku} · ${product.display_name}` : row.master_sku}
+                        onChange={(e) => {
+                          const raw = e.target.value
+                          const sku = raw.split(' · ')[0].trim()
+                          const match = products.find((p) => p.master_sku === sku)
+                          patchRow(row._key, { master_sku: match ? match.master_sku : raw })
+                        }}
+                        placeholder="พิมพ์ค้นหา SKU/ชื่อ"
+                        style={{ ...cellStyle, borderColor: row.master_sku && !product ? '#fca5a5' : '#e2e8f0' }}
+                      />
+                    </td>
+                    <td style={tdStyle}><input type="number" min="0" step="0.01" value={row.claim_value} onChange={(e) => patchRow(row._key, { claim_value: e.target.value })} style={cellStyle} placeholder="0" /></td>
+                    <td style={tdStyle}><input value={row.free_item} onChange={(e) => patchRow(row._key, { free_item: e.target.value })} style={cellStyle} /></td>
+                    <td style={tdStyle}>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <label title="เสียหาย" style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11, cursor: 'pointer' }}><input type="checkbox" checked={row.is_damaged} onChange={(e) => patchRow(row._key, { is_damaged: e.target.checked })} />เสีย</label>
+                        <label title="ส่งไม่ครบ" style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11, cursor: 'pointer' }}><input type="checkbox" checked={row.is_incomplete} onChange={(e) => patchRow(row._key, { is_incomplete: e.target.checked })} />ไม่ครบ</label>
+                        <label title="ส่งผิด" style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11, cursor: 'pointer' }}><input type="checkbox" checked={row.is_wrong_item} onChange={(e) => patchRow(row._key, { is_wrong_item: e.target.checked })} />ผิด</label>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+                    </td>
+                    <td style={tdStyle}><input value={row.note} onChange={(e) => patchRow(row._key, { note: e.target.value })} style={cellStyle} /></td>
+                    <td style={tdStyle}>
+                      <button type="button" onClick={() => removeRow(row._key)} disabled={rows.length === 1} style={{ background: 'none', border: 'none', color: rows.length === 1 ? '#cbd5e1' : '#ef4444', cursor: rows.length === 1 ? 'default' : 'pointer', padding: 4 }}><X size={14} /></button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <datalist id="add-claim-products">
+            {products.map((p) => <option key={p.master_sku} value={`${p.master_sku} · ${p.display_name}`} />)}
+          </datalist>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>มูลค่าเคลม (บาท)</label>
-              <input type="number" min="0" step="0.01" value={form.claim_value} onChange={(e) => setForm({ ...form, claim_value: e.target.value })} style={inputStyle} placeholder="0" />
-            </div>
-            <div>
-              <label style={labelStyle}>ของแถม (ถ้ามี)</label>
-              <input value={form.free_item} onChange={(e) => setForm({ ...form, free_item: e.target.value })} style={inputStyle} placeholder="เช่น ส่งของใหม่ 1 ชิ้น" />
-            </div>
-          </div>
-
-          <div>
-            <label style={labelStyle}>สาเหตุ</label>
-            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}><input type="checkbox" checked={form.is_damaged} onChange={(e) => setForm({ ...form, is_damaged: e.target.checked })} />เสียหาย</label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}><input type="checkbox" checked={form.is_incomplete} onChange={(e) => setForm({ ...form, is_incomplete: e.target.checked })} />ส่งไม่ครบ</label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}><input type="checkbox" checked={form.is_wrong_item} onChange={(e) => setForm({ ...form, is_wrong_item: e.target.checked })} />ส่งผิด</label>
-            </div>
-          </div>
-
-          <div>
-            <label style={labelStyle}>หมายเหตุ</label>
-            <textarea rows={2} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} style={{ ...inputStyle, resize: 'vertical' }} />
-          </div>
+          <button type="button" onClick={addRow} style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, color: '#475569', cursor: 'pointer' }}>
+            + เพิ่มแถว
+          </button>
         </div>
 
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button type="button" onClick={onClose} style={{ background: '#f1f5f9', border: 'none', borderRadius: 10, padding: '9px 18px', fontSize: 13, fontWeight: 700, color: '#475569', cursor: 'pointer' }}>ยกเลิก</button>
-          <button type="submit" disabled={saving} style={{ background: 'var(--payi-gradient-primary)', border: 'none', borderRadius: 10, padding: '9px 20px', fontSize: 13, fontWeight: 700, color: '#fff', cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}>
-            {saving ? 'กำลังบันทึก...' : 'บันทึกเคลม'}
-          </button>
+        <div style={{ padding: '14px 24px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>{rows.length} รายการ</span>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="button" onClick={onClose} style={{ background: '#f1f5f9', border: 'none', borderRadius: 10, padding: '9px 18px', fontSize: 13, fontWeight: 700, color: '#475569', cursor: 'pointer' }}>ยกเลิก</button>
+            <button type="submit" disabled={saving} style={{ background: 'var(--payi-gradient-primary)', border: 'none', borderRadius: 10, padding: '9px 20px', fontSize: 13, fontWeight: 700, color: '#fff', cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+              {saving ? 'กำลังบันทึก...' : `บันทึก ${rows.length} รายการ`}
+            </button>
+          </div>
         </div>
       </form>
     </div>

@@ -132,7 +132,7 @@ const menuGroups = [
       { id: 'Import Tracking', label: 'ติดตามนำเข้า', renderIcon: Icons.ImportTracking, dotColor: '#0ea5e9' },
       { id: 'Planner Control', label: 'Planner Control', renderIcon: Icons.PlannerControl, dotColor: '#8b5cf6', group: ['Planner Control', 'FeedProducts'] },
       { id: 'Workforce OT', label: 'Manpower & OT', renderIcon: Icons.WorkforceOT, dotColor: '#7dd3fc' },
-      { id: 'HR', label: 'พนักงาน (ลา)', renderIcon: Icons.HR, dotColor: '#a78bfa' },
+      { id: 'HR', label: 'พนักงาน (ลา)', renderIcon: Icons.HR },
       { id: 'Claims', label: 'Claims', renderIcon: Icons.Claims }
     ]
   },
