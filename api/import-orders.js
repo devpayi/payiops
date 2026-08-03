@@ -64,7 +64,9 @@ export default async function handler(req, res) {
       let imports = []
       try {
         const log = await getSheet('import_log')
-        imports = log.filter((r) => r.status === 'active' || !r.status).slice(-15).reverse().map((r) => ({
+        // เดิมจำกัดแค่ 15 แถวล่าสุด — ไม่พอเวลาต้องหาแบตช์เดือนก่อนๆ มาลบแล้วอัพใหม่ (owner ขอ 2026-08-01)
+        // import_log เป็น log ต่อครั้งที่กดอัพโหลด ไม่ใช่ต่อออเดอร์ ทั้งปีก็ไม่กี่ร้อยแถว โชว์ทั้งหมดได้สบาย
+        imports = log.filter((r) => r.status === 'active' || !r.status).reverse().map((r) => ({
           importId: r.import_id, file: r.filename, business: r.business, platform: r.platform, rows: Number(r.rows_imported) || 0, at: r.uploaded_at,
         }))
       } catch { /* no import_log tab */ }

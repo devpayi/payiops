@@ -154,6 +154,10 @@ export default function Upload() {
   const [log, setLog] = useState([])
   const [deletingId, setDeletingId] = useState('')
   const [mapTarget, setMapTarget] = useState(null)
+  // กรองประวัติด้วย platform/business — ไม่กรองเดือน (owner ขอ 2026-08-01 หลังยกเลิก cap 15 แถว จะได้หา
+  // ล็อตเก่าเจอง่ายขึ้นตอนต้องลบแล้วอัพใหม่ ไม่ต้องไล่สายตาทีละแถว)
+  const [logPlatformFilter, setLogPlatformFilter] = useState('')
+  const [logBusinessFilter, setLogBusinessFilter] = useState('')
 
   const loadLog = useCallback(async () => {
     try {
@@ -476,18 +480,31 @@ export default function Upload() {
       )}
 
       {/* Recent imports */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--payi-text-strong)' }}>ประวัติการนำเข้าล่าสุด</div>
-        <button onClick={loadLog} style={{ display: 'flex', alignItems: 'center', gap: 5, border: 'none', background: 'transparent', color: 'var(--payi-text-muted)', fontSize: 12, cursor: 'pointer' }}><RefreshCw size={13} /> รีเฟรช</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <select value={logPlatformFilter} onChange={(e) => setLogPlatformFilter(e.target.value)} className="payi-select" style={{ fontSize: 12, padding: '5px 8px' }}>
+            <option value="">ทุก Platform</option>
+            {[...new Set(log.map((im) => im.platform).filter(Boolean))].sort().map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <select value={logBusinessFilter} onChange={(e) => setLogBusinessFilter(e.target.value)} className="payi-select" style={{ fontSize: 12, padding: '5px 8px' }}>
+            <option value="">ทุก Business</option>
+            {[...new Set(log.map((im) => im.business).filter(Boolean))].sort().map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+          <button onClick={loadLog} style={{ display: 'flex', alignItems: 'center', gap: 5, border: 'none', background: 'transparent', color: 'var(--payi-text-muted)', fontSize: 12, cursor: 'pointer' }}><RefreshCw size={13} /> รีเฟรช</button>
+        </div>
       </div>
       <div className="payi-glass-card" style={{ padding: 4 }}>
-        {log.length === 0 ? (
-          <div style={{ padding: 16, fontSize: 12, color: 'var(--payi-text-faint)', textAlign: 'center' }}>ยังไม่มีประวัติการนำเข้า</div>
-        ) : (
+        {(() => {
+          const filteredLog = log.filter((im) => (!logPlatformFilter || im.platform === logPlatformFilter) && (!logBusinessFilter || im.business === logBusinessFilter))
+          if (!filteredLog.length) {
+            return <div style={{ padding: 16, fontSize: 12, color: 'var(--payi-text-faint)', textAlign: 'center' }}>{log.length === 0 ? 'ยังไม่มีประวัติการนำเข้า' : 'ไม่พบรายการที่ตรงกับตัวกรอง'}</div>
+          }
+          return (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <tbody>
-              {log.map((im, i) => (
-                <tr key={i} style={{ borderBottom: i < log.length - 1 ? '1px solid var(--payi-border)' : 'none' }}>
+              {filteredLog.map((im, i) => (
+                <tr key={i} style={{ borderBottom: i < filteredLog.length - 1 ? '1px solid var(--payi-border)' : 'none' }}>
                   <td style={{ padding: '10px 14px', color: 'var(--payi-text-strong)', fontWeight: 600 }}>{im.platform} · {im.business}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--payi-text-muted)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{im.file}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--payi-text)', whiteSpace: 'nowrap' }}>{fmt(im.rows)} แถว</td>
@@ -508,7 +525,8 @@ export default function Upload() {
               ))}
             </tbody>
           </table>
-        )}
+          )
+        })()}
       </div>
 
       {mapTarget && (
