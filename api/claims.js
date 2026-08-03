@@ -1,4 +1,4 @@
-// /api/claims?view=summary|monthly|sku|by-product|imports-list|import
+// /api/claims?view=summary|monthly|sku|by-product|imports-list|import|create-claim
 // อ่าน/จัดการข้อมูลเคลมจาก sheet "claims" (Google Sheets)
 import { requireAuth } from './_lib/auth.js'
 import { getSheet, getMetaCached, batchGetValues, appendRows, overwriteSheet, ensureSheet } from './_lib/sheets.js'
@@ -137,6 +137,29 @@ export default async function handler(req, res) {
       await overwriteSheet('claims', CLAIMS_HEADERS, next.map((r) => CLAIMS_HEADERS.map((h) => r[h] ?? '')))
       clearClaimsCache()
       return res.status(200).json({ success: true, claim: updated })
+    }
+
+    // ---- กรอกเคลมเองจากหน้าเว็บ (owner ขอ 2026-08-01) — ไม่ต้องผ่าน Excel import เลย ----
+    if (view === 'create-claim' && req.method === 'POST') {
+      const b = req.body || {}
+      const date = String(b.date || '').trim()
+      const masterSku = String(b.master_sku || '').trim()
+      if (!date) return res.status(400).json({ success: false, error: 'ต้องระบุวันที่' })
+      if (!masterSku) return res.status(400).json({ success: false, error: 'ต้องระบุสินค้า' })
+      const aliases = await getSheet('product_aliases')
+      const product = aliases.find((a) => String(a.master_sku).trim() === masterSku)
+      const displayName = product?.display_name || masterSku
+      const record = {
+        id: `claim-manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        date, business: String(b.business || 'Payi').trim(),
+        product_name: displayName, free_item: String(b.free_item || '').trim(), claim_value: String(num(b.claim_value)),
+        is_damaged: b.is_damaged ? '1' : '', is_incomplete: b.is_incomplete ? '1' : '', is_wrong_item: b.is_wrong_item ? '1' : '',
+        note: String(b.note || '').trim(), master_sku: masterSku, display_name: displayName,
+        imported_at: new Date().toISOString(), import_id: '', source_file: 'กรอกเองจากหน้าเว็บ',
+      }
+      await appendRows('claims', [CLAIMS_HEADERS.map((h) => record[h] ?? '')])
+      clearClaimsCache()
+      return res.status(200).json({ success: true, claim: record })
     }
 
     // view หนักที่เหลือ (monthly/sku/by-product/summary) ต้องอ่าน raw_orders_* ทั้งหมด — cache ไว้

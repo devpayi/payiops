@@ -482,6 +482,138 @@ function SkuDetailPanel({ masterSku, productKey, displayName, skuCount, startDat
 }
 
 // ============================================================
+// COMPONENT: กรอกเคลมเองจากหน้าเว็บ (ไม่ต้องผ่าน Excel import) — owner ขอ 2026-08-01
+// ============================================================
+const BUSINESS_OPTIONS = ['Payi', 'Payi Outlet', 'กรอบรูป']
+function AddClaimModal({ onClose, onSaved }) {
+  const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+  const [products, setProducts] = useState([])
+  const [productsLoading, setProductsLoading] = useState(true)
+  const [productSearch, setProductSearch] = useState('')
+  const [form, setForm] = useState({
+    date: today(), business: BUSINESS_OPTIONS[0], master_sku: '', claim_value: '', free_item: '',
+    is_damaged: false, is_incomplete: false, is_wrong_item: false, note: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    fetch(`${API_BASE_C}/claims?view=mapping-options`).then((r) => r.json()).then((d) => {
+      if (d.success) setProducts(d.products || [])
+    }).catch(() => {}).finally(() => setProductsLoading(false))
+  }, [])
+
+  const filteredProducts = productSearch.trim()
+    ? products.filter((p) => `${p.master_sku} ${p.display_name}`.toLowerCase().includes(productSearch.trim().toLowerCase()))
+    : products
+  const selectedProduct = products.find((p) => p.master_sku === form.master_sku)
+
+  const handleBackdrop = (e) => { if (e.target === e.currentTarget) onClose() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!form.master_sku) { setError('กรุณาเลือกสินค้า'); return }
+    setSaving(true); setError('')
+    try {
+      const r = await fetch(`${API_BASE_C}/claims?view=create-claim`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
+      })
+      const d = await r.json()
+      if (!d.success) { setError(d.error || 'บันทึกไม่สำเร็จ'); return }
+      onSaved()
+    } catch (err) { setError(err.message) } finally { setSaving(false) }
+  }
+
+  const inputStyle = { border: '1px solid #e2e8f0', borderRadius: 10, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' }
+  const labelStyle = { fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }
+
+  return (
+    <div onClick={handleBackdrop} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.38)', backdropFilter: 'blur(3px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <form onSubmit={submit} style={{ background: '#fff', borderRadius: 20, width: 'min(520px, 94vw)', maxHeight: '88vh', overflow: 'auto', boxShadow: '0 24px 60px rgba(0,0,0,0.18)' }}>
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: '#111827' }}>เพิ่มเคลม</div>
+          <button type="button" onClick={onClose} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center' }}><X size={16} /></button>
+        </div>
+
+        <div style={{ padding: 24, display: 'grid', gap: 14 }}>
+          {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 14px', color: '#dc2626', fontSize: 12.5 }}>{error}</div>}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>วันที่</label>
+              <input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>ธุรกิจ</label>
+              <select value={form.business} onChange={(e) => setForm({ ...form, business: e.target.value })} style={inputStyle}>
+                {BUSINESS_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>สินค้า{productsLoading ? ' (กำลังโหลด...)' : ''}</label>
+            {selectedProduct ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #bfdbfe', background: '#eff6ff', borderRadius: 10, padding: '9px 12px' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#1d4ed8' }}>{selectedProduct.master_sku} · {selectedProduct.display_name}</span>
+                <button type="button" onClick={() => setForm({ ...form, master_sku: '' })} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 12 }}>เปลี่ยน</button>
+              </div>
+            ) : (
+              <>
+                <input placeholder="ค้นหาชื่อสินค้าหรือ SKU" value={productSearch} onChange={(e) => setProductSearch(e.target.value)} style={inputStyle} />
+                {productSearch.trim() && (
+                  <div style={{ marginTop: 6, maxHeight: 160, overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+                    {filteredProducts.length === 0 ? (
+                      <div style={{ padding: 10, fontSize: 12, color: '#94a3b8' }}>ไม่พบสินค้า</div>
+                    ) : filteredProducts.slice(0, 30).map((p) => (
+                      <div key={p.master_sku} onClick={() => { setForm({ ...form, master_sku: p.master_sku }); setProductSearch('') }} style={{ padding: '8px 12px', fontSize: 12.5, cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}>
+                        <strong>{p.master_sku}</strong> · {p.display_name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>มูลค่าเคลม (บาท)</label>
+              <input type="number" min="0" step="0.01" value={form.claim_value} onChange={(e) => setForm({ ...form, claim_value: e.target.value })} style={inputStyle} placeholder="0" />
+            </div>
+            <div>
+              <label style={labelStyle}>ของแถม (ถ้ามี)</label>
+              <input value={form.free_item} onChange={(e) => setForm({ ...form, free_item: e.target.value })} style={inputStyle} placeholder="เช่น ส่งของใหม่ 1 ชิ้น" />
+            </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>สาเหตุ</label>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}><input type="checkbox" checked={form.is_damaged} onChange={(e) => setForm({ ...form, is_damaged: e.target.checked })} />เสียหาย</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}><input type="checkbox" checked={form.is_incomplete} onChange={(e) => setForm({ ...form, is_incomplete: e.target.checked })} />ส่งไม่ครบ</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}><input type="checkbox" checked={form.is_wrong_item} onChange={(e) => setForm({ ...form, is_wrong_item: e.target.checked })} />ส่งผิด</label>
+            </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>หมายเหตุ</label>
+            <textarea rows={2} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} style={{ ...inputStyle, resize: 'vertical' }} />
+          </div>
+        </div>
+
+        <div style={{ padding: '16px 24px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button type="button" onClick={onClose} style={{ background: '#f1f5f9', border: 'none', borderRadius: 10, padding: '9px 18px', fontSize: 13, fontWeight: 700, color: '#475569', cursor: 'pointer' }}>ยกเลิก</button>
+          <button type="submit" disabled={saving} style={{ background: 'var(--payi-gradient-primary)', border: 'none', borderRadius: 10, padding: '9px 20px', fontSize: 13, fontWeight: 700, color: '#fff', cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'กำลังบันทึก...' : 'บันทึกเคลม'}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+// ============================================================
 // COMPONENT: All SKUs Modal (ดูทั้งหมด)
 // ============================================================
 function AllSkusModal({ topSkus, onClose, onSelectSku }) {
@@ -571,6 +703,7 @@ export default function ClaimView() {
   const [mapOptions, setMapOptions] = useState([])
   const [mapSearch, setMapSearch] = useState('')
   const [mapSaving, setMapSaving] = useState(false)
+  const [showAddClaim, setShowAddClaim] = useState(false)
 
   const loadMonthly = useCallback(async () => {
     setMonthlyLoading(true)
@@ -741,8 +874,14 @@ export default function ClaimView() {
             <Upload size={14} /> {importing ? 'กำลังนำเข้าไฟล์...' : 'Import Excel ใบเคลม'}
             <input type="file" accept=".xlsx,.xls" onChange={handleImport} style={{ display: 'none' }} disabled={importing} />
           </label>
+
+          <button onClick={() => setShowAddClaim(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', color: '#2563eb', border: '1.5px solid #2563eb', borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            + เพิ่มเคลม
+          </button>
         </div>
       </div>
+
+      {showAddClaim && <AddClaimModal onClose={() => setShowAddClaim(false)} onSaved={() => { setShowAddClaim(false); load(); loadMonthly() }} />}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
