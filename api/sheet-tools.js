@@ -31,7 +31,7 @@ const SCHEDULE_OVERRIDE_HEADERS = ['date', 'entries_json', 'updated_at', 'update
 const EVENT_HEADERS = ['id', 'title', 'date', 'team', 'note', 'created_at', 'end_date', 'lead_days', 'lag_days']
 const OT_HISTORY_HEADERS = ['id', 'plan_id', 'date', 'employee', 'before_start', 'before_end', 'after_start', 'after_end', 'before_note', 'after_note', 'changed_at', 'changed_by']
 const OT_APPROVAL_HEADERS = ['id', 'month', 'employee', 'actual_minutes', 'approved_at', 'approved_by']
-const PEOPLE_HEADERS = ['code', 'name', 'group', 'active']
+const PEOPLE_HEADERS = ['code', 'name', 'group', 'active', 'day_off_weekday']
 const OT_LIMIT_HEADERS = ['employee', 'limit_hours', 'updated_at', 'updated_by']
 const OT_APPROVAL_HISTORY_HEADERS = ['id', 'month', 'employee', 'before_minutes', 'after_minutes', 'changed_at', 'changed_by']
 // บันทึกวันพิเศษ: โอทีเต็มวัน (มาทำวันหยุด/นักขัตฤกษ์) หรือมาชดเชยเฉยๆไม่รับโอที — แยกจาก workforce_ot ที่เป็น OT รายชั่วโมง
@@ -1218,6 +1218,19 @@ async function getPersonMap() {
   return map
 }
 
+// วันหยุดประจำสัปดาห์ต่อคน (0=อาทิตย์...6=เสาร์ ตาม Date.getDay(), '' = ไม่มีวันหยุดประจำ) — เก็บแยกจาก
+// getPersonMap() (คืน [name, group] tuple ใช้อยู่หลายจุด) กันไม่ต้องแก้ signature ทุกที่ที่เรียกอยู่แล้ว
+async function getDayOffMap() {
+  const people = await getSheet('workforce_people')
+  const map = {}
+  for (const p of people) {
+    if (!p.code || String(p.active) === '0') continue
+    const w = String(p.day_off_weekday ?? '').trim()
+    if (w !== '') map[String(p.code).toUpperCase()] = w
+  }
+  return map
+}
+
 // กลุ่มออฟฟิศ — ชีตแยกจาก workforce_people (จงใจไม่รวม เพราะไม่ต้องการให้ขึ้นปฏิทิน Manpower & OT/ นับ headcount บ้านล่าง)
 // เพิ่ม/ลบคนได้จากปุ่มในหน้าเว็บ (action add-employee/remove-employee, group='ออฟฟิศ') — ลบ = ตั้ง active='0' ไม่ลบแถวทิ้งจริง กันประวัติ leave หาย
 async function getOfficePeopleMap() {
@@ -1263,7 +1276,7 @@ async function vacationBalanceFor(code) {
 // สรุปโควตาพักร้อนทุกคน — includeOffice=false ตัดกลุ่มออฟฟิศออก (ผจก.บ้านล่างไม่ต้องเห็น)
 // คนฟีดและพาร์ทไทม์ไม่มีโควตาพักร้อน — ตัดออกจากการ์ดนี้และทุก flow ที่ขอพักร้อน
 async function computeLeaveBalances(leaveRows, includeOffice) {
-  const [personMap, quotaMap, officeMap] = await Promise.all([getPersonMap(), getQuotaMap(), includeOffice ? getOfficePeopleMap() : {}])
+  const [personMap, quotaMap, officeMap, dayOffMap] = await Promise.all([getPersonMap(), getQuotaMap(), includeOffice ? getOfficePeopleMap() : {}, getDayOffMap()])
   const year = currentYearBKK()
   const roster = [
     ...Object.entries(personMap).map(([code, [name, group]]) => ({ code, name, group })),
@@ -1274,7 +1287,7 @@ async function computeLeaveBalances(leaveRows, includeOffice) {
       .filter((l) => l.status === 'approved' && l.leave_type === 'พักร้อน' && l.username === `mp:${p.code}` && String(l.start_date || '').slice(0, 4) === year)
       .reduce((s, l) => s + (Number(l.days) || 0), 0)
     const quota = quotaMap[p.code] ?? DEFAULT_VACATION_QUOTA
-    return { code: p.code, name: p.name, group: p.group, quota, used, remaining: Math.max(0, quota - used) }
+    return { code: p.code, name: p.name, group: p.group, quota, used, remaining: Math.max(0, quota - used), day_off_weekday: dayOffMap[p.code] ?? '' }
   })
 }
 
@@ -1366,8 +1379,11 @@ function buildLeaveAbsenceMap(leaveRows) {
   return absenceByCode
 }
 const absenceFraction = (absenceByCode, code, date) => (absenceByCode[code]?.[date]?.size || 0) / 2
-// fallback เมื่อยังไม่มีตารางพนักงาน — สมมติทุกคนมาทำงานทุกวัน ยกเว้นวันที่มีคำขอลาอนุมัติแล้ว
-function generateCalendarPresence(personMap, leaveRows) {
+// เช็ควันหยุดประจำสัปดาห์คงที่ต่อคน (เช่น หยุดทุกวันอาทิตย์) — เทียบ weekday ของวันที่นั้นตรงกับที่ตั้งไว้ไหม
+// ใช้ new Date(`${date}T00:00:00`) เสมอ (ไม่ใช่ new Date(date) เฉยๆ) กัน parse เป็น UTC แล้ว weekday เพี้ยน
+const isFixedDayOff = (dayOffMap, code, date) => dayOffMap[code] !== undefined && String(new Date(`${date}T00:00:00`).getDay()) === dayOffMap[code]
+// fallback เมื่อยังไม่มีตารางพนักงาน — สมมติทุกคนมาทำงานทุกวัน ยกเว้นวันที่มีคำขอลาอนุมัติแล้ว หรือตรงวันหยุดประจำ
+function generateCalendarPresence(personMap, leaveRows, dayOffMap = {}) {
   const absenceByCode = buildLeaveAbsenceMap(leaveRows)
   const roster = Object.entries(personMap).map(([code, [name, group]]) => ({ code, name, group }))
   const start = new Date(`${todayStr()}T00:00:00`); start.setDate(start.getDate() - 90)
@@ -1376,6 +1392,7 @@ function generateCalendarPresence(personMap, leaveRows) {
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     for (const p of roster) {
+      if (isFixedDayOff(dayOffMap, p.code, date)) continue
       const fraction = Math.max(0, 1 - absenceFraction(absenceByCode, p.code, date))
       if (!fraction) continue
       result.push({ id: `internal-${date}-${p.code}`, date, employee: p.name, code: p.code, group: p.group, fraction, source: 'internal' })
@@ -1386,12 +1403,15 @@ function generateCalendarPresence(personMap, leaveRows) {
 // ปฏิทินบ้านล่างใช้ตารางพนักงานปี 2026 ในระบบ และกรองแถวออฟฟิศออกด้วย roster บ้านล่าง
 // ถ้ามีคำขอลาอนุมัติผ่านระบบ ให้ยึด hr_leave แทนตารางตั้งต้น
 async function getCalendarPresence(personMap, overrideScopeCodes = Object.keys(personMap), applyLeaves = true, officeCodes = []) {
-  const [snapshotRows, overrideRows, leaveRows] = await Promise.all([
-    getSheet('workforce_schedule_snapshot'), getSheet('workforce_schedule_overrides'), getSheet('hr_leave'),
+  const [snapshotRows, overrideRows, leaveRows, dayOffMap] = await Promise.all([
+    getSheet('workforce_schedule_snapshot'), getSheet('workforce_schedule_overrides'), getSheet('hr_leave'), getDayOffMap(),
   ])
-  let baseRows = (snapshotRows.length ? snapshotRows : generateCalendarPresence(personMap, []))
+  let baseRows = (snapshotRows.length ? snapshotRows : generateCalendarPresence(personMap, [], dayOffMap))
     .filter((r) => personMap[String(r.code || '').toUpperCase()])
     .map((r) => ({ id: `stored-${r.date}-${r.code}`, date: r.date, employee: r.employee, code: String(r.code || '').toUpperCase(), group: r.group, fraction: Number(r.fraction) || 1, source: 'stored' }))
+    // วันหยุดประจำสัปดาห์ตัดออกก่อน apply override เสมอ — ถ้า boss แก้ตารางเฉพาะวันนั้นเจาะจงไว้ (เช่น
+    // เรียกมาทำงานพิเศษ) override ยังทับกลับมาให้มาได้ตามปกติ ไม่ถูกวันหยุดประจำบังตลอดไป
+    .filter((r) => !isFixedDayOff(dayOffMap, r.code, r.date))
   baseRows = applyScheduleOverrides({ baseRows, overrideRows, personMap, overrideScopeCodes, officeCodes })
   if (!applyLeaves) return baseRows
   const absenceByCode = buildLeaveAbsenceMap(leaveRows)
@@ -1684,6 +1704,9 @@ async function opHrInner(req, res) {
     const code = String(body.code || '').trim().toUpperCase()
     const name = String(body.name || '').trim()
     const group = String(body.group || '').trim() || 'อื่น ๆ'
+    // วันหยุดประจำสัปดาห์ (0=อาทิตย์...6=เสาร์) — เฉพาะ workforce_people (บ้านล่าง) เท่านั้น ออฟฟิศไม่มีผล
+    // กับปฏิทิน Manpower & OT อยู่แล้ว (ดูคอมเมนต์ getOfficePeopleMap) เลยไม่ต้องเก็บให้กลุ่มออฟฟิศ
+    const dayOffWeekday = ['0', '1', '2', '3', '4', '5', '6'].includes(String(body.day_off_weekday)) ? String(body.day_off_weekday) : ''
     if (!code || !name) return res.status(400).json({ success: false, error: 'กรุณาระบุรหัสและชื่อ' })
     if (group === 'ออฟฟิศ') {
       const current = await getSheet('hr_office_people')
@@ -1700,12 +1723,25 @@ async function opHrInner(req, res) {
       const existing = current.find((r) => String(r.code).toUpperCase() === code)
       if (existing && String(existing.active) !== '0') return res.status(400).json({ success: false, error: 'มีรหัสนี้อยู่แล้ว' })
       if (existing) {
-        const next = current.map((r) => String(r.code).toUpperCase() === code ? { ...r, name, group, active: '1' } : r)
+        const next = current.map((r) => String(r.code).toUpperCase() === code ? { ...r, name, group, active: '1', day_off_weekday: dayOffWeekday } : r)
         await overwriteSheet('workforce_people', PEOPLE_HEADERS, next.map((r) => PEOPLE_HEADERS.map((h) => r[h] ?? '')))
       } else {
-        await appendRows('workforce_people', [[code, name, group, '1']])
+        await appendRows('workforce_people', [[code, name, group, '1', dayOffWeekday]])
       }
     }
+    clearHrCache(); clearWorkforceCache()
+    return res.status(200).json({ success: true })
+  }
+  if (action === 'edit-employee-dayoff') {
+    if (!requireAdmin(req, res)) return
+    const code = String(body.code || '').trim().toUpperCase()
+    const dayOffWeekday = ['0', '1', '2', '3', '4', '5', '6'].includes(String(body.day_off_weekday)) ? String(body.day_off_weekday) : ''
+    if (!code) return res.status(400).json({ success: false, error: 'กรุณาระบุรหัส' })
+    const current = await getSheet('workforce_people')
+    const existing = current.find((r) => String(r.code).toUpperCase() === code)
+    if (!existing) return res.status(404).json({ success: false, error: 'ไม่พบพนักงานนี้' })
+    const next = current.map((r) => String(r.code).toUpperCase() === code ? { ...r, day_off_weekday: dayOffWeekday } : r)
+    await overwriteSheet('workforce_people', PEOPLE_HEADERS, next.map((r) => PEOPLE_HEADERS.map((h) => r[h] ?? '')))
     clearHrCache(); clearWorkforceCache()
     return res.status(200).json({ success: true })
   }

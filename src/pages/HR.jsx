@@ -10,6 +10,12 @@ import { canManageOperations } from '../../shared/roles.js'
 const API = '/api/sheet-tools?op=hr'
 const LEAVE_TYPES = ['พักร้อน', 'ลากิจ', 'ลาป่วย', 'ขาดงาน', 'สลับวันหยุด']
 const EMPLOYEE_GROUPS = ['คนแพ็ก', 'คนฟีด', 'พาร์ทไทม์', 'อื่น ๆ', 'ออฟฟิศ']
+// 0=อาทิตย์...6=เสาร์ ตรงกับ Date.getDay() ฝั่ง backend (ดู isFixedDayOff ใน api/sheet-tools.js)
+const WEEKDAY_OPTIONS = [
+  { value: '', label: 'ไม่มี (ทำงานทุกวัน)' },
+  { value: '1', label: 'จันทร์' }, { value: '2', label: 'อังคาร' }, { value: '3', label: 'พุธ' },
+  { value: '4', label: 'พฤหัสบดี' }, { value: '5', label: 'ศุกร์' }, { value: '6', label: 'เสาร์' }, { value: '0', label: 'อาทิตย์' },
+]
 const NO_VACATION_GROUPS = new Set(['คนฟีด', 'พาร์ทไทม์'])
 const PERIOD_OPTIONS = [{ value: 'full', label: 'เต็มวัน' }, { value: 'am', label: 'ครึ่งวันเช้า' }, { value: 'pm', label: 'ครึ่งวันบ่าย' }]
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
@@ -68,7 +74,7 @@ export default function HR() {
   const [leaveForm, setLeaveForm] = useState({ employee_code: '', leave_type: LEAVE_TYPES[0], start_date: today(), end_date: today(), leave_period: 'full', reason: '' })
   const [leaveLock, setLeaveLock] = useState({ locked: false, lockedDates: [], backupNeeds: [], blocked: false, error: '' })
   const [backupSelections, setBackupSelections] = useState({})
-  const [empForm, setEmpForm] = useState({ code: '', name: '', group: EMPLOYEE_GROUPS[0] })
+  const [empForm, setEmpForm] = useState({ code: '', name: '', group: EMPLOYEE_GROUPS[0], day_off_weekday: '' })
   const [showAddEmployee, setShowAddEmployee] = useState(false)
   const [editEmployees, setEditEmployees] = useState(false)
   const [balanceDrafts, setBalanceDrafts] = useState({})
@@ -136,13 +142,19 @@ export default function HR() {
     event.preventDefault(); setSaving(true); setError('')
     try {
       await postAction({ action: 'add-employee', ...empForm }, 'เพิ่มพนักงานไม่สำเร็จ')
-      setEmpForm({ code: '', name: '', group: EMPLOYEE_GROUPS[0] }); setShowAddEmployee(false); await load()
+      setEmpForm({ code: '', name: '', group: EMPLOYEE_GROUPS[0], day_off_weekday: '' }); setShowAddEmployee(false); await load()
     } catch (e) { setError(e.message) } finally { setSaving(false) }
   }
 
   const editEmployeeGroup = async (code, group) => {
     setSaving(true); setError('')
     try { await postAction({ action: 'edit-employee-group', code, group }, 'แก้กลุ่มไม่สำเร็จ'); await load() }
+    catch (e) { setError(e.message) } finally { setSaving(false) }
+  }
+
+  const editEmployeeDayOff = async (code, day_off_weekday) => {
+    setSaving(true); setError('')
+    try { await postAction({ action: 'edit-employee-dayoff', code, day_off_weekday }, 'แก้วันหยุดประจำไม่สำเร็จ'); await load() }
     catch (e) { setError(e.message) } finally { setSaving(false) }
   }
 
@@ -270,6 +282,7 @@ export default function HR() {
           <Field label="รหัส"><input value={empForm.code} onChange={(e) => setEmpForm({ ...empForm, code: e.target.value })} placeholder="เช่น TANG" required /></Field>
           <Field label="ชื่อ"><input value={empForm.name} onChange={(e) => setEmpForm({ ...empForm, name: e.target.value })} placeholder="ชื่อพนักงาน" required /></Field>
           <Field label="กลุ่ม"><select value={empForm.group} onChange={(e) => setEmpForm({ ...empForm, group: e.target.value })}>{EMPLOYEE_GROUPS.map((group) => <option key={group}>{group}</option>)}</select></Field>
+          <Field label="หยุดทุกวัน"><select value={empForm.day_off_weekday} onChange={(e) => setEmpForm({ ...empForm, day_off_weekday: e.target.value })}>{WEEKDAY_OPTIONS.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}</select></Field>
           <button className="hr-button is-primary" disabled={saving}><Plus size={17} />เพิ่ม</button>
         </form>}
         <div className="hr-balance-groups">
@@ -281,6 +294,7 @@ export default function HR() {
             <div className="hr-progress" aria-label={`เหลือ ${item.remaining} จาก ${item.quota} วัน`}><span style={{ width: `${percentage}%` }} /></div>
             {isBoss && (editEmployees || editingBalanceCode === item.code) && <div className="hr-balance-edit"><input type="number" min="0" max="365" step="0.5" aria-label={`วันลาคงเหลือของ ${item.name}`} value={balanceDrafts[item.code] ?? item.remaining} onChange={(e) => setBalanceDrafts((current) => ({ ...current, [item.code]: e.target.value }))} /><button type="button" disabled={saving} onClick={() => setLeaveBalance(item)} aria-label={`บันทึกยอดของ ${item.name}`}><Check size={15} /></button></div>}
             {isBoss && editEmployees && <select aria-label={`กลุ่มของ ${item.name}`} value={item.group} onChange={(e) => editEmployeeGroup(item.code, e.target.value)}>{EMPLOYEE_GROUPS.map((value) => <option key={value}>{value}</option>)}</select>}
+            {isBoss && editEmployees && item.group !== 'ออฟฟิศ' && <select aria-label={`วันหยุดประจำของ ${item.name}`} value={item.day_off_weekday || ''} onChange={(e) => editEmployeeDayOff(item.code, e.target.value)}>{WEEKDAY_OPTIONS.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}</select>}
           </article>
           })}</div>
         </div>
