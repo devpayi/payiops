@@ -856,12 +856,11 @@ export default function App() {
                     onClick={() => setActiveTab(item.id)}
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: sidebarExpanded ? 'space-between' : 'center', flex: '1 1 0', width: '100%', padding: sidebarExpanded ? '7px 9px' : '7px 0', minHeight: 32, border: 'none', borderRadius: 10,
+                      // สีไฮไลท์เมนู active — เดิมแยกสีตามหมวด (ฟ้า=Marketing, ม่วงชมพู=Inventory/Stock)
+                      // เปลี่ยนเป็นสีเดียวกันทุกหน้าตามธีมอวาตาร์ที่แต่ละคนเลือกไว้แทน (owner ขอ 2026-08-03
+                      // หลัง sidebar ดูไม่สม่ำเสมอ) ไม่ได้เลือกธีมไว้ก็ใช้ฟ้า-เขียวเดิมเป็นค่าเริ่มต้น
                       background: isActive
-                          ? item.id === 'MarketingRadar'
-                          ? 'linear-gradient(135deg, #467fa8 0%, #4299aa 54%, #4ba99f 100%)'
-                          : item.id === 'Inventory' || item.id === 'Stock Movement'
-                          ? 'linear-gradient(135deg, #7198d5 0%, #a782da 52%, #dc87b7 100%)'
-                          : 'linear-gradient(135deg, var(--payi-mint) 0%, #34d399 100%)'
+                        ? (getMeUser()?.avatar_emoji ? avatarGradient(getMeUser()?.avatar_color) : 'var(--payi-gradient-primary)')
                         : 'transparent',
                       boxShadow: isActive ? '0 6px 16px rgba(55,95,110,0.18)' : 'none',
                       color: isActive ? '#fff' : '#0f172a', cursor: 'pointer', fontSize: '13.5px', lineHeight: 1.1, fontWeight: isActive ? '850' : '700', textAlign: 'left', transition: 'background 140ms ease, color 140ms ease'
