@@ -2722,6 +2722,12 @@ async function opLineWebhook(req, res) {
       // ลงทะเบียน groupId ของกลุ่มไลน์ทีมงานอัตโนมัติ ถ้า event นี้มาจากกลุ่ม (ดู comment บน LINE_GROUP_LINK_SHEET)
       if (event.source?.type === 'group' && event.source.groupId) await registerLineGroup(event.source.groupId)
 
+      // กลุ่มไลน์ใช้แค่ "แสดงผล" (การ์ดแจ้งเตือน/สรุปหลัง match) ไม่รับคำสั่งใดๆ ทั้งพิมพ์ข้อความและกดปุ่ม —
+      // ทุก flow (สั่งของ/แจ้งของเข้า/อนุมัติลา/ฯลฯ) ต้องทำใน 1:1 เท่านั้น (owner ขอ 2026-08-04 หลังเจอปัญหา
+      // session ค้างทำให้บอทตอบข้อความคุยเล่นในกลุ่มด้วย — 1:1 ก็ยังมีปัญหาเดิมได้เหมือนกัน แต่ตัด attack
+      // surface ที่คนอื่นในกลุ่มบังเอิญพิมพ์ชนกับ session ของคนอื่นออกไปได้อย่างน้อย)
+      if (event.source?.type !== 'user') continue
+
       const lineUserId = event.source?.userId
       const staffLink = lineUserId ? await findStaffLink(lineUserId) : null
 
