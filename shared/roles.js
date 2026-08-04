@@ -1,4 +1,4 @@
-export const ROLES = Object.freeze({ DEV: 'dev', BOSS: 'boss', STAFF: 'staff', STOCK: 'stock' })
+export const ROLES = Object.freeze({ DEV: 'dev', BOSS: 'boss', STAFF: 'staff', STOCK: 'stock', MARKETING: 'marketing' })
 
 // `admin` was the owner role before roles were split. Treat it as `dev` so the
 // existing owner account keeps full access without a manual data migration.
@@ -19,15 +19,22 @@ export const STAFF_TABS = Object.freeze([
 // role แคบสำหรับคนดูแลสต็อกอย่างเดียว (เช่น ฟ้า) — เห็นแค่ Inventory/Stock Movement ไม่เห็นแท็บอื่นเลย
 export const STOCK_TABS = Object.freeze(['Inventory', 'Stock Movement'])
 
+// role แคบสำหรับฝ่าย marketing (เช่น toon) — เห็นแค่ Dashboard ยอดขาย+สินค้า กับ Marketing Radar
+// เต็มหน้า (จัดการได้ ไม่ใช่แค่ดู — ดู canManageMarketing ด้านล่างที่ผูกกับ endpoint ของ Marketing Radar
+// โดยเฉพาะ ไม่ใช้ canManageOperations เพราะนั่นจะให้สิทธิ์ Inventory/HR/OT ไปด้วยซึ่งเกินขอบเขตที่ขอ)
+export const MARKETING_TABS = Object.freeze(['Executive', 'Monthly', 'Products', 'ProductTrends', 'MarketingRadar'])
+
 const BOSS_HIDDEN_TABS = new Set(['Import Orders', 'Dev Hub', 'Settings'])
 const STAFF_TAB_SET = new Set(STAFF_TABS)
 const STOCK_TAB_SET = new Set(STOCK_TABS)
+const MARKETING_TAB_SET = new Set(MARKETING_TABS)
 
 export function canAccessTab(role, tab) {
   const normalized = normalizeRole(role)
   if (normalized === ROLES.DEV) return true
   if (normalized === ROLES.BOSS) return !BOSS_HIDDEN_TABS.has(tab)
   if (normalized === ROLES.STOCK) return STOCK_TAB_SET.has(tab)
+  if (normalized === ROLES.MARKETING) return MARKETING_TAB_SET.has(tab)
   return STAFF_TAB_SET.has(tab)
 }
 
@@ -37,4 +44,11 @@ export function isDev(role) {
 
 export function canManageOperations(role) {
   return [ROLES.DEV, ROLES.BOSS].includes(normalizeRole(role))
+}
+
+// จัดการ Marketing Radar ได้ (เพิ่ม/แก้ event, ดู basket analysis) — dev/boss ได้อยู่แล้วเหมือนเดิม
+// บวก role marketing โดยเฉพาะ ไม่ปนกับ canManageOperations เพราะ marketing role ไม่ควรแตะ
+// Inventory/Workforce/HR ที่ canManageOperations คุมอยู่
+export function canManageMarketing(role) {
+  return [ROLES.DEV, ROLES.BOSS, ROLES.MARKETING].includes(normalizeRole(role))
 }

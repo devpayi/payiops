@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeftRight, Check, Download, Pencil, Plus, Search, Truck, X } from 'lucide-react'
+import { ArrowLeftRight, Check, Download, PackageMinus, Pencil, Plus, Search, Truck, X } from 'lucide-react'
 import { canManageOperations } from '../../shared/roles.js'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
@@ -96,6 +96,7 @@ export default function StockMovement() {
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [showAdd, setShowAdd] = useState(false)
+  const [showWithdraw, setShowWithdraw] = useState(false)
   const [editing, setEditing] = useState(null)
   const [showAddRequest, setShowAddRequest] = useState(false)
   const [matching, setMatching] = useState(null)
@@ -200,6 +201,34 @@ export default function StockMovement() {
       const json = await res.json()
       if (!json.success) throw new Error(json.error || 'บันทึกไม่สำเร็จ')
       setShowAdd(false)
+      load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // เบิกของหลายรายการทีเดียว — ยิง add-movement (type: out) ทีละตัวจากตะกร้า เรียงทีละตัวไม่ยิงพร้อมกัน
+  // เพื่อรายงานผลได้ชัดว่ารายการไหนสำเร็จ/ไม่สำเร็จ (stock_movements ใช้ appendRows ไม่ใช่
+  // read-modify-write เหมือน inventory_items/stock_in_requests เลยไม่ต้องกลัว race condition
+  // แบบที่เจอตอน bulk cleanup แถวอื่นในระบบ แต่ยิงทีละตัวยังอ่านง่ายกว่าเวลารายงาน error ต่อรายการ)
+  const saveWithdrawBatch = async ({ items: cartItems, date, note }) => {
+    setSaving(true)
+    setError('')
+    try {
+      const failed = []
+      for (const it of cartItems) {
+        const res = await fetch('/api/sheet-tools?op=inventory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'add-movement', sku: it.sku, type: 'out', qty: it.qty, date, note }),
+        })
+        const json = await res.json()
+        if (!json.success) failed.push(`${it.display_name}: ${json.error || 'ไม่สำเร็จ'}`)
+      }
+      if (failed.length) setError(`เบิกไม่สำเร็จบางรายการ — ${failed.join('; ')}`)
+      setShowWithdraw(false)
       load()
     } catch (e) {
       setError(e.message)
@@ -393,6 +422,9 @@ export default function StockMovement() {
           </button>
           <button onClick={exportCsv} disabled={!movements.length} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', color: 'var(--payi-text)', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: movements.length ? 'pointer' : 'not-allowed', opacity: movements.length ? 1 : 0.5 }}>
             <Download size={14} /> Export CSV
+          </button>
+          <button onClick={() => setShowWithdraw(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', color: 'var(--payi-text)', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            <PackageMinus size={14} /> เบิกของ
           </button>
           <button onClick={() => setShowAdd(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 18px rgba(37,99,235,0.22)' }}>
             <Plus size={14} /> เพิ่มรายการ
@@ -630,6 +662,9 @@ export default function StockMovement() {
         )}
       </div>
 
+      {showWithdraw && (
+        <WithdrawModal items={items} saving={saving} onClose={() => setShowWithdraw(false)} onSave={saveWithdrawBatch} />
+      )}
       {showAdd && (
         <AddMovementModal items={items} saving={saving} onClose={() => setShowAdd(false)} onSave={saveMovement} />
       )}
@@ -861,6 +896,94 @@ function MatchRequestModal({ request, saving, onClose, onSave }) {
           </div>
           <button type="submit" disabled={saving} style={{ marginTop: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 16px', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: saving ? 0.6 : 1, boxShadow: '0 8px 18px rgba(37,99,235,0.22)' }}>
             {saving ? 'กำลังยืนยัน...' : 'ยืนยัน Match'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// เบิกของหลายรายการทีเดียว — คล้ายตะกร้า "สั่งของ" ฝั่งไลน์/OrderRequestModal แต่จบในหน้าเดียว
+// (ไม่ต้องแยกขั้นตอนถามทีละอย่างเหมือนไลน์ เพราะมีฟอร์มเว็บให้กรอกพร้อมกันได้เลย) เพิ่มสินค้าเข้าตะกร้า
+// ทีละตัว (พิมพ์ค้นหา + จำนวน + กด "เพิ่ม") แก้ไข/ลบออกจากตะกร้าได้ก่อนกดยืนยันจริง วันที่/หมายเหตุ
+// ใช้ร่วมกันทั้งตะกร้า (เบิกพร้อมกันรอบเดียวกันมักจะมีเหตุผลเดียวกัน เช่น "เบิกจัดโปร") ไม่ต้องพิมพ์ซ้ำทุกตัว
+function WithdrawModal({ items, saving, onClose, onSave }) {
+  const [cart, setCart] = useState([]) // [{ sku, display_name, unit, qty }]
+  const [sku, setSku] = useState('')
+  const [qty, setQty] = useState('')
+  const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }))
+  const [note, setNote] = useState('')
+
+  const addToCart = () => {
+    if (!sku || !qty || Number(qty) <= 0) return
+    const item = items.find((it) => it.sku === sku)
+    if (!item) return
+    setCart((prev) => {
+      const idx = prev.findIndex((c) => c.sku === sku)
+      if (idx !== -1) {
+        const next = [...prev]
+        next[idx] = { ...next[idx], qty: next[idx].qty + Number(qty) }
+        return next
+      }
+      return [...prev, { sku, display_name: item.display_name, unit: item.unit || 'ชิ้น', qty: Number(qty) }]
+    })
+    setSku('')
+    setQty('')
+  }
+
+  const removeFromCart = (skuToRemove) => setCart((prev) => prev.filter((c) => c.sku !== skuToRemove))
+
+  const submit = (e) => {
+    e.preventDefault()
+    if (!cart.length) return
+    onSave({ items: cart, date, note })
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.28)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', zIndex: 999 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--payi-surface)', borderRadius: 16, padding: 24, width: 460, maxWidth: '92vw', boxShadow: '0 20px 60px rgba(15,23,42,0.2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--payi-text-strong)' }}>เบิกของ (หลายรายการ)</div>
+          <button onClick={onClose} style={{ border: 'none', background: 'var(--payi-border)', borderRadius: '50%', width: 28, height: 28, display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
+            <X size={14} />
+          </button>
+        </div>
+        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={labelStyle}>เพิ่มสินค้าลงตะกร้า</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <div style={{ flex: '1 1 auto', minWidth: 0 }}><SkuPicker items={items} value={sku} onChange={setSku} /></div>
+              <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="จำนวน" style={{ ...inputStyle, width: 90, flexShrink: 0 }} />
+              <button type="button" onClick={addToCart} disabled={!sku || !qty || Number(qty) <= 0} style={{ flexShrink: 0, border: 'none', background: 'var(--payi-gradient-primary)', color: '#fff', borderRadius: 10, width: 38, height: 38, display: 'grid', placeItems: 'center', cursor: 'pointer', opacity: (!sku || !qty || Number(qty) <= 0) ? 0.5 : 1 }}>
+                <Plus size={16} />
+              </button>
+            </div>
+          </div>
+
+          {cart.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--payi-surface-muted)', borderRadius: 12, padding: '10px 12px' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--payi-text-muted)', marginBottom: 2 }}>ตะกร้า ({cart.length} รายการ)</div>
+              {cart.map((c) => (
+                <div key={c.sku} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5 }}>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.display_name} <b>× {fmt(c.qty)} {c.unit}</b></span>
+                  <button type="button" onClick={() => removeFromCart(c.sku)} style={{ flexShrink: 0, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--payi-text-faint)', display: 'grid', placeItems: 'center' }}>
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div>
+            <label style={labelStyle}>วันที่เบิก</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
+          </div>
+          <div>
+            <label style={labelStyle}>หมายเหตุ</label>
+            <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="ไม่บังคับ — ใช้ร่วมกันทุกรายการในตะกร้านี้" />
+          </div>
+          <button type="submit" disabled={saving || !cart.length} style={{ marginTop: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 16px', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: (saving || !cart.length) ? 0.6 : 1, boxShadow: '0 8px 18px rgba(37,99,235,0.22)' }}>
+            {saving ? 'กำลังบันทึก...' : `เบิกของ ${cart.length || ''} รายการ`}
           </button>
         </form>
       </div>

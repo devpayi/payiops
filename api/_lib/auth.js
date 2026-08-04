@@ -4,7 +4,7 @@
 // - ผู้ใช้เก็บในแท็บ `users` ของชีต จัดการผ่าน /api/auth (login / setup / create-user)
 // guard ใช้เป็นบรรทัดแรกของทุก handler: if (!requireAuth(req, res)) return
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
-import { canManageOperations, isDev, normalizeRole } from '../../shared/roles.js'
+import { canManageMarketing, canManageOperations, isDev, normalizeRole } from '../../shared/roles.js'
 
 const b64u = (buf) => Buffer.from(buf).toString('base64url')
 const fromB64u = (s) => Buffer.from(String(s), 'base64url')
@@ -76,6 +76,18 @@ export function requireManager(req, res) {
   if (!requireAuth(req, res)) return false
   if (authEnabled() && !canManageOperations(req.user?.role)) {
     res.status(403).json({ success: false, error: 'ส่วนนี้สำหรับ Boss หรือ Dev เท่านั้น' })
+    return false
+  }
+  return true
+}
+
+// เหมือน requireManager แต่เปิดให้ role marketing เข้าเขียนได้ด้วย — ใช้เฉพาะ endpoint ของ Marketing
+// Radar (marketingEvents.js/marketingBasket.js) ไม่ใช้กับ marketingInputs.js (Ads & Channels ยังเป็น
+// Boss/Dev เท่านั้น เพราะ role marketing ไม่ได้ขอสิทธิ์หน้านั้น)
+export function requireMarketingManager(req, res) {
+  if (!requireAuth(req, res)) return false
+  if (authEnabled() && !canManageMarketing(req.user?.role)) {
+    res.status(403).json({ success: false, error: 'ส่วนนี้สำหรับ Boss, Dev หรือ Marketing เท่านั้น' })
     return false
   }
   return true

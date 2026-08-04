@@ -1,7 +1,7 @@
 // GET /api/marketing?kind=basket&action=summary|product|pair-detail — วิเคราะห์ "ออเดอร์ที่ซื้อพ่วง"
 // สินค้ากลุ่มไหนถูกซื้อคู่กับกลุ่มไหนบ่อยสุด แยกตาม Shopee/TikTok/Lazada/Outlet — ใช้ประกอบการจัด Set/โปรโมชั่น
 // เดิมเจ้าของทำมือใน Google Sheet (group by order → นับคู่สินค้าที่ขึ้นด้วยกัน) ย้ายมาคำนวณสดจาก raw_orders
-import { requireManager, cacheable } from './auth.js'
+import { requireMarketingManager, cacheable } from './auth.js'
 import { getMeta, batchGetValues, getSheet } from './sheets.js'
 import { deriveGroup, buildOverrideMap } from './productGroup.js'
 import { getSkuRedirectMap, getSetRecipeKeySet, resolveSalesSku } from './skuMapping.js'
@@ -166,7 +166,7 @@ function pairDetail(scoped, keyA, keyB, groupLabelByKey) {
 }
 
 export default async function handler(req, res) {
-  if (!requireManager(req, res)) return
+  if (!requireMarketingManager(req, res)) return
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' })
 
   try {

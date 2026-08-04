@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import payiLogo from './assets/payi-logo.png'
-import { canAccessTab, normalizeRole, STAFF_TABS, STOCK_TABS } from '../shared/roles.js'
+import { canAccessTab, normalizeRole, STAFF_TABS, STOCK_TABS, MARKETING_TABS } from '../shared/roles.js'
 import { avatarGradient, AVATAR_COLORS } from '../shared/avatar.js'
 import AvatarPicker from './components/AvatarPicker.jsx'
 
@@ -442,7 +442,7 @@ export default function App() {
   const mobileTabItems = showAllTabsDirect
     ? allVisibleTabs.map((item) => ({ ...item, label: MOBILE_SHORT_LABELS[item.id] || item.label }))
     : MOBILE_TAB_CANDIDATES.filter((item) => canAccessTab(currentRole, item.id))
-  const firstAllowedTab = currentRole === 'stock' ? STOCK_TABS[0] : currentRole === 'staff' ? STAFF_TABS[0] : 'Executive'
+  const firstAllowedTab = currentRole === 'stock' ? STOCK_TABS[0] : currentRole === 'marketing' ? MARKETING_TABS[0] : currentRole === 'staff' ? STAFF_TABS[0] : 'Executive'
   // จำแท็บล่าสุดไว้ข้าม refresh (localStorage `payi-active-tab`) — เดิมรีเซ็ตกลับ Home ทุกครั้งเพื่อกัน
   // หน้า Dashboard หนักโหลดช้าซ้ำ แต่ owner ขอเปลี่ยนกลับ (2026-07-31) ยอมรับเวลาโหลดที่อาจช้ากว่า Home
   // แลกกับไม่ต้องกดกลับไปหน้าเดิมทุกครั้งที่ refresh ?tab=... ใน URL (deep link จากการ์ดไลน์) ยังชนะเสมอ

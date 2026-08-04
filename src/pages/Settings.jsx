@@ -421,6 +421,7 @@ function UserManagementCard({ me, usersData, usersLoading, reloadUsers }) {
         <select value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value })} className="payi-select" style={inputStyle}>
           <option value="staff">Staff — Tang</option>
           <option value="stock">Stock — สต็อกเท่านั้น</option>
+          <option value="marketing">Marketing — Dashboard + Marketing Radar</option>
           <option value="boss">Boss</option>
           <option value="dev">Dev</option>
         </select>
