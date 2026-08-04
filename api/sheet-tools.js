@@ -2697,9 +2697,21 @@ async function handleLeaveWizard(event, staffLink) {
   }
 }
 
+// เช็ค header ของ 3 แท็บที่ webhook เกือบทุก event ต้องอ่าน (session สั่งของ/แจ้งของเข้า/group link)
+// รวดเดียวด้วย ensureSheets ก่อนเข้า loop event — เดิมแต่ละแท็บเรียก ensureSheet แยกกันทีละจุด (ดู
+// getStockOrderSessions/getStockInSessions/registerLineGroup) รวม 3 read request ต่อ cold instance
+// ทุกข้อความไลน์ที่เข้ามา ซึ่งเป็น endpoint ที่ถี่สุดในระบบ (ทุกครั้งที่มีคนพิมพ์แชท ไม่ใช่แค่ตอนเปิดหน้าเว็บ)
+let lineFlowEnsurePromise
+const ensureLineFlowSheets = () => lineFlowEnsurePromise ||= ensureSheets([
+  [STOCK_ORDER_SESSION_SHEET, STOCK_ORDER_SESSION_HEADERS],
+  [STOCK_IN_SESSION_SHEET, STOCK_IN_SESSION_HEADERS],
+  [LINE_GROUP_LINK_SHEET, LINE_GROUP_LINK_HEADERS],
+])
+
 async function opLineWebhook(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
   if (!verifySignature(req.rawBody, req.headers['x-line-signature'])) return res.status(401).end()
+  await ensureLineFlowSheets()
   const events = Array.isArray(req.body?.events) ? req.body.events : []
   for (const event of events) {
     try {
