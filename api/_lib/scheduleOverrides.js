@@ -1,3 +1,13 @@
+// override ที่บันทึกก่อนเวลานี้ถือเป็นของเก่า (bulk schedule import เดิม ไม่รู้จักพนักงานที่เพิ่มเข้าระบบทีหลัง) —
+// override ที่บันทึก "ตั้งแต่ตอนนี้เป็นต้นไป" ถือว่ารู้จักทุกคนในระบบแล้วเสมอ ใช้บังคับได้เต็มที่ทั้งเพิ่ม/ถอน
+const LEGACY_OVERRIDE_CUTOFF = '2026-08-04T10:16:00.000Z'
+// พนักงานที่เพิ่มเข้าระบบทีหลัง ไม่เคยมีชื่ออยู่ใน override เก่า (ก่อน cutoff ด้านบน) เลยสักวัน — ถ้าปล่อยให้ override เก่า
+// ลบเขาออกจากปฏิทินไปด้วย จะไม่โผล่ในปฏิทินเลยทุกวันที่มี override เก่าทับอยู่ (เจอจริง 2026-08-04 กรณี "ไม้" หายทั้ง
+// 5 เดือน) เลยยกเว้นเฉพาะโค้ดพวกนี้ไม่ให้ override เก่าลบออกอีก — ทำแบบ hardcode ตรงจุดเหมือน SKU_REDIRECTS ใน
+// planner-sales.js ถ้ามีพนักงานใหม่แบบนี้บ่อยขึ้นค่อยย้ายเป็นชีตแทน. ไม่กระทบ override ใหม่ (>= cutoff) — เพิ่ม/ถอน
+// คนกลุ่มนี้ผ่านตารางกะตามปกติได้เต็มที่เหมือนคนอื่น
+const NEVER_IN_LEGACY_SCHEDULE_CODES = new Set(['ไม้'])
+
 export function applyScheduleOverrides({ baseRows = [], overrideRows = [], personMap = {}, overrideScopeCodes = Object.keys(personMap), officeCodes = [] }) {
   const latestByDate = new Map()
   for (const row of overrideRows) {
@@ -13,21 +23,6 @@ export function applyScheduleOverrides({ baseRows = [], overrideRows = [], perso
   // ออฟฟิศเพิ่งเริ่มแก้ผ่านตัวนี้ได้ — override เก่าที่เคยบันทึกไว้ก่อนหน้า (ไม่มีโค้ดออฟฟิศติดมาด้วยเลย) ไม่ควรลบแถวออฟฟิศเดิมทิ้ง
   // ถือว่า override วันนั้น "แตะออฟฟิศ" ก็ต่อเมื่อมีโค้ดออฟฟิศอยู่ใน entries จริงๆ เท่านั้น กันย้อนหลังพังของเก่า
   const overrideTouchesOffice = new Map()
-  // วันแรกที่แต่ละคนเคยถูกระบุอยู่ใน override จริง (ทุกวันที่มีการแก้ ไม่ใช่แค่ latestByDate) — พนักงานใหม่ที่เพิ่งเพิ่มเข้าระบบ
-  // ทีหลัง ไม่เคยมีชื่ออยู่ใน override เก่าที่บันทึกไว้ก่อนหน้าเลยสักวัน (override เก่าไม่รู้จักเขาด้วยซ้ำตอนนั้น) — ถ้าปล่อยให้
-  // override เก่านั้นลบเขาออกจากปฏิทินไปด้วย เขาจะไม่โผล่ในปฏิทินเลยทุกวันที่มี override ทับอยู่ (เจอจริง 2026-08-04 กรณี "ไม้")
-  const firstAppearanceDate = {}
-  for (const row of overrideRows) {
-    const date = String(row.date || '')
-    if (!date) continue
-    let entries = []
-    try { entries = JSON.parse(row.entries_json || '[]') } catch { entries = [] }
-    for (const entry of Array.isArray(entries) ? entries : []) {
-      const code = String(entry?.code || '').toUpperCase()
-      if (!code) continue
-      if (!firstAppearanceDate[code] || date < firstAppearanceDate[code]) firstAppearanceDate[code] = date
-    }
-  }
   for (const [date, override] of latestByDate) {
     let entries = []
     try { entries = JSON.parse(override.entries_json || '[]') } catch { entries = [] }
@@ -38,7 +33,8 @@ export function applyScheduleOverrides({ baseRows = [], overrideRows = [], perso
     const date = String(row.date || '')
     if (!latestByDate.has(date)) return true
     const code = String(row.code || '').toUpperCase()
-    if (!firstAppearanceDate[code] || date < firstAppearanceDate[code]) return true
+    const isLegacyOverride = String(latestByDate.get(date)?.updated_at || '') < LEGACY_OVERRIDE_CUTOFF
+    if (isLegacyOverride && NEVER_IN_LEGACY_SCHEDULE_CODES.has(code)) return true
     const inScope = baseScope.has(code) || (officeSet.has(code) && overrideTouchesOffice.get(date))
     return !inScope
   })
