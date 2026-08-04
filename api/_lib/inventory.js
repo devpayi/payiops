@@ -3,7 +3,7 @@
 // เพื่อกันเพี้ยนแบบไฟล์ Excel เดิม (คงเหลือแยกชีตต้องพิมพ์เชื่อมมือทุกเดือน)
 // นับสต็อกระดับ SKU จริง (master_sku) ไม่ใช่ product-family group — M/L/สี คือของคนละถังจริง
 // ต้องแยกนับ ไม่รวมแบบ deriveGroup ที่ใช้กับหน้า Products/Claims (นั่นไว้แค่ดูภาพรวมยอดขาย)
-import { getSheet, appendRows, overwriteSheet, ensureSheet } from './sheets.js'
+import { getSheet, appendRows, overwriteSheet, ensureSheets } from './sheets.js'
 import { isoDate } from './dates.js'
 import { getSkuRedirectMap, resolveRedirect } from './skuMapping.js'
 import { canManageOperations } from '../../shared/roles.js'
@@ -49,12 +49,12 @@ const STOCK_IN_STATUSES = new Set(['pending', 'matched', 'rejected'])
 export const isPackagingItem = (item) => item.category === 'packaging' || /^(PKG-|BOXMJ-|BOXP-)/i.test(String(item.sku || ''))
 
 let ensurePromise
-const ensureInventorySheets = () => ensurePromise ||= Promise.all([
-  ensureSheet(ITEMS_SHEET, ITEMS_HEADERS),
-  ensureSheet(MOVEMENTS_SHEET, MOVEMENTS_HEADERS),
-  ensureSheet(PACKAGING_RECIPES_SHEET, PACKAGING_RECIPES_HEADERS),
-  ensureSheet(MOVEMENTS_HISTORY_SHEET, MOVEMENTS_HISTORY_HEADERS),
-  ensureSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS),
+const ensureInventorySheets = () => ensurePromise ||= ensureSheets([
+  [ITEMS_SHEET, ITEMS_HEADERS],
+  [MOVEMENTS_SHEET, MOVEMENTS_HEADERS],
+  [PACKAGING_RECIPES_SHEET, PACKAGING_RECIPES_HEADERS],
+  [MOVEMENTS_HISTORY_SHEET, MOVEMENTS_HISTORY_HEADERS],
+  [STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS],
 ])
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0 }

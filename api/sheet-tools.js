@@ -3,7 +3,7 @@
 // เป็นฟังก์ชันเดียว — Vercel Hobby จำกัด 12 serverless functions ต่อโปรเจค
 import { requireAuth, cacheable, authEnabled } from './_lib/auth.js'
 import { canManageOperations } from '../shared/roles.js'
-import { getMetaCached, batchGetValues, getSheet, appendRows, overwriteSheet, ensureSheet } from './_lib/sheets.js'
+import { getMetaCached, batchGetValues, getSheet, appendRows, overwriteSheet, ensureSheet, ensureSheets } from './_lib/sheets.js'
 import { verifySignature, pushMessage, replyMessage } from './_lib/line.js'
 import {
   MIN_LOWER_HOUSE_HEADCOUNT, buildCoveragePlan, leaveAbsenceDates, leaveAbsenceSlots,
@@ -57,7 +57,7 @@ const DEFAULT_OFFICE_ROWS = [['TOON', 'ตูน', '1'], ['KED', 'เกด', '1
 const HR_SHEETS = [['hr_leave', LEAVE_HEADERS], ['hr_leave_backups', BACKUP_HEADERS], ['hr_leave_edits', LEAVE_EDIT_HEADERS], ['hr_schedule', SCHEDULE_HEADERS], ['hr_line_links', LINE_LINK_HEADERS], ['hr_line_sessions', LINE_SESSION_HEADERS], ['hr_leave_quota', QUOTA_HEADERS], ['hr_office_people', OFFICE_HEADERS], ['workforce_schedule_snapshot', SCHEDULE_SNAPSHOT_HEADERS], ['workforce_schedule_overrides', SCHEDULE_OVERRIDE_HEADERS]]
 let hrEnsurePromise
 let hrCache = { at: 0, data: null }
-const ensureHrSheets = () => hrEnsurePromise ||= Promise.all(HR_SHEETS.map(([name, headers]) => ensureSheet(name, headers)))
+const ensureHrSheets = () => hrEnsurePromise ||= ensureSheets(HR_SHEETS)
 let hrInflight = null
 const clearHrCache = () => { hrCache = { at: 0, data: null }; hrInflight = null }
 const daysBetween = (start, end) => Math.round((new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`)) / 86400000) + 1
@@ -1240,7 +1240,7 @@ const PLANNER_DAILY_HEADERS = ['id', 'date', 'master_sku', 'fg', 'sales_average'
 const WORKFORCE_SHEETS = [['workforce_ot', OT_HEADERS], ['workforce_manpower', MANPOWER_HEADERS], ['workforce_events', EVENT_HEADERS], ['workforce_ot_history', OT_HISTORY_HEADERS], ['workforce_ot_approvals', OT_APPROVAL_HEADERS], ['workforce_people', PEOPLE_HEADERS], ['workforce_ot_limits', OT_LIMIT_HEADERS], ['workforce_ot_approval_history', OT_APPROVAL_HISTORY_HEADERS], ['workforce_schedule_snapshot', SCHEDULE_SNAPSHOT_HEADERS], ['workforce_schedule_overrides', SCHEDULE_OVERRIDE_HEADERS], ['workforce_dayrecords', DAYRECORD_HEADERS]]
 let workforceEnsurePromise
 let workforceCache = { at: 0, data: null }
-const ensureWorkforceSheets = () => workforceEnsurePromise ||= Promise.all(WORKFORCE_SHEETS.map(([name, headers]) => ensureSheet(name, headers)))
+const ensureWorkforceSheets = () => workforceEnsurePromise ||= ensureSheets(WORKFORCE_SHEETS)
 // กลุ่มพื้นเหลืองในไฟล์ต้นฉบับ (TOON/KED/MO) เป็นอีกหน่วยงาน (ออฟฟิศ) ไม่ใช่บ้านล่าง — ไม่ต้องเพิ่มแถวใน workforce_people ให้กลุ่มนั้น จึงไม่ถูกดึงเข้าปฏิทินนี้
 // รายชื่อบ้านล่างตอนเริ่มระบบ ใช้ seed แท็บ workforce_people ครั้งแรกเท่านั้น — หลังจากนี้แก้/เพิ่มคนได้ตรงในชีตเลย ไม่ต้องแก้โค้ด
 const DEFAULT_PEOPLE_ROWS = [['TANG', 'แตง', 'คนแพ็ก', '1'], ['PANG', 'แป้ง', 'คนแพ็ก', '1'], ['FAH', 'ฟ้า', 'คนแพ็ก', '1'], ['MII', 'มี่', 'คนแพ็ก', '1'], ['PANID', 'ป้านิด', 'คนฟีด', '1'], ['MOM', 'แม่', 'คนฟีด', '1'], ['MAPRANG', 'มะปราง', 'พาร์ทไทม์', '1'], ['ATOM', 'อะตอม', 'อื่น ๆ', '1'], ['BAS', 'บาส', 'อื่น ๆ', '1'], ['NEOY', 'เนย', 'อื่น ๆ', '1']]
@@ -2250,9 +2250,7 @@ async function opPlanner(req, res) {
   const number = (value) => Math.max(0, Number(value) || 0)
   const truthy = (value) => value === true || value === 1 || ['1', 'true', 'yes'].includes(String(value).toLowerCase())
   try {
-    // ทำตามลำดับเพื่อลดโอกาสชนกันตอนสร้างแท็บครั้งแรก
-    await ensureSheet(PLANNER_CONFIG_SHEET, PLANNER_CONFIG_HEADERS)
-    await ensureSheet(PLANNER_DAILY_SHEET, PLANNER_DAILY_HEADERS)
+    await ensureSheets([[PLANNER_CONFIG_SHEET, PLANNER_CONFIG_HEADERS], [PLANNER_DAILY_SHEET, PLANNER_DAILY_HEADERS]])
 
     if (req.method === 'GET') {
       const date = text(req.query.date).slice(0, 10)

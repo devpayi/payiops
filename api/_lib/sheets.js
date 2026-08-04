@@ -165,6 +165,50 @@ export async function ensureSheet(sheetName, headers) {
   ensuredSheets.add(sheetName)
 }
 
+// ensureSheets(list) — เหมือน ensureSheet แต่ทำหลายแท็บทีเดียวด้วย 1 batchGet call แทนที่จะยิง
+// values.get แยกทีละแท็บ (สาเหตุหลักที่ชนโควตา "Read requests per minute per user": หน้า HR/
+// Workforce/Inventory แต่ละหน้าเช็ค header 5-11 แท็บพร้อมกันตอน cold start ด้วย Promise.all ของ
+// ensureSheet เดี่ยวๆ = 5-11 read request แยกกันต่อ instance เดียว พอมีคนเปิดหลายแท็บ/refresh พร้อมกัน
+// (แต่ละ request อาจไปโดน serverless instance คนละตัว ไม่แชร์ cache กัน) ยอดรวมพุ่งชนโควตาไว — ฟังก์ชันนี้
+// รวมเป็น 1 request ต่อกลุ่ม (เหมือน batchGetValues ด้านบนที่แก้ปัญหาเดียวกันไปแล้วรอบนึง)
+export async function ensureSheets(list) {
+  const notYetEnsured = list.filter(([name]) => !ensuredSheets.has(name))
+  if (!notYetEnsured.length) return
+
+  const meta = await getMetaCached()
+  const existingNames = new Set(meta.sheets.map((s) => s.properties.title))
+  const missing = notYetEnsured.filter(([name]) => !existingNames.has(name))
+  if (missing.length) {
+    await getClient().spreadsheets.batchUpdate({
+      spreadsheetId: sheetId(),
+      requestBody: { requests: missing.map(([name]) => ({ addSheet: { properties: { title: name } } })) },
+    })
+    for (const [name] of missing) invalidateSheet(name)
+  }
+
+  const res = await getClient().spreadsheets.values.batchGet({
+    spreadsheetId: sheetId(),
+    ranges: notYetEnsured.map(([name]) => `${name}!A1:Z1`),
+  })
+  const valueRanges = res.data.valueRanges || []
+
+  for (let i = 0; i < notYetEnsured.length; i++) {
+    const [name, headers] = notYetEnsured[i]
+    const current = valueRanges[i]?.values?.[0] || []
+    const missingHeader = headers.some((h, idx) => current[idx] !== h)
+    if (!current.length || missingHeader) {
+      await getClient().spreadsheets.values.update({
+        spreadsheetId: sheetId(),
+        range: `${name}!A1`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [headers] },
+      })
+      invalidateSheet(name)
+    }
+    ensuredSheets.add(name)
+  }
+}
+
 export async function overwriteSheet(sheetName, headers, rows) {
   await getClient().spreadsheets.values.clear({
     spreadsheetId: sheetId(),
