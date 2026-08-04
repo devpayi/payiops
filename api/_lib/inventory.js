@@ -146,10 +146,28 @@ const calcRecommendedOrder = (safetyStock, balance, dailyAvg, leadTimeTotal) => 
 // รายการของใกล้หมด/หมด สำหรับ cron แจ้งเตือนไลน์ — สูตรเดียวกับหน้า Inventory.jsx เป๊ะ (ports จากที่นั่น
 // รวม allocatedSales fallback สำหรับ SKU แยกสี/ไซส์ที่ไม่มียอดขายของตัวเองตรงๆ) ไม่รวมวัสดุแพ็คเกจจิ้ง
 // (ไม่มี balance จริงให้เทียบ เหมือนหน้าเว็บ)
+// SKU ที่มีคำสั่งซื้อ (สั่งของ) ค้างอยู่ ยังไม่มีของเข้า (order_only แถวใน stock_in_requests ที่ arrival_date
+// ว่างและ status ยัง pending) — ใช้กันไม่ให้ cron แจ้งเตือนของใกล้หมดซ้ำสำหรับของที่บอสสั่งไปแล้วแต่กำลังรอ
+// ส่งมา (บั๊กจริงที่เจอ 2026-08-04: บอสสั่งของไปแล้ว แต่ไลน์ยังเตือนของเหลือน้อยซ้ำทุกวัน เพราะ cron เดิม
+// ไม่เคยเช็ค stock_in_requests เลย คำนวณจากยอดคงเหลือ/safety stock ล้วนๆ) พอของเข้าจริง (match แล้ว) หรือถูก
+// ยกเลิก/ปฏิเสธ แถวจะไม่ใช่ pending อีกต่อไป → กลับมาแจ้งเตือนตามปกติถ้ายังของใกล้หมดอยู่
+async function loadOpenOrderSkus() {
+  await ensureInventorySheets()
+  const rows = await getSheet(STOCK_IN_REQUESTS_SHEET)
+  return new Set(
+    rows
+      .filter((r) => (r.status || 'pending') === 'pending' && !isoDate(r.arrival_date))
+      .map((r) => String(r.sku).toUpperCase())
+  )
+}
+
 export async function computeLowStockList() {
   const { items } = await loadItemsWithBalance({ includeHidden: false })
-  const salesData = await computeSalesStats(30)
+  // fresh: true — กันตัวเลขไม่ตรงกับหน้าเว็บ Inventory.jsx (ดู comment ยาวบน computeSalesStats ใน
+  // api/planner-sales.js) เพราะแจ้งเตือนบอสตรงๆ ผ่านไลน์ ถ้าหลุด/ไม่ตรงบ่อยๆ บอสจะเลิกเชื่อระบบ
+  const salesData = await computeSalesStats(30, { fresh: true })
   const salesBySku = new Map((salesData.items || []).map((p) => [String(p.masterSku || '').toUpperCase(), p]))
+  const openOrderSkus = await loadOpenOrderSkus()
 
   const baseSkuOf = (sku) => sku.replace(/-[A-Z]$/, '')
   const childrenByBase = new Map()
@@ -177,6 +195,7 @@ export async function computeLowStockList() {
   for (const it of items) {
     if (!it.active || it.category === 'packaging') continue
     const sku = String(it.sku).toUpperCase()
+    if (openOrderSkus.has(sku)) continue // สั่งของไปแล้ว รอของเข้าอยู่ — ไม่ต้องแจ้งซ้ำ
     const sales = salesBySku.get(sku) || allocatedSales.get(sku)
     const dailyAvg = sales?.dailyAverage || 0
     const leadTimeTotal = (it.lead_time_production || 0) + (it.lead_time_transport || 0)
@@ -287,9 +306,14 @@ async function upsertItem(body, actorName) {
 export async function createOrderRequest(body, actorName, role) {
   if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่สั่งของได้')
   const sku = String(body.sku || '').trim()
-  const qty = Number(body.qty)
+  // จำนวนเป็น optional (เว้นว่าง/ไม่ใส่ = 0 = "ไม่ระบุจำนวน") — เผื่อคำสั่งซื้อเก่าก่อนเริ่มใช้ระบบที่มีแค่
+  // วันที่สั่ง/สินค้า แต่ไม่มีบันทึกจำนวนไว้ ยังต้องลงเป็น "สั่งแล้ว" ได้เพื่อกันไม่ให้ cron แจ้งเตือนของใกล้หมด
+  // ซ้ำ (ดู loadOpenOrderSkus/computeLowStockList) แม้จะไม่รู้จำนวนที่สั่งจริงก็ตาม — ยังกรอกจำนวนจริงได้เสมอ
+  // ตอน match ของเข้า (matchStockInRequest ให้แก้ qty ได้อยู่แล้ว)
+  const qtyRaw = body.qty === '' || body.qty === undefined || body.qty === null ? 0 : Number(body.qty)
   if (!sku) throw new Error('ต้องระบุสินค้า')
-  if (!Number.isFinite(qty) || qty <= 0) throw new Error('ต้องระบุจำนวน')
+  if (!Number.isFinite(qtyRaw) || qtyRaw < 0) throw new Error('จำนวนไม่ถูกต้อง')
+  const qty = qtyRaw
 
   await ensureInventorySheets()
   const items = await getSheet(ITEMS_SHEET)
@@ -592,8 +616,17 @@ export async function editStockInRequest(body, actorName, role) {
   if (!requests[idx].arrival_date && authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่แก้ไขได้')
 
   const sku = String(body.sku || requests[idx].sku).trim()
-  const qty = Number(body.qty)
-  if (!Number.isFinite(qty) || qty <= 0) throw new Error('ต้องระบุจำนวน')
+  // แถว "สั่งของ" (order_only ก่อนแก้ไข ยังไม่มี arrival_date) จำนวนเป็น optional เหมือน createOrderRequest —
+  // เผื่อแก้ไขคำสั่งซื้อเก่าที่ไม่รู้จำนวนจริง ส่วนแถว "แจ้งของเข้า" จริง (มี arrival_date) ยังต้องระบุจำนวนเสมอ
+  // เพราะเป็นยอดนับจริงที่จะสร้าง stock_movements
+  const isOrderOnly = !requests[idx].arrival_date
+  const qtyRaw = body.qty === '' || body.qty === undefined || body.qty === null ? (isOrderOnly ? 0 : NaN) : Number(body.qty)
+  if (isOrderOnly) {
+    if (!Number.isFinite(qtyRaw) || qtyRaw < 0) throw new Error('จำนวนไม่ถูกต้อง')
+  } else {
+    if (!Number.isFinite(qtyRaw) || qtyRaw <= 0) throw new Error('ต้องระบุจำนวน')
+  }
+  const qty = qtyRaw
   if (!items.some((it) => String(it.sku) === sku)) throw new Error('ไม่พบสินค้านี้ในระบบ')
 
   requests[idx] = {

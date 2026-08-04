@@ -3,6 +3,9 @@ import { ArrowLeftRight, Check, Download, Pencil, Plus, Search, Truck, X } from 
 import { canManageOperations } from '../../shared/roles.js'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
+// รายการ "สั่งของ" (order_only) ที่กรอกไว้แบบไม่รู้จำนวน (เช่น ของเก่าก่อนเริ่มระบบ) เก็บ qty เป็น 0 —
+// โชว์ "ไม่ระบุจำนวน" แทนเลข 0 เฉยๆ กันสับสนว่าสั่งไปศูนย์ชิ้น
+const fmtOrderQty = (n) => (Number(n) > 0 ? fmt(n) : 'ไม่ระบุจำนวน')
 const fmtDateTime = (iso) => {
   if (!iso) return ''
   const d = new Date(iso)
@@ -415,9 +418,9 @@ export default function StockMovement() {
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {orderOnlyRequests.map((r) => (
                   <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 4px', borderBottom: '1px solid var(--payi-border)', fontSize: 12.5 }}>
-                    <div style={{ minWidth: 0, flex: '1 1 auto', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }} title={`${r.display_name} ${fmt(r.qty)} · สั่งวันที่ ${r.order_date || '-'} · สั่งโดย ${r.created_by || '-'}${r.note ? ` · ${r.note}` : ''}`}>
+                    <div style={{ minWidth: 0, flex: '1 1 auto', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }} title={`${r.display_name} ${fmtOrderQty(r.qty)} · สั่งวันที่ ${r.order_date || '-'} · สั่งโดย ${r.created_by || '-'}${r.note ? ` · ${r.note}` : ''}`}>
                       <span style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name}</span>{' '}
-                      <span style={{ fontWeight: 800, color: 'var(--payi-text-muted)' }}>{fmt(r.qty)}</span>{' '}
+                      <span style={{ fontWeight: 800, color: 'var(--payi-text-muted)' }}>{fmtOrderQty(r.qty)}</span>{' '}
                       <span style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>· {r.order_date || '-'} · {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
@@ -695,7 +698,8 @@ function OrderRequestModal({ items, saving, initial, onClose, onSave }) {
 
   const submit = (e) => {
     e.preventDefault()
-    if (!sku || !qty || Number(qty) <= 0) return
+    if (!sku) return
+    if (qty !== '' && Number(qty) < 0) return
     onSave({ sku, qty, order_date: orderDate, note })
   }
 
@@ -720,7 +724,8 @@ function OrderRequestModal({ items, saving, initial, onClose, onSave }) {
           </div>
           <div>
             <label style={labelStyle}>จำนวนที่สั่ง</label>
-            <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} required style={{ ...inputStyle, width: '100%' }} placeholder="0" />
+            <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="ไม่ทราบจำนวน (เว้นว่างได้)" />
+            <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 4 }}>เว้นว่างได้ถ้ายังไม่รู้จำนวน เช่น คำสั่งซื้อเก่าก่อนเริ่มใช้ระบบนี้ — ยังนับว่า "สั่งแล้ว" กันแจ้งเตือนซ้ำในไลน์ ใส่จำนวนจริงตอน Match ของเข้าได้ทีหลัง</div>
           </div>
           <div>
             <label style={labelStyle}>วันที่สั่ง</label>
@@ -834,11 +839,12 @@ function MatchRequestModal({ request, saving, onClose, onSave }) {
                 <option value="">ไม่ผูกลอต (ไม่มีที่ตรง/ไม่ต้องเทียบ)</option>
                 {orders.map((o, i) => (
                   <option key={o.id} value={o.id}>
-                    ลอต {i + 1} — สั่งไว้ {fmt(o.qty)} · {o.order_date || '-'} · โดย {o.created_by || '-'}{o.note ? ` · ${o.note}` : ''}
+                    ลอต {i + 1} — สั่งไว้ {fmtOrderQty(o.qty)} · {o.order_date || '-'} · โดย {o.created_by || '-'}{o.note ? ` · ${o.note}` : ''}
                   </option>
                 ))}
               </select>
-              {selectedOrder && Number(qty) !== selectedOrder.qty && (
+              {/* ลอตที่ไม่ระบุจำนวน (qty 0 — เช่น ของเก่าก่อนเริ่มระบบ) ไม่มีอะไรให้เทียบ ข้ามคำเตือนไม่ตรงไปเลย */}
+              {selectedOrder && selectedOrder.qty > 0 && Number(qty) !== selectedOrder.qty && (
                 <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: 'var(--payi-danger)' }}>
                   ไม่ตรง — สั่งไว้ {fmt(selectedOrder.qty)} แต่นับจริง {fmt(Number(qty) || 0)} (ส่วนต่าง {fmt((Number(qty) || 0) - selectedOrder.qty)})
                 </div>

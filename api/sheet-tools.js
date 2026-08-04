@@ -349,6 +349,28 @@ function lowStockFlexMessage(items) {
   }
 }
 
+// คำสั่ง "เช็คของที่ต้องสั่ง" — ให้บอส/dev เรียกดูรายการของใกล้หมด/หมด ณ ตอนนี้ได้ทันทีทุกเมื่อ ไม่ต้องรอ
+// การ์ดแจ้งเตือนรายวันจาก cron (opLowStockCron ด้านล่าง) ใช้ตัวกรอง/สูตรชุดเดียวกันเป๊ะ (computeLowStockList)
+// รวมถึงกันไม่โชว์ของที่สั่งไปแล้วรอของเข้าอยู่ (loadOpenOrderSkus ใน _lib/inventory.js) ให้ตอบตรงกับสิ่งที่
+// บอสถามจริงๆ ว่า "ตอนนี้อะไรที่ยังต้องสั่งอยู่บ้าง" ไม่ใช่แค่ของใกล้หมดทั้งหมดเฉยๆ
+const STOCK_CHECK_COMMANDS = new Set(['เช็คของที่ต้องสั่ง', 'เช็คของ', 'เช็คสต็อก', 'ของที่ต้องสั่ง', 'เช็คของใกล้หมด'])
+const isStockCheckCommand = (text) => STOCK_CHECK_COMMANDS.has(String(text || '').trim())
+
+async function handleStockCheckCommand(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return false
+  const manager = lineUserId ? await findManagerLink(lineUserId) : null
+  if (!manager) return false // ไม่ใช่บอส/dev ที่เปิดรับแจ้งเตือนสต็อกไว้ — ปล่อยตกไป fallback เดิม
+  const lowItems = await computeLowStockList()
+  if (!lowItems.length) {
+    await replyMessage(replyToken, [{ type: 'text', text: 'ตอนนี้ไม่มีของใกล้หมด/หมดที่ยังไม่ได้สั่งค่ะ 🎉' }])
+  } else {
+    await replyMessage(replyToken, [lowStockFlexMessage(lowItems)])
+  }
+  return true
+}
+
 // entry point ของ Vercel Cron (vercel.json) — ต้องข้าม requireAuth ปกติเพราะ cron ไม่มี user token
 // (เหมือน line-webhook) ใช้ CRON_SECRET (Vercel ส่ง Authorization: Bearer อัตโนมัติเมื่อตั้ง env ไว้) แทน
 // dry=1 ไว้ทดสอบ local โดยไม่ยิงข้อความจริง — คืนรายการที่คำนวณได้กลับมาเป็น JSON เฉยๆ
@@ -489,7 +511,7 @@ async function addToCartAndAskMore(replyToken, lineUserId, newItems, prefixText 
   try { cart = JSON.parse(session?.items_json || '[]') } catch { cart = [] }
   cart = [...cart, ...newItems]
   await upsertStockOrderSession(lineUserId, { step: 'await_item', items_json: JSON.stringify(cart), sku: '', pending_json: '' })
-  const summary = cart.map((it) => `• ${it.display_name} × ${it.qty} ${it.unit}`).join('\n')
+  const summary = cart.map((it) => `• ${it.display_name} × ${it.qty > 0 ? `${it.qty} ${it.unit}` : 'ไม่ระบุจำนวน'}`).join('\n')
   const text = `${prefixText ? prefixText + '\n\n' : ''}ตะกร้าตอนนี้ (${cart.length} รายการ):\n${summary}\n\nจะสั่งเพิ่มไหม? พิมพ์ชื่อสินค้าหรือ SKU ต่อไปได้เลย หรือกด "เสร็จแล้ว" เพื่อเลือกวันที่`
   await replyMessage(replyToken, [{
     type: 'text', text,
@@ -497,12 +519,17 @@ async function addToCartAndAskMore(replyToken, lineUserId, newItems, prefixText 
   }])
 }
 
+// พิมพ์คำเหล่านี้แทนตัวเลขได้ตอนถูกถามจำนวน — เผื่อของเก่าก่อนเริ่มใช้ระบบที่ไม่มีบันทึกจำนวนไว้ ยังลงเป็น
+// "สั่งแล้ว" ได้ (qty เก็บเป็น 0 = ไม่ระบุจำนวน เหมือนฝั่งเว็บ — ดู createOrderRequest ที่ยอมรับ qty ว่าง/0)
+const SKIP_QTY_TEXTS = new Set(['-', 'ไม่ทราบ', 'ไม่รู้', 'ไม่ระบุ', 'ข้าม', 'unknown', 'skip'])
+const isSkipQtyText = (text) => SKIP_QTY_TEXTS.has(String(text || '').trim().toLowerCase())
+
 // ถามจำนวนของ 1 รายการที่เพิ่งค้นหา/เลือกได้ — พอตอบจำนวนแล้วเข้าตะกร้า (addToCartAndAskMore) ไม่จบทันที
 // ต่างจาก approve/reject วันลาที่กดปุ่มจบในทีเดียว ใช้ร่วมกันทั้งกดปุ่มจากการ์ดแจ้งเตือน (handleStockOrderPostback)
 // และเลือกจากผลค้นหา (handleStockPickPostback)
 async function askOrderQty(replyToken, lineUserId, item) {
   await upsertStockOrderSession(lineUserId, { step: 'await_item_qty', sku: item.sku, qty: '' })
-  await replyMessage(replyToken, [{ type: 'text', text: `สั่ง "${item.display_name}" กี่${item.unit || 'ชิ้น'}คะ? พิมพ์ตัวเลขได้เลย\nคงเหลือตอนนี้ ${item.balance} ${item.unit || 'ชิ้น'}` }])
+  await replyMessage(replyToken, [{ type: 'text', text: `สั่ง "${item.display_name}" กี่${item.unit || 'ชิ้น'}คะ? พิมพ์ตัวเลขได้เลย หรือพิมพ์ "ไม่ทราบ" ถ้ายังไม่รู้จำนวน (เช่น ของเก่าก่อนเริ่มใช้ระบบ)\nคงเหลือตอนนี้ ${item.balance} ${item.unit || 'ชิ้น'}` }])
 }
 
 async function handleStockOrderPostback(event, sku) {
@@ -635,6 +662,7 @@ function parseOrderBatchLines(text, items) {
     if (!isSizeOnly) lastBaseQuery = stripTrailingSize(queryRaw)
     const base = { sku: match.sku, display_name: match.display_name, unit: match.unit || 'ชิ้น' }
     if (qtyText === null) { pending.push(base); continue }
+    if (isSkipQtyText(qtyText)) { resolved.push({ ...base, qty: 0 }); continue }
     const qty = Number(qtyText.replace(/,/g, ''))
     if (!Number.isFinite(qty) || qty <= 0) { errors.push(`บรรทัด "${line}" จำนวนไม่ถูกต้อง`); continue }
     resolved.push({ ...base, qty })
@@ -658,7 +686,7 @@ async function mergeIntoCart(lineUserId, newItems) {
 async function askPendingQueue(replyToken, lineUserId, pendingList, prefixText = '') {
   await upsertStockOrderSession(lineUserId, { step: 'await_item_qty', sku: pendingList[0].sku, pending_json: JSON.stringify(pendingList) })
   const more = pendingList.length > 1 ? `\n(ถามทีละตัว เหลืออีก ${pendingList.length - 1} รายการที่ยังไม่ระบุจำนวน)` : ''
-  const text = `${prefixText ? prefixText + '\n\n' : ''}สั่ง "${pendingList[0].display_name}" กี่${pendingList[0].unit}คะ? พิมพ์ตัวเลขได้เลย${more}`
+  const text = `${prefixText ? prefixText + '\n\n' : ''}สั่ง "${pendingList[0].display_name}" กี่${pendingList[0].unit}คะ? พิมพ์ตัวเลขได้เลย หรือพิมพ์ "ไม่ทราบ" ถ้ายังไม่รู้จำนวน${more}`
   await replyMessage(replyToken, [{ type: 'text', text }])
 }
 
@@ -730,7 +758,7 @@ async function completeStockOrderBatch(replyToken, lineUserId, session, orderDat
   }
   await clearStockOrderSession(lineUserId)
 
-  const facts = done.map((it) => stockFactRow(it.display_name, `× ${it.qty} ${it.unit}`))
+  const facts = done.map((it) => stockFactRow(it.display_name, it.qty > 0 ? `× ${it.qty} ${it.unit}` : 'ไม่ระบุจำนวน'))
   const footerButtons = APP_BASE_URL ? [stockCardButton({ type: 'uri', label: 'เปิดเว็บ', uri: stockWebUrl() }, true)] : []
   await replyMessage(replyToken, [{
     type: 'flex', altText: `สั่งของ ${done.length} รายการ เรียบร้อย`,
@@ -752,9 +780,10 @@ async function handleStockOrderQtyReply(event, session) {
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
   if (!replyToken) return
-  const text = String(event.message?.text || '').trim().replace(/,/g, '')
-  const qty = Number(text)
-  if (!Number.isFinite(qty) || qty <= 0) return replyMessage(replyToken, [{ type: 'text', text: 'กรุณาพิมพ์เป็นตัวเลขค่ะ เช่น 100' }])
+  const rawText = String(event.message?.text || '').trim()
+  const skip = isSkipQtyText(rawText)
+  const qty = skip ? 0 : Number(rawText.replace(/,/g, ''))
+  if (!skip && (!Number.isFinite(qty) || qty <= 0)) return replyMessage(replyToken, [{ type: 'text', text: 'กรุณาพิมพ์เป็นตัวเลขค่ะ เช่น 100 หรือพิมพ์ "ไม่ทราบ" ถ้ายังไม่รู้จำนวน' }])
 
   const manager = await findManagerLink(lineUserId)
   if (!manager) { await clearStockOrderSession(lineUserId); return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะบอส/dev สั่งของผ่านไลน์ได้ค่ะ' }]) }
@@ -2669,6 +2698,8 @@ async function opLineWebhook(req, res) {
         const stockInSession = lineUserId ? (await getStockInSessions()).find((s) => s.line_user_id === lineUserId) : null
         const initialQuery = stockOrderCommandQuery(event.message.text)
         const initialInQuery = stockInCommandQuery(event.message.text)
+        // คำสั่ง “เช็คของที่ต้องสั่ง” ดูได้ทุกเมื่อจากทุกขั้นตอนเหมือนกัน — ไม่ต้องรอการ์ดแจ้งเตือนรายวัน
+        if (isStockCheckCommand(event.message.text) && await handleStockCheckCommand(event)) continue
         // คำสั่ง “สั่งของ”/“แจ้งของเข้า” เริ่มใหม่ได้จากทุกขั้นตอน รวมถึงตอนที่รอจำนวนหรือรอเลือกวันที่
         if (initialQuery === '') { await handleStockOrderSearchStart(event); continue }
         if (initialInQuery === '') { await handleStockInStart(event); continue }

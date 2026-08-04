@@ -29,9 +29,18 @@ const addDays = (iso, days) => {
 
 // แยกเป็นฟังก์ชันเรียกตรงได้ (ไม่ผ่าน HTTP) — เพื่อให้โค้ดฝั่งเซิร์ฟเวอร์อื่น (เช่น cron เช็คของใกล้หมด)
 // ใช้ dailyAverage ชุดเดียวกับหน้าเว็บได้โดยไม่ต้องยิง fetch ภายในซึ่งจะติด requireAuth (ไม่มี token ให้)
-export async function computeSalesStats(days) {
+//
+// fresh=true ข้าม cache 6 ชม. — ใช้เฉพาะ path ที่แจ้งเตือนบอสตรงๆ (computeLowStockList: cron รายวัน +
+// คำสั่งไลน์ "เช็คของ") เพราะ api/planner-sales.js กับ api/sheet-tools.js เป็นคนละ serverless function
+// บน Vercel แยก process กัน แปลว่า cacheByDays ของแต่ละไฟล์เป็นคนละก้อนหน่วยความจำ ไม่ได้แชร์กันจริง —
+// ถ้า sheet-tools.js เผอิญมี cache ที่ warm ค้างอยู่นานเกิน 6 ชม.แต่ยังไม่ถูกเคลียร์ หรือ cache ของสอง
+// instance คำนวณคนละเวลากัน ตัวเลข dailyAverage/safety stock ที่ได้จะไม่ตรงกับที่หน้าเว็บ Inventory.jsx
+// โชว์สดๆ ตอนนั้น (เจอจริง 2026-08-04: เว็บโชว์ "ปกติ" แต่การ์ดไลน์ยังเตือนให้สั่ง) พอ fresh ทั้งคู่คำนวณ
+// จากข้อมูลปัจจุบันเหมือนกัน ตัวเลขจะตรงกันเป๊ะ ไม่ใช่แค่ "โอกาสตรงกันสูงขึ้น" — คุ้มกับเวลาที่เพิ่มขึ้นเพราะ
+// เป็น path ที่เรียกไม่บ่อย (วันละครั้ง + พิมพ์ถามเองเป็นครั้งคราว) ต่างจากหน้าเว็บที่เปิดบ่อยจึงยังคง cache ไว้
+export async function computeSalesStats(days, { fresh = false } = {}) {
   const cache = cacheByDays.get(days)
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.data
+  if (!fresh && cache && Date.now() - cache.at < CACHE_MS) return cache.data
 
   await ensureSheet(SET_RECIPES_SHEET, SET_RECIPES_HEADERS)
   const [meta, aliases, setRecipeRows, redirectMap] = await Promise.all([getMetaCached(), getSheet('product_aliases'), getSheet(SET_RECIPES_SHEET), getSkuRedirectMap()])
