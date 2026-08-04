@@ -41,7 +41,13 @@ const sheetId = () => process.env.SHEET_ID
 // per user" ของ Sheets API) — เดิมพอชนโควตา request ล้มเหลวทันที ทั้งที่แค่รอไม่ถึงวินาที
 // โควตาก็รีเซ็ตแล้ว (เป็น per-minute) ทุกจุดที่เรียก Google API ตรงในไฟล์นี้ผ่านตัวนี้หมด กันพังจริง
 // ไม่ใช่แค่ลดจำนวน request (ที่ทำไปแล้วรอบก่อนๆ) — สอง fix นี้เสริมกัน ไม่ได้แทนกัน
-async function withQuotaRetry(fn, { retries = 4, baseDelayMs = 600 } = {}) {
+//
+// ปรับ retries 4→2 / baseDelay 600ms→300ms (2026-08-04) — เดิม worst-case รอนานถึง ~9 วินาที
+// ก่อนจะพังให้เห็น (owner บ่นว่า "ช้ามาก") แต่ถ้าทั้งโควตาต่อนาทีถูกใช้หมดจริงจาก traffic ต่อเนื่อง
+// (ไม่ใช่แค่ burst สั้นๆ) รอไม่กี่วินาทีในนาทีเดียวกันก็ไม่ช่วยอะไรอยู่ดี ต้องรอข้ามนาทีจริง — ลด
+// เวลารอสูงสุดเหลือ ~1 วินาทีเผื่อ burst สั้นๆ พอ ไม่ทำให้ผู้ใช้รอนานโดยเปล่าประโยชน์ตอนโควตาหมดจริง
+// (แก้ที่ต้นตอจริงๆ ต้องขอเพิ่ม quota limit ใน Google Cloud Console — ฟรี ไม่ใช่แค่ backoff)
+async function withQuotaRetry(fn, { retries = 2, baseDelayMs = 300 } = {}) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn()
