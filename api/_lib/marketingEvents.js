@@ -285,8 +285,13 @@ function buildRadar(events) {
 }
 
 // ยึด "วันล่าสุดที่มีข้อมูลจริง" (anchor) แทนวันนี้ — กันพาเนลว่างตอนข้อมูลไม่สด
+// กันไม่ให้ anchor ไหลเลย "วันนี้จริง" ไปได้ — ถ้า raw_orders มีแถวไหน date ผิดเพี้ยนเป็นอนาคต
+// (พิมพ์ผิด/import พลาด) ค่า anchor จะกระโดดไปไกลเกินจริง ทำให้ทุก event ที่เพิ่งสร้างวันนี้
+// (confirmed_at = วันนี้) ถูกนับ observedDays ผิดเพี้ยนไปด้วย จนดูเหมือนครบ 7/30 วันแล้วทันที
+// ทั้งที่เพิ่งเริ่มวัดผล — จำกัดเพดานไว้ที่วันนี้จริง (Asia/Bangkok) เสมอ ไม่เชื่อข้อมูลอนาคตแบบไม่มีเงื่อนไข
 function latestOrderDate(orders) {
-  return orders.reduce((max, o) => (o.date > max ? o.date : max), '') || todayIso()
+  const today = todayIso()
+  return orders.reduce((max, o) => (o.date > max && o.date <= today ? o.date : max), '') || today
 }
 
 function buildProductSignals(orders, anchor = latestOrderDate(orders)) {
