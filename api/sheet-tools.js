@@ -356,6 +356,10 @@ function lowStockFlexMessage(items) {
 const STOCK_CHECK_COMMANDS = new Set(['เช็คของที่ต้องสั่ง', 'เช็คของ', 'เช็คสต็อก', 'ของที่ต้องสั่ง', 'เช็คของใกล้หมด'])
 const isStockCheckCommand = (text) => STOCK_CHECK_COMMANDS.has(String(text || '').trim())
 
+// พิมพ์คำพวกนี้ตอนติดอยู่กลาง flow สั่งของ/แจ้งของเข้า = เคลียร์ session ทันที (ดูจุดใช้งานใน opLineWebhook)
+const CANCEL_STOCK_FLOW_COMMANDS = new Set(['ยกเลิก', 'หยุด', 'ออก', 'เลิก', 'cancel', 'ยกเลิกก่อน'])
+const isCancelStockFlowCommand = (text) => CANCEL_STOCK_FLOW_COMMANDS.has(String(text || '').trim().toLowerCase())
+
 async function handleStockCheckCommand(event) {
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
@@ -2725,10 +2729,25 @@ async function opLineWebhook(req, res) {
         // รอบอส/dev พิมพ์จำนวนสั่งของกลับมาไหม (หลังกดปุ่ม "สั่งของ" จากการ์ดแจ้งเตือนของใกล้หมด หรือหลังเลือกจาก
         // ผลค้นหา) หรือกำลังพิมพ์ชื่อ/SKU ค้นหาอยู่ (หลังพิมพ์ "สั่งของ" เปล่าๆ) — เช็คก่อน fallback echo userId
         // ด้านล่าง เพราะบอส/dev ไม่ผ่าน findStaffLink (นั่นสำหรับพนักงาน mp: เท่านั้น)
-        const stockSession = lineUserId ? (await getStockOrderSessions()).find((s) => s.line_user_id === lineUserId) : null
-        const stockInSession = lineUserId ? (await getStockInSessions()).find((s) => s.line_user_id === lineUserId) : null
+        // session ค้าง (เช่น พิมพ์ "สั่งของ" แล้วเงียบไปกลางคัน) เดิมไม่มีวันหมดอายุเลย — ทุกข้อความถัดไป
+        // ที่พิมพ์ (แม้ในกลุ่มไลน์ แชทเล่นๆ ไม่เกี่ยวกับสต็อกเลย) จะถูกตีความเป็นชื่อสินค้า/จำนวนตลอดไป จนกว่า
+        // จะรู้ต้องพิมพ์ "สั่งของ"/"แจ้งของเข้า" ซ้ำเพื่อเริ่มใหม่ (เจอจริง: บอสพิมพ์คุยเล่นในกลุ่มแล้วบอทตอบ
+        // "ไม่พบสินค้านี้" ซ้ำๆ ทุกข้อความ งงว่าเกิดอะไรขึ้น) หมดอายุอัตโนมัติถ้าไม่มีการตอบต่อเกิน 30 นาที
+        const isStale = (s) => s && Date.now() - new Date(s.updated_at).getTime() > 30 * 60 * 1000
+        let stockSession = lineUserId ? (await getStockOrderSessions()).find((s) => s.line_user_id === lineUserId) : null
+        let stockInSession = lineUserId ? (await getStockInSessions()).find((s) => s.line_user_id === lineUserId) : null
+        if (isStale(stockSession)) { await clearStockOrderSession(lineUserId); stockSession = null }
+        if (isStale(stockInSession)) { await clearStockInSession(lineUserId); stockInSession = null }
         const initialQuery = stockOrderCommandQuery(event.message.text)
         const initialInQuery = stockInCommandQuery(event.message.text)
+        // ทางออกด่วน — พิมพ์คำพวกนี้ตอนติดอยู่กลาง flow สั่งของ/แจ้งของเข้า จะเคลียร์ session ทันที ไม่ต้องรอ
+        // หมดอายุ 30 นาที (isStale ด้านบน) — เช็คเฉพาะตอนมี session ค้างจริง กันบอทไปตอบ "ยกเลิก" ลอยๆ ในกลุ่ม
+        if ((stockSession || stockInSession) && isCancelStockFlowCommand(event.message.text)) {
+          await clearStockOrderSession(lineUserId)
+          await clearStockInSession(lineUserId)
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ยกเลิกแล้วค่ะ' }])
+          continue
+        }
         // คำสั่ง “เช็คของที่ต้องสั่ง” ดูได้ทุกเมื่อจากทุกขั้นตอนเหมือนกัน — ไม่ต้องรอการ์ดแจ้งเตือนรายวัน
         if (isStockCheckCommand(event.message.text) && await handleStockCheckCommand(event)) continue
         // คำสั่ง “สั่งของ”/“แจ้งของเข้า” เริ่มใหม่ได้จากทุกขั้นตอน รวมถึงตอนที่รอจำนวนหรือรอเลือกวันที่
