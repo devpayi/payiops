@@ -1014,6 +1014,23 @@ async function announceStockInResultToGroup(text) {
   catch (e) { console.error('announce stock-in result to group:', e.message) }
 }
 
+// แจ้งฟ้า (คนแจ้งของเข้า/นับของ) กลับไป 1:1 ว่ารายการที่แจ้งไว้ Approve แล้ว — เดิม approve เสร็จมีแค่
+// reply กลับ boss ที่กด + ประกาศสั้นเข้ากลุ่ม ไม่เคยแจ้งฟ้ากลับเลย (ต่างจากฝั่งปฏิเสธที่แจ้งฟ้ากลับอยู่แล้ว)
+// owner ขอให้สมมาตรกัน (2026-08-04)
+async function notifyStockCounterApproved(matchedRequests, approverName) {
+  if (!matchedRequests.length) return
+  const counterId = await getStockCounterLineUserId()
+  if (!counterId) return
+  const items = await loadOrderableItems()
+  const lines = matchedRequests.map((r) => {
+    const item = items.find((it) => String(it.sku).toUpperCase() === String(r.sku).toUpperCase())
+    return `• ${item?.display_name || r.sku} × ${r.qty} ${item?.unit || ''}`
+  })
+  try {
+    await pushMessage(counterId, [{ type: 'text', text: `✅ ${approverName} อนุมัติของเข้าแล้วค่ะ:\n${lines.join('\n')}` }])
+  } catch (e) { console.error('notify stock counter approved:', e.message) }
+}
+
 function stockInEditMenuMessage(request, item) {
   const label = item?.display_name || request.sku
   const unit = item?.unit || 'ชิ้น'
@@ -1115,10 +1132,13 @@ async function pushEditedStockInResult(replyToken, request, item, editorName) {
       ] },
     },
   }
-  const groupId = await getGroupTarget()
-  if (groupId) {
-    try { await pushMessage(groupId, [card]) } catch (e) { console.error('push edited card to group:', e.message) }
-    await replyMessage(replyToken, [{ type: 'text', text: 'แก้ไขแล้วค่ะ ส่งเข้ากลุ่มให้ตรวจใหม่แล้ว' }])
+  // การ์ดจริง (มีปุ่ม ✓/✗) ต้องไป 1:1 หา boss/dev เท่านั้น เหมือน flow แจ้งของเข้ารอบแรก (ดู
+  // handleStockInCartDonePostback) — เดิม bug ตกหล่นจุดนี้ตอนย้ายทุกอย่างไป 1:1 (2026-08-01) ยังส่ง
+  // เข้ากลุ่มอยู่ กลายเป็นปุ่ม Approve โผล่ในกลุ่มทั้งที่ควรกดได้แค่ 1:1 (owner เจอจริง 2026-08-04)
+  const targets = await getStockLineTargets()
+  if (targets.length) {
+    await Promise.all(targets.map((t) => pushMessage(t.line_user_id, [card]).catch((e) => console.error('push edited card to boss/dev:', e.message))))
+    await replyMessage(replyToken, [{ type: 'text', text: 'แก้ไขแล้วค่ะ ส่งให้ Boss/Dev ตรวจใหม่แล้ว' }])
   } else {
     await replyMessage(replyToken, [card])
   }
@@ -2837,7 +2857,7 @@ async function opLineWebhook(req, res) {
         const approved = []
         const failed = []
         for (const id of ids) {
-          try { await matchStockInRequest({ id }, approver.name, approver.role); approved.push(id) }
+          try { approved.push(await matchStockInRequest({ id }, approver.name, approver.role)) }
           catch (e) { failed.push(e.message) }
         }
         if (event.replyToken) await replyMessage(event.replyToken, [{
@@ -2846,7 +2866,10 @@ async function opLineWebhook(req, res) {
             : `Approve สำเร็จ ${approved.length} รายการ โดย ${approver.name}`,
         }])
         // การ์ดจริงส่ง 1:1 ไม่ได้ขึ้นในกลุ่มแล้ว — แจ้งผลสั้นๆ เข้ากลุ่มแทน ให้ทีมเห็นว่า Match ไปแล้ว
-        if (approved.length) await announceStockInResultToGroup(`✅ Approve ${approved.length} รายการ โดย ${approver.name}`)
+        if (approved.length) {
+          await announceStockInResultToGroup(`✅ Approve ${approved.length} รายการ โดย ${approver.name}`)
+          await notifyStockCounterApproved(approved, approver.name)
+        }
         continue
       }
       if (data.startsWith('stockin-matchlot:')) {
@@ -2857,9 +2880,10 @@ async function opLineWebhook(req, res) {
         }
         const [reqId, lotId] = data.slice('stockin-matchlot:'.length).split(':')
         try {
-          await matchStockInRequest({ id: reqId, order_request_id: lotId === 'none' ? undefined : lotId }, approver.name, approver.role)
+          const matched = await matchStockInRequest({ id: reqId, order_request_id: lotId === 'none' ? undefined : lotId }, approver.name, approver.role)
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `Approve สำเร็จ โดย ${approver.name}${lotId !== 'none' ? ' (จับคู่ลอตแล้ว)' : ''}` }])
           await announceStockInResultToGroup(`✅ Approve สำเร็จ โดย ${approver.name}${lotId !== 'none' ? ' (จับคู่ลอตแล้ว)' : ''}`)
+          await notifyStockCounterApproved([matched], approver.name)
         } catch (e) {
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
         }
