@@ -4,14 +4,13 @@ import KpiCard from '../components/KpiCard'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
 
-// แท็ก "อัพเดทล่าสุด" ใต้ชื่อสินค้า — กันของค้างนานไม่มีใครกรอกเข้า-ออกโดยไม่รู้ตัว
-// (balance นิ่งไม่ได้แปลว่าอัพเดทแล้ว เผื่อลืมกรอกจริงๆ) เกิน 14 วันไม่มีรายการ = เตือนสีส้ม
-const STALE_DAYS = 14
-const daysAgoLabel = (dateStr) => {
-  if (!dateStr) return { text: 'ยังไม่เคยมีรายการ', stale: true }
-  const days = Math.floor((Date.now() - new Date(dateStr + 'T00:00:00+07:00').getTime()) / 86400000)
-  const text = days <= 0 ? 'วันนี้' : days === 1 ? 'เมื่อวาน' : `${days} วันก่อน`
-  return { text, stale: days > STALE_DAYS }
+// ป้ายมุมหน้า "อัพเดทสต็อกล่าสุด วันที่/เวลา" — สรุปทั้งระบบจุดเดียว (ไม่ใช่ต่อรายการสินค้า)
+// จาก created_at ของรายการเข้า-ออก/ปรับยอดล่าสุดสุดในทั้งชีต stock_movements
+const fmtLastMovementAt = (iso) => {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (isNaN(d)) return null
+  return d.toLocaleString('th-TH', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })
 }
 
 // เหมือน statusOf ฝั่ง api/_lib/inventory.js — แต่รับ safety stock ที่คำนวณสดจากสูตร lead time
@@ -402,6 +401,15 @@ export default function Inventory() {
         <div style={{ background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', borderRadius: 12, padding: '10px 14px', fontSize: 13 }}>{error}</div>
       )}
 
+      {fmtLastMovementAt(totals.lastMovementAt) && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 700, color: 'var(--payi-text-muted)', background: 'var(--payi-success-bg)', borderRadius: 999, padding: '5px 12px' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--payi-success)', flexShrink: 0 }} />
+            อัพเดทสต็อกล่าสุด {fmtLastMovementAt(totals.lastMovementAt)}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
         <KpiCard title="Total Products" value={fmt(totals.totalProducts)} subtitle="รายการสินค้า" icon={Boxes} trend={null} />
         <KpiCard title="Total Stock" value={fmt(totals.totalStock)} subtitle="รวมทุกหน่วย" icon={Layers} trend={null} />
@@ -585,11 +593,6 @@ export default function Inventory() {
                     <td style={{ padding: '10px', opacity: it.active ? 1 : 0.5, overflow: 'hidden' }}>
                       <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.display_name}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}</div>
                       <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{it.sku}</div>
-                      {(() => { const upd = daysAgoLabel(it.last_movement_date); return (
-                        <div style={{ fontSize: 10, marginTop: 2, color: upd.stale ? '#c2410c' : 'var(--payi-text-faint)', fontWeight: upd.stale ? 700 : 400 }} title={it.last_movement_date || undefined}>
-                          อัพเดทล่าสุด: {upd.text}
-                        </div>
-                      ) })()}
                     </td>
                     <td style={{ padding: '10px', textAlign: 'right', fontWeight: 800, color: it.balance <= 0 ? 'var(--payi-danger)' : 'var(--payi-text-strong)' }}>{fmt(it.balance)}</td>
                     <td style={{ padding: '10px', textAlign: 'right' }}>
