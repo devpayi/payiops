@@ -96,6 +96,7 @@ export default function StockMovement() {
   const [movements, setMovements] = useState([])
   const [items, setItems] = useState([])
   const [requests, setRequests] = useState([])
+  const [orderGroups, setOrderGroups] = useState([]) // [{ group, items:[{sku,display_name,unit}] }]
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -157,9 +158,11 @@ export default function StockMovement() {
       fetch('/api/sheet-tools?op=inventory&view=items').then((r) => r.json()),
       fetch('/api/planner-sales?days=30').then((r) => r.json()).catch(() => null),
       fetch('/api/sheet-tools?op=inventory&view=stock-in-requests').then((r) => r.json()).catch(() => null),
+      fetch('/api/sheet-tools?op=inventory&view=order-groups').then((r) => r.json()).catch(() => null),
     ])
-      .then(([itemData, planner, requestData]) => {
+      .then(([itemData, planner, requestData, groupData]) => {
         setRequests(requestData?.success ? requestData.requests || [] : [])
+        setOrderGroups(groupData?.success ? groupData.groups || [] : [])
 
         // เรียงสินค้าตาม ABC (จาก /api/planner-sales — ยอดขาย 30 วันล่าสุด) ให้ของขายดี (A)
         // ขึ้นก่อนตอนเลือกสินค้าบันทึกรายการ — ของที่หยิบบ่อยควรอยู่บนสุด ไม่ใช่เรียงตามชื่อ
@@ -325,14 +328,17 @@ export default function StockMovement() {
     }
   }
 
+  // payload.group มา = โหมด "สั่งทั้งกลุ่ม" (create-order-request-group สร้างหลายแถวรวดเดียว ไม่ระบุ
+  // จำนวนต่อ SKU) ไม่มี group = โหมดปกติเลือกทีละ SKU (create-order-request เดิม)
   const saveOrderRequest = async (payload) => {
     setSaving(true)
     setError('')
     try {
+      const action = payload.group ? 'create-order-request-group' : 'create-order-request'
       const res = await fetch('/api/sheet-tools?op=inventory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'create-order-request', ...payload }),
+        body: JSON.stringify({ action, ...payload }),
       })
       const json = await res.json()
       if (!json.success) throw new Error(json.error || 'บันทึกไม่สำเร็จ')
@@ -683,7 +689,7 @@ export default function StockMovement() {
         <StockInRequestModal items={items} saving={saving} onClose={() => setShowAddRequest(false)} onSave={saveRequest} />
       )}
       {showOrderRequest && (
-        <OrderRequestModal items={items} saving={saving} onClose={() => setShowOrderRequest(false)} onSave={saveOrderRequest} />
+        <OrderRequestModal items={items} orderGroups={orderGroups} saving={saving} onClose={() => setShowOrderRequest(false)} onSave={saveOrderRequest} />
       )}
       {matching && (
         <MatchRequestModal request={matching} saving={saving} onClose={() => setMatching(null)} onSave={confirmMatch} />
@@ -732,15 +738,27 @@ function RejectRequestModal({ request, saving, onClose, onSave }) {
   )
 }
 
-function OrderRequestModal({ items, saving, initial, onClose, onSave }) {
+function OrderRequestModal({ items, orderGroups = [], saving, initial, onClose, onSave }) {
   const isEdit = !!initial
+  // เลือกได้ 2 แบบตอนสั่งใหม่: ทีละ SKU (เดิม) หรือทั้งกลุ่ม (order_group ที่ตั้งไว้ใน Inventory —
+  // ยิง create-order-request-group สร้างหลายแถวรวดเดียว จำนวนไม่ระบุเสมอ นับจริงตอนแจ้งของเข้า)
+  // แก้ไขรายการเดิม (isEdit) เป็นแถวเดียวอยู่แล้วเสมอ ไม่มีโหมดกลุ่ม
+  const [mode, setMode] = useState('sku') // 'sku' | 'group'
   const [sku, setSku] = useState(initial?.sku || items[0]?.sku || '')
+  const [group, setGroup] = useState(orderGroups[0]?.group || '')
   const [qty, setQty] = useState(initial ? String(initial.qty) : '')
   const [orderDate, setOrderDate] = useState(initial?.order_date || (() => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }))())
   const [note, setNote] = useState(initial?.note || '')
 
+  const selectedGroup = orderGroups.find((g) => g.group === group)
+
   const submit = (e) => {
     e.preventDefault()
+    if (mode === 'group') {
+      if (!group) return
+      onSave({ group, order_date: orderDate, note })
+      return
+    }
     if (!sku) return
     if (qty !== '' && Number(qty) < 0) return
     onSave({ sku, qty, order_date: orderDate, note })
@@ -756,20 +774,57 @@ function OrderRequestModal({ items, saving, initial, onClose, onSave }) {
           </button>
         </div>
         <div style={{ fontSize: 12, color: 'var(--payi-text-faint)', marginBottom: 14 }}>เฉพาะ Boss/Dev เห็น — ฟ้าจะไม่เห็นจำนวนที่สั่งไว้จนกว่าจะแจ้งของเข้าเอง</div>
+        {!isEdit && orderGroups.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            {[['sku', 'ระบุ SKU'], ['group', 'สั่งทั้งกลุ่ม']].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMode(id)}
+                style={{
+                  flex: 1, padding: '9px 0', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer',
+                  border: `1px solid ${mode === id ? 'var(--payi-mint)' : 'var(--payi-border)'}`,
+                  background: mode === id ? 'var(--payi-mint-soft)' : 'var(--payi-surface)',
+                  color: mode === id ? 'var(--payi-mint-strong)' : 'var(--payi-text-muted)',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={labelStyle}>สินค้า</label>
-            {isEdit ? (
-              <div style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', background: 'var(--payi-surface-muted)', color: 'var(--payi-text-muted)' }}>{initial.display_name} ({sku})</div>
-            ) : (
-              <SkuPicker items={items} value={sku} onChange={setSku} />
-            )}
-          </div>
-          <div>
-            <label style={labelStyle}>จำนวนที่สั่ง</label>
-            <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="ไม่ทราบจำนวน (เว้นว่างได้)" />
-            <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 4 }}>เว้นว่างได้ถ้ายังไม่รู้จำนวน เช่น คำสั่งซื้อเก่าก่อนเริ่มใช้ระบบนี้ — ยังนับว่า "สั่งแล้ว" กันแจ้งเตือนซ้ำในไลน์ ใส่จำนวนจริงตอน Match ของเข้าได้ทีหลัง</div>
-          </div>
+          {mode === 'group' && !isEdit ? (
+            <div>
+              <label style={labelStyle}>กลุ่มสินค้า</label>
+              <select value={group} onChange={(e) => setGroup(e.target.value)} className="payi-select" style={{ ...inputStyle, width: '100%' }}>
+                {orderGroups.map((g) => (
+                  <option key={g.group} value={g.group}>{g.group} ({g.items.length} รายการ)</option>
+                ))}
+              </select>
+              {selectedGroup && (
+                <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 4 }}>
+                  จะสั่ง {selectedGroup.items.length} รายการ: {selectedGroup.items.map((it) => it.display_name).join(', ')} — ไม่ระบุจำนวนต่อชิ้น นับจริงตอนแจ้งของเข้า/Match
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div>
+                <label style={labelStyle}>สินค้า</label>
+                {isEdit ? (
+                  <div style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', background: 'var(--payi-surface-muted)', color: 'var(--payi-text-muted)' }}>{initial.display_name} ({sku})</div>
+                ) : (
+                  <SkuPicker items={items} value={sku} onChange={setSku} />
+                )}
+              </div>
+              <div>
+                <label style={labelStyle}>จำนวนที่สั่ง</label>
+                <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="ไม่ทราบจำนวน (เว้นว่างได้)" />
+                <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 4 }}>เว้นว่างได้ถ้ายังไม่รู้จำนวน เช่น คำสั่งซื้อเก่าก่อนเริ่มใช้ระบบนี้ — ยังนับว่า "สั่งแล้ว" กันแจ้งเตือนซ้ำในไลน์ ใส่จำนวนจริงตอน Match ของเข้าได้ทีหลัง</div>
+              </div>
+            </>
+          )}
           <div>
             <label style={labelStyle}>วันที่สั่ง</label>
             <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
@@ -778,7 +833,7 @@ function OrderRequestModal({ items, saving, initial, onClose, onSave }) {
             <label style={labelStyle}>หมายเหตุ</label>
             <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="ไม่บังคับ" />
           </div>
-          <button type="submit" disabled={saving || (!isEdit && !items.length)} style={{ marginTop: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 16px', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: saving ? 0.6 : 1, boxShadow: '0 8px 18px rgba(37,99,235,0.22)' }}>
+          <button type="submit" disabled={saving || (!isEdit && mode === 'sku' && !items.length) || (mode === 'group' && !group)} style={{ marginTop: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 16px', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: saving ? 0.6 : 1, boxShadow: '0 8px 18px rgba(37,99,235,0.22)' }}>
             {saving ? 'กำลังบันทึก...' : 'บันทึก'}
           </button>
         </form>

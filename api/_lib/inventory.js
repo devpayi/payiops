@@ -13,7 +13,12 @@ import { computeSalesStats } from '../planner-sales.js'
 const ITEMS_SHEET = 'inventory_items'
 const MOVEMENTS_SHEET = 'stock_movements'
 // ต่อท้ายรายการเดิมเท่านั้น (ห้ามแทรกกลาง) — แถวเดิมใน Sheet อิงตำแหน่งคอลัมน์เดิมอยู่ เหมือน claims sheet
-const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category', 'units_per_batch', 'buffer_percent']
+const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category', 'units_per_batch', 'buffer_percent', 'order_group']
+// order_group: แท็กกลุ่มสินค้าสำหรับ "สั่งของ" เท่านั้น (เช่น PY051..PY051-J ทั้งไซส์/สีแท็ก "รองเท้าเพื่อสุขภาพ"
+// เดียวกัน) — ตั้งเอง ไม่ auto-derive จากชื่อ เพราะลองแล้วพบว่า deriveGroup (ตัวจับกลุ่มฝั่งยอดขาย) จับ
+// เคสพวกนี้ไม่ได้เลย (ไซส์เป็นตัวเลข "35-36" ไม่ใช่ M/L, สี "เนื้อ"/"ฟ้าเบบี้บลู" ไม่อยู่ใน COLOR_TOKENS)
+// ปล่อยให้ผิดกลุ่มในหน้าสั่งของจริงเสี่ยงกว่าปล่อยให้วิเคราะห์ยอดขายผิด เลยให้เจ้าของ tag เองใน Inventory
+// ว่างเปล่า = สินค้านั้นสั่งได้เฉพาะเลือกทีละ SKU เท่านั้น (ไม่โผล่ในตัวเลือก "สั่งทั้งกลุ่ม")
 // buffer_percent: เฉพาะ category=packaging — % เผื่อเพิ่มจากยอดใช้เฉลี่ยที่คำนวณจากยอดขาย (เพราะของจริงเบิกไปฟีด
 // การผลิตล่วงหน้า ไม่ใช่ผลิตตามยอดขายวันต่อวัน) ค่าว่าง = ใช้ค่าแนะนำที่หน้าเว็บคำนวณจาก safety_percent
 // ของ Planner Control เฉลี่ยของสินค้าที่ผูกไว้ (fallback 30% ถ้าไม่มีข้อมูล) — เจ้าของแก้ทับเองได้เสมอ
@@ -117,6 +122,7 @@ export async function loadItemsWithBalance({ includeHidden = false } = {}) {
       units_per_batch: num(it.units_per_batch),
       buffer_percent: it.buffer_percent === '' || it.buffer_percent === undefined ? null : num(it.buffer_percent),
       active: truthyActive(it.active),
+      order_group: it.order_group || '',
     }
   })
   rows.sort((a, b) => a.display_name.localeCompare(b.display_name, 'th'))
@@ -273,6 +279,7 @@ async function upsertItem(body, actorName) {
       ship_freight: body.ship_freight ? '1' : '0',
       units_per_batch: num(body.units_per_batch),
       buffer_percent: body.buffer_percent === '' || body.buffer_percent === undefined ? '' : num(body.buffer_percent),
+      order_group: body.order_group ? String(body.order_group).trim() : '',
       active: '1',
       created_at: now,
       updated_at: now,
@@ -296,6 +303,7 @@ async function upsertItem(body, actorName) {
     if (body.ship_freight !== undefined) row.ship_freight = body.ship_freight ? '1' : '0'
     if (body.units_per_batch !== undefined) row.units_per_batch = num(body.units_per_batch)
     if (body.buffer_percent !== undefined) row.buffer_percent = body.buffer_percent === '' ? '' : num(body.buffer_percent)
+    if (body.order_group !== undefined) row.order_group = String(body.order_group).trim()
     if (body.active !== undefined) row.active = body.active ? '1' : '0'
     row.updated_at = now
   }
@@ -340,6 +348,55 @@ export async function createOrderRequest(body, actorName, role) {
   }
   await appendRows(STOCK_IN_REQUESTS_SHEET, [STOCK_IN_REQUESTS_HEADERS.map((h) => row[h] ?? '')])
   return row
+}
+
+// รายชื่อกลุ่ม order_group ทั้งหมด (ที่มีสินค้าติดแท็กจริง) พร้อม SKU ในกลุ่ม — ให้หน้าเว็บ/ไลน์เอาไปทำ
+// ตัวเลือก "สั่งทั้งกลุ่ม" (ดู createOrderRequestForGroup ด้านล่าง) วัสดุแพ็คเกจจิ้ง/สินค้าที่ถูกซ่อนไม่นับ
+export async function loadOrderGroups() {
+  await ensureInventorySheets()
+  const items = await getSheet(ITEMS_SHEET)
+  const byGroup = new Map()
+  for (const it of items) {
+    if (isPackagingItem(it) || !truthyActive(it.active)) continue
+    const group = String(it.order_group || '').trim()
+    if (!group) continue
+    if (!byGroup.has(group)) byGroup.set(group, [])
+    byGroup.get(group).push({ sku: it.sku, display_name: it.display_name, unit: it.unit || 'ชิ้น' })
+  }
+  return [...byGroup.entries()]
+    .map(([group, groupItems]) => ({ group, items: groupItems }))
+    .sort((a, b) => a.group.localeCompare(b.group, 'th'))
+}
+
+// เหมือน createOrderRequest แต่สั่งทีเดียวทั้งกลุ่ม (ทุก SKU ที่ติด order_group เดียวกัน) — จำนวนไม่ระบุ
+// เสมอ (qty=0 เหมือนโหมด "ไม่ทราบจำนวน" ที่มีอยู่แล้ว) เพราะสั่ง 1 ครั้งแต่แต่ละไซส์/สีของจริงมาไม่เท่ากัน
+// ต้องนับแยกตอน "แจ้งของเข้า"/match อยู่ดี — ตัวนี้แค่ลัดขั้นตอนตอน "สั่ง" ไม่ต้องเลือกทีละ SKU
+export async function createOrderRequestForGroup(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่สั่งของได้')
+  const group = String(body.group || '').trim()
+  if (!group) throw new Error('ต้องระบุกลุ่มสินค้า')
+
+  await ensureInventorySheets()
+  const items = await getSheet(ITEMS_SHEET)
+  const matched = items.filter((it) => !isPackagingItem(it) && truthyActive(it.active) && String(it.order_group || '').trim() === group)
+  if (!matched.length) throw new Error('ไม่พบสินค้าในกลุ่มนี้')
+
+  const now = new Date().toISOString()
+  const orderDate = isoDate(body.order_date) || todayBKK()
+  const rows = matched.map((it) => ({
+    id: genId(),
+    sku: it.sku,
+    arrival_date: '',
+    count_date: '',
+    qty: 0,
+    note: body.note || '',
+    status: 'pending',
+    created_by: actorName || '',
+    created_at: now,
+    order_date: orderDate,
+  }))
+  await appendRows(STOCK_IN_REQUESTS_SHEET, rows.map((row) => STOCK_IN_REQUESTS_HEADERS.map((h) => row[h] ?? '')))
+  return { group, skus: matched.map((it) => it.sku), count: rows.length }
 }
 
 // ปิดรายการ "สั่งของ" ที่ของมาครบ/เคลียร์แล้วด้วยตัวเอง — ไม่สร้าง stock_movements (เพราะยอดจริง
@@ -717,6 +774,10 @@ export default async function opInventory(req, res) {
         const recipes = await loadPackagingRecipes()
         return res.status(200).json({ success: true, recipes })
       }
+      if (view === 'order-groups') {
+        const groups = await loadOrderGroups()
+        return res.status(200).json({ success: true, groups })
+      }
       const data = await loadItemsWithBalance({ includeHidden: req.query.includeHidden === '1' })
       return res.status(200).json({ success: true, ...data })
     }
@@ -754,6 +815,10 @@ export default async function opInventory(req, res) {
       if (action === 'create-order-request') {
         const result = await createOrderRequest(req.body, actorName, role)
         return res.status(200).json({ success: true, request: result })
+      }
+      if (action === 'create-order-request-group') {
+        const result = await createOrderRequestForGroup(req.body, actorName, role)
+        return res.status(200).json({ success: true, ...result })
       }
       if (action === 'finish-stock-in-request') {
         const result = await finishOrderRequest(req.body, actorName, role)
