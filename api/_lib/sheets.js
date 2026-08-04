@@ -37,9 +37,27 @@ function getClient() {
 
 const sheetId = () => process.env.SHEET_ID
 
+// retry แบบ exponential backoff เฉพาะ error โควตา (429 "Read/Write requests per minute
+// per user" ของ Sheets API) — เดิมพอชนโควตา request ล้มเหลวทันที ทั้งที่แค่รอไม่ถึงวินาที
+// โควตาก็รีเซ็ตแล้ว (เป็น per-minute) ทุกจุดที่เรียก Google API ตรงในไฟล์นี้ผ่านตัวนี้หมด กันพังจริง
+// ไม่ใช่แค่ลดจำนวน request (ที่ทำไปแล้วรอบก่อนๆ) — สอง fix นี้เสริมกัน ไม่ได้แทนกัน
+async function withQuotaRetry(fn, { retries = 4, baseDelayMs = 600 } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      const status = Number(err?.code ?? err?.response?.status)
+      const isQuotaError = status === 429
+      if (!isQuotaError || attempt >= retries) throw err
+      const delay = baseDelayMs * 2 ** attempt + Math.random() * 300
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+  }
+}
+
 // metadata ของ spreadsheet (รายชื่อ tab ฯลฯ)
 export async function getMeta() {
-  const res = await getClient().spreadsheets.get({ spreadsheetId: sheetId() })
+  const res = await withQuotaRetry(() => getClient().spreadsheets.get({ spreadsheetId: sheetId() }))
   return res.data
 }
 
@@ -76,10 +94,10 @@ export async function batchGetValues(ranges) {
   if (cached && Date.now() - cached.at < BATCH_CACHE_MS) return cached.data
   if (batchInflight.has(key)) return batchInflight.get(key)
 
-  const pending = getClient().spreadsheets.values.batchGet({
+  const pending = withQuotaRetry(() => getClient().spreadsheets.values.batchGet({
     spreadsheetId: sheetId(),
     ranges,
-  }).then((res) => {
+  })).then((res) => {
     batchCache.set(key, { at: Date.now(), data: res.data.valueRanges })
     return res.data.valueRanges
   }).finally(() => {
@@ -97,10 +115,10 @@ export async function getSheet(sheetName) {
   if (sheetInflight.has(sheetName)) return sheetInflight.get(sheetName)
 
   const version = sheetVersion.get(sheetName) || 0
-  const pending = getClient().spreadsheets.values.get({
+  const pending = withQuotaRetry(() => getClient().spreadsheets.values.get({
     spreadsheetId: sheetId(),
     range: `${sheetName}!A:Z`,
-  }).then((res) => {
+  })).then((res) => {
     const [headers, ...rows] = res.data.values || []
     const parsed = headers
       ? rows.map(row => Object.fromEntries(headers.map((h, i) => [h, row[i] ?? ''])))
@@ -118,18 +136,18 @@ export async function getSheet(sheetName) {
 }
 
 export async function getExternalSheet(spreadsheetId, range = 'A:Z') {
-  const res = await getClient().spreadsheets.values.get({ spreadsheetId, range })
+  const res = await withQuotaRetry(() => getClient().spreadsheets.values.get({ spreadsheetId, range }))
   return res.data.values || []
 }
 
 // เขียนต่อท้าย (append)
 export async function appendRows(sheetName, rows) {
-  await getClient().spreadsheets.values.append({
+  await withQuotaRetry(() => getClient().spreadsheets.values.append({
     spreadsheetId: sheetId(),
     range: `${sheetName}!A1`,
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: rows },
-  })
+  }))
   invalidateSheet(sheetName)
 }
 
@@ -139,27 +157,27 @@ export async function ensureSheet(sheetName, headers) {
   const meta = await getMetaCached()
   const exists = meta.sheets.some((s) => s.properties.title === sheetName)
   if (!exists) {
-    await getClient().spreadsheets.batchUpdate({
+    await withQuotaRetry(() => getClient().spreadsheets.batchUpdate({
       spreadsheetId: sheetId(),
       requestBody: {
         requests: [{ addSheet: { properties: { title: sheetName } } }],
       },
-    })
+    }))
   }
 
-  const res = await getClient().spreadsheets.values.get({
+  const res = await withQuotaRetry(() => getClient().spreadsheets.values.get({
     spreadsheetId: sheetId(),
     range: `${sheetName}!A1:Z1`,
-  })
+  }))
   const current = res.data.values?.[0] || []
   const missingHeader = headers.some((h, i) => current[i] !== h)
   if (!current.length || missingHeader) {
-    await getClient().spreadsheets.values.update({
+    await withQuotaRetry(() => getClient().spreadsheets.values.update({
       spreadsheetId: sheetId(),
       range: `${sheetName}!A1`,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: [headers] },
-    })
+    }))
     invalidateSheet(sheetName)
   }
   ensuredSheets.add(sheetName)
@@ -179,17 +197,17 @@ export async function ensureSheets(list) {
   const existingNames = new Set(meta.sheets.map((s) => s.properties.title))
   const missing = notYetEnsured.filter(([name]) => !existingNames.has(name))
   if (missing.length) {
-    await getClient().spreadsheets.batchUpdate({
+    await withQuotaRetry(() => getClient().spreadsheets.batchUpdate({
       spreadsheetId: sheetId(),
       requestBody: { requests: missing.map(([name]) => ({ addSheet: { properties: { title: name } } })) },
-    })
+    }))
     for (const [name] of missing) invalidateSheet(name)
   }
 
-  const res = await getClient().spreadsheets.values.batchGet({
+  const res = await withQuotaRetry(() => getClient().spreadsheets.values.batchGet({
     spreadsheetId: sheetId(),
     ranges: notYetEnsured.map(([name]) => `${name}!A1:Z1`),
-  })
+  }))
   const valueRanges = res.data.valueRanges || []
 
   for (let i = 0; i < notYetEnsured.length; i++) {
@@ -197,12 +215,12 @@ export async function ensureSheets(list) {
     const current = valueRanges[i]?.values?.[0] || []
     const missingHeader = headers.some((h, idx) => current[idx] !== h)
     if (!current.length || missingHeader) {
-      await getClient().spreadsheets.values.update({
+      await withQuotaRetry(() => getClient().spreadsheets.values.update({
         spreadsheetId: sheetId(),
         range: `${name}!A1`,
         valueInputOption: 'USER_ENTERED',
         requestBody: { values: [headers] },
-      })
+      }))
       invalidateSheet(name)
     }
     ensuredSheets.add(name)
@@ -210,15 +228,15 @@ export async function ensureSheets(list) {
 }
 
 export async function overwriteSheet(sheetName, headers, rows) {
-  await getClient().spreadsheets.values.clear({
+  await withQuotaRetry(() => getClient().spreadsheets.values.clear({
     spreadsheetId: sheetId(),
     range: `${sheetName}!A:Z`,
-  })
-  await getClient().spreadsheets.values.update({
+  }))
+  await withQuotaRetry(() => getClient().spreadsheets.values.update({
     spreadsheetId: sheetId(),
     range: `${sheetName}!A1`,
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: [headers, ...rows] },
-  })
+  }))
   invalidateSheet(sheetName)
 }
