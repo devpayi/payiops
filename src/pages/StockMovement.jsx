@@ -12,6 +12,14 @@ const fmtDateTime = (iso) => {
   if (isNaN(d)) return iso
   return d.toLocaleString('th-TH', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })
 }
+// วันที่ทำรายการ (m.date — วันที่กรอกตอนบันทึกเข้า/ออก/ปรับยอด) ไม่ใช่ created_at (เวลาที่กดบันทึกจริง
+// ซึ่งอาจเป็นคนละวันกัน เช่น เบิกของย้อนหลัง) — ใช้แสดงในตารางแทน ไม่โชว์เวลาเพราะ m.date ไม่มีเวลาให้
+const fmtDate = (isoDate) => {
+  if (!isoDate) return ''
+  const d = new Date(isoDate + 'T00:00:00+07:00')
+  if (isNaN(d)) return isoDate
+  return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok' })
+}
 
 const TYPE_LABEL = { in: 'รับเข้า', out: 'เบิกออก', adjust: 'ปรับยอด' }
 const TYPE_STYLE = {
@@ -581,7 +589,7 @@ export default function StockMovement() {
               return (
                 <div key={m.id} onClick={() => toggleExpanded(m.id)} style={{ border: '1px solid var(--payi-border)', borderRadius: 12, padding: '10px 12px', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>{fmtDateTime(m.created_at) || m.date}</span>
+                    <span style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>{fmtDate(m.date)}</span>
                     <TypeBadge type={m.type} />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 8, marginTop: 8 }}>

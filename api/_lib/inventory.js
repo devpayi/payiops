@@ -81,10 +81,14 @@ export async function loadItemsWithBalance({ includeHidden = false } = {}) {
   }
 
   const bySku = new Map()
+  const lastMovementBySku = new Map() // วันที่รายการ in/out/adjust ล่าสุดของแต่ละ SKU — ให้หน้า Inventory
+  // โชว์เป็นแท็ก "อัพเดทล่าสุด" กันของค้างนานไม่มีใครกรอกเข้า-ออกโดยไม่รู้ตัว (balance นิ่งไม่ได้แปลว่าอัพเดทแล้ว)
   for (const m of movements) {
     const sku = resolveRedirect(m.sku, redirectMap)
     if (!sku) continue
     bySku.set(sku, (bySku.get(sku) || 0) + num(m.qty))
+    const d = isoDate(m.date)
+    if (d && (!lastMovementBySku.has(sku) || d > lastMovementBySku.get(sku))) lastMovementBySku.set(sku, d)
   }
   const today = todayBKK()
   const transactionsToday = movements.filter((m) => isoDate(m.date) === today).length
@@ -114,6 +118,7 @@ export async function loadItemsWithBalance({ includeHidden = false } = {}) {
       units_per_batch: num(it.units_per_batch),
       buffer_percent: it.buffer_percent === '' || it.buffer_percent === undefined ? null : num(it.buffer_percent),
       active: truthyActive(it.active),
+      last_movement_date: lastMovementBySku.get(sku) || '',
     }
   })
   rows.sort((a, b) => a.display_name.localeCompare(b.display_name, 'th'))
