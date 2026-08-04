@@ -408,29 +408,28 @@ export default function Inventory() {
         <KpiCard title="Transactions" value={fmt(totals.transactionsToday)} subtitle="วันนี้" icon={ArrowLeftRight} trend={null} />
       </div>
 
-      {fmtLastMovementAt(totals.lastMovementAt) && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[{ key: 'product', label: 'สินค้า' }, { key: 'packaging', label: 'วัสดุแพ็คเกจจิ้ง' }].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setCategoryTab(tab.key)}
+              style={{
+                border: 'none', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer',
+                background: categoryTab === tab.key ? 'var(--payi-gradient-primary)' : 'var(--payi-surface-muted)',
+                color: categoryTab === tab.key ? '#fff' : 'var(--payi-text-muted)',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {fmtLastMovementAt(totals.lastMovementAt) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 700, color: 'var(--payi-text-muted)', background: 'var(--payi-success-bg)', borderRadius: 999, padding: '5px 12px' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--payi-success)', flexShrink: 0 }} />
             อัพเดทสต็อกล่าสุด {fmtLastMovementAt(totals.lastMovementAt)}
           </div>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 8 }}>
-        {[{ key: 'product', label: 'สินค้า' }, { key: 'packaging', label: 'วัสดุแพ็คเกจจิ้ง' }].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setCategoryTab(tab.key)}
-            style={{
-              border: 'none', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer',
-              background: categoryTab === tab.key ? 'var(--payi-gradient-primary)' : 'var(--payi-surface-muted)',
-              color: categoryTab === tab.key ? '#fff' : 'var(--payi-text-muted)',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+        )}
       </div>
 
       <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 20, padding: 20, boxShadow: '0 14px 36px rgba(15,23,42,0.05)' }}>
