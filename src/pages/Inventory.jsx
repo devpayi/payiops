@@ -401,6 +401,13 @@ export default function Inventory() {
         <div style={{ background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', borderRadius: 12, padding: '10px 14px', fontSize: 13 }}>{error}</div>
       )}
 
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+        <KpiCard title="Total Products" value={fmt(totals.totalProducts)} subtitle="รายการสินค้า" icon={Boxes} trend={null} />
+        <KpiCard title="Total Stock" value={fmt(totals.totalStock)} subtitle="รวมทุกหน่วย" icon={Layers} trend={null} />
+        <KpiCard title="Low Stock" value={fmt(lowStockCount)} subtitle="รายการใกล้หมด/หมด" icon={AlertTriangle} trend={null} />
+        <KpiCard title="Transactions" value={fmt(totals.transactionsToday)} subtitle="วันนี้" icon={ArrowLeftRight} trend={null} />
+      </div>
+
       {fmtLastMovementAt(totals.lastMovementAt) && (
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 700, color: 'var(--payi-text-muted)', background: 'var(--payi-success-bg)', borderRadius: 999, padding: '5px 12px' }}>
@@ -409,13 +416,6 @@ export default function Inventory() {
           </div>
         </div>
       )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-        <KpiCard title="Total Products" value={fmt(totals.totalProducts)} subtitle="รายการสินค้า" icon={Boxes} trend={null} />
-        <KpiCard title="Total Stock" value={fmt(totals.totalStock)} subtitle="รวมทุกหน่วย" icon={Layers} trend={null} />
-        <KpiCard title="Low Stock" value={fmt(lowStockCount)} subtitle="รายการใกล้หมด/หมด" icon={AlertTriangle} trend={null} />
-        <KpiCard title="Transactions" value={fmt(totals.transactionsToday)} subtitle="วันนี้" icon={ArrowLeftRight} trend={null} />
-      </div>
 
       <div style={{ display: 'flex', gap: 8 }}>
         {[{ key: 'product', label: 'สินค้า' }, { key: 'packaging', label: 'วัสดุแพ็คเกจจิ้ง' }].map((tab) => (

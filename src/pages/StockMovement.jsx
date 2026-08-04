@@ -643,7 +643,7 @@ export default function StockMovement() {
               <tbody>
                 {movements.map((m) => (
                   <tr key={m.id} style={{ borderTop: '1px solid var(--payi-border)' }}>
-                    <td style={{ padding: '10px', color: 'var(--payi-text-muted)', whiteSpace: 'nowrap' }}>{fmtDateTime(m.created_at) || m.date}</td>
+                    <td style={{ padding: '10px', color: 'var(--payi-text-muted)', whiteSpace: 'nowrap' }}>{fmtDate(m.date)}</td>
                     <td style={{ padding: '10px' }}><TypeBadge type={m.type} /></td>
                     <td style={{ padding: '10px', overflow: 'hidden' }}>
                       <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.display_name}>{m.display_name}</div>
