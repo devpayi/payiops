@@ -1024,23 +1024,6 @@ function stockInReceivedLine(request, items) {
   return `✅ รับเข้า ${label} จำนวน ${Number(request.qty) || 0}${unit ? ` ${unit}` : ''}`
 }
 
-// แจ้งฟ้า (คนแจ้งของเข้า/นับของ) กลับไป 1:1 ว่ารายการที่แจ้งไว้ Approve แล้ว — เดิม approve เสร็จมีแค่
-// reply กลับ boss ที่กด + ประกาศสั้นเข้ากลุ่ม ไม่เคยแจ้งฟ้ากลับเลย (ต่างจากฝั่งปฏิเสธที่แจ้งฟ้ากลับอยู่แล้ว)
-// owner ขอให้สมมาตรกัน (2026-08-04)
-async function notifyStockCounterApproved(matchedRequests, approverName) {
-  if (!matchedRequests.length) return
-  const counterId = await getStockCounterLineUserId()
-  if (!counterId) return
-  const items = await loadOrderableItems()
-  const lines = matchedRequests.map((r) => {
-    const item = items.find((it) => String(it.sku).toUpperCase() === String(r.sku).toUpperCase())
-    return `• ${item?.display_name || r.sku} × ${r.qty} ${item?.unit || ''}`
-  })
-  try {
-    await pushMessage(counterId, [{ type: 'text', text: `✅ ${approverName} อนุมัติของเข้าแล้วค่ะ:\n${lines.join('\n')}` }])
-  } catch (e) { console.error('notify stock counter approved:', e.message) }
-}
-
 function stockInEditMenuMessage(request, item) {
   const label = item?.display_name || request.sku
   const unit = item?.unit || 'ชิ้น'
@@ -2887,11 +2870,12 @@ async function opLineWebhook(req, res) {
         }])
         // การ์ดจริงส่ง 1:1 ไม่ได้ขึ้นในกลุ่มแล้ว — แจ้งผลสั้นๆ เข้ากลุ่มแทน ให้ทีมเห็นว่า Match ไปแล้ว
         // owner ขอ (2026-08-05): บอกรับเข้าอะไร/จำนวนเท่าไหร่ตรงๆ ไม่ใช่แค่ "Approve สำเร็จ" เฉยๆ
+        // ไม่แจ้งกลับฟ้า 1:1 อีกต่อไปเมื่อ match ตรง (owner ขอ 2026-08-05) — Approve ผ่าน LINE ไม่มีช่องแก้
+        // จำนวนตอน match เลย จำนวนที่รับเข้าจะตรงกับที่ฟ้าแจ้งไว้เสมอ ไม่มีเคส "ไม่ตรง" ให้ต้องแจ้งกลับ
         if (approved.length) {
           const items = await loadOrderableItems()
           const lines = approved.map((r) => stockInReceivedLine(r, items))
           await announceStockInResultToGroup(lines.join('\n'))
-          await notifyStockCounterApproved(approved, approver.name)
         }
         continue
       }
@@ -2907,7 +2891,6 @@ async function opLineWebhook(req, res) {
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `Approve สำเร็จ โดย ${approver.name}${lotId !== 'none' ? ' (จับคู่ลอตแล้ว)' : ''}` }])
           const items = await loadOrderableItems()
           await announceStockInResultToGroup(stockInReceivedLine(matched, items))
-          await notifyStockCounterApproved([matched], approver.name)
         } catch (e) {
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
         }
