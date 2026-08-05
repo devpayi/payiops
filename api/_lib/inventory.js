@@ -13,7 +13,7 @@ import { computeSalesStats } from '../planner-sales.js'
 const ITEMS_SHEET = 'inventory_items'
 const MOVEMENTS_SHEET = 'stock_movements'
 // ต่อท้ายรายการเดิมเท่านั้น (ห้ามแทรกกลาง) — แถวเดิมใน Sheet อิงตำแหน่งคอลัมน์เดิมอยู่ เหมือน claims sheet
-const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category', 'units_per_batch', 'buffer_percent', 'order_group']
+const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category', 'units_per_batch', 'buffer_percent', 'order_group', 'retail_price']
 // order_group: แท็กกลุ่มสินค้าสำหรับ "สั่งของ" เท่านั้น (เช่น PY051..PY051-J ทั้งไซส์/สีแท็ก "รองเท้าเพื่อสุขภาพ"
 // เดียวกัน) — ตั้งเอง ไม่ auto-derive จากชื่อ เพราะลองแล้วพบว่า deriveGroup (ตัวจับกลุ่มฝั่งยอดขาย) จับ
 // เคสพวกนี้ไม่ได้เลย (ไซส์เป็นตัวเลข "35-36" ไม่ใช่ M/L, สี "เนื้อ"/"ฟ้าเบบี้บลู" ไม่อยู่ใน COLOR_TOKENS)
@@ -123,6 +123,7 @@ export async function loadItemsWithBalance({ includeHidden = false } = {}) {
       buffer_percent: it.buffer_percent === '' || it.buffer_percent === undefined ? null : num(it.buffer_percent),
       active: truthyActive(it.active),
       order_group: it.order_group || '',
+      retail_price: num(it.retail_price),
     }
   })
   rows.sort((a, b) => a.display_name.localeCompare(b.display_name, 'th'))
@@ -280,6 +281,7 @@ async function upsertItem(body, actorName) {
       units_per_batch: num(body.units_per_batch),
       buffer_percent: body.buffer_percent === '' || body.buffer_percent === undefined ? '' : num(body.buffer_percent),
       order_group: body.order_group ? String(body.order_group).trim() : '',
+      retail_price: num(body.retail_price),
       active: '1',
       created_at: now,
       updated_at: now,
@@ -304,6 +306,7 @@ async function upsertItem(body, actorName) {
     if (body.units_per_batch !== undefined) row.units_per_batch = num(body.units_per_batch)
     if (body.buffer_percent !== undefined) row.buffer_percent = body.buffer_percent === '' ? '' : num(body.buffer_percent)
     if (body.order_group !== undefined) row.order_group = String(body.order_group).trim()
+    if (body.retail_price !== undefined) row.retail_price = num(body.retail_price)
     if (body.active !== undefined) row.active = body.active ? '1' : '0'
     row.updated_at = now
   }

@@ -20,6 +20,17 @@ const claimGroup = (r, overrideMap, redirectMap) => deriveGroup(r.display_name |
 
 // แถวเก่าที่ import ไว้ก่อนมีคอลัมน์ id จะไม่มี id — backfill ให้ครั้งแรกที่เจอ (ครั้งเดียวต่อแถว แล้วเขียนกลับ)
 // จำเป็นเพื่อให้ปุ่มแก้ไขรายแถวใช้อ้างอิงแถวที่ถูกต้องได้เสมอ ไม่ใช่ใช้ตำแหน่งแถว (ตำแหน่งเปลี่ยนได้ถ้ามีคนลบ/แก้พร้อมกัน)
+// ชื่อธุรกิจในชีทไม่ตรง case กัน (ของเก่า import "PAYI" ตัวใหญ่ล้วน, ฟอร์มกรอกเอง/มือใหม่ใช้ "Payi") —
+// ทำให้ตารางแยกตามแบรนด์แยกเป็นคนละคอลัมน์ทั้งที่เป็นธุรกิจเดียวกัน จับคู่แบบไม่สนตัวพิมพ์เล็กใหญ่ตรงนี้ที่เดียว
+// เพื่อให้ทุก view (monthly by-business, summary, sku) เห็นชื่อธุรกิจสม่ำเสมอกัน โดยไม่ต้องแก้ข้อมูลเดิมในชีท
+const BUSINESS_CANON = ['Payi', 'Payi Outlet', 'กรอบรูป']
+const normalizeBusiness = (v) => {
+  const trimmed = String(v || '').trim()
+  if (!trimmed) return trimmed
+  const canon = BUSINESS_CANON.find((b) => b.toLowerCase() === trimmed.toLowerCase())
+  return canon || trimmed
+}
+
 async function loadClaims() {
   await ensureSheet('claims', CLAIMS_HEADERS)
   const rows = await getSheet('claims')
@@ -30,7 +41,7 @@ async function loadClaims() {
     return { ...r, id: `claim-legacy-${i}-${Date.now().toString(36)}` }
   })
   if (needsBackfill) await overwriteSheet('claims', CLAIMS_HEADERS, withIds.map((r) => CLAIMS_HEADERS.map((h) => r[h] ?? '')))
-  return withIds // [{ id, date, business, product_name, free_item, claim_value, is_damaged, is_incomplete, is_wrong_item, note, master_sku, display_name, imported_at, import_id, source_file }]
+  return withIds.map((r) => ({ ...r, business: normalizeBusiness(r.business) })) // [{ id, date, business, product_name, free_item, claim_value, is_damaged, is_incomplete, is_wrong_item, note, master_sku, display_name, imported_at, import_id, source_file }]
 }
 
 // ---- cache สำหรับ view ที่หนัก (ต้องอ่าน raw_orders_* ทั้งหมด) — monthly/sku/by-product/summary ----
@@ -78,6 +89,12 @@ export default async function handler(req, res) {
       const aliases = await getSheet('product_aliases')
       const products = new Map()
       for (const a of aliases) if (a.master_sku && !products.has(a.master_sku)) products.set(a.master_sku, { master_sku: a.master_sku, display_name: a.display_name || a.master_sku })
+      // ราคาขายปลีก มาจาก inventory_items (ที่เดียวที่มีข้อมูลนี้จริง) — ใช้เด้งช่วยกรอกมูลค่าเคลมของเสียฟรี
+      try {
+        const items = await getSheet('inventory_items')
+        const priceBySku = new Map(items.map((it) => [it.sku, num(it.retail_price)]))
+        for (const p of products.values()) p.retail_price = priceBySku.get(p.master_sku) || 0
+      } catch { /* ไม่มี tab inventory_items ก็ข้าม (ราคาว่างไว้) */ }
       return res.status(200).json({ success: true, products: [...products.values()].sort((a, b) => a.display_name.localeCompare(b.display_name, 'th')) })
     }
 

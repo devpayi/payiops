@@ -267,11 +267,11 @@ function SkuDetailPanel({ masterSku, productKey, displayName, skuCount, startDat
   const [editingId, setEditingId] = useState('')
   const [editDraft, setEditDraft] = useState({})
   const [saving, setSaving] = useState(false)
-  const [freeItemOptions, setFreeItemOptions] = useState([])
+  const [freeItemProducts, setFreeItemProducts] = useState([])
 
   useEffect(() => {
     fetch(`${API_BASE_C}/claims?view=mapping-options`).then((r) => r.json()).then((d) => {
-      if (d.success) setFreeItemOptions([...new Set((d.products || []).map((p) => p.display_name).filter(Boolean))])
+      if (d.success) setFreeItemProducts(d.products || [])
     }).catch(() => {})
   }, [])
 
@@ -457,7 +457,19 @@ function SkuDetailPanel({ masterSku, productKey, displayName, skuCount, startDat
                               <td style={{ padding: '8px 10px', textAlign: 'center' }}><input type="checkbox" checked={!!editDraft.is_incomplete} onChange={e => setEditDraft({ ...editDraft, is_incomplete: e.target.checked })} /></td>
                               <td style={{ padding: '8px 10px', textAlign: 'center' }}><input type="checkbox" checked={!!editDraft.is_wrong_item} onChange={e => setEditDraft({ ...editDraft, is_wrong_item: e.target.checked })} /></td>
                               <td style={{ padding: '8px 10px' }}>
-                                <input list="sku-detail-free-items" value={editDraft.free_item} onChange={e => setEditDraft({ ...editDraft, free_item: e.target.value })} style={{ width: '100%', fontSize: 11, border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 6px', marginBottom: 4 }} placeholder="เสียฟรี" />
+                                <input
+                                  list="sku-detail-free-items"
+                                  value={editDraft.free_item}
+                                  onChange={e => {
+                                    const value = e.target.value
+                                    const matched = freeItemProducts.find((p) => p.display_name.toLowerCase() === value.toLowerCase())
+                                    const patch = { ...editDraft, free_item: value }
+                                    if (matched?.retail_price && (!editDraft.claim_value || Number(editDraft.claim_value) === 0)) patch.claim_value = String(matched.retail_price)
+                                    setEditDraft(patch)
+                                  }}
+                                  style={{ width: '100%', fontSize: 11, border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 6px', marginBottom: 4 }}
+                                  placeholder="เสียฟรี"
+                                />
                                 <input value={editDraft.note} onChange={e => setEditDraft({ ...editDraft, note: e.target.value })} style={{ width: '100%', fontSize: 11, border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 6px' }} placeholder="หมายเหตุ" />
                               </td>
                               <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
@@ -481,7 +493,7 @@ function SkuDetailPanel({ masterSku, productKey, displayName, skuCount, startDat
                       </tbody>
                     </table>
                     <datalist id="sku-detail-free-items">
-                      {freeItemOptions.map((name) => <option key={name} value={name} />)}
+                      {[...new Set(freeItemProducts.map((p) => p.display_name).filter(Boolean))].map((name) => <option key={name} value={name} />)}
                     </datalist>
                   </div>
                 </div>
@@ -629,7 +641,22 @@ function AddClaimModal({ onClose, onSaved }) {
                       />
                     </td>
                     <td style={tdStyle}><input type="number" min="0" step="0.01" value={row.claim_value} onChange={(e) => patchRow(row._key, { claim_value: e.target.value })} style={cellStyle} placeholder="0" /></td>
-                    <td style={tdStyle}><input list="add-claim-free-items" value={row.free_item} onChange={(e) => patchRow(row._key, { free_item: e.target.value })} style={cellStyle} placeholder="พิมพ์ค้นหาชื่อสินค้า" /></td>
+                    <td style={tdStyle}>
+                      <input
+                        list="add-claim-free-items"
+                        value={row.free_item}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          const matched = products.find((p) => p.display_name.toLowerCase() === value.toLowerCase())
+                          const patch = { free_item: value }
+                          // เจอสินค้าตรงชื่อ + ยังไม่ได้กรอกมูลค่าเอง → เด้งราคาขายปลีกให้ (แก้ทับเองได้เสมอ)
+                          if (matched?.retail_price && (!row.claim_value || Number(row.claim_value) === 0)) patch.claim_value = String(matched.retail_price)
+                          patchRow(row._key, patch)
+                        }}
+                        style={cellStyle}
+                        placeholder="พิมพ์ค้นหาชื่อสินค้า"
+                      />
+                    </td>
                     <td style={tdStyle}>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         <label title="เสียหาย" style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11, cursor: 'pointer' }}><input type="checkbox" checked={row.is_damaged} onChange={(e) => patchRow(row._key, { is_damaged: e.target.checked })} />เสีย</label>

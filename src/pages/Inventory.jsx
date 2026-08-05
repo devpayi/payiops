@@ -709,6 +709,8 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
   // แท็กกลุ่มสำหรับหน้า "สั่งของ" เท่านั้น (ไม่เกี่ยวกับการนับสต็อก/ยอดขาย) — ตั้งเองเพราะ deriveGroup
   // อัตโนมัติจับไซส์ตัวเลข/สีแปลกๆ ของกลุ่มพวกนี้ไม่ได้ ว่าง = สั่งได้เฉพาะเลือกทีละ SKU
   const [orderGroup, setOrderGroup] = useState(initial?.order_group || '')
+  // ราคาขายปลีก — ใช้ตอนกรอกเคลม (เสียฟรี) ให้เด้งราคาช่วยกรอกมูลค่าอัตโนมัติ (ClaimView.jsx)
+  const [retailPrice, setRetailPrice] = useState(initial?.retail_price || '')
   // นับสต็อกจริงไม่ตรง — แก้ตรงนี้เลยแทนป็อปอัพแยก บันทึกเป็นรายการ adjust แยกประวัติเสมอ
   const [actualBalance, setActualBalance] = useState(initial?.balance ?? '')
   const [correctionNote, setCorrectionNote] = useState('')
@@ -732,7 +734,7 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
     const payload = { sku: sku.trim(), display_name: displayName.trim(), unit, safety_stock: safetyStock }
     if (!isEdit) { payload.opening_balance = openingBalance; payload.category = newCategory }
     if (isPackaging) { payload.units_per_batch = unitsPerBatch; payload.buffer_percent = bufferPercent }
-    if (!isPackaging) payload.order_group = orderGroup.trim()
+    if (!isPackaging) { payload.order_group = orderGroup.trim(); payload.retail_price = retailPrice }
     if (isEdit) {
       payload.reorder_date = reorderNote
       payload.lead_time_production = leadProd
@@ -905,6 +907,15 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
             />
             <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 4 }}>
               สินค้าที่ตั้งชื่อกลุ่มเดียวกัน จะเลือก "สั่งทั้งกลุ่ม" ได้จากหน้า Stock Movement/ไลน์ แทนที่ต้องเลือกทีละ SKU
+            </div>
+          </div>
+        )}
+        {!isPackaging && (
+          <div>
+            <label style={labelStyle}>ราคาขายปลีก (ไม่บังคับ)</label>
+            <input type="number" min="0" value={retailPrice} onChange={(e) => setRetailPrice(e.target.value)} style={inputStyle} placeholder="0" />
+            <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 4 }}>
+              ใช้เด้งช่วยกรอก "มูลค่า" อัตโนมัติตอนบันทึกเคลม เมื่อเลือกสินค้านี้เป็นของเสียฟรี (แก้ตัวเลขทับได้เสมอ)
             </div>
           </div>
         )}
