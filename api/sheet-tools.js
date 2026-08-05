@@ -1015,13 +1015,13 @@ async function announceStockInResultToGroup(text) {
   catch (e) { console.error('announce stock-in result to group:', e.message) }
 }
 
-// บรรทัดสรุปของเข้าต่อ 1 รายการ เช่น "📦 รับเข้า รองเท้าเพื่อสุขภาพ Sky 37-38 จำนวน 50 คู่" — owner ขอ
+// บรรทัดสรุปของเข้าต่อ 1 รายการ เช่น "✅ รับเข้า รองเท้าเพื่อสุขภาพ Sky 37-38 จำนวน 50 คู่" — owner ขอ
 // (2026-08-05) ให้กลุ่มเห็นว่ารับอะไรจำนวนเท่าไหร่ตรงๆ แทนข้อความ "Approve สำเร็จ" เฉยๆ ที่ไม่มีข้อมูลอะไรเลย
 function stockInReceivedLine(request, items) {
   const item = items.find((it) => String(it.sku).toUpperCase() === String(request.sku).toUpperCase())
   const label = item?.display_name || request.sku
   const unit = item?.unit || ''
-  return `📦 รับเข้า ${label} จำนวน ${Number(request.qty) || 0}${unit ? ` ${unit}` : ''}`
+  return `✅ รับเข้า ${label} จำนวน ${Number(request.qty) || 0}${unit ? ` ${unit}` : ''}`
 }
 
 // แจ้งฟ้า (คนแจ้งของเข้า/นับของ) กลับไป 1:1 ว่ารายการที่แจ้งไว้ Approve แล้ว — เดิม approve เสร็จมีแค่
