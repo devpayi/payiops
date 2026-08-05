@@ -305,7 +305,7 @@ function SkuDetailPanel({ masterSku, productKey, displayName, skuCount, startDat
     return () => { clearTimeout(timer); controller.abort() }
   }, [masterSku, productKey, startDate, endDate, business])
 
-  const startEdit = (rec) => { setEditingId(rec.id); setEditDraft({ is_damaged: rec.is_damaged, is_incomplete: rec.is_incomplete, is_wrong_item: rec.is_wrong_item, note: rec.note || '' }) }
+  const startEdit = (rec) => { setEditingId(rec.id); setEditDraft({ is_damaged: rec.is_damaged, is_incomplete: rec.is_incomplete, is_wrong_item: rec.is_wrong_item, note: rec.note || '', free_item: rec.free_item || '', claim_value: rec.claim_value || '' }) }
   const cancelEdit = () => { setEditingId(''); setEditDraft({}) }
   const saveEdit = async (id) => {
     setSaving(true)
@@ -440,14 +440,17 @@ function SkuDetailPanel({ masterSku, productKey, displayName, skuCount, startDat
                             <td style={{ padding: '8px 10px', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rec.display_name || rec.product_name || rec.master_sku}>
                               {rec.display_name || rec.product_name || rec.master_sku || '—'}
                             </td>
-                            <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: rec.claim_value > 0 ? '#dc2626' : '#cbd5e1' }}>
-                              {rec.claim_value > 0 ? `฿${fmtC(rec.claim_value)}` : '—'}
+                            <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700 }}>
+                              {isEditing
+                                ? <input type="number" value={editDraft.claim_value} onChange={e => setEditDraft({ ...editDraft, claim_value: e.target.value })} style={{ width: '100%', fontSize: 11, border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 6px', textAlign: 'right' }} placeholder="0" />
+                                : (rec.claim_value > 0 ? <span style={{ color: '#dc2626' }}>{`฿${fmtC(rec.claim_value)}`}</span> : <span style={{ color: '#cbd5e1' }}>—</span>)}
                             </td>
                             {isEditing ? <>
                               <td style={{ padding: '8px 10px', textAlign: 'center' }}><input type="checkbox" checked={!!editDraft.is_damaged} onChange={e => setEditDraft({ ...editDraft, is_damaged: e.target.checked })} /></td>
                               <td style={{ padding: '8px 10px', textAlign: 'center' }}><input type="checkbox" checked={!!editDraft.is_incomplete} onChange={e => setEditDraft({ ...editDraft, is_incomplete: e.target.checked })} /></td>
                               <td style={{ padding: '8px 10px', textAlign: 'center' }}><input type="checkbox" checked={!!editDraft.is_wrong_item} onChange={e => setEditDraft({ ...editDraft, is_wrong_item: e.target.checked })} /></td>
                               <td style={{ padding: '8px 10px' }}>
+                                <input value={editDraft.free_item} onChange={e => setEditDraft({ ...editDraft, free_item: e.target.value })} style={{ width: '100%', fontSize: 11, border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 6px', marginBottom: 4 }} placeholder="ของแถม/เสียฟรี" />
                                 <input value={editDraft.note} onChange={e => setEditDraft({ ...editDraft, note: e.target.value })} style={{ width: '100%', fontSize: 11, border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 6px' }} placeholder="หมายเหตุ" />
                               </td>
                               <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>

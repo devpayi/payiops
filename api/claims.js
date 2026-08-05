@@ -132,6 +132,8 @@ export default async function handler(req, res) {
         is_incomplete: b.is_incomplete ? '1' : '',
         is_wrong_item: b.is_wrong_item ? '1' : '',
         note: b.note ?? current[idx].note,
+        free_item: b.free_item ?? current[idx].free_item,
+        claim_value: b.claim_value !== undefined ? String(num(b.claim_value)) : current[idx].claim_value,
       }
       const next = current.map((r, i) => (i === idx ? updated : r))
       await overwriteSheet('claims', CLAIMS_HEADERS, next.map((r) => CLAIMS_HEADERS.map((h) => r[h] ?? '')))
