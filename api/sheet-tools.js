@@ -1005,8 +1005,9 @@ async function getStockCounterLineUserId() {
   return links.find((l) => l.username === STOCK_COUNTER_USERNAME)?.line_user_id || null
 }
 
-// สรุปผล Approve/ปฏิเสธ/จับคู่ลอต เป็นข้อความสั้นเข้ากลุ่ม — การ์ดจริงกับปุ่มกดทั้งหมดย้ายไปอยู่ 1:1 กับ
-// boss/dev แล้ว (2026-08-01) กลุ่มเลยไม่เห็นอะไรเลยถ้าไม่ประกาศผลตรงนี้ ไม่มีกลุ่มลงทะเบียนไว้ก็แค่ข้ามเงียบๆ
+// สรุปผล Approve/จับคู่ลอต เป็นข้อความสั้นเข้ากลุ่ม (ปฏิเสธ ไม่แจ้งกลุ่ม — แจ้งกลับผู้แจ้งของเข้า 1:1
+// คนเดียว, owner ขอ 2026-08-05) — การ์ดจริงกับปุ่มกดทั้งหมดย้ายไปอยู่ 1:1 กับ boss/dev แล้ว (2026-08-01)
+// กลุ่มเลยไม่เห็นอะไรเลยถ้าไม่ประกาศผลตรงนี้ ไม่มีกลุ่มลงทะเบียนไว้ก็แค่ข้ามเงียบๆ
 async function announceStockInResultToGroup(text) {
   const groupId = await getGroupTarget()
   if (!groupId) return
@@ -1572,7 +1573,8 @@ async function opWorkforceInner(req, res) {
       sourceManpower = await getCalendarPresence({ ...personMap, ...officeMap }, Object.keys(personMap), true, Object.keys(officeMap))
       officePeople = Object.entries(officeMap).map(([code, [name]]) => ({ code, name }))
       for (const l of leaveRows) {
-        if (!['pending', 'approved'].includes(l.status)) continue
+        // hr ยังไม่ approve ไม่ต้องมีผลกับปฏิทิน — approved เท่านั้น
+        if (l.status !== 'approved') continue
         if (!String(l.username || '').startsWith('mp:')) continue
         const code = l.username.slice(3)
         if (!officeMap[code]) continue
@@ -2935,7 +2937,6 @@ async function opLineWebhook(req, res) {
             ? `ปฏิเสธสำเร็จ ${rejected.length} รายการ\nไม่สำเร็จ: ${failed.join('; ')}`
             : `ปฏิเสธสำเร็จ ${rejected.length} รายการ โดย ${approver.name}${notifyResult}`,
         }])
-        if (rejected.length) await announceStockInResultToGroup(`❌ ปฏิเสธ ${rejected.length} รายการ โดย ${approver.name}${notifyResult}`)
         continue
       }
 

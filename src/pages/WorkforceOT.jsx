@@ -84,7 +84,8 @@ export default function WorkforceOT({ preview = false }) {
       setDayRecords(d.dayRecords || [])
       // "สลับวันหยุด" อยู่ในระบบลา (op=hr) ไม่ใช่ op=workforce — ดึงมาต่างหากเพื่อขึ้นป้ายในปฏิทินเดียวกับโอทีเต็มวัน/ชดเชย
       fetch('/api/sheet-tools?op=hr').then((res) => res.json()).then((hrData) => {
-        if (hrData.success) setSwapLeaves((hrData.leave || []).filter((l) => l.leave_type === 'สลับวันหยุด' && !['rejected', 'cancelled'].includes(l.status)))
+        // hr ยังไม่ approve ไม่ต้องมีผลกับปฏิทิน (ป้าย S/W ก็นับเป็นผลต่อปฏิทินเหมือนกัน) — approved เท่านั้น
+        if (hrData.success) setSwapLeaves((hrData.leave || []).filter((l) => l.leave_type === 'สลับวันหยุด' && l.status === 'approved'))
       }).catch(() => {})
       setPeople(d.people || [])
       setSchedulePeople(d.schedulePeople?.length ? d.schedulePeople : (d.people || []).filter((person) => String(person.active) !== '0' && person.code && person.name))
