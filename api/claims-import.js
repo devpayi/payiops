@@ -74,7 +74,7 @@ export default async function handler(req, res) {
         date,
         pick(row, ['business', 'ธุรกิจ', 'แบรนด์', 'brand']),
         productName,
-        pick(row, ['free_item', 'ของแถม', 'สินค้าที่แถม']),
+        pick(row, ['free_item', 'ของแถม', 'สินค้าที่แถม', 'เสียฟรี']),
         num(pick(row, ['claim_value', 'มูลค่า', 'มูลค่าเคลม', 'value'])),
         truthy(pick(row, ['is_damaged', 'เสียหาย', 'พัง', 'damaged'])) ? '1' : '',
         truthy(pick(row, ['is_incomplete', 'ส่งไม่ครบ', 'ไม่ครบ', 'incomplete'])) ? '1' : '',

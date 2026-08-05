@@ -28,7 +28,7 @@ const CLAIM_HEADER_HINTS = [
   'product_name', 'ชื่อสินค้า', 'สินค้า', 'product',
   'alias_variation', 'variation_name', 'variation', 'ตัวเลือกสินค้า', 'ประเภทสินค้า', 'แบบ', 'ไซซ์', 'ขนาด', 'สี',
   'master_sku', 'sku_platform', 'seller_sku', 'sku', 'รหัสสินค้า', 'รหัส sku',
-  'free_item', 'ของแถม', 'สินค้าที่แถม',
+  'free_item', 'ของแถม', 'สินค้าที่แถม', 'เสียฟรี',
   'claim_value', 'มูลค่า', 'มูลค่าเคลม', 'value',
   'is_damaged', 'เสียหาย', 'พัง', 'damaged',
   'is_incomplete', 'ส่งไม่ครบ', 'ไม่ครบ', 'incomplete',
@@ -267,6 +267,13 @@ function SkuDetailPanel({ masterSku, productKey, displayName, skuCount, startDat
   const [editingId, setEditingId] = useState('')
   const [editDraft, setEditDraft] = useState({})
   const [saving, setSaving] = useState(false)
+  const [freeItemOptions, setFreeItemOptions] = useState([])
+
+  useEffect(() => {
+    fetch(`${API_BASE_C}/claims?view=mapping-options`).then((r) => r.json()).then((d) => {
+      if (d.success) setFreeItemOptions([...new Set((d.products || []).map((p) => p.display_name).filter(Boolean))])
+    }).catch(() => {})
+  }, [])
 
   const buildParams = () => {
     const params = new URLSearchParams()
@@ -423,7 +430,7 @@ function SkuDetailPanel({ masterSku, productKey, displayName, skuCount, startDat
                           <th style={{ padding: '8px 10px', textAlign: 'center', width: 54 }}>เสียหาย</th>
                           <th style={{ padding: '8px 10px', textAlign: 'center', width: 54 }}>ไม่ครบ</th>
                           <th style={{ padding: '8px 10px', textAlign: 'center', width: 42 }}>ผิด</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'left' }}>ได้รับผิด/หมายเหตุ</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'left' }}>เสียฟรี/หมายเหตุ</th>
                           <th style={{ padding: '8px 10px', textAlign: 'center', width: 56 }}></th>
                         </tr>
                       </thead>
@@ -450,7 +457,7 @@ function SkuDetailPanel({ masterSku, productKey, displayName, skuCount, startDat
                               <td style={{ padding: '8px 10px', textAlign: 'center' }}><input type="checkbox" checked={!!editDraft.is_incomplete} onChange={e => setEditDraft({ ...editDraft, is_incomplete: e.target.checked })} /></td>
                               <td style={{ padding: '8px 10px', textAlign: 'center' }}><input type="checkbox" checked={!!editDraft.is_wrong_item} onChange={e => setEditDraft({ ...editDraft, is_wrong_item: e.target.checked })} /></td>
                               <td style={{ padding: '8px 10px' }}>
-                                <input value={editDraft.free_item} onChange={e => setEditDraft({ ...editDraft, free_item: e.target.value })} style={{ width: '100%', fontSize: 11, border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 6px', marginBottom: 4 }} placeholder="ของแถม/เสียฟรี" />
+                                <input list="sku-detail-free-items" value={editDraft.free_item} onChange={e => setEditDraft({ ...editDraft, free_item: e.target.value })} style={{ width: '100%', fontSize: 11, border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 6px', marginBottom: 4 }} placeholder="เสียฟรี" />
                                 <input value={editDraft.note} onChange={e => setEditDraft({ ...editDraft, note: e.target.value })} style={{ width: '100%', fontSize: 11, border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 6px' }} placeholder="หมายเหตุ" />
                               </td>
                               <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
@@ -473,6 +480,9 @@ function SkuDetailPanel({ masterSku, productKey, displayName, skuCount, startDat
                         })}
                       </tbody>
                     </table>
+                    <datalist id="sku-detail-free-items">
+                      {freeItemOptions.map((name) => <option key={name} value={name} />)}
+                    </datalist>
                   </div>
                 </div>
               )}
@@ -517,7 +527,7 @@ function AddClaimModal({ onClose, onSaved }) {
 
   const handleBackdrop = (e) => { if (e.target === e.currentTarget) onClose() }
 
-  // วางจากชีต/Excel — แต่ละแถวคั่นด้วย tab ลำดับคอลัมน์: วันที่, SKU, มูลค่า, ของแถม, หมายเหตุ (เว้นได้)
+  // วางจากชีต/Excel — แต่ละแถวคั่นด้วย tab ลำดับคอลัมน์: วันที่, SKU, มูลค่า, เสียฟรี, หมายเหตุ (เว้นได้)
   // จับคู่ SKU ด้วยการหาคำที่ขึ้นต้นตรงกับ master_sku ก่อน ไม่ตรงค่อย fallback ไปหาในชื่อสินค้า
   const handlePaste = (e) => {
     const text = e.clipboardData?.getData('text') || ''
@@ -571,7 +581,7 @@ function AddClaimModal({ onClose, onSaved }) {
         <div style={{ padding: '20px 24px 12px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 800, color: '#111827' }}>เพิ่มเคลม</div>
-            <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>เพิ่มได้หลายรายการพร้อมกัน หรือคัดลอกจากชีต/Excel มาวางได้เลย (คอลัมน์: วันที่, SKU, มูลค่า, ของแถม, หมายเหตุ)</div>
+            <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>เพิ่มได้หลายรายการพร้อมกัน หรือคัดลอกจากชีต/Excel มาวางได้เลย (คอลัมน์: วันที่, SKU, มูลค่า, เสียฟรี, หมายเหตุ)</div>
           </div>
           <button type="button" onClick={onClose} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center' }}><X size={16} /></button>
         </div>
@@ -587,7 +597,7 @@ function AddClaimModal({ onClose, onSaved }) {
                 <th style={{ ...thStyle, width: 110 }}>ธุรกิจ</th>
                 <th style={{ ...thStyle, width: 220 }}>สินค้า</th>
                 <th style={{ ...thStyle, width: 100 }}>มูลค่า</th>
-                <th style={{ ...thStyle, width: 140 }}>ของแถม</th>
+                <th style={{ ...thStyle, width: 140 }}>เสียฟรี</th>
                 <th style={{ ...thStyle, width: 150 }}>สาเหตุ</th>
                 <th style={thStyle}>หมายเหตุ</th>
                 <th style={{ ...thStyle, width: 30 }} />
@@ -619,7 +629,7 @@ function AddClaimModal({ onClose, onSaved }) {
                       />
                     </td>
                     <td style={tdStyle}><input type="number" min="0" step="0.01" value={row.claim_value} onChange={(e) => patchRow(row._key, { claim_value: e.target.value })} style={cellStyle} placeholder="0" /></td>
-                    <td style={tdStyle}><input value={row.free_item} onChange={(e) => patchRow(row._key, { free_item: e.target.value })} style={cellStyle} /></td>
+                    <td style={tdStyle}><input list="add-claim-free-items" value={row.free_item} onChange={(e) => patchRow(row._key, { free_item: e.target.value })} style={cellStyle} placeholder="พิมพ์ค้นหาชื่อสินค้า" /></td>
                     <td style={tdStyle}>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         <label title="เสียหาย" style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11, cursor: 'pointer' }}><input type="checkbox" checked={row.is_damaged} onChange={(e) => patchRow(row._key, { is_damaged: e.target.checked })} />เสีย</label>
@@ -638,6 +648,9 @@ function AddClaimModal({ onClose, onSaved }) {
           </table>
           <datalist id="add-claim-products">
             {products.map((p) => <option key={p.master_sku} value={`${p.master_sku} · ${p.display_name}`} />)}
+          </datalist>
+          <datalist id="add-claim-free-items">
+            {[...new Set(products.map((p) => p.display_name).filter(Boolean))].map((name) => <option key={name} value={name} />)}
           </datalist>
 
           <button type="button" onClick={addRow} style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, color: '#475569', cursor: 'pointer' }}>
