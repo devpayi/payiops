@@ -9,7 +9,7 @@ import {
   MIN_LOWER_HOUSE_HEADCOUNT, buildCoveragePlan, leaveAbsenceDates, leaveAbsenceSlots,
   leavePeriodLabel, normalizeLeavePeriod, officeLeaveConflicts,
 } from './_lib/leaveCoverage.js'
-import { applyScheduleOverrides } from './_lib/scheduleOverrides.js'
+import { applyScheduleOverrides, LEGACY_OVERRIDE_EXEMPT_CODES } from './_lib/scheduleOverrides.js'
 import { isoDate } from './_lib/dates.js'
 import opInventory, { computeLowStockList, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
 import opImportTracking from './_lib/importTracking.js'
@@ -1506,6 +1506,15 @@ async function getCalendarPresence(personMap, overrideScopeCodes = Object.keys(p
     const codesWithRows = new Set(baseRows.map((r) => r.code))
     const missingCodes = new Set(Object.keys(personMap).filter((code) => !codesWithRows.has(code)))
     if (missingCodes.size) baseRows = [...baseRows, ...generateCalendarPresence(personMap, [], dayOffMap, missingCodes)]
+    // คนใน LEGACY_OVERRIDE_EXEMPT_CODES (ดูคอมเมนต์ scheduleOverrides.js) มี snapshot จริงอยู่บ้างแต่ไม่ครบทั้งปี
+    // (เจอจริง 2026-08-04 กรณีเกด มี snapshot แค่ 2 วัน) เลยไม่เข้าเงื่อนไข missingCodes ข้างบน (ต้องไม่มีแถวเลยสัก
+    // แถวถึงจะเข้า) — เติมเฉพาะวันที่ยังไม่มีแถวจริงให้ด้วย กันไม่ให้หายไปในวันที่ snapshot เดิมไม่ครอบคลุม
+    const partialExemptCodes = new Set([...codesWithRows].filter((code) => LEGACY_OVERRIDE_EXEMPT_CODES.has(code)))
+    if (partialExemptCodes.size) {
+      const existingKeys = new Set(baseRows.map((r) => `${r.date}|${r.code}`))
+      const filler = generateCalendarPresence(personMap, [], dayOffMap, partialExemptCodes).filter((r) => !existingKeys.has(`${r.date}|${r.code}`))
+      baseRows = [...baseRows, ...filler]
+    }
   }
   baseRows = applyScheduleOverrides({ baseRows, overrideRows, personMap, overrideScopeCodes, officeCodes, dayOffMap })
   if (!applyLeaves) return baseRows

@@ -1,12 +1,17 @@
 // override ที่บันทึกก่อนเวลานี้ถือเป็นของเก่า (bulk schedule import เดิม ไม่รู้จักพนักงานที่เพิ่มเข้าระบบทีหลัง) —
 // override ที่บันทึก "ตั้งแต่ตอนนี้เป็นต้นไป" ถือว่ารู้จักทุกคนในระบบแล้วเสมอ ใช้บังคับได้เต็มที่ทั้งเพิ่ม/ถอน
 const LEGACY_OVERRIDE_CUTOFF = '2026-08-04T10:16:00.000Z'
-// พนักงานที่เพิ่มเข้าระบบทีหลัง ไม่เคยมีชื่ออยู่ใน override เก่า (ก่อน cutoff ด้านบน) เลยสักวัน — ถ้าปล่อยให้ override เก่า
-// ลบเขาออกจากปฏิทินไปด้วย จะไม่โผล่ในปฏิทินเลยทุกวันที่มี override เก่าทับอยู่ (เจอจริง 2026-08-04 กรณี "ไม้" หายทั้ง
-// 5 เดือน) เลยยกเว้นเฉพาะโค้ดพวกนี้ไม่ให้ override เก่าลบออกอีก — ทำแบบ hardcode ตรงจุดเหมือน SKU_REDIRECTS ใน
-// planner-sales.js ถ้ามีพนักงานใหม่แบบนี้บ่อยขึ้นค่อยย้ายเป็นชีตแทน. ไม่กระทบ override ใหม่ (>= cutoff) — เพิ่ม/ถอน
-// คนกลุ่มนี้ผ่านตารางกะตามปกติได้เต็มที่เหมือนคนอื่น
-const NEVER_IN_LEGACY_SCHEDULE_CODES = new Set(['ไม้'])
+// คนที่ override เก่า (ก่อน cutoff ด้านบน) ไม่สะท้อนความจริงปัจจุบันอีกต่อไป — ยกเว้นให้ override เก่าไม่มีสิทธิ์ตัดสินใจ
+// เรื่องพวกเขาอีก (ทั้งเพิ่ม/ลบเข้าออกจากตาราง) ปล่อยให้ตารางพื้นฐาน + วันหยุดประจำปัจจุบันตัดสินใจแทน สองเคสที่เจอจริง:
+// (1) พนักงานใหม่ ไม่เคยมีชื่ออยู่ใน override เก่าเลยสักวัน — ถ้าปล่อยให้ override เก่าลบเขาออกไปด้วย จะไม่โผล่ในปฏิทิน
+//     เลยทุกวันที่มี override เก่าทับอยู่ (เจอจริง 2026-08-04 กรณี "ไม้" หายทั้ง 5 เดือน)
+// (2) พนักงานเก่าที่เพิ่งเปลี่ยนวันหยุดประจำ — วันหยุดเดิมถูก "ฝัง" อยู่ใน override เก่าทุกวันข้างหน้าแล้ว (ไม่ได้อยู่ใน
+//     ทุก entries_json ของวันที่ตรงวันหยุดเดิม) เปลี่ยนวันหยุดในระบบแล้วก็ยังไม่มีผลกับวันหยุดเดิม เพราะ override เก่า
+//     ยังตัดเขาออกจากวันนั้นตามความจริงเดิมอยู่ดี (เจอจริง 2026-08-04 กรณี "เกด" เปลี่ยนวันหยุดจันทร์เป็นอังคาร แต่ยัง
+//     หายทุกวันจันทร์เหมือนเดิม)
+// ทำแบบ hardcode ตรงจุดเหมือน SKU_REDIRECTS ใน planner-sales.js ถ้าเจอบ่อยขึ้นค่อยย้ายเป็นชีตแทน ไม่กระทบ override
+// ใหม่ (>= cutoff) — เพิ่ม/ถอนคนกลุ่มนี้ผ่านตารางกะตามปกติได้เต็มที่เหมือนคนอื่น
+export const LEGACY_OVERRIDE_EXEMPT_CODES = new Set(['ไม้', 'KED'])
 // เหมือน isFixedDayOff ใน sheet-tools.js (คัดลอกมาเพราะไฟล์นี้เป็น pure module แยก ไม่ import ข้ามกัน) — เช็ควันหยุด
 // ประจำสัปดาห์ของคนนั้นตรงกับวันที่นี้ไหม
 const isFixedDayOff = (dayOffMap, code, date) => {
@@ -42,7 +47,7 @@ export function applyScheduleOverrides({ baseRows = [], overrideRows = [], perso
     if (!latestByDate.has(date)) return true
     const code = String(row.code || '').toUpperCase()
     const isLegacyOverride = String(latestByDate.get(date)?.updated_at || '') < LEGACY_OVERRIDE_CUTOFF
-    if (isLegacyOverride && NEVER_IN_LEGACY_SCHEDULE_CODES.has(code)) return true
+    if (isLegacyOverride && LEGACY_OVERRIDE_EXEMPT_CODES.has(code)) return true
     const inScope = baseScope.has(code) || (officeSet.has(code) && overrideTouchesOffice.get(date))
     return !inScope
   })
