@@ -12,14 +12,6 @@ const LEGACY_OVERRIDE_CUTOFF = '2026-08-04T10:16:00.000Z'
 // ทำแบบ hardcode ตรงจุดเหมือน SKU_REDIRECTS ใน planner-sales.js ถ้าเจอบ่อยขึ้นค่อยย้ายเป็นชีตแทน ไม่กระทบ override
 // ใหม่ (>= cutoff) — เพิ่ม/ถอนคนกลุ่มนี้ผ่านตารางกะตามปกติได้เต็มที่เหมือนคนอื่น
 export const LEGACY_OVERRIDE_EXEMPT_CODES = new Set(['ไม้', 'KED'])
-// เหมือน isFixedDayOff ใน sheet-tools.js (คัดลอกมาเพราะไฟล์นี้เป็น pure module แยก ไม่ import ข้ามกัน) — เช็ควันหยุด
-// ประจำสัปดาห์ของคนนั้นตรงกับวันที่นี้ไหม
-const isFixedDayOff = (dayOffMap, code, date) => {
-  const entry = dayOffMap[code]
-  if (!entry) return false
-  if (entry.from && date < entry.from) return false
-  return String(new Date(`${date}T00:00:00`).getDay()) === entry.weekday
-}
 
 export function applyScheduleOverrides({ baseRows = [], overrideRows = [], personMap = {}, overrideScopeCodes = Object.keys(personMap), officeCodes = [], dayOffMap = {} }) {
   const latestByDate = new Map()
@@ -59,12 +51,10 @@ export function applyScheduleOverrides({ baseRows = [], overrideRows = [], perso
       const code = String(entry?.code || '').toUpperCase()
       const person = personMap[code]
       if (!person || seen.has(code)) continue
-      // วันหยุดประจำชนะ override เสมอ ไม่ว่า override จะบันทึกก่อนหรือหลังตั้งวันหยุดก็ตาม — เดิมให้ override
-      // ใหม่ทับวันหยุดได้ (ไว้เผื่อเรียกมาทำงานพิเศษ) แต่ตัว editor ตารางกะ (ScheduleDayEditor) ติ๊กช่องคนที่เคย
-      // ทำงานวันนั้นไว้ล่วงหน้าเป็นค่าเริ่มต้นเสมอ (ไม่รู้เรื่องวันหยุดที่เพิ่งตั้ง) พอบอสแก้วันนั้นด้วยเรื่องอื่น (เช่น
-      // ถอนคนอื่นออก) ก็ดันเผลอ resave ให้คนที่เพิ่งตั้งวันหยุดยังติดอยู่ในตารางไปด้วยทุกครั้ง (เจอจริง 2026-08-04
-      // กรณีเกด ตั้งวันหยุดอังคารแล้วไม่มีผล) ยังไม่เคยมีการใช้ "เรียกมาทำงานวันหยุด" จริงจากข้อมูลจริง เลยตัดออกไปก่อน
-      if (isFixedDayOff(dayOffMap, code, date)) continue
+      // override (แก้คนจากปฏิทิน) ชนะวันหยุดประจำเสมอ — ใช้เป็นช่องทางสลับวันหยุด/เรียกมาทำงานพิเศษโดยไม่ต้องผ่าน
+      // HR ได้ตรงนี้เลย (ผู้ใช้ยืนยัน 2026-08-07) เดิมเคยบล็อกไว้เพราะกลัว ScheduleDayEditor prefill ค่าเก่าค้าง
+      // แล้ว resave ทับโดยไม่ตั้งใจ (เจอจริง 2026-08-04 กรณีเกด) แต่ prefill คำนวณจาก sourceManpower สดทุกครั้งที่
+      // เปิด modal อยู่แล้ว (คนวันหยุดประจำจะไม่ติ๊กมาเป็นค่าเริ่มต้น) การติ๊กเข้ามาเองจึงถือเป็นการตั้งใจเสมอ
       seen.add(code)
       result.push({ id: `override-${date}-${code}`, date, employee: person[0], code, group: person[1], fraction: 1, source: 'override' })
     }
