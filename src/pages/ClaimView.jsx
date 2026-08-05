@@ -841,7 +841,7 @@ export default function ClaimView() {
       const batches = []
       for (let i = 0; i < slim.length; i += CLAIM_BATCH_SIZE) batches.push(slim.slice(i, i + CLAIM_BATCH_SIZE))
 
-      let rowsImported = 0, mappedCount = 0, unmappedCount = 0, skippedInvalid = 0
+      let rowsImported = 0, mappedCount = 0, unmappedCount = 0, skippedInvalid = 0, skippedBlank = 0
       const importId = `IMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       const skippedSamples = []
       const unmappedSamples = []
@@ -861,10 +861,11 @@ export default function ClaimView() {
         mappedCount += d.mappedCount || 0
         unmappedCount += d.unmappedCount || 0
         skippedInvalid += d.skippedInvalid || 0
+        skippedBlank += d.skippedBlank || 0
         if (skippedSamples.length < 5) skippedSamples.push(...(d.skippedSamples || []))
         for (const name of (d.unmappedSamples || [])) if (unmappedSamples.length < 20 && !unmappedSamples.includes(name)) unmappedSamples.push(name)
       }
-      setImportResult({ success: true, importId, rowsImported, mappedCount, unmappedCount, unmappedSamples, skippedInvalid, skippedSamples: skippedSamples.slice(0, 5) })
+      setImportResult({ success: true, importId, rowsImported, mappedCount, unmappedCount, unmappedSamples, skippedInvalid, skippedSamples: skippedSamples.slice(0, 5), skippedBlank })
       load()
       loadMonthly()
     } catch (e) {
@@ -949,7 +950,7 @@ export default function ClaimView() {
         <div style={{ background: importResult.success ? '#f0fdf4' : '#fef2f2', border: `1px solid ${importResult.success ? '#bbf7d0' : '#fecaca'}`, borderRadius: 10, padding: '12px 18px', fontSize: 13, color: importResult.success ? '#15803d' : '#dc2626', marginBottom: 16 }}>
           {!importResult.success ? `❌ ผิดพลาด: ${importResult.error}`
             : importResult.inProgress ? `⏳ ${importResult.note}`
-            : `✅ นำเข้าข้อมูลเคลมเรียบร้อยและเพิ่มเข้าตารางสำเร็จแล้วครับ (${importResult.rowsImported} แถว${importResult.skippedInvalid ? ` · ข้าม ${importResult.skippedInvalid} แถวที่วันที่อ่านไม่ออก` : ''})`}
+            : `✅ นำเข้าข้อมูลเคลมเรียบร้อยและเพิ่มเข้าตารางสำเร็จแล้วครับ (${importResult.rowsImported} แถว${importResult.skippedInvalid ? ` · ข้าม ${importResult.skippedInvalid} แถวที่วันที่อ่านไม่ออก` : ''}${importResult.skippedBlank ? ` · ข้าม ${importResult.skippedBlank} แถวว่าง` : ''})`}
           {importResult.skippedSamples?.length > 0 && (
             <div style={{ marginTop: 8, fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px' }}>
               ตัวอย่างค่าวันที่ที่อ่านไม่ออก (สูงสุด 5 แถว):

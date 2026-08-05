@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     if (duplicate && !req.body.allowDuplicate) return res.status(409).json({ success: false, duplicate: true, error: 'ไฟล์นี้เคยนำเข้าแล้ว', existingImportId: duplicate.import_id })
     const importedAt = new Date().toISOString()
     const sourceRef = sourceFileRef(fileName, fileHash)
-    let mapped = 0, fuzzyMapped = 0, skippedInvalid = 0
+    let mapped = 0, fuzzyMapped = 0, skippedInvalid = 0, skippedBlank = 0
     const unmappedSamples = []
     const skippedSamples = []
     let lastDate = ''
@@ -70,6 +70,10 @@ export default async function handler(req, res) {
       }
       lastDate = date
       const productName = pick(row, ['product_name', 'ชื่อสินค้า', 'สินค้า', 'product'])
+      // แถวว่างจริง (ไม่มีชื่อสินค้าเลย) ไม่ใช่เคลม — พบเยอะเป็นแถวว่างท้ายชีทที่ forward-fill วันที่ข้างบนทำให้
+      // ผ่านเช็ค hasMeaningfulClaimRow ไปได้ (มีแค่วันที่ที่สืบมา ไม่มีเนื้อหาอะไรอย่างอื่นเลย) ไม่นับเป็น
+      // แถวนำเข้า และไม่โผล่เป็นสินค้า "(ไม่ระบุ)" ในแผง unmapped ให้ต้อง map
+      if (!String(productName || '').trim()) { skippedBlank++; return null }
       const variation = pick(row, ['alias_variation', 'variation_name', 'variation', 'ตัวเลือกสินค้า', 'ประเภทสินค้า', 'แบบ', 'ไซซ์', 'ขนาด', 'สี'])
       const sourceSku = pick(row, ['master_sku', 'sku_platform', 'seller_sku', 'sku', 'รหัสสินค้า', 'รหัส sku'])
       const alias = resolveClaimAlias(aliasLookup, productName, variation, sourceSku)
@@ -95,7 +99,7 @@ export default async function handler(req, res) {
     }).filter(Boolean)
 
     await appendRows('claims', out)
-    res.status(200).json({ success: true, importId, rowsImported: out.length, mappedCount: mapped, fuzzyMappedCount: fuzzyMapped, unmappedCount: out.length - mapped, unmappedSamples, skippedInvalid, skippedSamples })
+    res.status(200).json({ success: true, importId, rowsImported: out.length, mappedCount: mapped, fuzzyMappedCount: fuzzyMapped, unmappedCount: out.length - mapped, unmappedSamples, skippedInvalid, skippedSamples, skippedBlank })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })
   }
