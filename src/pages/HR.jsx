@@ -83,6 +83,7 @@ export default function HR() {
   const [editingLeave, setEditingLeave] = useState(null)
   const [historyFilterCode, setHistoryFilterCode] = useState('')
   const [dayRecords, setDayRecords] = useState([])
+  const [dayRecordMonth, setDayRecordMonth] = useState(today().slice(0, 7))
   const isSwap = leaveForm.leave_type === 'สลับวันหยุด'
   const selectedEmployee = people.find((person) => person.code === leaveForm.employee_code)
   const availableLeaveTypes = selectedEmployee && NO_VACATION_GROUPS.has(selectedEmployee.group) ? LEAVE_TYPES.filter((type) => type !== 'พักร้อน') : LEAVE_TYPES
@@ -398,11 +399,13 @@ export default function HR() {
       </div>
 
       {isBoss && !!dayRecords.length && <section className="hr-panel" aria-labelledby="dayrecord-heading">
-        <div className="hr-section-heading"><div><span className="hr-section-kicker">Manpower</span><h2 id="dayrecord-heading">โอที / ชดเชย / แก้ตาราง — รีเช็ค</h2></div></div>
+        <div className="hr-section-heading"><div><span className="hr-section-kicker">Manpower</span><h2 id="dayrecord-heading">โอที / ชดเชย / แก้ตาราง — รีเช็ค</h2></div>
+          <input type="month" value={dayRecordMonth} onChange={(e) => setDayRecordMonth(e.target.value)} style={{ border: '1px solid #d7e3ef', borderRadius: 9, padding: '7px 10px', fontSize: 12, color: '#334155' }} />
+        </div>
         <div style={{ fontSize: 12, color: 'var(--payi-text-muted, #64748b)', marginTop: -6, marginBottom: 14, padding: '0 20px' }}>แก้ไขได้ที่ปฏิทิน Manpower&amp;OT (ปุ่ม "คน") — ตรงนี้ไว้ดูย้อนหลังว่าวันนั้นใครทำโอทีวันจริง หรือถูกเพิ่ม/ถอนออกจากตาราง</div>
-        <div className="hr-history-list">{dayRecords.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).map((r) => (
+        <div className="hr-history-list">{dayRecords.filter((r) => !dayRecordMonth || String(r.date).startsWith(dayRecordMonth)).slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).map((r) => (
           <article className="hr-history-row" key={r.id}>
-            <div className="hr-history-main"><strong>{r.employee}</strong><span>{{ ot_full: 'โอทีเต็มวัน', comp: 'ชดเชยเฉยๆ', sched_add: 'เพิ่มเข้าตาราง', sched_remove: 'ถอนออกจากตาราง' }[r.kind] || r.kind} · {r.date}{r.reason ? ` · ${r.reason}` : ''}{r.note ? ` · ${r.note}` : ''}</span></div>
+            <div className="hr-history-main"><strong>{r.employee}</strong><span>{{ ot_full: 'โอทีเต็มวัน', comp: 'ชดเชยเฉยๆ', sched_add: 'เพิ่มเข้าตาราง', sched_remove: 'ถอนออกจากตาราง' }[r.kind] || r.kind} · {r.date}{r.reason ? ` · ${r.reason}` : ''}{r.note ? ` · ${r.note}` : ''}{r.created_by ? ` · โดย ${r.created_by}` : ''}</span></div>
           </article>
         ))}</div>
       </section>}
