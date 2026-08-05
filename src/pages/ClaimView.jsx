@@ -960,7 +960,15 @@ export default function ClaimView() {
           )}
           {importResult.success && !importResult.inProgress && (
             <div style={{ marginTop: 8, fontSize: 12 }}>จับคู่สำเร็จ <b>{fmtC(importResult.mappedCount)}</b> · ยังไม่จับคู่ <b style={{ color: importResult.unmappedCount ? '#dc2626' : 'inherit' }}>{fmtC(importResult.unmappedCount)}</b>
-              {importResult.unmappedSamples?.length > 0 && <div style={{ marginTop: 5, color: '#92400e' }}>สินค้าที่หลุด: {importResult.unmappedSamples.join(' · ')}</div>}
+              {importResult.unmappedSamples?.length > 0 && (
+                <div style={{ marginTop: 7, display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                  {importResult.unmappedSamples.map((name) => (
+                    <span key={name} style={{ padding: '5px 8px', border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 8, color: '#92400e', fontSize: 11.5 }}>
+                      {name} <button onClick={() => addProductMap(name)} style={{ marginLeft: 5, border: 0, background: '#eff6ff', color: '#2563eb', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', fontWeight: 700 }}>+ เพิ่ม Map</button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -56,14 +56,19 @@ export default async function handler(req, res) {
     let mapped = 0, fuzzyMapped = 0, skippedInvalid = 0
     const unmappedSamples = []
     const skippedSamples = []
+    let lastDate = ''
     const out = rows.filter(hasMeaningfulClaimRow).map((row, index) => {
       const dateRaw = pick(row, ['date', 'วันที่'])
-      const date = isoDate(dateRaw)
+      // เซลล์วันที่ในชีทต้นทางเป็น merged cell (โชว์วันที่แค่แถวแรกของกลุ่ม แถวล่างๆ ว่างจริง) —
+      // ถ้าอ่านวันที่แถวนี้ไม่ได้แต่มีวันที่แถวก่อนหน้าในไฟล์เดียวกัน ให้สืบวันที่ต่อมา (forward-fill)
+      let date = isoDate(dateRaw)
+      if (!date && lastDate) date = lastDate
       if (!date) {
         skippedInvalid++
         if (skippedSamples.length < 5) skippedSamples.push({ dateRaw, dateRawType: typeof dateRaw })
         return null
       }
+      lastDate = date
       const productName = pick(row, ['product_name', 'ชื่อสินค้า', 'สินค้า', 'product'])
       const variation = pick(row, ['alias_variation', 'variation_name', 'variation', 'ตัวเลือกสินค้า', 'ประเภทสินค้า', 'แบบ', 'ไซซ์', 'ขนาด', 'สี'])
       const sourceSku = pick(row, ['master_sku', 'sku_platform', 'seller_sku', 'sku', 'รหัสสินค้า', 'รหัส sku'])
