@@ -51,7 +51,7 @@ const menuDefs = [
       { bounds: { x: 800, y: 0, width: 400, height: 270 }, action: { type: 'message', text: 'สั่งของ' } },          // pill 1
       { bounds: { x: 800, y: 270, width: 400, height: 270 }, action: { type: 'message', text: 'ของเข้ารอตรวจ' } },  // pill 2
       { bounds: { x: 0, y: 540, width: 300, height: 270 }, action: { type: 'message', text: 'อนุมัติการลา' } },     // card 1
-      { bounds: { x: 300, y: 540, width: 300, height: 270 }, action: { type: 'uri', uri: webUrl('HR') } },          // card 2: ขอลา
+      { bounds: { x: 300, y: 540, width: 300, height: 270 }, action: { type: 'message', text: 'เช็คประวัติ' } },    // card 2: เช็คประวัติ (เลือกเดือน -> ใครลาบ้าง แทนปุ่ม "ขอลา" เดิม, owner ขอ 2026-08-06)
       { bounds: { x: 600, y: 540, width: 300, height: 270 }, action: { type: 'uri', uri: webUrl('Executive') } },   // card 3: เว็บแอพ -> หน้าหลัก (Executive)
       { bounds: { x: 900, y: 540, width: 300, height: 270 }, action: { type: 'message', text: 'ช่วยเหลือ' } },      // card 4
     ],

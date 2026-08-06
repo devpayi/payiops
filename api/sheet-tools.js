@@ -1298,6 +1298,9 @@ async function findStockApprover(lineUserId) {
 const STOCK_PENDING_TRIGGER = 'ของเข้ารอตรวจ'
 const LEAVE_PENDING_TRIGGER = 'อนุมัติการลา'
 const HELP_TRIGGER = 'ช่วยเหลือ'
+// ปุ่ม "เช็คประวัติ" ฝั่ง boss/dev — คนละความหมายกับ "ประวัติลา" ฝั่งพนักงาน (ดูของตัวเองปีนี้) นี่คือดู
+// "ใครลาบ้างเดือนไหน" ทั้งทีม เลือกเดือนก่อนแล้วค่อยตอบ (owner ขอ 2026-08-06 แทนที่ปุ่ม "ขอลา" เดิมของ boss/dev)
+const BOSS_LEAVE_HISTORY_TRIGGER = 'เช็คประวัติ'
 const appWebUrl = (tab) => `${APP_BASE_URL}/${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`
 
 async function handleStockPendingListCommand(event) {
@@ -1339,6 +1342,41 @@ async function handleLeavePendingListCommand(event) {
   const cards = pending.slice(0, 5).map((record) => leaveFlexMessage(record, 'pending', officeMap))
   const suffix = pending.length > 5 ? [{ type: 'text', text: `และอีก ${pending.length - 5} รายการ — เปิดเว็บเพื่อดูทั้งหมด` }] : []
   return replyMessage(replyToken, [...cards, ...suffix])
+}
+
+// เลือกเดือนก่อนดูประวัติการลาทั้งทีม — ย้อนหลัง 6 เดือนจากเดือนปัจจุบัน
+function monthQuickReplyItems(count = 6) {
+  const items = []
+  const now = new Date()
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const label = d.toLocaleDateString('th-TH', { month: 'short', year: '2-digit', timeZone: 'Asia/Bangkok' })
+    items.push({ type: 'action', action: { type: 'postback', label, data: `leave-hist-month:${ym}`, displayText: `ประวัติการลาเดือน ${label}` } })
+  }
+  return items
+}
+
+async function handleBossLeaveHistoryCommand(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss เท่านั้นที่ดูรายการนี้ได้ค่ะ' }])
+  return replyMessage(replyToken, [{ type: 'text', text: 'เลือกเดือนที่ต้องการดูประวัติการลาค่ะ', quickReply: { items: monthQuickReplyItems() } }])
+}
+
+async function handleBossLeaveHistoryMonth(event, ym) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss เท่านั้นที่ดูรายการนี้ได้ค่ะ' }])
+  const leaves = (await getSheet('hr_leave')).filter((l) => l.status === 'approved' && String(l.start_date || '').startsWith(ym))
+  const monthLabel = new Date(`${ym}-01T00:00:00`).toLocaleDateString('th-TH', { month: 'long', year: 'numeric', timeZone: 'Asia/Bangkok' })
+  if (!leaves.length) return replyMessage(replyToken, [{ type: 'text', text: `เดือน ${monthLabel} ไม่มีใครลาเลยค่ะ` }])
+  leaves.sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)))
+  const lines = leaves.map((l) => `${leaveTypeIcon(l.leave_type)} ${l.employee_name || '-'} — ${l.leave_type} ${lineDateRange(l)}${Number(l.days) ? ` (${l.days} วัน)` : ''}`)
+  const text = `ประวัติการลาเดือน ${monthLabel} (${leaves.length} รายการ)\n\n${lines.join('\n')}`
+  return replyMessage(replyToken, [{ type: 'text', text: text.slice(0, 4900) }])
 }
 
 // ข้อความคู่มือสั้นๆ ต่อ tier — ให้ตรงกับปุ่มที่คนนั้นเห็นจริงในริชเมนู (ไม่ใช่ list คำสั่งทั้งหมดที่มี
@@ -2908,7 +2946,7 @@ async function opLineWebhook(req, res) {
         // 2026-08-06: ค้างขั้นตอนลาอยู่ กดช่วยเหลือ ต้องสลับได้ทันที ไม่ใช่แค่ตอบไม่ได้เงียบๆ) เคลียร์ session
         // ทั้ง 3 ชุด (สั่งของ/แจ้งของเข้า/ตัวช่วยขอลา) ทิ้งก่อนเข้า handler จริงข้างล่าง กันของเก่าค้างสับสน
         const isAnyMenuCommand = initialQuery === '' || initialInQuery === '' ||
-          [STOCK_PENDING_TRIGGER, LEAVE_PENDING_TRIGGER, HELP_TRIGGER, LEAVE_TRIGGER, LEAVE_HISTORY_TRIGGER, LEAVE_SUMMARY_TRIGGER].includes(event.message.text)
+          [STOCK_PENDING_TRIGGER, LEAVE_PENDING_TRIGGER, HELP_TRIGGER, BOSS_LEAVE_HISTORY_TRIGGER, LEAVE_TRIGGER, LEAVE_HISTORY_TRIGGER, LEAVE_SUMMARY_TRIGGER].includes(event.message.text)
         if (isAnyMenuCommand) {
           await clearStockOrderSession(lineUserId)
           await clearStockInSession(lineUserId)
@@ -2922,6 +2960,7 @@ async function opLineWebhook(req, res) {
         if (event.message.text === STOCK_PENDING_TRIGGER) { await handleStockPendingListCommand(event); continue }
         if (event.message.text === LEAVE_PENDING_TRIGGER) { await handleLeavePendingListCommand(event); continue }
         if (event.message.text === HELP_TRIGGER) { await handleHelpCommand(event); continue }
+        if (event.message.text === BOSS_LEAVE_HISTORY_TRIGGER) { await handleBossLeaveHistoryCommand(event); continue }
         // คำสั่ง “เช็คของที่ต้องสั่ง” ดูได้ทุกเมื่อจากทุกขั้นตอนเหมือนกัน — ไม่ต้องรอการ์ดแจ้งเตือนรายวัน
         if (isStockCheckCommand(event.message.text) && await handleStockCheckCommand(event)) continue
         // คำสั่ง “สั่งของ”/“แจ้งของเข้า” เริ่มใหม่ได้จากทุกขั้นตอน รวมถึงตอนที่รอจำนวนหรือรอเลือกวันที่
@@ -2958,6 +2997,7 @@ async function opLineWebhook(req, res) {
       if (event.type !== 'postback') continue
       const data = String(event.postback?.data || '')
       if (data.startsWith('hr-wiz-')) { await handleLeaveWizard(event, staffLink); continue }
+      if (data.startsWith('leave-hist-month:')) { await handleBossLeaveHistoryMonth(event, data.slice('leave-hist-month:'.length)); continue }
       if (data.startsWith('stock-order:')) { await handleStockOrderPostback(event, data.slice('stock-order:'.length)); continue }
       if (data.startsWith('stock-pick:')) { await handleStockPickPostback(event, data.slice('stock-pick:'.length)); continue }
       if (data.startsWith('stock-order-date:')) { await handleStockOrderDatePostback(event, data.slice('stock-order-date:'.length)); continue }

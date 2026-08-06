@@ -335,7 +335,7 @@ draw_hero_layout(
     side_pills=[{"label": "สั่งของ"}, {"label": "ของเข้ารอตรวจ"}],
     bottom_cards=[
         {"icon": "note_edit", "label": "อนุมัติการลา"},
-        {"icon": "beach", "label": "ขอลา"},
+        {"icon": "book", "label": "เช็คประวัติ"},
         {"icon": "globe", "label": "เว็บแอพ"},
         {"icon": "question", "label": "ช่วยเหลือ"},
     ],
