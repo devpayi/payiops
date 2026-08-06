@@ -1358,9 +1358,11 @@ async function handleOrderListCommand(event) {
     const item = items.find((it) => String(it.sku).toUpperCase() === String(o.sku).toUpperCase())
     const label = item?.display_name || o.sku
     const unit = item?.unit || ''
+    // จำนวน optional (0/ว่าง = "ไม่ระบุจำนวน" — คำสั่งซื้อเก่าก่อนเริ่มระบบไม่มีบันทึกจำนวนไว้ ไม่ใช่ข้อมูลพัง)
+    const qtyText = Number(o.qty) > 0 ? `× ${o.qty}${unit}` : 'ไม่ระบุจำนวน'
     return {
       type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center', margin: 'sm', contents: [
-        orderFlexText(`${label} × ${o.qty}${unit}`, { size: 'xs', weight: 'bold', flex: 5, wrap: true }),
+        orderFlexText(`${label} ${qtyText}`, { size: 'xs', weight: 'bold', flex: 5, wrap: true }),
         orderFlexText((o.order_date || o.created_at || '-').slice(0, 10), { size: 'xxs', color: ORDER_CARD.muted, flex: 3, align: 'end' }),
       ],
     }
