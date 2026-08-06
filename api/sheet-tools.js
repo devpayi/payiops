@@ -2904,6 +2904,12 @@ async function opLineWebhook(req, res) {
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ยกเลิกแล้วค่ะ' }])
           continue
         }
+        // ปุ่มริชเมนู "ของเข้ารอตรวจ"/"อนุมัติการลา"/"ช่วยเหลือ" ต้องใช้ได้ทุกเมื่อเหมือนกัน แม้กำลังติดอยู่
+        // กลาง flow สั่งของ/แจ้งของเข้า (เช่นรอเลือกสินค้าอยู่) ไม่งั้นข้อความจะโดนตีความเป็นชื่อสินค้าค้นหา
+        // ไปก่อนถึงจะมาถึงเช็คตรงนี้ (เจอจริง: กด "ช่วยเหลือ" ระหว่างรอเลือกสินค้าตอนสั่งของ ได้ "ไม่พบสินค้านี้")
+        if (event.message.text === STOCK_PENDING_TRIGGER) { await handleStockPendingListCommand(event); continue }
+        if (event.message.text === LEAVE_PENDING_TRIGGER) { await handleLeavePendingListCommand(event); continue }
+        if (event.message.text === HELP_TRIGGER) { await handleHelpCommand(event); continue }
         // คำสั่ง “เช็คของที่ต้องสั่ง” ดูได้ทุกเมื่อจากทุกขั้นตอนเหมือนกัน — ไม่ต้องรอการ์ดแจ้งเตือนรายวัน
         if (isStockCheckCommand(event.message.text) && await handleStockCheckCommand(event)) continue
         // คำสั่ง “สั่งของ”/“แจ้งของเข้า” เริ่มใหม่ได้จากทุกขั้นตอน รวมถึงตอนที่รอจำนวนหรือรอเลือกวันที่
@@ -2928,11 +2934,6 @@ async function opLineWebhook(req, res) {
         // เพื่อสั่งของที่ยังไม่ใกล้หมดได้ด้วย
         if (initialQuery !== null && await handleStockOrderSearchStart(event, initialQuery)) continue
         if (initialInQuery !== null && await handleStockInStart(event, initialInQuery)) continue
-        // ปุ่มริชเมนู "ของเข้ารอตรวจ"/"อนุมัติการลา"/"ช่วยเหลือ" — ใช้ได้ทั้ง boss/dev ที่ไม่ผ่าน staffLink
-        // (username ธรรมดา ไม่ใช่ mp:) เช็คก่อน fallback เข้า leave wizard ด้านล่าง (นั่นสำหรับ mp: เท่านั้น)
-        if (event.message.text === STOCK_PENDING_TRIGGER) { await handleStockPendingListCommand(event); continue }
-        if (event.message.text === LEAVE_PENDING_TRIGGER) { await handleLeavePendingListCommand(event); continue }
-        if (event.message.text === HELP_TRIGGER) { await handleHelpCommand(event); continue }
         // LINE ID เดียวกันอาจผูกเป็นทั้งพนักงานและ DEV/Boss ได้: ให้คำสั่งสต็อกด้านบน
         // มีสิทธิ์ทำงานก่อน แล้วข้อความอื่นค่อยเข้าขั้นตอนลาของพนักงาน
         if (staffLink) { await handleLeaveWizard(event, staffLink); continue }
