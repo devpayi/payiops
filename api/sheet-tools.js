@@ -294,7 +294,10 @@ const todayBKK = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/
 // ตั้งบน Vercel เป็น URL จริงของเว็บ (เช่น https://payiops.vercel.app) — ใช้สร้างปุ่ม "เปิดเว็บ" ใน LINE
 // ไม่ตั้งไว้ = ข้ามปุ่มนี้เฉยๆ ไม่พัง (เผื่อยังไม่ได้ตั้งตอน deploy รอบแรก)
 const APP_BASE_URL = String(process.env.APP_BASE_URL || '').replace(/\/$/, '')
-const stockWebUrl = () => `${APP_BASE_URL}/?tab=StockMovement`
+// เดิม tab id พิมพ์ผิด ("StockMovement" ไม่มีเว้นวรรค) ไม่ตรงกับ id จริงใน App.jsx ("Stock Movement" มีเว้น
+// วรรค) ลิงก์เลยไม่พาไปหน้าที่ตั้งใจ — แก้ให้เรียก appWebUrl() ตัวเดียวกับที่ตั้ง Stock Movement/Executive
+// ที่อื่นในไฟล์นี้ (ประกาศทีหลังในไฟล์แต่เรียกใช้ตอน runtime หลังโมดูลโหลดครบแล้วเสมอ ไม่มีปัญหา hoist)
+const stockWebUrl = () => appWebUrl('Stock Movement')
 
 // โทนเหลืองละมุน แยกจาก LINE_CARD (โทนฟ้า ใช้กับเรื่องลา) โดยตั้งใจ — กันสับสนว่าการ์ดไหนเรื่องอะไร
 // (ตามที่ owner ขอ) การ์ดขนาดเล็กกว่าการ์ดลา (ตัดรายละเอียดเหลือแค่ที่จำเป็น + padding แคบลง)
@@ -323,6 +326,25 @@ const stockInItemRow = (id, label, value) => ({
     { type: 'button', style: 'primary', color: STOCK_CARD.amber, height: 'sm', flex: 2, gravity: 'center', action: { type: 'postback', label: '✓', data: `stockin-approve:${id}`, displayText: `Approve ${label}` } },
     { type: 'button', style: 'secondary', color: '#FDF3D8', height: 'sm', flex: 2, gravity: 'center', action: { type: 'postback', label: '✗', data: `stockin-reject:${id}`, displayText: `${label} ไม่ตรง` } },
   ],
+})
+
+// โทนเขียวละมุนแยกจาก STOCK_CARD (เหลืองอำพัน) — เฉพาะการ์ดที่เกี่ยวกับ "สั่งของ" โดยตรง (ยืนยันสั่งของ/
+// เลือกลอต/รายการที่สั่งไว้) owner ขอ 2026-08-06 ว่าสีเดิมแสบตา การ์ดของเข้า/อนุมัติอื่นๆ ยังเป็นเหลืองเดิม
+const ORDER_CARD = { base: '#EAF7EE', soft: '#F5FBF6', strong: '#CFEBD8', green: '#3FA968', greenDark: '#1F6B3E', muted: '#7FA98D' }
+const orderFlexText = (text, options = {}) => ({ type: 'text', text: String(text ?? ''), color: ORDER_CARD.greenDark, size: 'xs', wrap: true, scaling: true, ...options })
+const orderCardHeader = (title, subtitle, icon) => ({
+  type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'sm', paddingAll: '10px', backgroundColor: ORDER_CARD.base, contents: [
+    { type: 'box', layout: 'vertical', width: '30px', height: '30px', cornerRadius: '15px', backgroundColor: ORDER_CARD.strong, justifyContent: 'center', alignItems: 'center', contents: [orderFlexText(icon, { size: 'md', align: 'center' })] },
+    { type: 'box', layout: 'vertical', flex: 1, contents: [
+      orderFlexText(title, { color: ORDER_CARD.greenDark, size: 'sm', weight: 'bold' }),
+      orderFlexText(subtitle, { color: ORDER_CARD.muted, size: 'xxs', margin: 'xs', wrap: true }),
+    ] },
+  ],
+})
+const orderCardButton = (action, primary = false) => ({ type: 'button', style: primary ? 'primary' : 'secondary', color: primary ? ORDER_CARD.green : '#E3F5E8', height: 'sm', scaling: true, action })
+const orderFactRow = (label, value) => ({
+  type: 'box', layout: 'horizontal', spacing: 'sm',
+  contents: [orderFlexText(label, { size: 'xxs', color: ORDER_CARD.muted, flex: 2 }), orderFlexText(value, { size: 'xs', weight: 'bold', color: ORDER_CARD.greenDark, align: 'end', flex: 3 })],
 })
 
 const lowStockRow = (item) => ({
@@ -785,18 +807,18 @@ async function completeStockOrderBatch(replyToken, lineUserId, session, orderDat
   }
   await clearStockOrderSession(lineUserId)
 
-  const facts = done.map((it) => stockFactRow(it.display_name, it.qty > 0 ? `× ${it.qty} ${it.unit}` : 'ไม่ระบุจำนวน'))
-  const footerButtons = APP_BASE_URL ? [stockCardButton({ type: 'uri', label: 'เปิดเว็บ', uri: stockWebUrl() }, true)] : []
+  const facts = done.map((it) => orderFactRow(it.display_name, it.qty > 0 ? `× ${it.qty} ${it.unit}` : 'ไม่ระบุจำนวน'))
+  const footerButtons = APP_BASE_URL ? [orderCardButton({ type: 'uri', label: 'เปิดเว็บ', uri: stockWebUrl() }, true)] : []
   await replyMessage(replyToken, [{
     type: 'flex', altText: `สั่งของ ${done.length} รายการ เรียบร้อย`,
     contents: {
       type: 'bubble', size: 'giga',
-      header: stockCardHeader('สั่งของเรียบร้อย', `${done.length} รายการ · ${orderDate}`, '✅'),
-      body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
-        { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base, contents: facts.length ? facts : [stockFlexText('ไม่มีรายการสำเร็จ', {})] },
-        ...(failed.length ? [stockFlexText(`ล้มเหลว: ${failed.join('; ')}`, { color: '#C0392B', size: 'xxs', margin: 'sm', wrap: true })] : []),
+      header: orderCardHeader('สั่งของเรียบร้อย', `${done.length} รายการ · ${orderDate}`, '✅'),
+      body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: ORDER_CARD.soft, contents: [
+        { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: ORDER_CARD.base, contents: facts.length ? facts : [orderFlexText('ไม่มีรายการสำเร็จ', {})] },
+        ...(failed.length ? [orderFlexText(`ล้มเหลว: ${failed.join('; ')}`, { color: '#C0392B', size: 'xxs', margin: 'sm', wrap: true })] : []),
       ] },
-      ...(footerButtons.length ? { footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: footerButtons } } : {}),
+      ...(footerButtons.length ? { footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: ORDER_CARD.base, contents: footerButtons } } : {}),
     },
   }])
 }
@@ -1301,7 +1323,45 @@ const HELP_TRIGGER = 'ช่วยเหลือ'
 // ปุ่ม "เช็คประวัติ" ฝั่ง boss/dev — คนละความหมายกับ "ประวัติลา" ฝั่งพนักงาน (ดูของตัวเองปีนี้) นี่คือดู
 // "ใครลาบ้างเดือนไหน" ทั้งทีม เลือกเดือนก่อนแล้วค่อยตอบ (owner ขอ 2026-08-06 แทนที่ปุ่ม "ขอลา" เดิมของ boss/dev)
 const BOSS_LEAVE_HISTORY_TRIGGER = 'เช็คประวัติ'
+// ปุ่ม "รายการที่สั่งไว้" — ดูว่าสั่งอะไรไปแล้วเท่าไหร่ ยังรอของเข้าอยู่กี่รายการ (owner ขอ 2026-08-06)
+// เพดาน 10 รายการต่อการ์ด เกินกว่านั้นให้กดปุ่มเปิดเว็บไปดูที่ Stock Movement แทน (LINE การ์ดยาวเกินไปอ่านยาก)
+const ORDER_LIST_TRIGGER = 'รายการที่สั่งไว้'
+const ORDER_LIST_LIMIT = 10
 const appWebUrl = (tab) => `${APP_BASE_URL}/${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`
+
+async function handleOrderListCommand(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss เท่านั้นที่ดูรายการนี้ได้ค่ะ' }])
+  const orders = (await loadStockInRequests({ status: 'pending', role: approver.role })).filter((r) => r.order_only)
+  if (!orders.length) return replyMessage(replyToken, [{ type: 'text', text: '✅ ไม่มีรายการที่สั่งไว้รอของเข้าตอนนี้ค่ะ' }])
+  orders.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))) // เก่าสุดก่อน (รอนานสุดขึ้นบน)
+  const items = await loadOrderableItems()
+  const rows = orders.slice(0, ORDER_LIST_LIMIT).map((o) => {
+    const item = items.find((it) => String(it.sku).toUpperCase() === String(o.sku).toUpperCase())
+    const label = item?.display_name || o.sku
+    const unit = item?.unit || ''
+    return {
+      type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center', margin: 'sm', contents: [
+        orderFlexText(`${label} × ${o.qty}${unit}`, { size: 'xs', weight: 'bold', flex: 5, wrap: true }),
+        orderFlexText((o.order_date || o.created_at || '-').slice(0, 10), { size: 'xxs', color: ORDER_CARD.muted, flex: 3, align: 'end' }),
+      ],
+    }
+  })
+  const footerButtons = orders.length > ORDER_LIST_LIMIT && APP_BASE_URL
+    ? [orderCardButton({ type: 'uri', label: `ดูทั้งหมด (${orders.length})`, uri: stockWebUrl() }, true)]
+    : []
+  await replyMessage(replyToken, [{
+    type: 'flex', altText: `รายการที่สั่งไว้ ${orders.length} รายการ`,
+    contents: {
+      type: 'bubble', size: 'giga',
+      header: orderCardHeader('รายการที่สั่งไว้', `รอของเข้า ${orders.length} รายการ`, '📋'),
+      body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: ORDER_CARD.soft, contents: rows },
+      ...(footerButtons.length ? { footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: ORDER_CARD.base, contents: footerButtons } } : {}),
+    },
+  }])
+}
 
 async function handleStockPendingListCommand(event) {
   const lineUserId = event.source?.userId
@@ -2946,7 +3006,7 @@ async function opLineWebhook(req, res) {
         // 2026-08-06: ค้างขั้นตอนลาอยู่ กดช่วยเหลือ ต้องสลับได้ทันที ไม่ใช่แค่ตอบไม่ได้เงียบๆ) เคลียร์ session
         // ทั้ง 3 ชุด (สั่งของ/แจ้งของเข้า/ตัวช่วยขอลา) ทิ้งก่อนเข้า handler จริงข้างล่าง กันของเก่าค้างสับสน
         const isAnyMenuCommand = initialQuery === '' || initialInQuery === '' ||
-          [STOCK_PENDING_TRIGGER, LEAVE_PENDING_TRIGGER, HELP_TRIGGER, BOSS_LEAVE_HISTORY_TRIGGER, LEAVE_TRIGGER, LEAVE_HISTORY_TRIGGER, LEAVE_SUMMARY_TRIGGER].includes(event.message.text)
+          [STOCK_PENDING_TRIGGER, LEAVE_PENDING_TRIGGER, HELP_TRIGGER, BOSS_LEAVE_HISTORY_TRIGGER, ORDER_LIST_TRIGGER, LEAVE_TRIGGER, LEAVE_HISTORY_TRIGGER, LEAVE_SUMMARY_TRIGGER].includes(event.message.text)
         if (isAnyMenuCommand) {
           await clearStockOrderSession(lineUserId)
           await clearStockInSession(lineUserId)
@@ -2961,6 +3021,7 @@ async function opLineWebhook(req, res) {
         if (event.message.text === LEAVE_PENDING_TRIGGER) { await handleLeavePendingListCommand(event); continue }
         if (event.message.text === HELP_TRIGGER) { await handleHelpCommand(event); continue }
         if (event.message.text === BOSS_LEAVE_HISTORY_TRIGGER) { await handleBossLeaveHistoryCommand(event); continue }
+        if (event.message.text === ORDER_LIST_TRIGGER) { await handleOrderListCommand(event); continue }
         // คำสั่ง “เช็คของที่ต้องสั่ง” ดูได้ทุกเมื่อจากทุกขั้นตอนเหมือนกัน — ไม่ต้องรอการ์ดแจ้งเตือนรายวัน
         if (isStockCheckCommand(event.message.text) && await handleStockCheckCommand(event)) continue
         // คำสั่ง “สั่งของ”/“แจ้งของเข้า” เริ่มใหม่ได้จากทุกขั้นตอน รวมถึงตอนที่รอจำนวนหรือรอเลือกวันที่
@@ -3025,50 +3086,56 @@ async function opLineWebhook(req, res) {
         if (ids.length === 1) {
           const target = pending.find((r) => String(r.id) === ids[0])
           if (target?.available_orders?.length) {
-            const lots = target.available_orders.slice(0, 12)
+            const lots = target.available_orders.slice(0, 11) // carousel เต็มที่ 12 ใบ เผื่อ 1 ใบให้ "ไม่ผูกลอต"
             const unit = target.unit || ''
             const reportedQty = Number(target.qty) || 0
-            // ⚠️ นำหน้าปุ่มลอตที่จำนวนไม่ตรงกับที่แจ้งเข้ามาจริง (ป้ายปุ่มจำกัด 20 ตัวอักษร ใส่ตัวเลขส่วนต่าง
-            // ไม่พอ เลยแยกไปโชว์เป็นตารางเทียบเต็มๆ ในตัวการ์ดก่อนแทน ปุ่มมีแค่สัญลักษณ์เตือนสั้นๆ)
-            const lotButtons = lots.map((o, i) => {
-              const mismatch = (Number(o.qty) || 0) !== reportedQty
-              const flag = mismatch ? '⚠️' : (i === 0 ? '⭐' : '')
-              return {
-                type: 'action', action: {
-                  type: 'postback',
-                  label: `${flag}${o.qty}${unit} ${(o.order_date || o.created_at || '').slice(5, 10)}`.slice(0, 20),
-                  data: `stockin-matchlot:${target.id}:${o.id}`, displayText: `จับคู่ลอต ${o.qty} (${o.order_date || '-'})`,
-                },
-              }
-            })
-            lotButtons.push({ type: 'action', action: { type: 'postback', label: 'ไม่ผูกลอต', data: `stockin-matchlot:${target.id}:none`, displayText: 'ไม่ผูกลอต' } })
-
-            const lotRows = lots.map((o) => {
+            // Carousel ปาดดูทีละลอต แทนลิสต์ยาว + quick reply แยก (owner ขอ 2026-08-06 หลัง preview
+            // เทียบหลายแบบ) แต่ละใบมีปุ่มของตัวเอง ไม่ต้องพึ่ง quick reply เลย ใบสุดท้ายเป็น "ไม่ผูกลอต" เสมอ
+            const lotBubbles = lots.map((o) => {
               const mismatch = (Number(o.qty) || 0) !== reportedQty
               const diff = (Number(o.qty) || 0) - reportedQty
-              const diffText = mismatch ? ` (${diff > 0 ? '+' : ''}${diff})` : ''
+              const color = mismatch ? '#C0392B' : ORDER_CARD.green
+              const diffText = diff === 0 ? 'จำนวนตรง' : diff > 0 ? `เกิน ${diff} ${unit}` : `ขาด ${Math.abs(diff)} ${unit}`
               return {
-                type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center', margin: 'sm', contents: [
-                  stockFlexText(mismatch ? '⚠️' : '✅', { size: 'sm', flex: 0 }),
-                  stockFlexText(`${o.qty}${unit}${diffText}`, { size: 'xs', weight: 'bold', color: mismatch ? '#C0392B' : STOCK_CARD.amberDark, flex: 3 }),
-                  stockFlexText(`สั่ง ${(o.order_date || o.created_at || '-').slice(0, 10)}`, { size: 'xxs', color: STOCK_CARD.muted, flex: 4, align: 'end' }),
-                ],
+                type: 'bubble', size: 'micro',
+                body: {
+                  type: 'box', layout: 'vertical', paddingAll: '14px', spacing: 'sm', backgroundColor: '#FFFFFF',
+                  borderWidth: '3px', borderColor: color, cornerRadius: '16px',
+                  contents: [
+                    { type: 'box', layout: 'horizontal', contents: [
+                      { type: 'box', layout: 'baseline', flex: 1, contents: [
+                        orderFlexText(String(o.qty), { size: '3xl', weight: 'bold', color }),
+                        orderFlexText(unit, { size: 'sm', color: ORDER_CARD.muted, margin: 'xs' }),
+                      ] },
+                      orderFlexText(mismatch ? '⚠️' : '✅', { size: 'lg', flex: 0 }),
+                    ] },
+                    orderFlexText(`สั่ง ${(o.order_date || o.created_at || '-').slice(0, 10)}`, { size: 'sm', weight: 'bold', color: '#46644E', margin: 'md' }),
+                    orderFlexText(diffText, { size: 'xs', weight: 'bold', color, margin: 'xs' }),
+                  ],
+                },
+                footer: { type: 'box', layout: 'vertical', paddingAll: '8px', contents: [
+                  orderCardButton({ type: 'postback', label: 'เลือกลอตนี้', data: `stockin-matchlot:${target.id}:${o.id}`, displayText: `จับคู่ลอต ${o.qty} (${o.order_date || '-'})` }, true),
+                ] },
               }
             })
-            const card = {
-              type: 'flex', altText: `เลือกลอตที่ตรงกับของเข้า "${target.display_name}"`,
-              contents: {
-                type: 'bubble', size: 'kilo',
-                header: stockCardHeader('เลือกลอตที่ตรงกัน', `"${target.display_name}" มีลอตค้างรอ ${lots.length} ลอต`, '🔍'),
-                body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
-                  stockFactRow('แจ้งของเข้าจริง', `${reportedQty}${unit}`),
-                  { type: 'separator', margin: 'sm', color: STOCK_CARD.line },
-                  ...lotRows,
-                  stockFlexText('✅ ตรงกับที่นับ · ⚠️ จำนวนไม่ตรง ระวังสลับลอต · ⭐ สั่งก่อนสุด (FIFO)', { size: 'xxs', color: STOCK_CARD.muted, margin: 'md', wrap: true }),
-                ] },
+            const noneBubble = {
+              type: 'bubble', size: 'micro',
+              body: {
+                type: 'box', layout: 'vertical', paddingAll: '14px', spacing: 'sm', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center',
+                borderWidth: '3px', borderColor: '#96969B', cornerRadius: '16px',
+                contents: [
+                  orderFlexText('❓', { size: 'xxl', align: 'center' }),
+                  orderFlexText('ของที่เข้ามาไม่ตรงกับลอตไหนเลย', { size: 'sm', weight: 'bold', color: '#66666B', align: 'center', margin: 'md', wrap: true }),
+                ],
               },
+              footer: { type: 'box', layout: 'vertical', paddingAll: '8px', contents: [
+                { type: 'button', style: 'primary', color: '#96969B', height: 'sm', action: { type: 'postback', label: 'ไม่ผูกลอต', data: `stockin-matchlot:${target.id}:none`, displayText: 'ไม่ผูกลอต' } },
+              ] },
             }
-            await replyMessage(event.replyToken, [{ ...card, quickReply: { items: lotButtons } }])
+            await replyMessage(event.replyToken, [{
+              type: 'flex', altText: `เลือกลอตที่ตรงกับของเข้า "${target.display_name}" (แจ้งเข้า ${reportedQty}${unit})`,
+              contents: { type: 'carousel', contents: [...lotBubbles, noneBubble] },
+            }])
             continue
           }
         }
