@@ -34,8 +34,11 @@ function richMenuTierForRole(role, username) {
 }
 
 const APP_BASE_URL = String(process.env.APP_BASE_URL || '').replace(/\/$/, '')
-const webUrl = (tab) => `${APP_BASE_URL}/${tab ? `?tab=${tab}` : ''}`
+const webUrl = (tab) => `${APP_BASE_URL}/${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`
 
+// พิกัด areas ต้องตรงกับ hero_box/pill_boxes/card_boxes ใน gen-richmenu-images.py เป๊ะๆ เสมอ — ถ้าแก้เลย์เอาต์
+// ที่ไฟล์นั้น ต้องแก้ตรงนี้ตามด้วยทุกครั้ง (เคยพลาดจุดนี้มาแล้ว: อัพเดตรูปเป็นเลย์เอาต์ hero+pills+cards แต่
+// areas ยังเป็นกริด 3x3/2x2 สม่ำเสมอแบบเก่า กดปุ่มเลยไปโดนคนละอันกับที่เห็นในภาพ)
 const menuDefs = [
   {
     tier: 'full',
@@ -44,28 +47,28 @@ const menuDefs = [
     name: 'PAYI Ops - Full (Boss/Dev)',
     chatBarText: 'เมนู',
     areas: [
-      { bounds: { x: 0, y: 0, width: 400, height: 270 }, action: { type: 'message', text: 'แจ้งของเข้า' } },
-      { bounds: { x: 400, y: 0, width: 400, height: 270 }, action: { type: 'message', text: 'สั่งของ' } },
-      { bounds: { x: 800, y: 0, width: 400, height: 270 }, action: { type: 'message', text: 'ของเข้ารอตรวจ' } },
-      { bounds: { x: 0, y: 270, width: 400, height: 270 }, action: { type: 'message', text: 'อนุมัติการลา' } },
-      { bounds: { x: 400, y: 270, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl('HR') } },
-      { bounds: { x: 800, y: 270, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl() } },
-      { bounds: { x: 0, y: 540, width: 400, height: 270 }, action: { type: 'message', text: 'ช่วยเหลือ' } },
-      { bounds: { x: 400, y: 540, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl() } },
-      { bounds: { x: 800, y: 540, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl() } },
+      { bounds: { x: 0, y: 0, width: 800, height: 540 }, action: { type: 'message', text: 'แจ้งของเข้า' } },       // hero
+      { bounds: { x: 800, y: 0, width: 400, height: 270 }, action: { type: 'message', text: 'สั่งของ' } },          // pill 1
+      { bounds: { x: 800, y: 270, width: 400, height: 270 }, action: { type: 'message', text: 'ของเข้ารอตรวจ' } },  // pill 2
+      { bounds: { x: 0, y: 540, width: 300, height: 270 }, action: { type: 'message', text: 'อนุมัติการลา' } },     // card 1
+      { bounds: { x: 300, y: 540, width: 300, height: 270 }, action: { type: 'uri', uri: webUrl('HR') } },          // card 2: ขอลา
+      { bounds: { x: 600, y: 540, width: 300, height: 270 }, action: { type: 'uri', uri: webUrl('Executive') } },   // card 3: เว็บแอพ -> หน้าหลัก (Executive)
+      { bounds: { x: 900, y: 540, width: 300, height: 270 }, action: { type: 'message', text: 'ช่วยเหลือ' } },      // card 4
     ],
   },
   {
     tier: 'stock',
     file: 'richmenu-stock.png',
-    size: { width: 800, height: 540 },
+    size: { width: 1200, height: 810 },
     name: 'PAYI Ops - Stock (ฟ้า/แตง)',
     chatBarText: 'เมนู',
     areas: [
-      { bounds: { x: 0, y: 0, width: 400, height: 270 }, action: { type: 'message', text: 'แจ้งของเข้า' } },
-      { bounds: { x: 400, y: 0, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl('HR') } },
-      { bounds: { x: 0, y: 270, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl() } },
-      { bounds: { x: 400, y: 270, width: 400, height: 270 }, action: { type: 'message', text: 'ช่วยเหลือ' } },
+      { bounds: { x: 0, y: 0, width: 800, height: 540 }, action: { type: 'message', text: 'แจ้งของเข้า' } },              // hero
+      { bounds: { x: 800, y: 0, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl('HR') } },                  // pill 1: ขอลา
+      { bounds: { x: 800, y: 270, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl('Stock Movement') } },    // pill 2: เว็บแอพ -> หน้าหลักของฟ้า/แตง
+      { bounds: { x: 0, y: 540, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl('HR') } },                  // card 1: เช็คประวัติ (real login user ไม่ผ่าน staffLink เลยลิงก์เว็บแทนคำสั่งพิมพ์)
+      { bounds: { x: 400, y: 540, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl('HR') } },                // card 2: เช็ควันลาคงเหลือ
+      { bounds: { x: 800, y: 540, width: 400, height: 270 }, action: { type: 'message', text: 'ช่วยเหลือ' } },           // card 3
     ],
   },
   {
@@ -75,10 +78,10 @@ const menuDefs = [
     name: 'PAYI Ops - Staff',
     chatBarText: 'เมนู',
     areas: [
-      { bounds: { x: 0, y: 0, width: 400, height: 270 }, action: { type: 'message', text: 'ลา' } },
-      { bounds: { x: 400, y: 0, width: 400, height: 270 }, action: { type: 'message', text: 'ประวัติลา' } },
-      { bounds: { x: 0, y: 270, width: 400, height: 270 }, action: { type: 'message', text: 'สรุปลา' } },
-      { bounds: { x: 400, y: 270, width: 400, height: 270 }, action: { type: 'message', text: 'ช่วยเหลือ' } },
+      { bounds: { x: 0, y: 0, width: 800, height: 300 }, action: { type: 'message', text: 'ลา' } },            // hero
+      { bounds: { x: 0, y: 300, width: 267, height: 240 }, action: { type: 'message', text: 'ประวัติลา' } },   // card 1
+      { bounds: { x: 267, y: 300, width: 267, height: 240 }, action: { type: 'message', text: 'สรุปลา' } },    // card 2
+      { bounds: { x: 534, y: 300, width: 266, height: 240 }, action: { type: 'message', text: 'ช่วยเหลือ' } }, // card 3
     ],
   },
 ]

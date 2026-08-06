@@ -1298,7 +1298,7 @@ async function findStockApprover(lineUserId) {
 const STOCK_PENDING_TRIGGER = 'ของเข้ารอตรวจ'
 const LEAVE_PENDING_TRIGGER = 'อนุมัติการลา'
 const HELP_TRIGGER = 'ช่วยเหลือ'
-const appWebUrl = (tab) => `${APP_BASE_URL}/${tab ? `?tab=${tab}` : ''}`
+const appWebUrl = (tab) => `${APP_BASE_URL}/${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`
 
 async function handleStockPendingListCommand(event) {
   const lineUserId = event.source?.userId
