@@ -2,7 +2,7 @@
 // รวม 4 endpoint เครื่องมือชีตเดิม (/api/summary /api/sheet /api/append /api/overwrite)
 // เป็นฟังก์ชันเดียว — Vercel Hobby จำกัด 12 serverless functions ต่อโปรเจค
 import { requireAuth, cacheable, authEnabled } from './_lib/auth.js'
-import { canManageOperations } from '../shared/roles.js'
+import { canManageOperations, normalizeRole } from '../shared/roles.js'
 import { getMetaCached, batchGetValues, getSheet, appendRows, overwriteSheet, ensureSheet, ensureSheets } from './_lib/sheets.js'
 import { verifySignature, pushMessage, replyMessage } from './_lib/line.js'
 import {
@@ -143,10 +143,12 @@ async function getAdminLineTargets() {
 }
 
 // เหมือน getAdminLineTargets แต่กรองด้วย notify_stock — ใช้แจ้งเตือนของใกล้หมด/หมด แยกกลุ่มผู้รับกันชัดเจน
+// เฉพาะ Boss เท่านั้น (owner ขอ 2026-08-06) — Dev ยังกด approve/ปฏิเสธเองได้ตามปกติถ้าเข้ามาดู (canManageOperations
+// ยังคุมสิทธิ์เข้าถึง/กดปุ่มอยู่เหมือนเดิม) แค่ไม่ต้องการให้ยิงแจ้งเตือนหาเฉยๆ เหมือนมีกุญแจแต่ไม่ต้องโชว์หน้า
 async function getStockLineTargets() {
   const [users, links] = await Promise.all([getSheet('users'), getSheet('hr_line_links')])
   const linkByUsername = Object.fromEntries(links.filter((l) => l.username && l.line_user_id && String(l.notify_stock) !== '0').map((l) => [l.username, l.line_user_id]))
-  return users.filter((u) => canManageOperations(u.role) && linkByUsername[u.username]).map((u) => ({ username: u.username, line_user_id: linkByUsername[u.username] }))
+  return users.filter((u) => normalizeRole(u.role) === 'boss' && linkByUsername[u.username]).map((u) => ({ username: u.username, line_user_id: linkByUsername[u.username] }))
 }
 
 const recordBackupAssignments = (record) => Array.isArray(record.backup_assignments) ? record.backup_assignments : []
