@@ -1133,7 +1133,7 @@ async function pushEditedStockInResult(replyToken, request, item, editorName) {
   const targets = await getStockLineTargets()
   if (targets.length) {
     await Promise.all(targets.map((t) => pushMessage(t.line_user_id, [card]).catch((e) => console.error('push edited card to boss/dev:', e.message))))
-    await replyMessage(replyToken, [{ type: 'text', text: 'แก้ไขแล้วค่ะ ส่งให้ Boss/Dev ตรวจใหม่แล้ว' }])
+    await replyMessage(replyToken, [{ type: 'text', text: 'แก้ไขแล้วค่ะ ส่งให้ Boss ตรวจใหม่แล้ว' }])
   } else {
     await replyMessage(replyToken, [card])
   }
@@ -1205,7 +1205,7 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
   if (targets.length) {
     const altText = `ของเข้ารอ Match: ${done.length} รายการ (แจ้งโดย ${reporter.name})`
     await Promise.all(targets.map((t) => pushMessage(t.line_user_id, [{ ...summaryCard, altText }]).catch((e) => console.error('push arrival card to boss/dev:', e.message))))
-    await replyMessage(replyToken, [{ type: 'text', text: `แจ้งของเข้า ${done.length} รายการเรียบร้อยค่ะ ส่งให้ Boss/Dev ตรวจแล้ว` }])
+    await replyMessage(replyToken, [{ type: 'text', text: `แจ้งของเข้า ${done.length} รายการเรียบร้อยค่ะ ส่งให้ Boss ตรวจแล้ว` }])
   } else {
     // ยังไม่มีใครเปิด notify_stock เลย — ส่งการ์ดเต็มกลับไปหาคนแจ้งแทน ไม่งั้นไม่มีใครเห็นการ์ดนี้เลย
     await replyMessage(replyToken, [summaryCard])
@@ -2831,7 +2831,7 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stockin-approve:')) {
         const approver = lineUserId ? await findStockApprover(lineUserId) : null
         if (!approver) {
-          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ Approve: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ' }])
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ Approve: กรุณาผูก LINE กับบัญชี Boss ในระบบก่อนค่ะ' }])
           continue
         }
         const ids = data.slice('stockin-approve:'.length).split(',').map((id) => id.trim()).filter(Boolean)
@@ -2890,7 +2890,7 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stockin-matchlot:')) {
         const approver = lineUserId ? await findStockApprover(lineUserId) : null
         if (!approver) {
-          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ Approve: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ' }])
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ Approve: กรุณาผูก LINE กับบัญชี Boss ในระบบก่อนค่ะ' }])
           continue
         }
         const [reqId, lotId] = data.slice('stockin-matchlot:'.length).split(':')
@@ -2907,7 +2907,7 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stockin-reject:')) {
         const approver = lineUserId ? await findStockApprover(lineUserId) : null
         if (!approver) {
-          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ปฏิเสธ: กรุณาผูก LINE กับบัญชี Boss หรือ Dev ในระบบก่อนค่ะ' }])
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ปฏิเสธ: กรุณาผูก LINE กับบัญชี Boss ในระบบก่อนค่ะ' }])
           continue
         }
         const ids = data.slice('stockin-reject:'.length).split(',').map((id) => id.trim()).filter(Boolean)
