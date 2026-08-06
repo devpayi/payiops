@@ -2836,8 +2836,8 @@ async function opLineWebhook(req, res) {
         // กด ✓ ทีละรายการ (ไม่ใช่ "Approve ทั้งหมด" แบบ batch) — เช็คก่อนว่ามีลอต "สั่งของ" ค้างรอของ sku
         // เดียวกันไหม (FIFO เหมือนหน้าเว็บ) ถ้ามีให้เลือกจับคู่ก่อน ไม่ match ทันที กันพลาดจับผิดลอต —
         // batch หลายรายการพร้อมกันไม่รองรับเลือกลอต (ซับซ้อนเกินไปใน LINE) match แบบไม่ผูกลอตไปเลย
+        const pending = await loadStockInRequests({ status: 'pending', role: approver.role })
         if (ids.length === 1) {
-          const pending = await loadStockInRequests({ status: 'pending', role: approver.role })
           const target = pending.find((r) => String(r.id) === ids[0])
           if (target?.available_orders?.length) {
             const lots = target.available_orders.slice(0, 12)
@@ -2857,10 +2857,16 @@ async function opLineWebhook(req, res) {
             continue
           }
         }
+        // Approve หลายรายการพร้อมกัน ("Approve ทั้งหมด") — ถามทีละรายการเหมือน ids.length===1 ไม่ได้ (ยิง
+        // คำถามรัวๆ ใน LINE ใช้ไม่ได้จริง) แต่ก็ไม่ควรปล่อยไม่ผูกลอตไปเงียบๆ เหมือนเดิม — owner แจ้งว่า
+        // "Approve ทั้งหมด" ไม่ผูกลอตให้เลย ถ้ารายการไหนมีลอต "สั่งของ" ค้างรอพอดี ผูกลอตที่เก่าสุด (FIFO)
+        // ให้อัตโนมัติเลย เหมือนติ๊ก ⭐ ให้ทุกรายการ
         const approved = []
         const failed = []
         for (const id of ids) {
-          try { approved.push(await matchStockInRequest({ id }, approver.name, approver.role)) }
+          const target = pending.find((r) => String(r.id) === id)
+          const fifoLotId = target?.available_orders?.[0]?.id
+          try { approved.push(await matchStockInRequest({ id, order_request_id: fifoLotId }, approver.name, approver.role)) }
           catch (e) { failed.push(e.message) }
         }
         if (event.replyToken) await replyMessage(event.replyToken, [{
