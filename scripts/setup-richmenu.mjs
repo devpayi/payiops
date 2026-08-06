@@ -25,7 +25,9 @@ const RICHMENU_STOCK_TIER_USERNAME_OVERRIDES = ['tang']
 
 function richMenuTierForRole(role, username) {
   const r = normalizeRole(role)
-  if (RICHMENU_STOCK_TIER_USERNAME_OVERRIDES.includes(String(username || '').toLowerCase())) return 'stock'
+  // แตงผูก LINE ผ่านฝั่งพนักงาน (mp:TANG) ไม่ใช่บัญชี login 'tang' — ต้องตัด mp: ออกก่อนเทียบ
+  const bareUsername = String(username || '').replace(/^mp:/i, '').toLowerCase()
+  if (RICHMENU_STOCK_TIER_USERNAME_OVERRIDES.includes(bareUsername)) return 'stock'
   if (r === 'dev' || r === 'boss') return 'full'
   if (r === 'stock') return 'stock'
   return 'staff'

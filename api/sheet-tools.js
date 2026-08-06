@@ -1018,7 +1018,10 @@ const RICHMENU_HEADERS = ['tier', 'richmenu_id', 'updated_at']
 // ไว้ด้วยกัน แต่ที่นี่ dev/boss ยังแยก "full" tier เดียวกันได้ (เห็นปุ่มเท่ากันทั้งคู่)
 function richMenuTierForRole(role, username) {
   const r = normalizeRole(role)
-  if (RICHMENU_STOCK_TIER_USERNAME_OVERRIDES.includes(String(username || '').toLowerCase())) return 'stock'
+  // แตงผูก LINE ผ่านฝั่งพนักงาน (mp:TANG) ไม่ใช่บัญชี login 'tang' — ต้องตัด mp: ออกก่อนเทียบ ไม่งั้น
+  // ไม่ตรงกับ override list เลย (พลาดจุดนี้ตอน backfill ครั้งแรก tang หลุดไปที่ tier staff)
+  const bareUsername = String(username || '').replace(/^mp:/i, '').toLowerCase()
+  if (RICHMENU_STOCK_TIER_USERNAME_OVERRIDES.includes(bareUsername)) return 'stock'
   if (r === 'dev' || r === 'boss') return 'full'
   if (r === 'stock') return 'stock'
   return 'staff'
