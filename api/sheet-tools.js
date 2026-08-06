@@ -2904,6 +2904,18 @@ async function opLineWebhook(req, res) {
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ยกเลิกแล้วค่ะ' }])
           continue
         }
+        // กดปุ่มริชเมนูอันไหนก็ได้ ต้อง "ชนะ" เสมอ ไม่ว่าจะติดอยู่กลาง flow ไหนอยู่ก่อนก็ตาม (owner ขอ
+        // 2026-08-06: ค้างขั้นตอนลาอยู่ กดช่วยเหลือ ต้องสลับได้ทันที ไม่ใช่แค่ตอบไม่ได้เงียบๆ) เคลียร์ session
+        // ทั้ง 3 ชุด (สั่งของ/แจ้งของเข้า/ตัวช่วยขอลา) ทิ้งก่อนเข้า handler จริงข้างล่าง กันของเก่าค้างสับสน
+        const isAnyMenuCommand = initialQuery === '' || initialInQuery === '' ||
+          [STOCK_PENDING_TRIGGER, LEAVE_PENDING_TRIGGER, HELP_TRIGGER, LEAVE_TRIGGER, LEAVE_HISTORY_TRIGGER, LEAVE_SUMMARY_TRIGGER].includes(event.message.text)
+        if (isAnyMenuCommand) {
+          await clearStockOrderSession(lineUserId)
+          await clearStockInSession(lineUserId)
+          await clearSession(lineUserId)
+          stockSession = null
+          stockInSession = null
+        }
         // ปุ่มริชเมนู "ของเข้ารอตรวจ"/"อนุมัติการลา"/"ช่วยเหลือ" ต้องใช้ได้ทุกเมื่อเหมือนกัน แม้กำลังติดอยู่
         // กลาง flow สั่งของ/แจ้งของเข้า (เช่นรอเลือกสินค้าอยู่) ไม่งั้นข้อความจะโดนตีความเป็นชื่อสินค้าค้นหา
         // ไปก่อนถึงจะมาถึงเช็คตรงนี้ (เจอจริง: กด "ช่วยเหลือ" ระหว่างรอเลือกสินค้าตอนสั่งของ ได้ "ไม่พบสินค้านี้")
