@@ -24,8 +24,8 @@ ICON_COLOR = (124, 58, 237)
 LABEL_COLOR = (76, 29, 149)   # deep indigo
 WHITE = (255, 255, 255)
 SHADOW_COLOR = (76, 29, 149, 55)
-GLASS_FILL = (255, 255, 255, 190)   # การ์ดกระจกใส เห็นพื้นหลังลอดผ่านนิดๆ
-GLASS_HIGHLIGHT = (255, 255, 255, 130)
+GLASS_FILL = (255, 255, 255, 140)   # การ์ดกระจกใส เห็นพื้นหลังลอดผ่านนิดๆ (owner ขอเพิ่มความใส 2026-08-06: 190->140)
+GLASS_HIGHLIGHT = (255, 255, 255, 100)
 SPARKLE_COLOR = (255, 255, 255, 210)
 CLOUD_COLOR = (255, 255, 255, 200)
 
@@ -275,7 +275,32 @@ def draw_hero_card(base, draw, box, icon, label, subtitle, gap):
         text_center(draw, hcx + 1, pill_box[3] + 17, subtitle, sub_font, (60, 20, 90, 160))
         text_center(draw, hcx, pill_box[3] + 16, subtitle, sub_font, WHITE)
 
-def draw_hero_layout(filename, width, height, heroes, side_pills, bottom_cards, hero_boxes, pill_boxes, card_boxes):
+def draw_group_panel(base, draw, box, gap):
+    # แผงพื้นหลังโปร่งจางๆ วางไว้หลังการ์ดคู่ที่อยากให้ดูเป็นหมวดเดียวกัน (เช่น อนุมัติลา+เช็คประวัติลา)
+    x0, y0, x1, y1 = box[0] + gap - 6, box[1] + gap - 6, box[2] - gap + 6, box[3] - gap + 6
+    panel = Image.new("RGBA", (x1 - x0, y1 - y0), (0, 0, 0, 0))
+    pdraw = ImageDraw.Draw(panel)
+    pdraw.rounded_rectangle([0, 0, x1 - x0 - 1, y1 - y0 - 1], radius=36, fill=(255, 255, 255, 55))
+    mask = Image.new("L", (x1 - x0, y1 - y0), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, x1 - x0 - 1, y1 - y0 - 1], radius=36, fill=255)
+    panel.putalpha(Image.composite(panel.split()[3], Image.new("L", panel.size, 0), mask))
+    base.alpha_composite(panel, (x0, y0))
+    draw.rounded_rectangle([x0, y0, x1, y1], radius=36, outline=(255, 255, 255, 100), width=2)
+
+def draw_help_badge(base, draw, box):
+    # ปุ่ม "ช่วยเหลือ" แบบ badge กลมแดงเล็กๆ มุมคับๆ ไม่กินพื้นที่เหมือนการ์ดปกติ (owner ขอ: เล็ก ไม่เกะกะ)
+    x0, y0, x1, y1 = box
+    cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
+    r = min(x1 - x0, y1 - y0) // 2 - 6
+    draw.ellipse([cx - r + 4, cy - r + 6, cx + r + 4, cy + r + 6], fill=(190, 20, 20, 90))  # เงา
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(229, 57, 53))
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=WHITE, width=3)
+    f = font("Bold", int(r * 1.1))
+    bbox = draw.textbbox((0, 0), "?", font=f)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    draw.text((cx - tw // 2, cy - th // 2 - bbox[1]), "?", font=f, fill=WHITE)
+
+def draw_hero_layout(filename, width, height, heroes, side_pills, bottom_cards, hero_boxes, pill_boxes, card_boxes, group_boxes=None, help_box=None):
     base = diagonal_gradient((width, height), BG_TOP, BG_BOTTOM).convert("RGBA")
     draw = ImageDraw.Draw(base)
     gap = 14
@@ -298,6 +323,11 @@ def draw_hero_layout(filename, width, height, heroes, side_pills, bottom_cards, 
         draw_sparkle(draw, inner[0] + 26, inner[1] + 24, 8)
         f = fit_font(draw, pill["label"], "Bold", 36, (inner[2] - inner[0]) - 40)
         text_center(draw, cx, cy - 22, pill["label"], f, WHITE)
+
+    # ── หมวดหมู่: แผงพื้นหลังหลังการ์ดคู่ที่เกี่ยวข้องกัน วาดก่อนตัวการ์ด ──
+    for gbox in (group_boxes or []):
+        draw_group_panel(base, draw, gbox, gap)
+        draw = ImageDraw.Draw(base)
 
     # ── Bottom cards — ทำเป็นกระจกใสฟองอากาศ (glassmorphism): พื้นขาวโปร่งแสง + highlight เงาสะท้อนนุ่มๆ ──
     for card, box in zip(bottom_cards, card_boxes):
@@ -326,28 +356,33 @@ def draw_hero_layout(filename, width, height, heroes, side_pills, bottom_cards, 
         f = fit_font(draw, label, "Bold", 36, (ix1 - ix0) - 24)
         text_center(draw, cx, iy0 + (iy1 - iy0) // 2 + 26, label, f, LABEL_COLOR)
 
+    if help_box:
+        draw_help_badge(base, draw, help_box)
+
     base.convert("RGB").save(os.path.join(OUT_DIR, filename), "PNG")
     print(filename, base.size)
 
-# ── Full tier (Boss/Dev) — 1200x810 — owner ขอ 2026-08-06: ไม่เอาการ์ด "แจ้งของเข้า" เป็น hero แล้ว เอา
-# 2 ปุ่ม pill เดิม (สั่งของ/ของเข้ารอตรวจ) มาเป็นการ์ดหลักแทน — แจ้งของเข้าลงไปเป็นการ์ดล่างธรรมดาแทน
+# ── Full tier (Boss/Dev) — 1200x810 — owner ขอ 2026-08-06 (v6, final): กลับไปโครงแบบเดียวกับ stock tier
+# (hero ใหญ่ + pill 2 ใบด้านข้าง + การ์ดล่าง 4 ใบเท่ากันธรรมดา ไม่มี group panel/red badge แล้ว) — hero คือ
+# "สั่งของ" (ปุ่มหลักที่ใช้บ่อยสุด) ส่วน "แจ้งของเข้า"/"ของเข้ารอตรวจ" ไปอยู่ pill ด้านข้างแทน
 draw_hero_layout(
     "richmenu-full.png", 1200, 810,
     heroes=[
         {"icon": "cart", "label": "สั่งของ", "subtitle": "แตะเพื่อสั่งของเข้าคลัง"},
-        {"icon": "clipboard", "label": "ของเข้ารอตรวจ", "subtitle": "แตะเพื่อดูรายการรอ Approve"},
     ],
-    side_pills=[],
+    side_pills=[
+        {"label": "รายการที่สั่งไว้"},
+        {"label": "ของเข้ารอตรวจ"},
+    ],
     bottom_cards=[
         {"icon": "note_edit", "label": "อนุมัติการลา"},
-        {"icon": "book", "label": "เช็คประวัติ"},
-        {"icon": "box", "label": "รายการที่สั่งไว้"},
+        {"icon": "book", "label": "เช็คประวัติลา"},
         {"icon": "globe", "label": "เว็บแอพ"},
         {"icon": "question", "label": "ช่วยเหลือ"},
     ],
-    hero_boxes=[(0, 0, 600, 400), (600, 0, 1200, 400)],
-    pill_boxes=[],
-    card_boxes=[(0, 400, 240, 810), (240, 400, 480, 810), (480, 400, 720, 810), (720, 400, 960, 810), (960, 400, 1200, 810)],
+    hero_boxes=[(0, 0, 800, 540)],
+    pill_boxes=[(800, 0, 1200, 270), (800, 270, 1200, 540)],
+    card_boxes=[(0, 540, 300, 810), (300, 540, 600, 810), (600, 540, 900, 810), (900, 540, 1200, 810)],
 )
 
 # ── Stock tier (ฟ้า/แตง) — 1200x810 (ขยายจาก 800x540 เดิม ใส่ เช็คประวัติ/เช็ควันลาคงเหลือ เพิ่มตามที่ขอ) ──
