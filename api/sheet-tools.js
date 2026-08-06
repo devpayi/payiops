@@ -301,7 +301,10 @@ const stockWebUrl = () => appWebUrl('Stock Movement')
 
 // โทนเหลืองละมุน แยกจาก LINE_CARD (โทนฟ้า ใช้กับเรื่องลา) โดยตั้งใจ — กันสับสนว่าการ์ดไหนเรื่องอะไร
 // (ตามที่ owner ขอ) การ์ดขนาดเล็กกว่าการ์ดลา (ตัดรายละเอียดเหลือแค่ที่จำเป็น + padding แคบลง)
-const STOCK_CARD = { base: '#FFF8E3', soft: '#FFFCF3', strong: '#FBE9B8', glass: '#FFFFFFCC', amber: '#E0A324', amberDark: '#7A5B00', muted: '#A6874A', line: '#F3E1AC' }
+// เดิมโทนเหลืองอำพัน (amber) — owner ขอ 2026-08-06 ให้การ์ดสต็อกทั้งหมดเป็นเขียวละมุนเหมือนกันหมด (ไม่ใช่
+// แค่การ์ดสั่งของ) รวมการ์ด "ของใกล้หมด/หมด" ด้วย — เปลี่ยนแค่ค่าสี ไม่เปลี่ยนชื่อ key (amber/amberDark)
+// กันต้องไล่แก้ทุกจุดที่ใช้ STOCK_CARD.amber ทั่วไฟล์ ไม่กระทบ LINE_CARD (โทนฟ้า ใช้กับเรื่องลา คนละอ็อบเจกต์)
+const STOCK_CARD = { base: '#EAF7EE', soft: '#F5FBF6', strong: '#CFEBD8', glass: '#FFFFFFCC', amber: '#3FA968', amberDark: '#1F6B3E', muted: '#7FA98D', line: '#CFEBD8' }
 const stockFlexText = (text, options = {}) => ({ type: 'text', text: String(text ?? ''), color: STOCK_CARD.amberDark, size: 'xs', wrap: true, scaling: true, ...options })
 const stockFactRow = (label, value) => ({
   type: 'box', layout: 'horizontal', spacing: 'sm',
