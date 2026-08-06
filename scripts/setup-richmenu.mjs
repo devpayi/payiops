@@ -64,10 +64,13 @@ const menuDefs = [
     chatBarText: 'เมนู',
     areas: [
       { bounds: { x: 0, y: 0, width: 800, height: 540 }, action: { type: 'message', text: 'แจ้งของเข้า' } },              // hero
-      { bounds: { x: 800, y: 0, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl('HR') } },                  // pill 1: ขอลา
+      // ฟ้า/แตง มี mp: employee link ผูกกับ LINE account เดียวกันจริง (เช็ค hr_line_links แล้ว: mp:FAH กับ
+      // mp:TANG line_user_id ตรงกับที่ใช้อยู่) staffLink เลย resolve ได้ปกติ ใช้คำสั่งพิมพ์จริงได้เหมือน staff
+      // tier ทุกอย่าง — ของเดิมลิงก์ทั้ง 3 ปุ่มไปหน้า HR เว็บเหมือนกันหมด กดปุ่มไหนก็ไปที่เดียว ไม่ตรงกับป้ายปุ่ม
+      { bounds: { x: 800, y: 0, width: 400, height: 270 }, action: { type: 'message', text: 'ลา' } },                     // pill 1: ขอลา
       { bounds: { x: 800, y: 270, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl('Stock Movement') } },    // pill 2: เว็บแอพ -> หน้าหลักของฟ้า/แตง
-      { bounds: { x: 0, y: 540, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl('HR') } },                  // card 1: เช็คประวัติ (real login user ไม่ผ่าน staffLink เลยลิงก์เว็บแทนคำสั่งพิมพ์)
-      { bounds: { x: 400, y: 540, width: 400, height: 270 }, action: { type: 'uri', uri: webUrl('HR') } },                // card 2: เช็ควันลาคงเหลือ
+      { bounds: { x: 0, y: 540, width: 400, height: 270 }, action: { type: 'message', text: 'ประวัติลา' } },             // card 1: เช็คประวัติ
+      { bounds: { x: 400, y: 540, width: 400, height: 270 }, action: { type: 'message', text: 'สรุปลา' } },              // card 2: เช็ควันลาคงเหลือ
       { bounds: { x: 800, y: 540, width: 400, height: 270 }, action: { type: 'message', text: 'ช่วยเหลือ' } },           // card 3
     ],
   },
