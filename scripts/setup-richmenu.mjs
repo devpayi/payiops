@@ -47,13 +47,14 @@ const menuDefs = [
     name: 'PAYI Ops - Full (Boss/Dev)',
     chatBarText: 'เมนู',
     areas: [
-      { bounds: { x: 0, y: 0, width: 800, height: 540 }, action: { type: 'message', text: 'แจ้งของเข้า' } },       // hero
-      { bounds: { x: 800, y: 0, width: 400, height: 270 }, action: { type: 'message', text: 'สั่งของ' } },          // pill 1
-      { bounds: { x: 800, y: 270, width: 400, height: 270 }, action: { type: 'message', text: 'ของเข้ารอตรวจ' } },  // pill 2
-      { bounds: { x: 0, y: 540, width: 300, height: 270 }, action: { type: 'message', text: 'อนุมัติการลา' } },     // card 1
-      { bounds: { x: 300, y: 540, width: 300, height: 270 }, action: { type: 'message', text: 'เช็คประวัติ' } },    // card 2: เช็คประวัติ (เลือกเดือน -> ใครลาบ้าง แทนปุ่ม "ขอลา" เดิม, owner ขอ 2026-08-06)
-      { bounds: { x: 600, y: 540, width: 300, height: 270 }, action: { type: 'uri', uri: webUrl('Executive') } },   // card 3: เว็บแอพ -> หน้าหลัก (Executive)
-      { bounds: { x: 900, y: 540, width: 300, height: 270 }, action: { type: 'message', text: 'ช่วยเหลือ' } },      // card 4
+      // owner ขอ 2026-08-06: ตัด "แจ้งของเข้า" ออกจากเมนู boss/dev ทั้งหมด (ไม่ใช่แค่ไม่ใช่ hero) — เอา
+      // สั่งของ/ของเข้ารอตรวจ (เดิมเป็น pill เล็ก) มาเป็นการ์ดหลัก 2 ใบแทน เหลือ 4 การ์ดล่าง (ไม่มีแจ้งของเข้า)
+      { bounds: { x: 0, y: 0, width: 600, height: 400 }, action: { type: 'message', text: 'สั่งของ' } },            // hero 1
+      { bounds: { x: 600, y: 0, width: 600, height: 400 }, action: { type: 'message', text: 'ของเข้ารอตรวจ' } },    // hero 2
+      { bounds: { x: 0, y: 400, width: 300, height: 410 }, action: { type: 'message', text: 'อนุมัติการลา' } },     // card 1
+      { bounds: { x: 300, y: 400, width: 300, height: 410 }, action: { type: 'message', text: 'เช็คประวัติ' } },    // card 2: เลือกเดือน -> ใครลาบ้าง
+      { bounds: { x: 600, y: 400, width: 300, height: 410 }, action: { type: 'uri', uri: webUrl('Executive') } },   // card 3: เว็บแอพ -> หน้าหลัก (Executive)
+      { bounds: { x: 900, y: 400, width: 300, height: 410 }, action: { type: 'message', text: 'ช่วยเหลือ' } },      // card 4
     ],
   },
   {

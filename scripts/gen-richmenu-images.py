@@ -241,25 +241,15 @@ ICONS = {
 def icon_center(draw, cx, cy, icon_name, r, color, width=7):
     ICONS[icon_name](draw, cx, cy, r, color, width)
 
-def draw_hero_layout(filename, width, height, hero, side_pills, bottom_cards, hero_box, pill_boxes, card_boxes):
-    base = diagonal_gradient((width, height), BG_TOP, BG_BOTTOM).convert("RGBA")
-    draw = ImageDraw.Draw(base)
-    gap = 14
-
-    # ประกายดาวกระจายทั่วพื้นหลัง (มุม/ขอบ เลี่ยงทับตัวการ์ด)
-    for sx, sy, ssize in [(28, 26, 13), (width - 34, 22, 11), (width - 24, height - 30, 15),
-                          (18, height - 24, 10), (width // 2, 14, 9)]:
-        draw_sparkle(draw, sx, sy, ssize)
-
-    # ── Hero card ──
-    hx0, hy0, hx1, hy1 = hero_box[0] + gap, hero_box[1] + gap, hero_box[2] - gap, hero_box[3] - gap
+def draw_hero_card(base, draw, box, icon, label, subtitle, gap):
+    # การ์ดหลักสไตล์ hero (ไล่สีม่วง-ชมพู + ไอคอนใหญ่ + ปุ่มขาว + เมฆถ้าสูงพอ) — เรียกซ้ำได้หลายใบต่อภาพ
+    # (เดิมมีแค่ 1 ใบต่อภาพ owner ขอให้ทำ 2 ใบเท่ากันแทนปุ่ม pill เล็กๆ ด้านข้าง)
+    hx0, hy0, hx1, hy1 = box[0] + gap, box[1] + gap, box[2] - gap, box[3] - gap
     paste_gradient_box(base, (hx0, hy0, hx1, hy1), HERO_START, HERO_END, 32, shadow=True, draw_ctx=draw)
 
-    # ก้อนเมฆลอยแถวล่างการ์ด hero (เหมือนภาพอ้างอิง) — วาดในกรอบมนของการ์ดเอง (clip ด้วย mask)
     cloud_layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
     cloud_draw = ImageDraw.Draw(cloud_layer)
     hcx = (hx0 + hx1) // 2
-    # การ์ด hero เตี้ย (tier ย่อย สูงแค่ ~270px) ไม่มีที่พอให้เมฆแล้วไม่ทับ subtitle — วาดเมฆเฉพาะการ์ดสูงพอ
     if (hy1 - hy0) >= 400:
         scale = (hx1 - hx0) / 900
         cloud_y = hy1 - 34 * scale
@@ -271,22 +261,33 @@ def draw_hero_layout(filename, width, height, hero, side_pills, bottom_cards, he
     base.alpha_composite(cloud_layer)
     draw = ImageDraw.Draw(base)
 
-    # ป้ายแบรนด์ PAYI OPS มุมซ้ายบนของการ์ด hero (เฉพาะ tier ที่ระบุ)
-    # ไอคอน hero ใหญ่ขึ้น ~3 เท่าตามที่ owner ขอ — สเกลตามความสูงการ์ดจริง กัน tier เตี้ย (staff/stock) ล้น
-    hero_icon_r = (hy1 - hy0) * 0.20
+    hero_icon_r = min((hy1 - hy0) * 0.20, (hx1 - hx0) * 0.16)
     hero_icon_cy = hy0 + (hy1 - hy0) * 0.30
     hero_icon_w = max(5, int(hero_icon_r * 0.09))
-    icon_center(draw, hcx, hero_icon_cy, hero["icon"], hero_icon_r, WHITE, hero_icon_w)
-    pill_w, pill_h = min(int((hx1 - hx0) * 0.75), 420), 74
+    icon_center(draw, hcx, hero_icon_cy, icon, hero_icon_r, WHITE, hero_icon_w)
+    pill_w, pill_h = min(int((hx1 - hx0) * 0.8), 420), 74
     pill_box = (hcx - pill_w // 2, hy0 + (hy1 - hy0) // 2 + 6, hcx + pill_w // 2, hy0 + (hy1 - hy0) // 2 + 6 + pill_h)
     draw.rounded_rectangle(pill_box, radius=pill_h // 2, fill=WHITE)
-    hero_label_font = fit_font(draw, hero["label"], "Bold", 42, pill_w - 50)
-    text_center(draw, hcx, pill_box[1] + (pill_h - 42) // 2, hero["label"], hero_label_font, HERO_TEXT)
-    if hero.get("subtitle"):
-        sub_font = font("Bold", 24)
-        # เงาเข้มบางๆ ใต้ตัวหนังสือ subtitle กันจมกับพื้นหลังไล่สีช่วงสว่าง (มุมชมพูอ่อน) อ่านชัดขึ้น
-        text_center(draw, hcx + 1, pill_box[3] + 17, hero["subtitle"], sub_font, (60, 20, 90, 160))
-        text_center(draw, hcx, pill_box[3] + 16, hero["subtitle"], sub_font, WHITE)
+    hero_label_font = fit_font(draw, label, "Bold", 40, pill_w - 40)
+    text_center(draw, hcx, pill_box[1] + (pill_h - 40) // 2, label, hero_label_font, HERO_TEXT)
+    if subtitle:
+        sub_font = fit_font(draw, subtitle, "Bold", 24, (hx1 - hx0) - 40)
+        text_center(draw, hcx + 1, pill_box[3] + 17, subtitle, sub_font, (60, 20, 90, 160))
+        text_center(draw, hcx, pill_box[3] + 16, subtitle, sub_font, WHITE)
+
+def draw_hero_layout(filename, width, height, heroes, side_pills, bottom_cards, hero_boxes, pill_boxes, card_boxes):
+    base = diagonal_gradient((width, height), BG_TOP, BG_BOTTOM).convert("RGBA")
+    draw = ImageDraw.Draw(base)
+    gap = 14
+
+    # ประกายดาวกระจายทั่วพื้นหลัง (มุม/ขอบ เลี่ยงทับตัวการ์ด)
+    for sx, sy, ssize in [(28, 26, 13), (width - 34, 22, 11), (width - 24, height - 30, 15),
+                          (18, height - 24, 10), (width // 2, 14, 9)]:
+        draw_sparkle(draw, sx, sy, ssize)
+
+    # ── Hero card(s) — 1 ใบ (เดิม) หรือหลายใบเท่ากัน (owner ขอ 2026-08-06: 2 ปุ่ม pill เดิมกลายเป็นการ์ดหลัก) ──
+    for hero, box in zip(heroes, hero_boxes):
+        draw_hero_card(base, draw, box, hero["icon"], hero["label"], hero.get("subtitle"), gap)
 
     # ── Side pills ──
     for pill, box in zip(side_pills, pill_boxes):
@@ -328,33 +329,37 @@ def draw_hero_layout(filename, width, height, hero, side_pills, bottom_cards, he
     base.convert("RGB").save(os.path.join(OUT_DIR, filename), "PNG")
     print(filename, base.size)
 
-# ── Full tier (Boss/Dev) — 1200x810 ──
+# ── Full tier (Boss/Dev) — 1200x810 — owner ขอ 2026-08-06: ไม่เอาการ์ด "แจ้งของเข้า" เป็น hero แล้ว เอา
+# 2 ปุ่ม pill เดิม (สั่งของ/ของเข้ารอตรวจ) มาเป็นการ์ดหลักแทน — แจ้งของเข้าลงไปเป็นการ์ดล่างธรรมดาแทน
 draw_hero_layout(
     "richmenu-full.png", 1200, 810,
-    hero={"icon": "fish", "label": "แจ้งของเข้า", "subtitle": "แตะเพื่อเริ่มบันทึกของเข้า"},
-    side_pills=[{"label": "สั่งของ"}, {"label": "ของเข้ารอตรวจ"}],
+    heroes=[
+        {"icon": "cart", "label": "สั่งของ", "subtitle": "แตะเพื่อสั่งของเข้าคลัง"},
+        {"icon": "clipboard", "label": "ของเข้ารอตรวจ", "subtitle": "แตะเพื่อดูรายการรอ Approve"},
+    ],
+    side_pills=[],
     bottom_cards=[
         {"icon": "note_edit", "label": "อนุมัติการลา"},
         {"icon": "book", "label": "เช็คประวัติ"},
         {"icon": "globe", "label": "เว็บแอพ"},
         {"icon": "question", "label": "ช่วยเหลือ"},
     ],
-    hero_box=(0, 0, 800, 540),
-    pill_boxes=[(800, 0, 1200, 270), (800, 270, 1200, 540)],
-    card_boxes=[(0, 540, 300, 810), (300, 540, 600, 810), (600, 540, 900, 810), (900, 540, 1200, 810)],
+    hero_boxes=[(0, 0, 600, 400), (600, 0, 1200, 400)],
+    pill_boxes=[],
+    card_boxes=[(0, 400, 300, 810), (300, 400, 600, 810), (600, 400, 900, 810), (900, 400, 1200, 810)],
 )
 
 # ── Stock tier (ฟ้า/แตง) — 1200x810 (ขยายจาก 800x540 เดิม ใส่ เช็คประวัติ/เช็ควันลาคงเหลือ เพิ่มตามที่ขอ) ──
 draw_hero_layout(
     "richmenu-stock.png", 1200, 810,
-    hero={"icon": "fish", "label": "แจ้งของเข้า", "subtitle": "แตะเพื่อเริ่มบันทึกของเข้า"},
+    heroes=[{"icon": "fish", "label": "แจ้งของเข้า", "subtitle": "แตะเพื่อเริ่มบันทึกของเข้า"}],
     side_pills=[{"label": "ขอลา"}, {"label": "เว็บแอพ"}],
     bottom_cards=[
         {"icon": "book", "label": "เช็คประวัติ"},
         {"icon": "chart", "label": "เช็ควันลาคงเหลือ"},
         {"icon": "question", "label": "ช่วยเหลือ"},
     ],
-    hero_box=(0, 0, 800, 540),
+    hero_boxes=[(0, 0, 800, 540)],
     pill_boxes=[(800, 0, 1200, 270), (800, 270, 1200, 540)],
     card_boxes=[(0, 540, 400, 810), (400, 540, 800, 810), (800, 540, 1200, 810)],
 )
@@ -362,14 +367,14 @@ draw_hero_layout(
 # ── Staff tier — 800x540 ──
 draw_hero_layout(
     "richmenu-staff.png", 800, 540,
-    hero={"icon": "beach", "label": "ขอลา", "subtitle": "แตะเพื่อเริ่มขอลา"},
+    heroes=[{"icon": "beach", "label": "ขอลา", "subtitle": "แตะเพื่อเริ่มขอลา"}],
     side_pills=[],
     bottom_cards=[
         {"icon": "book", "label": "เช็คประวัติ"},
         {"icon": "chart", "label": "เช็ควันลาคงเหลือ"},
         {"icon": "question", "label": "ช่วยเหลือ"},
     ],
-    hero_box=(0, 0, 800, 300),
+    hero_boxes=[(0, 0, 800, 300)],
     pill_boxes=[],
     card_boxes=[(0, 300, 267, 540), (267, 300, 534, 540), (534, 300, 800, 540)],
 )
