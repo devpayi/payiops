@@ -3026,19 +3026,49 @@ async function opLineWebhook(req, res) {
           const target = pending.find((r) => String(r.id) === ids[0])
           if (target?.available_orders?.length) {
             const lots = target.available_orders.slice(0, 12)
-            const lotButtons = lots.map((o, i) => ({
-              type: 'action', action: {
-                type: 'postback',
-                label: `${i === 0 ? '⭐' : ''}${o.qty}${target.unit || ''} ${(o.order_date || o.created_at || '').slice(5, 10)}`.slice(0, 20),
-                data: `stockin-matchlot:${target.id}:${o.id}`, displayText: `จับคู่ลอต ${o.qty} (${o.order_date || '-'})`,
-              },
-            }))
+            const unit = target.unit || ''
+            const reportedQty = Number(target.qty) || 0
+            // ⚠️ นำหน้าปุ่มลอตที่จำนวนไม่ตรงกับที่แจ้งเข้ามาจริง (ป้ายปุ่มจำกัด 20 ตัวอักษร ใส่ตัวเลขส่วนต่าง
+            // ไม่พอ เลยแยกไปโชว์เป็นตารางเทียบเต็มๆ ในตัวการ์ดก่อนแทน ปุ่มมีแค่สัญลักษณ์เตือนสั้นๆ)
+            const lotButtons = lots.map((o, i) => {
+              const mismatch = (Number(o.qty) || 0) !== reportedQty
+              const flag = mismatch ? '⚠️' : (i === 0 ? '⭐' : '')
+              return {
+                type: 'action', action: {
+                  type: 'postback',
+                  label: `${flag}${o.qty}${unit} ${(o.order_date || o.created_at || '').slice(5, 10)}`.slice(0, 20),
+                  data: `stockin-matchlot:${target.id}:${o.id}`, displayText: `จับคู่ลอต ${o.qty} (${o.order_date || '-'})`,
+                },
+              }
+            })
             lotButtons.push({ type: 'action', action: { type: 'postback', label: 'ไม่ผูกลอต', data: `stockin-matchlot:${target.id}:none`, displayText: 'ไม่ผูกลอต' } })
-            await replyMessage(event.replyToken, [{
-              type: 'text',
-              text: `"${target.display_name}" มีลอต "สั่งของ" ค้างรอ Match อยู่ ${lots.length} ลอต\nเลือกลอตที่ตรงกับของที่เข้ามาจริง (⭐ = สั่งก่อนสุด ตามคิว FIFO) หรือ "ไม่ผูกลอต" ถ้าไม่ตรงกับลอตไหนเลย`,
-              quickReply: { items: lotButtons },
-            }])
+
+            const lotRows = lots.map((o) => {
+              const mismatch = (Number(o.qty) || 0) !== reportedQty
+              const diff = (Number(o.qty) || 0) - reportedQty
+              const diffText = mismatch ? ` (${diff > 0 ? '+' : ''}${diff})` : ''
+              return {
+                type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center', margin: 'sm', contents: [
+                  stockFlexText(mismatch ? '⚠️' : '✅', { size: 'sm', flex: 0 }),
+                  stockFlexText(`${o.qty}${unit}${diffText}`, { size: 'xs', weight: 'bold', color: mismatch ? '#C0392B' : STOCK_CARD.amberDark, flex: 3 }),
+                  stockFlexText(`สั่ง ${(o.order_date || o.created_at || '-').slice(0, 10)}`, { size: 'xxs', color: STOCK_CARD.muted, flex: 4, align: 'end' }),
+                ],
+              }
+            })
+            const card = {
+              type: 'flex', altText: `เลือกลอตที่ตรงกับของเข้า "${target.display_name}"`,
+              contents: {
+                type: 'bubble', size: 'kilo',
+                header: stockCardHeader('เลือกลอตที่ตรงกัน', `"${target.display_name}" มีลอตค้างรอ ${lots.length} ลอต`, '🔍'),
+                body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
+                  stockFactRow('แจ้งของเข้าจริง', `${reportedQty}${unit}`),
+                  { type: 'separator', margin: 'sm', color: STOCK_CARD.line },
+                  ...lotRows,
+                  stockFlexText('✅ ตรงกับที่นับ · ⚠️ จำนวนไม่ตรง ระวังสลับลอต · ⭐ สั่งก่อนสุด (FIFO)', { size: 'xxs', color: STOCK_CARD.muted, margin: 'md', wrap: true }),
+                ] },
+              },
+            }
+            await replyMessage(event.replyToken, [{ ...card, quickReply: { items: lotButtons } }])
             continue
           }
         }
