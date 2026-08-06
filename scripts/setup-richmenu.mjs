@@ -47,14 +47,15 @@ const menuDefs = [
     name: 'PAYI Ops - Full (Boss/Dev)',
     chatBarText: 'เมนู',
     areas: [
-      // owner ขอ 2026-08-06: ตัด "แจ้งของเข้า" ออกจากเมนู boss/dev ทั้งหมด (ไม่ใช่แค่ไม่ใช่ hero) — เอา
-      // สั่งของ/ของเข้ารอตรวจ (เดิมเป็น pill เล็ก) มาเป็นการ์ดหลัก 2 ใบแทน เหลือ 4 การ์ดล่าง (ไม่มีแจ้งของเข้า)
-      { bounds: { x: 0, y: 0, width: 600, height: 400 }, action: { type: 'message', text: 'สั่งของ' } },            // hero 1
-      { bounds: { x: 600, y: 0, width: 600, height: 400 }, action: { type: 'message', text: 'ของเข้ารอตรวจ' } },    // hero 2
-      { bounds: { x: 0, y: 400, width: 300, height: 410 }, action: { type: 'message', text: 'อนุมัติการลา' } },     // card 1
-      { bounds: { x: 300, y: 400, width: 300, height: 410 }, action: { type: 'message', text: 'เช็คประวัติ' } },    // card 2: เลือกเดือน -> ใครลาบ้าง
-      { bounds: { x: 600, y: 400, width: 300, height: 410 }, action: { type: 'uri', uri: webUrl('Executive') } },   // card 3: เว็บแอพ -> หน้าหลัก (Executive)
-      { bounds: { x: 900, y: 400, width: 300, height: 410 }, action: { type: 'message', text: 'ช่วยเหลือ' } },      // card 4
+      // owner ขอ 2026-08-06: ตัด "แจ้งของเข้า" ออกจากเมนู boss/dev ทั้งหมด — เอาสั่งของ/ของเข้ารอตรวจ (เดิม
+      // เป็น pill เล็ก) มาเป็นการ์ดหลัก 2 ใบแทน + เพิ่ม "รายการที่สั่งไว้" เป็นการ์ดล่างที่ 5 ทีหลัง
+      { bounds: { x: 0, y: 0, width: 600, height: 400 }, action: { type: 'message', text: 'สั่งของ' } },              // hero 1
+      { bounds: { x: 600, y: 0, width: 600, height: 400 }, action: { type: 'message', text: 'ของเข้ารอตรวจ' } },      // hero 2
+      { bounds: { x: 0, y: 400, width: 240, height: 410 }, action: { type: 'message', text: 'อนุมัติการลา' } },       // card 1
+      { bounds: { x: 240, y: 400, width: 240, height: 410 }, action: { type: 'message', text: 'เช็คประวัติ' } },      // card 2: เลือกเดือน -> ใครลาบ้าง
+      { bounds: { x: 480, y: 400, width: 240, height: 410 }, action: { type: 'message', text: 'รายการที่สั่งไว้' } }, // card 3: สั่งอะไรไปแล้วเท่าไหร่
+      { bounds: { x: 720, y: 400, width: 240, height: 410 }, action: { type: 'uri', uri: webUrl('Executive') } },     // card 4: เว็บแอพ -> หน้าหลัก (Executive)
+      { bounds: { x: 960, y: 400, width: 240, height: 410 }, action: { type: 'message', text: 'ช่วยเหลือ' } },        // card 5
     ],
   },
   {
