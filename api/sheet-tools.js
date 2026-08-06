@@ -4,7 +4,7 @@
 import { requireAuth, cacheable, authEnabled } from './_lib/auth.js'
 import { canManageOperations, normalizeRole } from '../shared/roles.js'
 import { getMetaCached, batchGetValues, getSheet, appendRows, overwriteSheet, ensureSheet, ensureSheets } from './_lib/sheets.js'
-import { verifySignature, pushMessage, replyMessage } from './_lib/line.js'
+import { verifySignature, pushMessage, replyMessage, linkRichMenuToUser } from './_lib/line.js'
 import {
   MIN_LOWER_HOUSE_HEADCOUNT, buildCoveragePlan, leaveAbsenceDates, leaveAbsenceSlots,
   leavePeriodLabel, normalizeLeavePeriod, officeLeaveConflicts,
@@ -1007,6 +1007,44 @@ async function getStockCounterLineUserId() {
   return links.find((l) => l.username === STOCK_COUNTER_USERNAME)?.line_user_id || null
 }
 
+// ── Rich menu tier ────────────────────────────────────────────────────────
+// แตง (staff tang) เป็นหัวหน้าฟ้า — role ในระบบเป็น staff ธรรมดา แต่ owner ขอให้เห็นเมนูชุดเดียวกับฟ้า
+// (แจ้งของเข้า/ขอลา ไม่ใช่เมนู staff ทั่วไปที่มีแค่ขอลา/ประวัติ) ยกเว้นเป็นรายชื่อ ไม่ใช้ role ล้วน
+const RICHMENU_STOCK_TIER_USERNAME_OVERRIDES = ['tang']
+const RICHMENU_SHEET = 'line_richmenu_ids'
+const RICHMENU_HEADERS = ['tier', 'richmenu_id', 'updated_at']
+
+// เลือก tier เมนูจาก role + username override — ไม่ใช้ canManageOperations ตรงๆ เพราะอันนั้นรวม dev/boss
+// ไว้ด้วยกัน แต่ที่นี่ dev/boss ยังแยก "full" tier เดียวกันได้ (เห็นปุ่มเท่ากันทั้งคู่)
+function richMenuTierForRole(role, username) {
+  const r = normalizeRole(role)
+  if (RICHMENU_STOCK_TIER_USERNAME_OVERRIDES.includes(String(username || '').toLowerCase())) return 'stock'
+  if (r === 'dev' || r === 'boss') return 'full'
+  if (r === 'stock') return 'stock'
+  return 'staff'
+}
+
+async function getRichMenuIdMap() {
+  try {
+    const rows = await getSheet(RICHMENU_SHEET)
+    return Object.fromEntries(rows.filter((r) => r.tier && r.richmenu_id).map((r) => [r.tier, r.richmenu_id]))
+  } catch { return {} }
+}
+
+// ผูก rich menu ให้ผู้ใช้ 1 คนตาม tier ที่ resolve ได้ — เรียกทุกครั้งที่มีการผูก/เปลี่ยน LINE user id ใหม่
+// (ดู action==='set-line-id'/'set-line-id-for') เงียบๆ ถ้ายังไม่เคย setup เมนูไว้เลย (ไม่มีแถวใน
+// line_richmenu_ids) หรือ LINE API ล่ม ไม่ทำให้การผูกบัญชีหลักพังไปด้วย (best-effort ล้วนๆ)
+async function assignRichMenuForLink(username, lineUserId, role) {
+  if (!lineUserId) return
+  try {
+    const tier = richMenuTierForRole(role, username)
+    const idMap = await getRichMenuIdMap()
+    const richMenuId = idMap[tier]
+    if (!richMenuId) return
+    await linkRichMenuToUser(lineUserId, richMenuId)
+  } catch (e) { console.error('assign richmenu:', e.message) }
+}
+
 // สรุปผล Approve/จับคู่ลอต เป็นข้อความสั้นเข้ากลุ่ม (ปฏิเสธ ไม่แจ้งกลุ่ม — แจ้งกลับผู้แจ้งของเข้า 1:1
 // คนเดียว, owner ขอ 2026-08-05) — การ์ดจริงกับปุ่มกดทั้งหมดย้ายไปอยู่ 1:1 กับ boss/dev แล้ว (2026-08-01)
 // กลุ่มเลยไม่เห็นอะไรเลยถ้าไม่ประกาศผลตรงนี้ ไม่มีกลุ่มลงทะเบียนไว้ก็แค่ข้ามเงียบๆ
@@ -1252,6 +1290,83 @@ async function findStockApprover(lineUserId) {
   }
   return null
 }
+// ── ริชเมนู: คำสั่งดึงดูรายการรอตรวจแบบ on-demand (แต่เดิมมีแต่การ์ด push อัตโนมัติตอนมีรายการใหม่
+// เท่านั้น กดปุ่มริชเมนูแล้วอยากเห็น "ตอนนี้มีอะไรค้างอยู่บ้าง" ต้องมีคำสั่งดึงเองด้วย) — boss/dev เท่านั้น
+const STOCK_PENDING_TRIGGER = 'ของเข้ารอตรวจ'
+const LEAVE_PENDING_TRIGGER = 'อนุมัติการลา'
+const HELP_TRIGGER = 'ช่วยเหลือ'
+const appWebUrl = (tab) => `${APP_BASE_URL}/${tab ? `?tab=${tab}` : ''}`
+
+async function handleStockPendingListCommand(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss เท่านั้นที่ดูรายการนี้ได้ค่ะ' }])
+  const pending = (await loadStockInRequests({ status: 'pending', role: approver.role })).filter((r) => !r.order_only)
+  if (!pending.length) return replyMessage(replyToken, [{ type: 'text', text: '✅ ไม่มีของเข้ารอตรวจตอนนี้ค่ะ' }])
+  const items = await loadOrderableItems()
+  const cards = pending.slice(0, 5).map((r) => {
+    const item = items.find((it) => String(it.sku).toUpperCase() === String(r.sku).toUpperCase())
+    const label = item?.display_name || r.sku
+    return {
+      type: 'flex', altText: `ของเข้ารอตรวจ: ${label} × ${r.qty}`,
+      contents: {
+        type: 'bubble', size: 'kilo',
+        header: stockCardHeader('ของเข้ารอตรวจ', `เข้า ${r.arrival_date} · นับ ${r.count_date} · โดย ${r.created_by || '-'}`, '📦'),
+        body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [stockInItemRow(r.id, label, `× ${r.qty} ${item?.unit || ''}`)] },
+        footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: [
+          stockCardButton({ type: 'postback', label: 'ปฏิเสธ', data: `stockin-reject:${r.id}`, displayText: `ปฏิเสธ ${label}` }),
+          stockCardButton({ type: 'postback', label: 'Approve', data: `stockin-approve:${r.id}`, displayText: `Approve ${label}` }, true),
+        ] },
+      },
+    }
+  })
+  const suffix = pending.length > 5 ? [{ type: 'text', text: `และอีก ${pending.length - 5} รายการ — เปิดเว็บเพื่อดูทั้งหมด` }] : []
+  return replyMessage(replyToken, [...cards, ...suffix])
+}
+
+async function handleLeavePendingListCommand(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss เท่านั้นที่ดูรายการนี้ได้ค่ะ' }])
+  const pending = (await getSheet('hr_leave')).filter((l) => l.status === 'pending')
+  if (!pending.length) return replyMessage(replyToken, [{ type: 'text', text: '✅ ไม่มีคำขอลารอตรวจตอนนี้ค่ะ' }])
+  const officeMap = await getOfficePeopleMap()
+  const cards = pending.slice(0, 5).map((record) => leaveFlexMessage(record, 'pending', officeMap))
+  const suffix = pending.length > 5 ? [{ type: 'text', text: `และอีก ${pending.length - 5} รายการ — เปิดเว็บเพื่อดูทั้งหมด` }] : []
+  return replyMessage(replyToken, [...cards, ...suffix])
+}
+
+// ข้อความคู่มือสั้นๆ ต่อ tier — ให้ตรงกับปุ่มที่คนนั้นเห็นจริงในริชเมนู (ไม่ใช่ list คำสั่งทั้งหมดที่มี
+// เพราะบางคำสั่งเขาไม่มีสิทธิ์ใช้อยู่ดี) resolve tier เดียวกับตอน assign เมนู (richMenuTierForRole)
+async function handleHelpCommand(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!lineUserId || !replyToken) return
+  const links = (await getSheet('hr_line_links')).filter((l) => l.line_user_id === lineUserId)
+  const users = await getSheet('users')
+  let username = '', role = ''
+  for (const link of links) {
+    const user = users.find((u) => u.username === link.username)
+    if (user) { username = link.username; role = user.role; break }
+  }
+  if (!username && links.length) username = links[0].username
+  const tier = richMenuTierForRole(role, username)
+  const guide = {
+    full: [
+      '📦 พิมพ์ "แจ้งของเข้า" — บันทึกของเข้าที่นับได้จริง',
+      '🛒 พิมพ์ "สั่งของ" — สั่งของเข้าคิวรอของเข้า',
+      `📋 พิมพ์ "${STOCK_PENDING_TRIGGER}" — ดูของเข้าที่ยังรอ Approve`,
+      `📝 พิมพ์ "${LEAVE_PENDING_TRIGGER}" — ดูคำขอลาที่ยังรออนุมัติ`,
+      '🏖️ ขอลา/เปิดเว็บแอพ — กดปุ่มในเมนูด้านล่างแชทได้เลย',
+    ],
+    stock: ['📦 พิมพ์ "แจ้งของเข้า" — บันทึกของเข้าที่นับได้จริง', '🏖️ ขอลา/เปิดเว็บแอพ — กดปุ่มในเมนูด้านล่างแชทได้เลย'],
+    staff: ['🏖️ พิมพ์ "ลา" — เริ่มขอลา', '📖 พิมพ์ "ประวัติลา" — ดูประวัติการลาปีนี้', '📊 พิมพ์ "สรุปลา" — ดูวันลาคงเหลือ'],
+  }[tier] || []
+  return replyMessage(replyToken, [{ type: 'text', text: `คู่มือการใช้งานค่ะ:\n\n${guide.join('\n')}` }])
+}
+
 const PLANNER_CONFIG_SHEET = 'planner_config'
 const PLANNER_DAILY_SHEET = 'planner_daily'
 const PLANNER_CONFIG_HEADERS = ['master_sku', 'enabled', 'reserve_days', 'safety_percent', 'updated_at', 'updated_by']
@@ -2111,6 +2226,13 @@ async function opHrInner(req, res) {
     const rows = lineUserId ? [...kept, LINE_LINK_HEADERS.map((h) => ({ username, line_user_id: lineUserId, updated_at: now, notify_hr: notifyHr, notify_stock: notifyStock })[h] ?? '')] : kept
     await overwriteSheet('hr_line_links', LINE_LINK_HEADERS, rows)
     clearHrCache()
+    // ผูกเมนู richmenu ให้ตรง tier ทันทีที่ผูก/เปลี่ยน LINE user id — mp:<code> (พนักงานทั่วไปไม่มี login)
+    // ไม่มีแถวใน users เลย ก็ตกไปเป็น tier "staff" ตามค่า default ของ richMenuTierForRole
+    if (lineUserId) {
+      const users = await getSheet('users').catch(() => [])
+      const role = users.find((u) => u.username === username)?.role
+      await assignRichMenuForLink(username, lineUserId, role)
+    }
     return res.status(200).json({ success: true, line_user_id: lineUserId })
   }
   // admin ตั้งค่าหมวดแจ้งเตือน (การลา/สต็อก) ให้คนอื่นได้เลย ไม่ต้องให้แต่ละคน login เข้ามาตั้งเอง —
@@ -2803,6 +2925,11 @@ async function opLineWebhook(req, res) {
         // เพื่อสั่งของที่ยังไม่ใกล้หมดได้ด้วย
         if (initialQuery !== null && await handleStockOrderSearchStart(event, initialQuery)) continue
         if (initialInQuery !== null && await handleStockInStart(event, initialInQuery)) continue
+        // ปุ่มริชเมนู "ของเข้ารอตรวจ"/"อนุมัติการลา"/"ช่วยเหลือ" — ใช้ได้ทั้ง boss/dev ที่ไม่ผ่าน staffLink
+        // (username ธรรมดา ไม่ใช่ mp:) เช็คก่อน fallback เข้า leave wizard ด้านล่าง (นั่นสำหรับ mp: เท่านั้น)
+        if (event.message.text === STOCK_PENDING_TRIGGER) { await handleStockPendingListCommand(event); continue }
+        if (event.message.text === LEAVE_PENDING_TRIGGER) { await handleLeavePendingListCommand(event); continue }
+        if (event.message.text === HELP_TRIGGER) { await handleHelpCommand(event); continue }
         // LINE ID เดียวกันอาจผูกเป็นทั้งพนักงานและ DEV/Boss ได้: ให้คำสั่งสต็อกด้านบน
         // มีสิทธิ์ทำงานก่อน แล้วข้อความอื่นค่อยเข้าขั้นตอนลาของพนักงาน
         if (staffLink) { await handleLeaveWizard(event, staffLink); continue }
