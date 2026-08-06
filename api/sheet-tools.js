@@ -350,13 +350,26 @@ const orderFactRow = (label, value) => ({
   contents: [orderFlexText(label, { size: 'xxs', color: ORDER_CARD.muted, flex: 2 }), orderFlexText(value, { size: 'xs', weight: 'bold', color: ORDER_CARD.greenDark, align: 'end', flex: 3 })],
 })
 
+// การ์ด "ของใกล้หมด/หมด" ขอเป็นเหลืองเดิมต่อไปโดยเฉพาะ (owner ขอ 2026-08-06: "ดูน่ารำคาญดี เขาจะได้สั่งๆ")
+// ตอนที่การ์ดสต็อกอื่นๆ เปลี่ยนเป็นเขียวหมดแล้ว — แยกพาเลตต์ของตัวเองแทนใช้ STOCK_CARD (เขียวไปแล้ว) กันปนกัน
+const LOW_STOCK_CARD = { base: '#FFF8E3', soft: '#FFFCF3', amber: '#E0A324', muted: '#A6874A' }
+const lowStockFlexText = (text, options = {}) => ({ type: 'text', text: String(text ?? ''), color: '#7A5B00', size: 'xs', wrap: true, scaling: true, ...options })
+const lowStockCardHeader = (title, subtitle, icon) => ({
+  type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'sm', paddingAll: '10px', backgroundColor: LOW_STOCK_CARD.base, contents: [
+    { type: 'box', layout: 'vertical', width: '30px', height: '30px', cornerRadius: '15px', backgroundColor: '#FBE9B8', justifyContent: 'center', alignItems: 'center', contents: [lowStockFlexText(icon, { size: 'md', align: 'center' })] },
+    { type: 'box', layout: 'vertical', flex: 1, contents: [
+      lowStockFlexText(title, { color: '#7A5B00', size: 'sm', weight: 'bold' }),
+      lowStockFlexText(subtitle, { color: LOW_STOCK_CARD.muted, size: 'xxs', margin: 'xs', wrap: true }),
+    ] },
+  ],
+})
 const lowStockRow = (item) => ({
-  type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'sm', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base,
+  type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'sm', paddingAll: '8px', cornerRadius: '10px', backgroundColor: LOW_STOCK_CARD.base,
   contents: [
-    stockFlexText(STOCK_STATUS_ICON[item.effectiveStatus] || '⚠️', { size: 'sm', flex: 0 }),
-    stockFlexText(item.display_name, { size: 'xs', weight: 'bold', flex: 4, wrap: true }),
-    stockFlexText(`${item.balance} ${item.unit || 'ชิ้น'}`, { size: 'xs', weight: 'bold', align: 'end', flex: 2, wrap: true }),
-    { type: 'button', style: 'primary', color: STOCK_CARD.amber, height: 'sm', flex: 0, action: { type: 'postback', label: 'สั่ง', data: `stock-order:${item.sku}`, displayText: `สั่งของ ${item.display_name}` } },
+    lowStockFlexText(STOCK_STATUS_ICON[item.effectiveStatus] || '⚠️', { size: 'sm', flex: 0 }),
+    lowStockFlexText(item.display_name, { size: 'xs', weight: 'bold', flex: 4, wrap: true }),
+    lowStockFlexText(`${item.balance} ${item.unit || 'ชิ้น'}`, { size: 'xs', weight: 'bold', align: 'end', flex: 2, wrap: true }),
+    { type: 'button', style: 'primary', color: LOW_STOCK_CARD.amber, height: 'sm', flex: 0, action: { type: 'postback', label: 'สั่ง', data: `stock-order:${item.sku}`, displayText: `สั่งของ ${item.display_name}` } },
   ],
 })
 
@@ -367,10 +380,10 @@ function lowStockFlexMessage(items) {
     type: 'flex', altText: `แจ้งเตือนของใกล้หมด/หมด ${items.length} รายการ`,
     contents: {
       type: 'bubble', size: 'giga',
-      header: stockCardHeader('ของใกล้หมด / หมด', `${items.length} รายการ · กด “สั่ง” ในบรรทัดที่ต้องการ`, '⚠️'),
-      body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
+      header: lowStockCardHeader('ของใกล้หมด / หมด', `${items.length} รายการ · กด “สั่ง” ในบรรทัดที่ต้องการ`, '⚠️'),
+      body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: LOW_STOCK_CARD.soft, contents: [
         ...visible.map(lowStockRow),
-        ...(items.length > visible.length ? [stockFlexText(`+ อีก ${items.length - visible.length} รายการ`, { size: 'xs', color: STOCK_CARD.muted, align: 'center', margin: 'sm' })] : []),
+        ...(items.length > visible.length ? [lowStockFlexText(`+ อีก ${items.length - visible.length} รายการ`, { size: 'xs', color: LOW_STOCK_CARD.muted, align: 'center', margin: 'sm' })] : []),
       ] },
     },
   }
