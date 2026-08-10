@@ -12,6 +12,14 @@ const LEGACY_OVERRIDE_CUTOFF = '2026-08-04T10:16:00.000Z'
 // ทำแบบ hardcode ตรงจุดเหมือน SKU_REDIRECTS ใน planner-sales.js ถ้าเจอบ่อยขึ้นค่อยย้ายเป็นชีตแทน ไม่กระทบ override
 // ใหม่ (>= cutoff) — เพิ่ม/ถอนคนกลุ่มนี้ผ่านตารางกะตามปกติได้เต็มที่เหมือนคนอื่น
 export const LEGACY_OVERRIDE_EXEMPT_CODES = new Set(['ไม้', 'KED'])
+// เหมือน isFixedDayOff ใน sheet-tools.js (คัดลอกมาเพราะไฟล์นี้เป็น pure module แยก ไม่ import ข้ามกัน) — เช็ควันหยุด
+// ประจำสัปดาห์ของคนนั้นตรงกับวันที่นี้ไหม
+const isFixedDayOff = (dayOffMap, code, date) => {
+  const entry = dayOffMap[code]
+  if (!entry) return false
+  if (entry.from && date < entry.from) return false
+  return String(new Date(`${date}T00:00:00`).getDay()) === entry.weekday
+}
 
 export function applyScheduleOverrides({ baseRows = [], overrideRows = [], personMap = {}, overrideScopeCodes = Object.keys(personMap), officeCodes = [], dayOffMap = {} }) {
   const latestByDate = new Map()
@@ -47,14 +55,16 @@ export function applyScheduleOverrides({ baseRows = [], overrideRows = [], perso
     let entries = []
     try { entries = JSON.parse(override.entries_json || '[]') } catch { entries = [] }
     const seen = new Set()
+    const isLegacyOverride = String(override.updated_at || '') < LEGACY_OVERRIDE_CUTOFF
     for (const entry of Array.isArray(entries) ? entries : []) {
       const code = String(entry?.code || '').toUpperCase()
       const person = personMap[code]
       if (!person || seen.has(code)) continue
-      // override (แก้คนจากปฏิทิน) ชนะวันหยุดประจำเสมอ — ใช้เป็นช่องทางสลับวันหยุด/เรียกมาทำงานพิเศษโดยไม่ต้องผ่าน
-      // HR ได้ตรงนี้เลย (ผู้ใช้ยืนยัน 2026-08-07) เดิมเคยบล็อกไว้เพราะกลัว ScheduleDayEditor prefill ค่าเก่าค้าง
-      // แล้ว resave ทับโดยไม่ตั้งใจ (เจอจริง 2026-08-04 กรณีเกด) แต่ prefill คำนวณจาก sourceManpower สดทุกครั้งที่
-      // เปิด modal อยู่แล้ว (คนวันหยุดประจำจะไม่ติ๊กมาเป็นค่าเริ่มต้น) การติ๊กเข้ามาเองจึงถือเป็นการตั้งใจเสมอ
+      // override ใหม่ (ตั้งใจแก้คนจากปฏิทินตอนนี้) ชนะวันหยุดประจำได้ — ใช้สลับวันหยุด/เรียกมาทำงานพิเศษโดยไม่ต้องผ่าน
+      // HR ได้ตรงนี้เลย (ผู้ใช้ยืนยัน 2026-08-07) แต่ override เก่า (ก่อน cutoff) ห้ามชนะวันหยุดประจำเด็ดขาด — เพราะ
+      // ข้อมูลเก่าไม่รู้จักวันหยุดที่เพิ่งตั้งทีหลัง (เจอจริง 2026-08-04 กรณีเกด ตั้งวันหยุดอังคารแล้วยังมาทำงานทุกอังคาร
+      // เพราะ override เก่าฝังไว้ว่าเธอทำงานวันนั้น — ถ้าไม่กันจุดนี้ วันหยุดประจำจะไม่มีผลอะไรเลยสำหรับคนที่มี override เก่าค้าง)
+      if (isLegacyOverride && isFixedDayOff(dayOffMap, code, date)) continue
       seen.add(code)
       result.push({ id: `override-${date}-${code}`, date, employee: person[0], code, group: person[1], fraction: 1, source: 'override' })
     }
