@@ -404,8 +404,12 @@ async function handleStockCheckCommand(event) {
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
   if (!replyToken) return false
-  const manager = lineUserId ? await findManagerLink(lineUserId) : null
-  if (!manager) return false // ไม่ใช่บอส/dev ที่เปิดรับแจ้งเตือนสต็อกไว้ — ปล่อยตกไป fallback เดิม
+  // findManagerLink เดิม (ผูกกับ checkbox "ของใกล้หมด" ในหน้า Settings) ผิดจุด — checkbox นั้นคุมว่าใคร
+  // อยากรับ push แจ้งเตือนอัตโนมัติ ไม่ใช่คุมว่าใครมีสิทธิ์เรียกดูคำสั่งนี้เอง (เจอจริง 2026-08-11: lady role
+  // boss ปิด "ของใกล้หมด" ไว้ กด "เช็คของ" จากเมนู "งานสต็อค" แล้วเงียบ/ตกไป fallback สินค้าค้นหาแทน) เปลี่ยน
+  // มาเช็ค role ตรงๆ ผ่าน findStockApprover เหมือนคำสั่งสต็อกอื่นๆ ทั้งหมด (approve/สั่งของ/เมนูรวม)
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return false // ไม่ใช่บอส/dev — ปล่อยตกไป fallback เดิม
   const lowItems = await computeLowStockList()
   if (!lowItems.length) {
     await replyMessage(replyToken, [{ type: 'text', text: 'ตอนนี้ไม่มีของใกล้หมด/หมดที่ยังไม่ได้สั่งค่ะ 🎉' }])
