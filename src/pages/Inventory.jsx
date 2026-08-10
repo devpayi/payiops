@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Boxes, Layers, AlertTriangle, ArrowLeftRight, Plus, Pencil, X, Eye, EyeOff, Download } from 'lucide-react'
+import { Boxes, Layers, AlertTriangle, ArrowLeftRight, Plus, Pencil, X, Eye, EyeOff, Download, History } from 'lucide-react'
 import KpiCard from '../components/KpiCard'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
@@ -36,11 +36,88 @@ function StatusBadge({ status }) {
   )
 }
 
+const HISTORY_TYPE_LABEL = { in: 'รับเข้า', out: 'เบิกออก', adjust: 'ปรับยอด' }
+const HISTORY_TYPE_STYLE = {
+  in: { bg: '#dcfce7', color: '#16a34a' },
+  out: { bg: 'var(--payi-danger-bg)', color: 'var(--payi-danger)' },
+  adjust: { bg: '#eef2ff', color: '#4338ca' },
+}
+const fmtHistoryDate = (isoDate) => {
+  if (!isoDate) return ''
+  const d = new Date(isoDate + 'T00:00:00+07:00')
+  if (isNaN(d)) return isoDate
+  return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok' })
+}
+
+// ประวัติรับเข้า-เบิกออก-ปรับยอดของสินค้าชิ้นเดียว — กดชื่อสินค้าในตารางเปิดดูได้ (owner ขอ 2026-08-11)
+// ใช้ /api/sheet-tools?op=inventory&view=movements&q=<sku> ตัวเดียวกับหน้า Stock Movement แต่กรอง
+// exact match ฝั่ง client อีกชั้น กัน q แบบ substring ไปจับ sku ที่มี suffix ทับกัน (เช่น PY051 ไปจับ PY051-B ด้วย)
+function HistoryModal({ item, onClose }) {
+  const [rows, setRows] = useState(null)
+  useEffect(() => {
+    let alive = true
+    fetch(`/api/sheet-tools?op=inventory&view=movements&q=${encodeURIComponent(item.sku)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!alive) return
+        const list = (data.movements || []).filter((m) => String(m.sku).toUpperCase() === String(item.sku).toUpperCase())
+        setRows(list)
+      })
+      .catch(() => alive && setRows([]))
+    return () => { alive = false }
+  }, [item.sku])
+
+  return (
+    <Modal title={`ประวัติ — ${item.display_name}`} onClose={onClose} width={640}>
+      <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', fontFamily: 'monospace', marginTop: -10, marginBottom: 14 }}>{item.sku}</div>
+      {rows === null ? (
+        <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--payi-text-muted)', fontSize: 13 }}>กำลังโหลด...</div>
+      ) : !rows.length ? (
+        <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--payi-text-muted)', fontSize: 13 }}>ยังไม่มีประวัติรับเข้า-เบิกออก</div>
+      ) : (
+        <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: 'var(--payi-text-muted)', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', position: 'sticky', top: 0, background: 'var(--payi-surface)' }}>
+                <th style={{ padding: '6px 8px' }}>วันที่</th>
+                <th style={{ padding: '6px 8px' }}>ประเภท</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right' }}>จำนวน</th>
+                <th style={{ padding: '6px 8px' }}>โดย</th>
+                <th style={{ padding: '6px 8px' }}>หมายเหตุ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((m) => {
+                const style = HISTORY_TYPE_STYLE[m.type] || HISTORY_TYPE_STYLE.adjust
+                return (
+                  <tr key={m.id} style={{ borderTop: '1px solid var(--payi-border)' }}>
+                    <td style={{ padding: '7px 8px', whiteSpace: 'nowrap', color: 'var(--payi-text-muted)' }}>{fmtHistoryDate(m.date)}</td>
+                    <td style={{ padding: '7px 8px' }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: style.bg, color: style.color, whiteSpace: 'nowrap' }}>
+                        {HISTORY_TYPE_LABEL[m.type] || m.type}
+                      </span>
+                    </td>
+                    <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 800, color: m.qty < 0 ? 'var(--payi-danger)' : 'var(--payi-text-strong)' }}>
+                      {m.qty > 0 ? '+' : ''}{fmt(m.qty)}
+                    </td>
+                    <td style={{ padding: '7px 8px', color: 'var(--payi-text-muted)', whiteSpace: 'nowrap' }}>{m.created_by || '-'}</td>
+                    <td style={{ padding: '7px 8px', color: 'var(--payi-text-muted)' }}>{m.note || ''}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 // ฟอร์มกลาง ใช้ทั้งเพิ่มสินค้าใหม่ และรับเข้า/เบิกออกด่วนจากตาราง
-function Modal({ title, onClose, children }) {
+function Modal({ title, onClose, children, width = 420 }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.28)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', zIndex: 999 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--payi-surface)', borderRadius: 16, padding: 24, width: 420, maxWidth: '92vw', boxShadow: '0 20px 60px rgba(15,23,42,0.2)' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--payi-surface)', borderRadius: 16, padding: 24, width, maxWidth: '92vw', boxShadow: '0 20px 60px rgba(15,23,42,0.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--payi-text-strong)' }}>{title}</div>
           <button onClick={onClose} style={{ border: 'none', background: 'var(--payi-border)', borderRadius: '50%', width: 28, height: 28, display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
@@ -112,6 +189,7 @@ export default function Inventory() {
   const [itemModal, setItemModal] = useState(null) // null | 'new' | item object (edit)
   const [categoryTab, setCategoryTab] = useState('product') // 'product' | 'packaging' (วัสดุแพ็คเกจจิ้ง — สติกเกอร์/กล่อง)
   const [moveModal, setMoveModal] = useState(null) // { sku, display_name, unit, type }
+  const [historyModal, setHistoryModal] = useState(null) // { sku, display_name }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -513,8 +591,14 @@ export default function Inventory() {
                         {rows.map((it) => (
                           <tr key={it.sku} style={{ borderTop: '1px solid var(--payi-border)' }}>
                             <td style={{ padding: '8px 10px', opacity: it.active ? 1 : 0.5 }} title={it.reorder_date || undefined}>
-                              <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}</div>
-                              <div style={{ fontSize: 10, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{it.sku}</div>
+                              <button
+                                onClick={() => setHistoryModal({ sku: it.sku, display_name: it.display_name })}
+                                title="กดเพื่อดูประวัติรับเข้า-เบิกออก"
+                                style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', width: '100%', display: 'block' }}
+                              >
+                                <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}</div>
+                                <div style={{ fontSize: 10, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{it.sku}</div>
+                              </button>
                             </td>
                             <td style={{ padding: '8px 10px', textAlign: 'right' }}>
                               <button onClick={() => setItemModal(it)} title="กดเพื่อแก้ไข" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: 'var(--payi-text-muted)', fontWeight: 800 }}>
@@ -590,8 +674,14 @@ export default function Inventory() {
                       )}
                     </td>
                     <td style={{ padding: '10px', opacity: it.active ? 1 : 0.5, overflow: 'hidden' }}>
-                      <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.display_name}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}</div>
-                      <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{it.sku}</div>
+                      <button
+                        onClick={() => setHistoryModal({ sku: it.sku, display_name: it.display_name })}
+                        title="กดเพื่อดูประวัติรับเข้า-เบิกออก"
+                        style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', width: '100%', display: 'block', overflow: 'hidden' }}
+                      >
+                        <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.display_name}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}</div>
+                        <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{it.sku}</div>
+                      </button>
                     </td>
                     <td style={{ padding: '10px', textAlign: 'right', fontWeight: 800, color: it.balance <= 0 ? 'var(--payi-danger)' : 'var(--payi-text-strong)' }}>{fmt(it.balance)}</td>
                     <td style={{ padding: '10px', textAlign: 'right' }}>
@@ -629,6 +719,7 @@ export default function Inventory() {
                           <>
                             <button onClick={() => setMoveModal({ sku: it.sku, display_name: it.display_name, unit: it.unit, type: 'in' })} title="รับเข้า" style={iconBtnStyle('var(--payi-success)')}>+</button>
                             <button onClick={() => setMoveModal({ sku: it.sku, display_name: it.display_name, unit: it.unit, type: 'out' })} title="เบิกออก" style={iconBtnStyle('var(--payi-danger)')}>−</button>
+                            <button onClick={() => setHistoryModal({ sku: it.sku, display_name: it.display_name })} title="ประวัติรับเข้า-เบิกออก" style={iconBtnStyle('var(--payi-text-muted)')}><History size={13} /></button>
                             <button onClick={() => setItemModal(it)} title="แก้ไข (รวมปรับยอดคงเหลือ)" style={iconBtnStyle('var(--payi-text-muted)')}><Pencil size={13} /></button>
                             <button onClick={() => setItemHidden(it.sku, true)} title="ซ่อนสินค้านี้ (ไม่ได้ใช้ track สต็อก)" style={iconBtnStyle('var(--payi-text-muted)')}><EyeOff size={13} /></button>
                           </>
@@ -674,6 +765,10 @@ export default function Inventory() {
           onClose={() => setMoveModal(null)}
           onSave={saveMovement}
         />
+      )}
+
+      {historyModal && (
+        <HistoryModal item={historyModal} onClose={() => setHistoryModal(null)} />
       )}
 
     </div>
