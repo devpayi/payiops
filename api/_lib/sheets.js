@@ -157,6 +157,26 @@ export async function appendRows(sheetName, rows) {
   invalidateSheet(sheetName)
 }
 
+// append(rows) แล้วอ่านย้อนกลับ verify ว่าแต่ละแถวลงจริง — กัน race กับฟังก์ชันอื่นที่ overwriteSheet
+// (อ่าน-แก้-เขียนทับทั้งชีท) ชีทเดียวกันพร้อมกัน แล้วทับแถวที่เพิ่ง append หายไปเงียบๆ โดย appendRows เอง
+// ไม่ throw เลย (เจอบั๊กจริงกับ stock_movements 2026-08-11 — approve ของเข้าผ่าน LINE 12 รายการหายไปแบบนี้)
+// idField = คอลัมน์ที่ไม่ซ้ำต่อแถว (เช่น 'id'/'code') หรือฟังก์ชัน (sheetRow) => key ถ้าต้องผูกหลายคอลัมน์
+// เป็น key เดียว (เช่น hr_leave_backups ไม่มีคอลัมน์ id เดี่ยวๆ ต้องผูก leave_id+date+period) — idValues
+// คือ key คู่กับแต่ละแถวใน rows ตามลำดับ (ต้องคำนวณด้วยตรรกะเดียวกับ idField ถ้าเป็นฟังก์ชัน) — retry เฉพาะ
+// แถวที่ยังไม่เจอ ไม่ append ซ้ำแถวที่ลงแล้ว (กันแถวซ้ำถ้า verify อ่านชนจังหวะ cache พอดี)
+export async function appendRowsVerified(sheetName, rows, idField, idValues, attempts = 2) {
+  const keyOf = typeof idField === 'function' ? idField : (r) => r[idField]
+  await appendRows(sheetName, rows)
+  let pending = rows.map((row, i) => ({ row, id: idValues[i] }))
+  for (let i = 0; i < attempts && pending.length; i++) {
+    const sheetRows = await getSheet(sheetName)
+    const landed = new Set(sheetRows.map((r) => String(keyOf(r))))
+    pending = pending.filter((p) => !landed.has(String(p.id)))
+    if (!pending.length) return
+    await appendRows(sheetName, pending.map((p) => p.row))
+  }
+}
+
 // เขียนทับทั้ง sheet (สำหรับ product_master)
 export async function ensureSheet(sheetName, headers) {
   if (ensuredSheets.has(sheetName)) return

@@ -1,7 +1,7 @@
 // POST /api/claims-import  body: { fileName, rows: [ {..excel row..} ] }
 // map แถวจาก Excel เข้า sheet "claims" + จับคู่ master_sku ผ่าน product_aliases
 import { requireAuth } from './_lib/auth.js'
-import { getSheet, appendRows, ensureSheet } from './_lib/sheets.js'
+import { getSheet, appendRows, appendRowsVerified, ensureSheet } from './_lib/sheets.js'
 import { isoDate } from './_lib/dates.js'
 import { buildClaimAliasLookup, resolveClaimAlias } from './_lib/claimMapping.js'
 import { findDuplicateImport, hasMeaningfulClaimRow, sourceFileRef } from './_lib/claimImport.js'
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
       ]
     }).filter(Boolean)
 
-    await appendRows('claims', out)
+    await appendRowsVerified('claims', out, 'id', out.map((row) => row[row.length - 1]))
     res.status(200).json({ success: true, importId, rowsImported: out.length, mappedCount: mapped, fuzzyMappedCount: fuzzyMapped, unmappedCount: out.length - mapped, unmappedSamples, skippedInvalid, skippedSamples, skippedBlank })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })

@@ -1,7 +1,7 @@
 // /api/claims?view=summary|monthly|sku|by-product|imports-list|import|create-claim|create-claims-bulk
 // อ่าน/จัดการข้อมูลเคลมจาก sheet "claims" (Google Sheets)
 import { requireAuth } from './_lib/auth.js'
-import { getSheet, getMetaCached, batchGetValues, appendRows, overwriteSheet, ensureSheet } from './_lib/sheets.js'
+import { getSheet, getMetaCached, batchGetValues, appendRows, appendRowsVerified, overwriteSheet, ensureSheet } from './_lib/sheets.js'
 import { deriveGroup, buildOverrideMap } from './_lib/productGroup.js'
 import { getSkuRedirectMap, getSetRecipeKeySet, resolveSalesSku, resolveRedirect } from './_lib/skuMapping.js'
 import { buildClaimAliasLookup, resolveClaimAlias } from './_lib/claimMapping.js'
@@ -184,7 +184,7 @@ export default async function handler(req, res) {
       let record
       try { record = buildManualClaimRecord(req.body || {}, aliasByMasterSku) }
       catch (e) { return res.status(400).json({ success: false, error: e.message }) }
-      await appendRows('claims', [CLAIMS_HEADERS.map((h) => record[h] ?? '')])
+      await appendRowsVerified('claims', [CLAIMS_HEADERS.map((h) => record[h] ?? '')], 'id', [record.id])
       clearClaimsCache()
       return res.status(200).json({ success: true, claim: record })
     }
@@ -202,7 +202,7 @@ export default async function handler(req, res) {
         try { records.push(buildManualClaimRecord(rows[i], aliasByMasterSku, i)) }
         catch (e) { return res.status(400).json({ success: false, error: `แถวที่ ${i + 1}: ${e.message}` }) }
       }
-      await appendRows('claims', records.map((record) => CLAIMS_HEADERS.map((h) => record[h] ?? '')))
+      await appendRowsVerified('claims', records.map((record) => CLAIMS_HEADERS.map((h) => record[h] ?? '')), 'id', records.map((r) => r.id))
       clearClaimsCache()
       return res.status(200).json({ success: true, count: records.length, claims: records })
     }

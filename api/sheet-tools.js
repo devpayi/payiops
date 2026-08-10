@@ -3,7 +3,7 @@
 // เป็นฟังก์ชันเดียว — Vercel Hobby จำกัด 12 serverless functions ต่อโปรเจค
 import { requireAuth, cacheable, authEnabled } from './_lib/auth.js'
 import { canManageOperations, normalizeRole } from '../shared/roles.js'
-import { getMetaCached, batchGetValues, getSheet, appendRows, overwriteSheet, ensureSheet, ensureSheets } from './_lib/sheets.js'
+import { getMetaCached, batchGetValues, getSheet, appendRows, appendRowsVerified, overwriteSheet, ensureSheet, ensureSheets } from './_lib/sheets.js'
 import { verifySignature, pushMessage, replyMessage, linkRichMenuToUser } from './_lib/line.js'
 import {
   MIN_LOWER_HOUSE_HEADCOUNT, buildCoveragePlan, leaveAbsenceDates, leaveAbsenceSlots,
@@ -39,6 +39,11 @@ const OT_APPROVAL_HISTORY_HEADERS = ['id', 'month', 'employee', 'before_minutes'
 // สลับวันหยุด ("จากวันไหนไปวันไหน") มีอยู่แล้วเป็น leave_type 'สลับวันหยุด' ใน hr_leave ไม่ต้องทำซ้ำที่นี่
 const DAYRECORD_HEADERS = ['id', 'date', 'employee', 'team', 'kind', 'reason', 'paid_ot', 'note', 'created_at', 'created_by']
 const LEAVE_HEADERS = ['id', 'username', 'employee_name', 'leave_type', 'start_date', 'end_date', 'days', 'reason', 'status', 'requested_by', 'requested_at', 'decided_by', 'decided_at', 'decision_note', 'backup_office', 'leave_period', 'edit_pending', 'edit_payload', 'edit_requested_at', 'edit_requested_by', 'understaffed_dates']
+
+// wrapper รอบ appendRowsVerified (sheets.js) สำหรับ record เดียวแบบ object+headers (hr_leave เสี่ยงสุด:
+// append 2 จุด, overwrite 9 จุด — ดู note เต็มที่ appendRowsVerified)
+const appendRowVerified = (sheetName, headers, record, attempts = 2) =>
+  appendRowsVerified(sheetName, [headers.map((h) => record[h] ?? '')], 'id', [record.id], attempts)
 const BACKUP_HEADERS = ['leave_id', 'date', 'period', 'office_code', 'created_at']
 const LEAVE_EDIT_HEADERS = ['leave_id', 'mode', 'before_json', 'after_json', 'changed_at', 'changed_by']
 const SCHEDULE_HEADERS = ['id', 'date', 'username', 'employee_name', 'shift_start', 'shift_end', 'role_note', 'created_at', 'created_by']
@@ -2149,7 +2154,7 @@ async function opHrInner(req, res) {
         const next = current.map((r) => String(r.code).toUpperCase() === code ? { ...r, name, active: '1', day_off_weekday: dayOffWeekday, day_off_effective_from: dayOffFrom } : r)
         await overwriteSheet('hr_office_people', OFFICE_HEADERS, next.map((r) => OFFICE_HEADERS.map((h) => r[h] ?? '')))
       } else {
-        await appendRows('hr_office_people', [[code, name, '1', dayOffWeekday, dayOffFrom]])
+        await appendRowsVerified('hr_office_people', [[code, name, '1', dayOffWeekday, dayOffFrom]], 'code', [code])
       }
     } else {
       const current = await getSheet('workforce_people')
@@ -2159,7 +2164,7 @@ async function opHrInner(req, res) {
         const next = current.map((r) => String(r.code).toUpperCase() === code ? { ...r, name, group, active: '1', day_off_weekday: dayOffWeekday, day_off_effective_from: dayOffFrom } : r)
         await overwriteSheet('workforce_people', PEOPLE_HEADERS, next.map((r) => PEOPLE_HEADERS.map((h) => r[h] ?? '')))
       } else {
-        await appendRows('workforce_people', [[code, name, group, '1', dayOffWeekday, dayOffFrom]])
+        await appendRowsVerified('workforce_people', [[code, name, group, '1', dayOffWeekday, dayOffFrom]], 'code', [code])
       }
     }
     clearHrCache(); clearWorkforceCache()
@@ -2211,7 +2216,7 @@ async function opHrInner(req, res) {
         const nextOffice = officeRows.map((r) => String(r.code).toUpperCase() === code ? { ...r, name, active: '1' } : r)
         await overwriteSheet('hr_office_people', OFFICE_HEADERS, nextOffice.map((r) => OFFICE_HEADERS.map((h) => r[h] ?? '')))
       } else {
-        await appendRows('hr_office_people', [[code, name, '1']])
+        await appendRowsVerified('hr_office_people', [[code, name, '1']], 'code', [code])
       }
     } else {
       if (officeExisting) {
@@ -2222,7 +2227,7 @@ async function opHrInner(req, res) {
         const nextPeople = peopleRows.map((r) => String(r.code).toUpperCase() === code ? { ...r, group } : r)
         await overwriteSheet('workforce_people', PEOPLE_HEADERS, nextPeople.map((r) => PEOPLE_HEADERS.map((h) => r[h] ?? '')))
       } else {
-        await appendRows('workforce_people', [[code, name, group, '1']])
+        await appendRowsVerified('workforce_people', [[code, name, group, '1']], 'code', [code])
       }
     }
     clearHrCache(); clearWorkforceCache()
@@ -2366,8 +2371,12 @@ async function opHrInner(req, res) {
       backup_assignments: coverage.assignments || [],
       understaffed_dates: (coverage.understaffedDates || []).join(','),
     }
-    if (coverage.assignments?.length) await appendRows('hr_leave_backups', coverage.assignments.map((assignment) => BACKUP_HEADERS.map((header) => ({ leave_id: record.id, ...assignment, created_at: now })[header] ?? '')))
-    await appendRows('hr_leave', [LEAVE_HEADERS.map((h) => record[h] ?? '')])
+    if (coverage.assignments?.length) {
+      const backupRows = coverage.assignments.map((assignment) => BACKUP_HEADERS.map((header) => ({ leave_id: record.id, ...assignment, created_at: now })[header] ?? ''))
+      // ไม่มีคอลัมน์ id เดี่ยวๆ ต่อแถว — ผูก leave_id+date+period เป็น key ตรวจแทน (ไม่ซ้ำต่อคำขอลา 1 ใบ)
+      await appendRowsVerified('hr_leave_backups', backupRows, (r) => `${r.leave_id}|${r.date}|${r.period}`, coverage.assignments.map((a) => `${record.id}|${a.date}|${a.period}`))
+    }
+    await appendRowVerified('hr_leave', LEAVE_HEADERS, record)
     clearHrCache()
     await notifyNewLeaveRequestSafely(record)
     return res.status(200).json({ success: true, leave: record })
@@ -3050,8 +3059,12 @@ async function handleLeaveWizard(event, staffLink) {
         backup_assignments: coverage.assignments || [],
         understaffed_dates: (coverage.understaffedDates || []).join(','),
       }
-      if (coverage.assignments?.length) await appendRows('hr_leave_backups', coverage.assignments.map((assignment) => BACKUP_HEADERS.map((header) => ({ leave_id: record.id, ...assignment, created_at: now })[header] ?? '')))
-      await appendRows('hr_leave', [LEAVE_HEADERS.map((h) => record[h] ?? '')])
+      if (coverage.assignments?.length) {
+      const backupRows = coverage.assignments.map((assignment) => BACKUP_HEADERS.map((header) => ({ leave_id: record.id, ...assignment, created_at: now })[header] ?? ''))
+      // ไม่มีคอลัมน์ id เดี่ยวๆ ต่อแถว — ผูก leave_id+date+period เป็น key ตรวจแทน (ไม่ซ้ำต่อคำขอลา 1 ใบ)
+      await appendRowsVerified('hr_leave_backups', backupRows, (r) => `${r.leave_id}|${r.date}|${r.period}`, coverage.assignments.map((a) => `${record.id}|${a.date}|${a.period}`))
+    }
+      await appendRowVerified('hr_leave', LEAVE_HEADERS, record)
       clearHrCache()
       await clearSession(lineUserId)
       const submittedMessage = leaveFlexMessage(record, 'submitted', await getOfficePeopleMap())
