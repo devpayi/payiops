@@ -1867,9 +1867,11 @@ async function opWorkforceInner(req, res) {
     const otLimits = Object.fromEntries(limits.filter((l) => l.employee).map((l) => [l.employee, l.limit_hours]))
     let sourceManpower = []
     let officePeople = []; let officeAbsences = []; let officeMap = {}
+    let dayOffMapForSchedule = {}
     try {
-      const [leaveRows, officeMapResult] = await Promise.all([getSheet('hr_leave'), getOfficePeopleMap()])
+      const [leaveRows, officeMapResult, dayOffMapResult] = await Promise.all([getSheet('hr_leave'), getOfficePeopleMap(), getDayOffMap()])
       officeMap = officeMapResult
+      dayOffMapForSchedule = dayOffMapResult
       // รวมออฟฟิศเข้ากับตารางกะด้วย (เดิมส่งแค่บ้านล่าง) — ปฏิทินจะได้โชว์ตามตารางกะจริงของออฟฟิศด้วย ไม่ใช่ "มาทุกวันเสมอ" เหมือนก่อน
       sourceManpower = await getCalendarPresence({ ...personMap, ...officeMap }, Object.keys(personMap), true, Object.keys(officeMap))
       officePeople = Object.entries(officeMap).map(([code, [name]]) => ({ code, name }))
@@ -1884,9 +1886,12 @@ async function opWorkforceInner(req, res) {
     } catch (e) { console.error('office presence:', e.message) }
     res.setHeader('Cache-Control', cacheable('public, s-maxage=20, stale-while-revalidate=60'))
     // เพิ่มออฟฟิศเข้าไปในรายชื่อที่แก้ผ่านปุ่ม "คน" ได้แล้ว (เดิมแก้ได้แค่บ้านล่าง)
+    // แนบวันหยุดประจำมาด้วย — ให้หน้าเว็บ default ไม่ติ๊กคนที่วันหยุดประจำตรงกับวันที่กำลังแก้ตอนเปิด modal เสมอ
+    // (กันปัญหา checkbox ค้างจาก override เก่าที่เคยมีชื่อเขาทำงานวันนั้น แล้ว resave ทับวันหยุดประจำใหม่โดยไม่ตั้งใจ)
+    const withDayOff = (code) => ({ day_off_weekday: dayOffMapForSchedule[code]?.weekday ?? '', day_off_effective_from: dayOffMapForSchedule[code]?.from ?? '' })
     const schedulePeople = [
-      ...Object.entries(personMap).map(([code, [name, group]]) => ({ code, name, group })),
-      ...Object.entries(officeMap).map(([code, [name]]) => ({ code, name, group: 'ออฟฟิศ' })),
+      ...Object.entries(personMap).map(([code, [name, group]]) => ({ code, name, group, ...withDayOff(code) })),
+      ...Object.entries(officeMap).map(([code, [name]]) => ({ code, name, group: 'ออฟฟิศ', ...withDayOff(code) })),
     ]
     const data = { success: true, rows: rows.sort((a, b) => String(b.date).localeCompare(String(a.date))), manpower, sourceManpower, events, history, approvals, approvalHistory, otLimits, people, schedulePeople, officePeople, officeAbsences, sourceYear: '2026', dayRecords: dayRecords.sort((a, b) => String(b.date).localeCompare(String(a.date))) }
     workforceCache = { at: Date.now(), data }

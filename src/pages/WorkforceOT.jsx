@@ -7,6 +7,14 @@ const MANPOWER_CACHE_KEY = 'payi-manpower-today-cache'
 const DEFAULT_NAMES = ['แตง', 'แป้ง', 'มี่', 'ฟ้า', 'ป้า', 'อื่น ๆ']
 const PROMO_TITLE_OPTIONS = ['วันโปร', '7.7', '8.8', '9.9', '10.10', '11.11', '12.12', 'เงินเดือนออก', 'เทศกาล/วันหยุดยาว', 'เติมสต็อกล่วงหน้า']
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+// เหมือน isFixedDayOff ฝั่ง backend — เช็ควันหยุดประจำสัปดาห์ของคนนั้นตรงกับวันที่นี้ไหม (person มาจาก schedulePeople ที่แนบ day_off_weekday/day_off_effective_from มาด้วย)
+const isFixedDayOffToday = (person, date) => {
+  const weekday = String(person?.day_off_weekday ?? '')
+  if (weekday === '') return false
+  const from = String(person?.day_off_effective_from ?? '')
+  if (from && date < from) return false
+  return String(new Date(`${date}T00:00:00`).getDay()) === weekday
+}
 const fmtMinutes = (value) => {
   const n = Number(value) || 0
   const h = Math.floor(n / 60); const m = n % 60
@@ -289,7 +297,11 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
   const openOT = (date) => { setError(''); setModal({ type: 'ot', date }); setSelected([]); setNote('') }
   const openSchedule = (date) => {
     const workingCodes = new Set(manpower.filter((row) => row.date === date).map((row) => String(row.code || '').toUpperCase()))
-    setScheduleDraft(Object.fromEntries(schedulePeople.map((person) => [person.code, workingCodes.has(String(person.code).toUpperCase())])))
+    // คนที่วันหยุดประจำตรงกับวันนี้ default ไม่ติ๊กเสมอ ต่อให้ override เก่ายังมีชื่อเขาทำงานวันนี้ค้างอยู่ก็ตาม —
+    // กันปัญหา checkbox ค้างจาก override เก่าที่ resave ทับวันหยุดประจำที่เพิ่งตั้งทีหลังโดยไม่ตั้งใจ (เจอจริง
+    // 2026-08-10 กรณีเกด ตั้งวันหยุดอังคารแล้ว แต่ยังมาอังคารเพราะมีคนแก้ตารางวันนั้นเรื่องอื่นแล้ว resave ทับ)
+    // อยากเรียกมาทำงานวันหยุดจริง ๆ ก็แค่ติ๊กเองได้ตามปกติ ไม่ได้บล็อก
+    setScheduleDraft(Object.fromEntries(schedulePeople.map((person) => [person.code, workingCodes.has(String(person.code).toUpperCase()) && !isFixedDayOffToday(person, date)])))
     setScheduleBaselineCodes(workingCodes)
     // เติมสถานะ OT เต็มวันเดิม (ถ้าเคยบันทึกไว้แล้ว) กลับเข้า draft ตอนเปิดแก้ซ้ำ
     const otNamesToday = new Set(dayRecords.filter((r) => r.date === date && r.kind === 'ot_full').map((r) => r.employee))
