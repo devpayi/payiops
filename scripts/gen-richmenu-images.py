@@ -362,27 +362,24 @@ def draw_hero_layout(filename, width, height, heroes, side_pills, bottom_cards, 
     base.convert("RGB").save(os.path.join(OUT_DIR, filename), "PNG")
     print(filename, base.size)
 
-# ── Full tier (Boss/Dev) — 1200x810 — owner ขอ 2026-08-06 (v6, final): กลับไปโครงแบบเดียวกับ stock tier
-# (hero ใหญ่ + pill 2 ใบด้านข้าง + การ์ดล่าง 4 ใบเท่ากันธรรมดา ไม่มี group panel/red badge แล้ว) — hero คือ
-# "สั่งของ" (ปุ่มหลักที่ใช้บ่อยสุด) ส่วน "แจ้งของเข้า"/"ของเข้ารอตรวจ" ไปอยู่ pill ด้านข้างแทน
+# ── Full tier (Boss/Dev) — 1200x810 — owner ขอ 2026-08-11 (v3): เอาโครง staff tier มาใช้ (hero เต็มกว้าง
+# ไม่มี pill ข้าง + การ์ดล่าง 3 ใบเท่ากัน) — hero "งานสต็อค" (quick reply รวม สั่งของ/ของเข้ารอตรวจ/
+# รายการที่สั่งไว้/เช็คของ/แก้ไขของเข้า) + การ์ดล่าง "งาน HR" (quick reply รวม อนุมัติการลา/เช็คประวัติลา)/
+# "เว็บแอพ"/"ช่วยเหลือ"
 draw_hero_layout(
     "richmenu-full.png", 1200, 810,
     heroes=[
-        {"icon": "cart", "label": "สั่งของ", "subtitle": "แตะเพื่อสั่งของเข้าคลัง"},
+        {"icon": "cart", "label": "งานสต็อค", "subtitle": "สั่งของ / ของเข้า / เช็คของ"},
     ],
-    side_pills=[
-        {"label": "รายการที่สั่งไว้"},
-        {"label": "ของเข้ารอตรวจ"},
-    ],
+    side_pills=[],
     bottom_cards=[
-        {"icon": "note_edit", "label": "อนุมัติการลา"},
-        {"icon": "book", "label": "เช็คประวัติลา"},
+        {"icon": "note_edit", "label": "งาน HR"},
         {"icon": "globe", "label": "เว็บแอพ"},
         {"icon": "question", "label": "ช่วยเหลือ"},
     ],
-    hero_boxes=[(0, 0, 800, 540)],
-    pill_boxes=[(800, 0, 1200, 270), (800, 270, 1200, 540)],
-    card_boxes=[(0, 540, 300, 810), (300, 540, 600, 810), (600, 540, 900, 810), (900, 540, 1200, 810)],
+    hero_boxes=[(0, 0, 1200, 450)],
+    pill_boxes=[],
+    card_boxes=[(0, 450, 400, 810), (400, 450, 800, 810), (800, 450, 1200, 810)],
 )
 
 # ── Stock tier (ฟ้า/แตง) — 1200x810 (ขยายจาก 800x540 เดิม ใส่ เช็คประวัติ/เช็ควันลาคงเหลือ เพิ่มตามที่ขอ) ──

@@ -11,7 +11,7 @@ import {
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides, LEGACY_OVERRIDE_EXEMPT_CODES } from './_lib/scheduleOverrides.js'
 import { isoDate } from './_lib/dates.js'
-import opInventory, { computeLowStockList, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
+import opInventory, { computeLowStockList, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
 import opImportTracking from './_lib/importTracking.js'
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
@@ -1343,6 +1343,14 @@ const BOSS_LEAVE_HISTORY_TRIGGER = 'เช็คประวัติ'
 // เพดาน 10 รายการต่อการ์ด เกินกว่านั้นให้กดปุ่มเปิดเว็บไปดูที่ Stock Movement แทน (LINE การ์ดยาวเกินไปอ่านยาก)
 const ORDER_LIST_TRIGGER = 'รายการที่สั่งไว้'
 const ORDER_LIST_LIMIT = 10
+// ปุ่ม "แก้ไขของเข้า" — ย้อนกลับ approve/ปฏิเสธที่กดผิดใน LINE (owner ขอ 2026-08-11 คู่กับบั๊ก race
+// condition ที่เจอ: บาง approve ไม่เข้า stock จริง) แสดงรายการล่าสุดที่ approve/ปฏิเสธไปแล้วให้เลือกย้อนกลับ
+const STOCK_IN_UNDO_TRIGGER = 'แก้ไขของเข้า'
+const STOCK_IN_UNDO_LIMIT = 5 // LINE reply รับได้สูงสุด 5 ข้อความต่อครั้ง (1 การ์ด = 1 ข้อความ)
+// รวบปุ่ม boss/dev ที่แน่นเกินไป (8 ปุ่ม) เหลือ hero เดียวต่อหมวด — เลือกจริงผ่าน quick reply ที่ยิง
+// ข้อความเดิม (เช่น "สั่งของ") กลับเข้ามาเหมือนพิมพ์เอง ไม่ต้องเขียน handler ใหม่ (owner ขอ 2026-08-11)
+const STOCK_MENU_TRIGGER = 'งานสต็อค'
+const HR_MENU_TRIGGER = 'งาน HR'
 const appWebUrl = (tab) => `${APP_BASE_URL}/${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`
 
 async function handleOrderListCommand(event) {
@@ -1378,6 +1386,68 @@ async function handleOrderListCommand(event) {
       body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: ORDER_CARD.soft, contents: rows },
       ...(footerButtons.length ? { footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: ORDER_CARD.base, contents: footerButtons } } : {}),
     },
+  }])
+}
+
+// รายการ approve/ปฏิเสธล่าสุด ให้เลือกย้อนกลับ (undoStockInDecision) — เผื่อกดผิด/มีของเข้าไม่ครบตามที่คิด
+async function handleStockInUndoListCommand(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นที่แก้ไขย้อนหลังได้ค่ะ' }])
+  const all = await loadStockInRequests({ role: approver.role })
+  const decided = all.filter((r) => r.status === 'matched' || r.status === 'rejected')
+  decided.sort((a, b) => String(b.matched_at).localeCompare(String(a.matched_at)))
+  const recent = decided.slice(0, STOCK_IN_UNDO_LIMIT)
+  if (!recent.length) return replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่มีรายการที่ approve หรือปฏิเสธไว้ค่ะ' }])
+  const items = await loadOrderableItems()
+  const cards = recent.map((r) => {
+    const item = items.find((it) => String(it.sku).toUpperCase() === String(r.sku).toUpperCase())
+    const label = item?.display_name || r.sku
+    const statusText = r.status === 'matched' ? `✅ Approve แล้ว × ${r.qty}${item?.unit || ''}` : '✗ ปฏิเสธแล้ว'
+    return {
+      type: 'flex', altText: `${label} — ${statusText}`,
+      contents: {
+        type: 'bubble', size: 'kilo',
+        header: stockCardHeader('แก้ไขของเข้า', `${(r.matched_at || '').slice(0, 10)} · โดย ${r.matched_by || '-'}`, '↩️'),
+        body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [stockInItemRow(r.id, label, statusText)] },
+        footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: [
+          stockCardButton({ type: 'postback', label: 'ย้อนกลับ', data: `stockin-undo:${r.id}`, displayText: `ย้อนกลับ ${label}` }, true),
+        ] },
+      },
+    }
+  })
+  await replyMessage(replyToken, cards.slice(0, 5))
+}
+
+async function handleStockMenuCommand(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นค่ะ' }])
+  return replyMessage(replyToken, [{
+    type: 'text', text: 'งานสต็อค — เลือกได้เลยค่ะ',
+    quickReply: { items: [
+      { type: 'action', action: { type: 'message', label: 'สั่งของ', text: 'สั่งของ' } },
+      { type: 'action', action: { type: 'message', label: 'ของเข้ารอตรวจ', text: STOCK_PENDING_TRIGGER } },
+      { type: 'action', action: { type: 'message', label: 'รายการที่สั่งไว้', text: ORDER_LIST_TRIGGER } },
+      { type: 'action', action: { type: 'message', label: 'เช็คของ', text: 'เช็คของ' } },
+      { type: 'action', action: { type: 'message', label: 'แก้ไขของเข้า', text: STOCK_IN_UNDO_TRIGGER } },
+    ] },
+  }])
+}
+
+async function handleHrMenuCommand(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นค่ะ' }])
+  return replyMessage(replyToken, [{
+    type: 'text', text: 'งาน HR — เลือกได้เลยค่ะ',
+    quickReply: { items: [
+      { type: 'action', action: { type: 'message', label: 'อนุมัติการลา', text: LEAVE_PENDING_TRIGGER } },
+      { type: 'action', action: { type: 'message', label: 'เช็คประวัติลา', text: BOSS_LEAVE_HISTORY_TRIGGER } },
+    ] },
   }])
 }
 
@@ -1474,11 +1544,10 @@ async function handleHelpCommand(event) {
   const tier = richMenuTierForRole(role, username)
   const guide = {
     full: [
+      `📦 พิมพ์ "${STOCK_MENU_TRIGGER}" — เมนูรวมงานสต็อค (สั่งของ/ของเข้ารอตรวจ/รายการที่สั่งไว้/เช็คของ/แก้ไขของเข้า)`,
+      `📝 พิมพ์ "${HR_MENU_TRIGGER}" — เมนูรวมงาน HR (อนุมัติการลา/เช็คประวัติลา)`,
       '📦 พิมพ์ "แจ้งของเข้า" — บันทึกของเข้าที่นับได้จริง',
-      '🛒 พิมพ์ "สั่งของ" — สั่งของเข้าคิวรอของเข้า',
-      `📋 พิมพ์ "${STOCK_PENDING_TRIGGER}" — ดูของเข้าที่ยังรอ Approve`,
-      `📝 พิมพ์ "${LEAVE_PENDING_TRIGGER}" — ดูคำขอลาที่ยังรออนุมัติ`,
-      '🏖️ ขอลา/เปิดเว็บแอพ — กดปุ่มในเมนูด้านล่างแชทได้เลย',
+      '🏖️ เว็บแอพ — กดปุ่มในเมนูด้านล่างแชทได้เลย',
     ],
     stock: ['📦 พิมพ์ "แจ้งของเข้า" — บันทึกของเข้าที่นับได้จริง', '🏖️ ขอลา/เปิดเว็บแอพ — กดปุ่มในเมนูด้านล่างแชทได้เลย'],
     staff: ['🏖️ พิมพ์ "ลา" — เริ่มขอลา', '📖 พิมพ์ "ประวัติลา" — ดูประวัติการลาปีนี้', '📊 พิมพ์ "สรุปลา" — ดูวันลาคงเหลือ'],
@@ -3024,7 +3093,7 @@ async function opLineWebhook(req, res) {
         // 2026-08-06: ค้างขั้นตอนลาอยู่ กดช่วยเหลือ ต้องสลับได้ทันที ไม่ใช่แค่ตอบไม่ได้เงียบๆ) เคลียร์ session
         // ทั้ง 3 ชุด (สั่งของ/แจ้งของเข้า/ตัวช่วยขอลา) ทิ้งก่อนเข้า handler จริงข้างล่าง กันของเก่าค้างสับสน
         const isAnyMenuCommand = initialQuery === '' || initialInQuery === '' ||
-          [STOCK_PENDING_TRIGGER, LEAVE_PENDING_TRIGGER, HELP_TRIGGER, BOSS_LEAVE_HISTORY_TRIGGER, ORDER_LIST_TRIGGER, LEAVE_TRIGGER, LEAVE_HISTORY_TRIGGER, LEAVE_SUMMARY_TRIGGER].includes(event.message.text)
+          [STOCK_PENDING_TRIGGER, LEAVE_PENDING_TRIGGER, HELP_TRIGGER, BOSS_LEAVE_HISTORY_TRIGGER, ORDER_LIST_TRIGGER, STOCK_IN_UNDO_TRIGGER, STOCK_MENU_TRIGGER, HR_MENU_TRIGGER, LEAVE_TRIGGER, LEAVE_HISTORY_TRIGGER, LEAVE_SUMMARY_TRIGGER].includes(event.message.text)
         if (isAnyMenuCommand) {
           await clearStockOrderSession(lineUserId)
           await clearStockInSession(lineUserId)
@@ -3040,6 +3109,9 @@ async function opLineWebhook(req, res) {
         if (event.message.text === HELP_TRIGGER) { await handleHelpCommand(event); continue }
         if (event.message.text === BOSS_LEAVE_HISTORY_TRIGGER) { await handleBossLeaveHistoryCommand(event); continue }
         if (event.message.text === ORDER_LIST_TRIGGER) { await handleOrderListCommand(event); continue }
+        if (event.message.text === STOCK_IN_UNDO_TRIGGER) { await handleStockInUndoListCommand(event); continue }
+        if (event.message.text === STOCK_MENU_TRIGGER) { await handleStockMenuCommand(event); continue }
+        if (event.message.text === HR_MENU_TRIGGER) { await handleHrMenuCommand(event); continue }
         // คำสั่ง “เช็คของที่ต้องสั่ง” ดูได้ทุกเมื่อจากทุกขั้นตอนเหมือนกัน — ไม่ต้องรอการ์ดแจ้งเตือนรายวัน
         if (isStockCheckCommand(event.message.text) && await handleStockCheckCommand(event)) continue
         // คำสั่ง “สั่งของ”/“แจ้งของเข้า” เริ่มใหม่ได้จากทุกขั้นตอน รวมถึงตอนที่รอจำนวนหรือรอเลือกวันที่
@@ -3239,6 +3311,26 @@ async function opLineWebhook(req, res) {
             ? `ปฏิเสธสำเร็จ ${rejected.length} รายการ\nไม่สำเร็จ: ${failed.join('; ')}`
             : `ปฏิเสธสำเร็จ ${rejected.length} รายการ โดย ${approver.name}${notifyResult}`,
         }])
+        continue
+      }
+      if (data.startsWith('stockin-undo:')) {
+        const approver = lineUserId ? await findStockApprover(lineUserId) : null
+        if (!approver) {
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ไม่มีสิทธิ์ย้อนกลับ: กรุณาผูก LINE กับบัญชี Boss ในระบบก่อนค่ะ' }])
+          continue
+        }
+        const id = data.slice('stockin-undo:'.length).trim()
+        try {
+          const items = await loadOrderableItems()
+          const before = await getStockInRequestById(id)
+          const item = items.find((it) => String(it.sku).toUpperCase() === String(before?.sku).toUpperCase())
+          const label = item?.display_name || before?.sku || id
+          const reverted = await undoStockInDecision({ id }, approver.name, approver.role)
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ย้อนกลับ "${label}" แล้ว โดย ${approver.name} — กลับไปรอ approve/ปฏิเสธใหม่ค่ะ` }])
+          await announceStockInResultToGroup(`↩️ ${approver.name} ย้อนกลับรายการ "${label}" (${before?.status === 'matched' ? 'เคย Approve' : 'เคยปฏิเสธ'})`)
+        } catch (e) {
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
+        }
         continue
       }
 

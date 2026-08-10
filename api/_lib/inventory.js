@@ -471,7 +471,18 @@ async function addMovement(body, actorName) {
     created_by: actorName || '',
     created_at: now,
   }
-  await appendRows(MOVEMENTS_SHEET, [MOVEMENTS_HEADERS.map((h) => row[h] ?? '')])
+  const rowValues = MOVEMENTS_HEADERS.map((h) => row[h] ?? '')
+  await appendRows(MOVEMENTS_SHEET, [rowValues])
+  // verify-and-retry: updateMovement/deleteMovement ทำ read-modify-write ทับทั้งชีทนี้ (overwriteSheet) —
+  // ถ้าจังหวะชนกับ append ตรงนี้พอดี (คนละ request เข้ามาพร้อมกัน) การ overwrite จะอ่าน snapshot เก่าที่ยัง
+  // ไม่เห็นแถวที่เพิ่ง append แล้วเขียนทับ ลบแถวนี้หายไปเงียบๆ โดย appendRows ไม่ throw เลย — เจอจริงจากข้อมูล
+  // production (ของเข้า approve ผ่าน LINE 12 รายการ หายไปช่วง 2026-08-01..05 แต่สถานะคำขอบอกว่า matched แล้ว)
+  // เช็คย้อนกลับหลัง append ถ้าไม่เจอ ลองใหม่ (สูงสุด 2 ครั้ง)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const check = await getSheet(MOVEMENTS_SHEET)
+    if (check.some((m) => m.id === row.id)) break
+    await appendRows(MOVEMENTS_SHEET, [rowValues])
+  }
   return row
 }
 
@@ -661,6 +672,40 @@ export async function rejectStockInRequest(body, actorName, role) {
   requests[idx] = { ...requests[idx], status: 'rejected', matched_by: actorName || '', matched_at: now, reject_reason: body.note || '' }
   await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
   return requests[idx]
+}
+
+// ย้อนกลับ approve/ปฏิเสธที่กดพลาดใน LINE (owner ขอ 2026-08-11 คู่กับบั๊ก race condition ที่เจอ) — boss/dev
+// เท่านั้น matched: ไม่ลบ movement เดิม (ประวัติต้องอยู่ตามธรรมเนียมไฟล์นี้ทั้งไฟล์) แต่สร้าง adjust ย้อนยอด
+// แทน แล้ว reset คำขอกลับเป็น pending ให้ approve/ปฏิเสธใหม่ได้ถูกต้อง — ถ้าเคยผูกลอต "สั่งของ" ไว้ตอน match
+// ด้วย ปลดลอตนั้นกลับ pending เช่นกัน (ไม่งั้นลอตค้าง matched ทั้งที่ของจริงถูกย้อนกลับไปแล้ว)
+// rejected: แค่ reset สถานะกลับ pending เฉยๆ (ไม่เคยมี movement ให้ย้อน)
+export async function undoStockInDecision(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ย้อนกลับได้')
+  const id = String(body.id || '').trim()
+  if (!id) throw new Error('ต้องระบุ id')
+
+  await ensureInventorySheets()
+  const requests = await getSheet(STOCK_IN_REQUESTS_SHEET)
+  const idx = requests.findIndex((r) => String(r.id) === id)
+  if (idx === -1) throw new Error('ไม่พบคำขอนี้')
+  const req = requests[idx]
+  if (req.status !== 'matched' && req.status !== 'rejected') throw new Error('ย้อนกลับได้เฉพาะรายการที่ approve หรือปฏิเสธไปแล้ว')
+
+  if (req.status === 'matched' && req.movement_id) {
+    await addMovement({
+      sku: req.sku, type: 'adjust', qty: -Math.abs(num(req.qty)),
+      date: todayBKK(), note: `ย้อนกลับ approve ที่กดพลาด (คำขอ ${id} · movement เดิม ${req.movement_id})`,
+    }, actorName)
+  }
+
+  const now = new Date().toISOString()
+  requests[idx] = { ...req, status: 'pending', matched_by: '', matched_at: '', movement_id: '', reject_reason: '', linked_order_id: '' }
+  if (req.linked_order_id) {
+    const orderIdx = requests.findIndex((r) => String(r.id) === String(req.linked_order_id))
+    if (orderIdx !== -1) requests[orderIdx] = { ...requests[orderIdx], status: 'pending', matched_by: '', matched_at: '', movement_id: '' }
+  }
+  await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
+  return { ...requests[idx], undone_from_status: req.status }
 }
 
 // ฟ้าแก้ไขคำขอที่ถูกปฏิเสธแล้วส่งกลับเข้าคิวรอ match ใหม่ (ไม่ต้องพิมพ์แจ้งของเข้าใหม่ทั้งหมด)

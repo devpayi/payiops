@@ -47,15 +47,13 @@ const menuDefs = [
     name: 'PAYI Ops - Full (Boss/Dev)',
     chatBarText: 'เมนู',
     areas: [
-      // owner ขอ 2026-08-06 (v6, final): โครงเดียวกับ stock tier — hero "สั่งของ" + pill 2 ใบ (แจ้งของเข้า/
-      // ของเข้ารอตรวจ) + การ์ดล่าง 4 ใบเท่ากัน (อนุมัติการลา/เช็คประวัติ/เว็บแอพ/ช่วยเหลือ) ไม่มี group/badge แล้ว
-      { bounds: { x: 0, y: 0, width: 800, height: 540 }, action: { type: 'message', text: 'สั่งของ' } },              // hero
-      { bounds: { x: 800, y: 0, width: 400, height: 270 }, action: { type: 'message', text: 'รายการที่สั่งไว้' } },   // pill 1
-      { bounds: { x: 800, y: 270, width: 400, height: 270 }, action: { type: 'message', text: 'ของเข้ารอตรวจ' } },    // pill 2
-      { bounds: { x: 0, y: 540, width: 300, height: 270 }, action: { type: 'message', text: 'อนุมัติการลา' } },       // card 1
-      { bounds: { x: 300, y: 540, width: 300, height: 270 }, action: { type: 'message', text: 'เช็คประวัติ' } },      // card 2: เลือกเดือน -> ใครลาบ้าง
-      { bounds: { x: 600, y: 540, width: 300, height: 270 }, action: { type: 'uri', uri: webUrl('Executive') } },     // card 3: เว็บแอพ -> หน้าหลัก
-      { bounds: { x: 900, y: 540, width: 300, height: 270 }, action: { type: 'message', text: 'ช่วยเหลือ' } },        // card 4
+      // owner ขอ 2026-08-11 (v3): โครงเดียวกับ staff tier (hero เต็มกว้าง + การ์ดล่าง 3 ใบเท่ากัน) —
+      // "งานสต็อค"/"งาน HR" ยิงข้อความ trigger ที่เปิด quick reply ย่อยในตัว (handleStockMenuCommand/
+      // handleHrMenuCommand ใน sheet-tools.js) ไม่ใช่ action ตรง
+      { bounds: { x: 0, y: 0, width: 1200, height: 450 }, action: { type: 'message', text: 'งานสต็อค' } },            // hero
+      { bounds: { x: 0, y: 450, width: 400, height: 360 }, action: { type: 'message', text: 'งาน HR' } },             // card 1
+      { bounds: { x: 400, y: 450, width: 400, height: 360 }, action: { type: 'uri', uri: webUrl('Executive') } },     // card 2: เว็บแอพ -> หน้าหลัก
+      { bounds: { x: 800, y: 450, width: 400, height: 360 }, action: { type: 'message', text: 'ช่วยเหลือ' } },        // card 3
     ],
   },
   {
