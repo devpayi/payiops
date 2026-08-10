@@ -1761,7 +1761,25 @@ function buildLeaveAbsenceMap(leaveRows) {
 const absenceFraction = (absenceByCode, code, date) => (absenceByCode[code]?.[date]?.size || 0) / 2
 // เช็ควันหยุดประจำสัปดาห์คงที่ต่อคน (เช่น หยุดทุกวันอาทิตย์) — เทียบ weekday ของวันที่นั้นตรงกับที่ตั้งไว้ไหม
 // ใช้ new Date(`${date}T00:00:00`) เสมอ (ไม่ใช่ new Date(date) เฉยๆ) กัน parse เป็น UTC แล้ว weekday เพี้ยน
-const isFixedDayOff = (dayOffMap, code, date) => {
+// สลับวันหยุด (leave_type "สลับวันหยุด", อนุมัติแล้ว): start_date = วันหยุดประจำที่ "สละ" ไปทำงานแทนสัปดาห์นั้น,
+// end_date = วันหยุดใหม่ที่ใช้แทน (ดู leaveAbsenceDates) — ต้องกันไม่ให้ isFixedDayOff ตัดคนออกจาก start_date ไม่งั้น
+// สลับวันหยุดแล้วยังไม่โผล่ปฏิทินวันที่มาทำงานจริงอยู่ดี (เจอจริง 2026-08-10 กรณีมี่ สลับหยุดพุธ 12 ไปหยุดอังคาร 11
+// แทน แต่วันที่ 12 ยังหายจากปฏิทินเหมือนเป็นวันหยุดประจำอยู่)
+function buildSwapBackDates(leaveRows) {
+  const map = {}
+  for (const l of leaveRows) {
+    if (l.status !== 'approved' || l.leave_type !== 'สลับวันหยุด') continue
+    if (!String(l.username || '').startsWith('mp:')) continue
+    const code = l.username.slice(3)
+    const date = String(l.start_date || '')
+    if (!date) continue
+    map[code] ||= new Set()
+    map[code].add(date)
+  }
+  return map
+}
+const isFixedDayOff = (dayOffMap, code, date, swapBackMap = {}) => {
+  if (swapBackMap[code]?.has(date)) return false
   const entry = dayOffMap[code]
   if (!entry) return false
   if (entry.from && date < entry.from) return false // ยังไม่ถึงวันที่เริ่มมีผล — ใช้รูปแบบเดิม (มาทำงานปกติ) ต่อไป
@@ -1770,7 +1788,7 @@ const isFixedDayOff = (dayOffMap, code, date) => {
 // fallback เมื่อยังไม่มีตารางพนักงาน (หรือพนักงานคนนี้ยังไม่มีแถวในตารางเลย เช่นเพิ่งเพิ่มใหม่ผ่านหน้า HR) —
 // สมมติมาทำงานทุกวัน ยกเว้นวันที่มีคำขอลาอนุมัติแล้ว หรือตรงวันหยุดประจำ — onlyCodes จำกัดเฉพาะบางคนได้
 // (ใช้ตอน getCalendarPresence เจอคนที่ snapshot ปีทั้งปีไม่มีแถวเลย จะได้ไม่ต้อง generate ทับคนที่มีตารางจริงอยู่แล้ว)
-function generateCalendarPresence(personMap, leaveRows, dayOffMap = {}, onlyCodes = null) {
+function generateCalendarPresence(personMap, leaveRows, dayOffMap = {}, onlyCodes = null, swapBackMap = {}) {
   const absenceByCode = buildLeaveAbsenceMap(leaveRows)
   const roster = Object.entries(personMap)
     .filter(([code]) => !onlyCodes || onlyCodes.has(code))
@@ -1781,7 +1799,7 @@ function generateCalendarPresence(personMap, leaveRows, dayOffMap = {}, onlyCode
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     for (const p of roster) {
-      if (isFixedDayOff(dayOffMap, p.code, date)) continue
+      if (isFixedDayOff(dayOffMap, p.code, date, swapBackMap)) continue
       const fraction = Math.max(0, 1 - absenceFraction(absenceByCode, p.code, date))
       if (!fraction) continue
       result.push({ id: `internal-${date}-${p.code}`, date, employee: p.name, code: p.code, group: p.group, fraction, source: 'internal' })
@@ -1795,26 +1813,28 @@ async function getCalendarPresence(personMap, overrideScopeCodes = Object.keys(p
   const [snapshotRows, overrideRows, leaveRows, dayOffMap] = await Promise.all([
     getSheet('workforce_schedule_snapshot'), getSheet('workforce_schedule_overrides'), getSheet('hr_leave'), getDayOffMap(),
   ])
-  let baseRows = (snapshotRows.length ? snapshotRows : generateCalendarPresence(personMap, [], dayOffMap))
+  const swapBackMap = buildSwapBackDates(leaveRows)
+  let baseRows = (snapshotRows.length ? snapshotRows : generateCalendarPresence(personMap, [], dayOffMap, null, swapBackMap))
     .filter((r) => personMap[String(r.code || '').toUpperCase()])
     .map((r) => ({ id: `stored-${r.date}-${r.code}`, date: r.date, employee: r.employee, code: String(r.code || '').toUpperCase(), group: r.group, fraction: Number(r.fraction) || 1, source: 'stored' }))
     // วันหยุดประจำสัปดาห์ตัดออกก่อน apply override เสมอ — ถ้า boss แก้ตารางเฉพาะวันนั้นเจาะจงไว้ (เช่น
-    // เรียกมาทำงานพิเศษ) override ยังทับกลับมาให้มาได้ตามปกติ ไม่ถูกวันหยุดประจำบังตลอดไป
-    .filter((r) => !isFixedDayOff(dayOffMap, r.code, r.date))
+    // เรียกมาทำงานพิเศษ) override ยังทับกลับมาให้มาได้ตามปกติ ไม่ถูกวันหยุดประจำบังตลอดไป (swapBackMap กันไม่ให้
+    // วันที่สลับวันหยุดออกไป ("สละ" วันหยุดประจำวันนี้ไปทำงานแทน) ถูกตัดออกเหมือนเป็นวันหยุดประจำอยู่ดี)
+    .filter((r) => !isFixedDayOff(dayOffMap, r.code, r.date, swapBackMap))
   // snapshot ปีทั้งปีโหลดไว้ล่วงหน้าตอนเริ่มระบบ — พนักงานที่เพิ่งเพิ่มใหม่ผ่านหน้า HR ทีหลังไม่มีแถวในนั้น
   // เลยไม่เคยโผล่ในปฏิทินเลย (เจอจริง 2026-08-01) หาคนที่ไม่มีแถวไหนใน baseRows เลยสักแถว แล้ว generate
   // ให้เหมือน fallback (มาทำงานทุกวัน ยกเว้นลา/วันหยุดประจำ) จะได้ขึ้นปฏิทินทันทีที่เพิ่ม ไม่ต้องรอแก้ snapshot มือ
   if (snapshotRows.length) {
     const codesWithRows = new Set(baseRows.map((r) => r.code))
     const missingCodes = new Set(Object.keys(personMap).filter((code) => !codesWithRows.has(code)))
-    if (missingCodes.size) baseRows = [...baseRows, ...generateCalendarPresence(personMap, [], dayOffMap, missingCodes)]
+    if (missingCodes.size) baseRows = [...baseRows, ...generateCalendarPresence(personMap, [], dayOffMap, missingCodes, swapBackMap)]
     // คนใน LEGACY_OVERRIDE_EXEMPT_CODES (ดูคอมเมนต์ scheduleOverrides.js) มี snapshot จริงอยู่บ้างแต่ไม่ครบทั้งปี
     // (เจอจริง 2026-08-04 กรณีเกด มี snapshot แค่ 2 วัน) เลยไม่เข้าเงื่อนไข missingCodes ข้างบน (ต้องไม่มีแถวเลยสัก
     // แถวถึงจะเข้า) — เติมเฉพาะวันที่ยังไม่มีแถวจริงให้ด้วย กันไม่ให้หายไปในวันที่ snapshot เดิมไม่ครอบคลุม
     const partialExemptCodes = new Set([...codesWithRows].filter((code) => LEGACY_OVERRIDE_EXEMPT_CODES.has(code)))
     if (partialExemptCodes.size) {
       const existingKeys = new Set(baseRows.map((r) => `${r.date}|${r.code}`))
-      const filler = generateCalendarPresence(personMap, [], dayOffMap, partialExemptCodes).filter((r) => !existingKeys.has(`${r.date}|${r.code}`))
+      const filler = generateCalendarPresence(personMap, [], dayOffMap, partialExemptCodes, swapBackMap).filter((r) => !existingKeys.has(`${r.date}|${r.code}`))
       baseRows = [...baseRows, ...filler]
     }
   }
