@@ -1844,6 +1844,24 @@ async function getCalendarPresence(personMap, overrideScopeCodes = Object.keys(p
     }
   }
   baseRows = applyScheduleOverrides({ baseRows, overrideRows, personMap, overrideScopeCodes, officeCodes, dayOffMap })
+  // applyScheduleOverrides แทนที่รายชื่อทั้งวันด้วย entries_json ของ override (ไม่รู้จัก swapBackMap เลย) — ถ้า
+  // override วันนั้นถูกบันทึกไว้ก่อนคำขอสลับวันหยุดจะได้รับอนุมัติ (หรือถูกแก้ซ้ำทีหลังโดยไม่รู้เรื่องสลับ) คนที่ควร
+  // กลับมาทำงานวันนั้นจะหายไปอีกเหมือนเดิม ทั้งที่ baseRows ชั้นก่อนหน้าคำนวณถูกแล้ว (เจอจริง 2026-08-10 กรณีมี่
+  // หายจากวันที่ 12 ซ้ำอีกรอบ เพราะมีคนแก้ตารางวันนั้นทับหลัง fix แรกไปแล้ว) — บังคับเติมกลับเสมอ ไม่สนใจว่า
+  // override จะว่าอย่างไร คำขอที่อนุมัติผ่านระบบต้องชนะเสมอ
+  {
+    const presentKeys = new Set(baseRows.map((r) => `${r.date}|${r.code}`))
+    for (const [code, dates] of Object.entries(swapBackMap)) {
+      const person = personMap[code]
+      if (!person) continue
+      for (const date of dates) {
+        const key = `${date}|${code}`
+        if (presentKeys.has(key)) continue
+        presentKeys.add(key)
+        baseRows.push({ id: `swapback-${date}-${code}`, date, employee: person[0], code, group: person[1], fraction: 1, source: 'swapback' })
+      }
+    }
+  }
   if (!applyLeaves) return baseRows
   const absenceByCode = buildLeaveAbsenceMap(leaveRows)
   return baseRows.map((row) => ({ ...row, fraction: Math.max(0, row.fraction - absenceFraction(absenceByCode, row.code, row.date)) })).filter((row) => row.fraction > 0)
