@@ -851,6 +851,12 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
 
   const balanceDelta = isEdit && actualBalance !== '' ? Number(actualBalance) - initial.balance : 0
 
+  const addRecipe = () => {
+    if (!newRecipeSku.trim()) return
+    onSaveRecipe(sku, newRecipeSku.trim().toUpperCase(), Number(newRecipeQty) || 1)
+    setNewRecipeSku(''); setNewRecipeQty('1')
+  }
+
   const submit = (e) => {
     e.preventDefault()
     if (!sku.trim() || !displayName.trim()) return
@@ -946,6 +952,7 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
                   list="product-sku-options"
                   value={newRecipeSku}
                   onChange={(e) => setNewRecipeSku(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRecipe() } }}
                   style={inputStyle}
                   placeholder="เช่น PY006"
                 />
@@ -955,15 +962,17 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
               </div>
               <div style={{ width: 70 }}>
                 <label style={labelStyle}>ต่อชิ้น</label>
-                <input type="number" value={newRecipeQty} onChange={(e) => setNewRecipeQty(e.target.value)} style={inputStyle} />
+                <input
+                  type="number"
+                  value={newRecipeQty}
+                  onChange={(e) => setNewRecipeQty(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRecipe() } }}
+                  style={inputStyle}
+                />
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  if (!newRecipeSku.trim()) return
-                  onSaveRecipe(sku, newRecipeSku.trim().toUpperCase(), Number(newRecipeQty) || 1)
-                  setNewRecipeSku(''); setNewRecipeQty('1')
-                }}
+                onClick={addRecipe}
                 style={{ height: 38, padding: '0 12px', border: 'none', borderRadius: 8, background: 'var(--payi-gradient-primary)', color: '#fff', fontWeight: 800, cursor: 'pointer' }}
               >
                 เพิ่ม
