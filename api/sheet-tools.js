@@ -64,7 +64,9 @@ let hrEnsurePromise
 let hrCache = { at: 0, data: null }
 const ensureHrSheets = () => hrEnsurePromise ||= ensureSheets(HR_SHEETS)
 let hrInflight = null
-const clearHrCache = () => { hrCache = { at: 0, data: null }; hrInflight = null }
+// ปฏิทิน Manpower&OT (workforceCache) อ่าน hr_leave โดยตรงเพื่อคำนวณ presence — ต้องเคลียร์คู่กันเสมอ ไม่งั้น
+// อนุมัติ/ยกเลิกลา (รวมสลับวันหยุด) แล้วเปิดปฏิทินทันทีอาจยังเห็นข้อมูลเก่าค้างได้ถึง 20 วินาที (workforceCache TTL)
+const clearHrCache = () => { hrCache = { at: 0, data: null }; hrInflight = null; clearWorkforceCache() }
 const daysBetween = (start, end) => Math.round((new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`)) / 86400000) + 1
 const currentYearBKK = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }).slice(0, 4)
 const parseJsonObject = (value) => { try { const parsed = JSON.parse(value || '{}'); return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {} } catch { return {} } }
