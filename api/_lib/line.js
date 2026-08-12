@@ -12,6 +12,11 @@ export function verifySignature(rawBody, signatureHeader) {
   } catch { return false }
 }
 
+// callLineApi (และ push/replyMessage ด้านล่าง) ไม่เคย throw เลย — คืน { ok:false, error } เฉยๆ เวลา LINE
+// API ปฏิเสธ payload (เช่น flex message ผิดสเปก) ผลคือทุกจุดที่เรียก replyMessage/pushMessage แล้วไม่เช็ค
+// ผลลัพธ์ (เกือบทุกจุดในโค้ดเดิม) จะดู "สำเร็จ" ต่อไปเงียบๆ ทั้งที่ข้อความไม่เคยถึงคนอ่านจริง (เจอจริง
+// 2026-08-11: การ์ด carousel เลือกลอตไม่ถึงมือบอสเลย ไม่มี error โผล่ที่ไหนให้เห็น) — log ไว้อย่างน้อย
+// จะได้ตามหลัง Vercel logs เจอเวลาเกิดอีก ไม่หายเงียบสนิทแบบเดิม
 async function callLineApi(path, body) {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN
   if (!token) return { ok: false, error: 'LINE_CHANNEL_ACCESS_TOKEN ยังไม่ได้ตั้งค่า' }
@@ -21,9 +26,16 @@ async function callLineApi(path, body) {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
     })
-    if (!res.ok) return { ok: false, error: `LINE API ${res.status}: ${await res.text().catch(() => '')}` }
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      console.error(`LINE API ${path} failed: ${res.status} ${errText}`)
+      return { ok: false, error: `LINE API ${res.status}: ${errText}` }
+    }
     return { ok: true }
-  } catch (e) { return { ok: false, error: e.message } }
+  } catch (e) {
+    console.error(`LINE API ${path} threw:`, e.message)
+    return { ok: false, error: e.message }
+  }
 }
 
 export const pushMessage = (to, messages) => callLineApi('/v2/bot/message/push', { to, messages })

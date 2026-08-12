@@ -3284,10 +3284,25 @@ async function opLineWebhook(req, res) {
                 { type: 'button', style: 'primary', color: '#96969B', height: 'sm', action: { type: 'postback', label: 'ไม่ผูกลอต', data: `stockin-matchlot:${target.id}:none`, displayText: 'ไม่ผูกลอต' } },
               ] },
             }
-            await replyMessage(event.replyToken, [{
+            const carouselResult = await replyMessage(event.replyToken, [{
               type: 'flex', altText: `เลือกลอตที่ตรงกับของเข้า "${target.display_name}" (แจ้งเข้า ${reportedQty}${unit})`,
               contents: { type: 'carousel', contents: [...lotBubbles, noneBubble] },
             }])
+            // fallback ถ้า LINE ปฏิเสธการ์ด carousel (พบจริง 2026-08-11: กด ✓ แล้วเงียบสนิท ไม่มีการ์ดถามลอต
+            // เลย เพราะ replyMessage ไม่ throw เวลา LINE API พัง แค่คืน ok:false เฉยๆ — โค้ดเดิมไม่เคยเช็คผลลัพธ์
+            // เลยดูเหมือนสำเร็จทั้งที่บอสไม่เห็นอะไรเลย) ส่ง quick reply แบบข้อความล้วนแทน อย่างน้อยก็เลือกลอตได้
+            if (!carouselResult.ok) {
+              const quickItems = lots.slice(0, 12).map((o) => ({
+                type: 'action',
+                action: { type: 'postback', label: `${o.qty}${unit} · ${(o.order_date || '-').slice(5)}`.slice(0, 20), data: `stockin-matchlot:${target.id}:${o.id}`, displayText: `จับคู่ลอต ${o.qty} (${o.order_date || '-'})` },
+              }))
+              if (quickItems.length < 13) quickItems.push({ type: 'action', action: { type: 'postback', label: 'ไม่ผูกลอต', data: `stockin-matchlot:${target.id}:none`, displayText: 'ไม่ผูกลอต' } })
+              await pushMessage(lineUserId, [{
+                type: 'text',
+                text: `เลือกลอตที่ตรงกับของเข้า "${target.display_name}" (แจ้งเข้า ${reportedQty}${unit}) ค่ะ — กดเลือกด้านล่าง`,
+                quickReply: { items: quickItems.slice(0, 13) },
+              }])
+            }
             continue
           }
         }
