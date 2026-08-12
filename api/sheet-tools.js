@@ -4,7 +4,7 @@
 import { requireAuth, cacheable, authEnabled } from './_lib/auth.js'
 import { canManageOperations, normalizeRole } from '../shared/roles.js'
 import { getMetaCached, batchGetValues, getSheet, appendRows, appendRowsVerified, overwriteSheet, ensureSheet, ensureSheets } from './_lib/sheets.js'
-import { verifySignature, pushMessage, replyMessage, linkRichMenuToUser } from './_lib/line.js'
+import { verifySignature, pushMessage, pushMessageWithFallback, replyMessage, linkRichMenuToUser } from './_lib/line.js'
 import {
   MIN_LOWER_HOUSE_HEADCOUNT, buildCoveragePlan, leaveAbsenceDates, leaveAbsenceSlots,
   leavePeriodLabel, normalizeLeavePeriod, officeLeaveConflicts,
@@ -273,7 +273,17 @@ async function notifyNewLeaveRequest(record) {
   if (!targets.length) return
   const officeMap = await getOfficePeopleMap()
   const message = leaveFlexMessage(record, 'pending', officeMap)
-  await Promise.all(targets.map((t) => pushMessage(t.line_user_id, [message])))
+  // fallback ข้อความ+ปุ่มอนุมัติ/ไม่อนุมัติจริง (postback data เดิม) ถ้าการ์ด flex ส่งไม่ผ่าน — กัน
+  // คำขอลาหายเงียบฝั่งบอสแบบที่เจอกับการ์ด carousel ของเข้า (ดู pushMessageWithFallback)
+  const fallback = {
+    type: 'text',
+    text: `📝 คำขอลาใหม่จาก ${record.employee_name || 'พนักงาน'} — ${record.leave_type} ${record.days} วัน เริ่ม ${record.start_date}${record.reason ? `\nเหตุผล: ${record.reason}` : ''}`,
+    quickReply: { items: [
+      { type: 'action', action: { type: 'postback', label: 'ไม่อนุมัติ', data: `hr-reject:${record.id}`, displayText: 'ไม่อนุมัติคำขอลา' } },
+      { type: 'action', action: { type: 'postback', label: 'อนุมัติ', data: `hr-approve:${record.id}`, displayText: 'อนุมัติคำขอลา' } },
+    ] },
+  }
+  await Promise.all(targets.map((t) => pushMessageWithFallback(t.line_user_id, [message], [fallback])))
 }
 
 async function notifyNewLeaveRequestSafely(record) {
@@ -370,15 +380,24 @@ const lowStockCardHeader = (title, subtitle, icon) => ({
     ] },
   ],
 })
-const lowStockRow = (item) => ({
-  type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'sm', paddingAll: '8px', cornerRadius: '10px', backgroundColor: LOW_STOCK_CARD.base,
-  contents: [
-    lowStockFlexText(STOCK_STATUS_ICON[item.effectiveStatus] || '⚠️', { size: 'sm', flex: 0 }),
-    lowStockFlexText(item.display_name, { size: 'xs', weight: 'bold', flex: 4, wrap: true }),
-    lowStockFlexText(`${item.balance} ${item.unit || 'ชิ้น'}`, { size: 'xs', weight: 'bold', align: 'end', flex: 2, wrap: true }),
-    { type: 'button', style: 'primary', color: LOW_STOCK_CARD.amber, height: 'sm', flex: 0, action: { type: 'postback', label: 'สั่ง', data: `stock-order:${item.sku}`, displayText: `สั่งของ ${item.display_name}` } },
-  ],
-})
+// owner ขอ 2026-08-11: เพิ่มบรรทัดรายละเอียด (คงเหลือ/ควรมี/แนะนำสั่ง) ใต้ชื่อสินค้า — ข้อมูลมีอยู่แล้วจาก
+// computeLowStockList (effectiveSafety/recommendedOrder) แค่ยังไม่เคยโชว์ในการ์ดนี้ ดู mockup ที่ให้ owner
+// ดูก่อนทำจริง (2 บรรทัดต่อรายการ กันแถวรกเกินไปตอนมีหลายรายการ)
+const lowStockRow = (item) => {
+  const detail = `คงเหลือ ${item.balance} / ควรมี ${item.effectiveSafety ?? '-'} ${item.unit || 'ชิ้น'}` +
+    (item.recommendedOrder > 0 ? ` · แนะนำสั่ง +${item.recommendedOrder}` : '')
+  return {
+    type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: LOW_STOCK_CARD.base,
+    contents: [
+      { type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'sm', contents: [
+        lowStockFlexText(STOCK_STATUS_ICON[item.effectiveStatus] || '⚠️', { size: 'sm', flex: 0 }),
+        lowStockFlexText(item.display_name, { size: 'xs', weight: 'bold', flex: 1, wrap: true }),
+        { type: 'button', style: 'primary', color: LOW_STOCK_CARD.amber, height: 'sm', flex: 0, action: { type: 'postback', label: 'สั่ง', data: `stock-order:${item.sku}`, displayText: `สั่งของ ${item.display_name}` } },
+      ] },
+      lowStockFlexText(detail, { size: 'xxs', color: LOW_STOCK_CARD.muted }),
+    ],
+  }
+}
 
 // แจ้งเตือนรวมในใบเดียวแบบกว้าง: อ่านเป็นรายการต่อบรรทัดและกดสั่งได้จากบรรทัดนั้นเลย
 function lowStockFlexMessage(items) {
@@ -393,6 +412,22 @@ function lowStockFlexMessage(items) {
         ...(items.length > visible.length ? [lowStockFlexText(`+ อีก ${items.length - visible.length} รายการ`, { size: 'xs', color: LOW_STOCK_CARD.muted, align: 'center', margin: 'sm' })] : []),
       ] },
     },
+  }
+}
+
+// fallback ข้อความ+ปุ่ม "สั่ง" จริงต่อรายการ (postback data เดิม `stock-order:<sku>`) ถ้าการ์ด flex
+// ส่งไม่ผ่าน — quick reply จำกัด 13 ปุ่ม ตัดเหลือ 10 รายการแรกเหมือนการ์ด (ดู pushMessageWithFallback)
+function lowStockFallbackMessage(items) {
+  const visible = items.slice(0, 10)
+  return {
+    type: 'text',
+    text: `⚠️ ของใกล้หมด/หมด ${items.length} รายการ\n` +
+      visible.map((it) => `• ${STOCK_STATUS_ICON[it.effectiveStatus] || '⚠️'} ${it.display_name} — คงเหลือ ${it.balance}/${it.effectiveSafety ?? '-'} ${it.unit || 'ชิ้น'}${it.recommendedOrder > 0 ? ` · แนะนำสั่ง +${it.recommendedOrder}` : ''}`).join('\n') +
+      (items.length > visible.length ? `\n+ อีก ${items.length - visible.length} รายการ` : ''),
+    quickReply: { items: visible.map((it) => ({
+      type: 'action',
+      action: { type: 'postback', label: `สั่ง ${it.display_name}`.slice(0, 20), data: `stock-order:${it.sku}`, displayText: `สั่งของ ${it.display_name}` },
+    })) },
   }
 }
 
@@ -421,7 +456,9 @@ async function handleStockCheckCommand(event) {
   if (!lowItems.length) {
     await replyMessage(replyToken, [{ type: 'text', text: 'ตอนนี้ไม่มีของใกล้หมด/หมดที่ยังไม่ได้สั่งค่ะ 🎉' }])
   } else {
-    await replyMessage(replyToken, [lowStockFlexMessage(lowItems)])
+    // reply token ใช้ได้ครั้งเดียว/หมดอายุเร็ว ลอง reply ซ้ำเสี่ยงพังซ้อน — fallback ผ่าน push แทนถ้าการ์ดพัง
+    const result = await replyMessage(replyToken, [lowStockFlexMessage(lowItems)])
+    if (!result.ok && lineUserId) await pushMessage(lineUserId, [lowStockFallbackMessage(lowItems)])
   }
   return true
 }
@@ -451,7 +488,7 @@ async function opLowStockCron(req, res) {
     }
 
     const targets = await getStockLineTargets()
-    if (targets.length) await Promise.all(targets.map((t) => pushMessage(t.line_user_id, [lowStockFlexMessage(lowItems)])))
+    if (targets.length) await Promise.all(targets.map((t) => pushMessageWithFallback(t.line_user_id, [lowStockFlexMessage(lowItems)], [lowStockFallbackMessage(lowItems)])))
     await appendRows(STOCK_ALERT_RUNS_SHEET, [[today, new Date().toISOString(), lowItems.length]])
     return res.status(200).json({ success: true, item_count: lowItems.length, notified: targets.length })
   } catch (e) {
@@ -1294,7 +1331,19 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
   const targets = done.length ? await getStockLineTargets() : []
   if (targets.length) {
     const altText = `ของเข้ารอ Match: ${done.length} รายการ (แจ้งโดย ${reporter.name})`
-    await Promise.all(targets.map((t) => pushMessage(t.line_user_id, [{ ...summaryCard, altText }]).catch((e) => console.error('push arrival card to boss/dev:', e.message))))
+    // fallback ข้อความ+ปุ่ม Approve/ปฏิเสธทั้งหมดจริง (postback data เดิม ใช้ comma-join id ได้อยู่แล้ว)
+    // ถ้าการ์ด flex ส่งไม่ผ่าน — กันของเข้าค้าง pending เงียบๆ ไม่มีใครรู้ (ดู pushMessageWithFallback)
+    const idsJoined = done.map((it) => it.request.id).join(',')
+    const fallback = {
+      type: 'text',
+      text: `📦 แจ้งของเข้าแล้ว ${done.length} รายการ · เข้า ${arrivalDate} · นับ ${countDate} · โดย ${reporter.name}\n` +
+        done.map((it) => `• ${it.display_name} × ${it.qty} ${it.unit}`).join('\n'),
+      quickReply: { items: [
+        { type: 'action', action: { type: 'postback', label: 'ปฏิเสธทั้งหมด', data: `stockin-reject:${idsJoined}`, displayText: 'ปฏิเสธของเข้า' } },
+        { type: 'action', action: { type: 'postback', label: `Approve ทั้งหมด (${done.length})`, data: `stockin-approve:${idsJoined}`, displayText: `Approve ของเข้า ${done.length} รายการ` } },
+      ] },
+    }
+    await Promise.all(targets.map((t) => pushMessageWithFallback(t.line_user_id, [{ ...summaryCard, altText }], [fallback])))
     await replyMessage(replyToken, [{ type: 'text', text: `แจ้งของเข้า ${done.length} รายการเรียบร้อยค่ะ ส่งให้ Boss ตรวจแล้ว` }])
   } else {
     // ยังไม่มีใครเปิด notify_stock เลย — ส่งการ์ดเต็มกลับไปหาคนแจ้งแทน ไม่งั้นไม่มีใครเห็นการ์ดนี้เลย

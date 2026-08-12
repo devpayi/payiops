@@ -215,7 +215,7 @@ export async function computeLowStockList() {
     const effectiveStatus = statusOf(it.balance, effectiveSafety)
     if (effectiveStatus === 'ปกติ') continue
     const recommendedOrder = (dailyAvg && leadTimeTotal) ? calcRecommendedOrder(effectiveSafety, it.balance, dailyAvg, leadTimeTotal) : null
-    lowItems.push({ sku: it.sku, display_name: it.display_name, unit: it.unit, balance: it.balance, effectiveStatus, recommendedOrder })
+    lowItems.push({ sku: it.sku, display_name: it.display_name, unit: it.unit, balance: it.balance, effectiveSafety, effectiveStatus, recommendedOrder })
   }
   return lowItems
 }

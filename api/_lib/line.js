@@ -41,6 +41,15 @@ async function callLineApi(path, body) {
 export const pushMessage = (to, messages) => callLineApi('/v2/bot/message/push', { to, messages })
 export const replyMessage = (replyToken, messages) => callLineApi('/v2/bot/message/reply', { replyToken, messages })
 
+// ส่ง primary (มักเป็น flex การ์ดสวยๆ) ถ้าไม่สำเร็จ ส่ง fallback แทนทันที — fallback ควรมีปุ่ม postback
+// เดิมติดไปด้วยเสมอ (ไม่ใช่แค่ข้อความบอกเฉยๆ) ไม่งั้นคนรับก็ยังกดทำอะไรไม่ได้อยู่ดี (owner ขอ 2026-08-11
+// หลังเจอการ์ด carousel เลือกลอตส่งไม่ผ่านแล้วเงียบสนิท — ขยายไปใช้กับจุดสำคัญอื่นที่พังแล้วกระทบงานจริง)
+export async function pushMessageWithFallback(to, primary, fallback) {
+  const result = await pushMessage(to, primary)
+  if (!result.ok && fallback) return pushMessage(to, fallback)
+  return result
+}
+
 // ── Rich menu ──────────────────────────────────────────────────────────────
 // สร้างเมนู 1 อัน (JSON structure ล้วน ยังไม่มีรูป) — คืน richMenuId ถ้าสำเร็จ ใช้ id นี้ต่อตอนอัพโหลด
 // รูป/ผูกกับ user คนใดคนหนึ่ง (linkRichMenuToUser) หรือตั้งเป็น default ของทุกคน (setDefaultRichMenu)
