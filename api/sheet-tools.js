@@ -3396,7 +3396,7 @@ async function opLineWebhook(req, res) {
           // ตลอดไป ระบบเข้าใจผิดว่าสั่งไปแล้วไม่ต้องเตือนซ้ำ ทั้งที่ของจริงไม่พอ) — ไม่ได้บล็อกการทำงาน แค่
           // เตือนให้ไปปิดลอตเก่าด้วยมือที่หน้า Stock Movement ถ้ายังไม่เคลียร์
           const skipLotWarning = lotId === 'none'
-            ? '\n\n⚠️ ไม่ได้ผูกลอตเก่า — ถ้าลอตที่เคยสั่งไว้ยังไม่มีของเข้าจริง อย่าลืมไปกด "เสร็จสิ้น" ปิดที่หน้า Stock Movement ไม่งั้นระบบจะเข้าใจว่ายังสั่งของอยู่ ไม่เตือนของใกล้หมดซ้ำอีก'
+            ? '\n\n⚠️ ไม่ผูกลอต — ลอตเก่าจะค้าง อย่าลืมปิดเองที่ Stock Movement'
             : ''
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `Approve สำเร็จ โดย ${approver.name}${lotId !== 'none' ? ' (จับคู่ลอตแล้ว)' : ''}${skipLotWarning}` }])
           const items = await loadOrderableItems()
