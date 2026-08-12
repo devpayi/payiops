@@ -914,6 +914,13 @@ function MatchRequestModal({ request, saving, onClose, onSave }) {
   const submit = (e) => {
     e.preventDefault()
     if (!qty || Number(qty) <= 0) return
+    // เตือนก่อนข้ามผูกลอต (owner ขอ 2026-08-12 หลังเจอเคส PY043: ข้ามลอตแล้วลอตเก่าค้าง "รอของเข้า"
+    // ตลอดไป ระบบเข้าใจผิดว่าสั่งไปแล้วไม่ต้องเตือนซ้ำ ทั้งที่ของจริงไม่พอ) — confirm กันกดพลาด ไม่ได้บล็อก
+    // ถ้าตั้งใจจริง (เช่น ลอตเก่าไม่เกี่ยวกับของเข้ารอบนี้จริงๆ) ก็ยังกด OK ต่อได้
+    if (!orderRequestId && orders.length > 0) {
+      const ok = window.confirm(`ยังมีลอตเก่าที่สั่งไว้ ${orders.length} ลอตค้างอยู่ — ถ้าไม่ผูกลอต ลอตเก่าจะค้าง "รอของเข้า" ตลอดไป ระบบจะไม่เตือนของใกล้หมดซ้ำอีก (ต้องไปกด "เสร็จสิ้น" ปิดเองทีหลัง)\n\nยืนยันไม่ผูกลอต?`)
+      if (!ok) return
+    }
     onSave({ qty, note, order_request_id: orderRequestId || undefined })
   }
 
@@ -945,6 +952,11 @@ function MatchRequestModal({ request, saving, onClose, onSave }) {
               {selectedOrder && selectedOrder.qty > 0 && Number(qty) !== selectedOrder.qty && (
                 <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: 'var(--payi-danger)' }}>
                   ไม่ตรง — สั่งไว้ {fmt(selectedOrder.qty)} แต่นับจริง {fmt(Number(qty) || 0)} (ส่วนต่าง {fmt((Number(qty) || 0) - selectedOrder.qty)})
+                </div>
+              )}
+              {!orderRequestId && (
+                <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: '#c2410c' }}>
+                  ⚠️ ไม่ผูกลอต — ลอตเก่าจะค้าง "รอของเข้า" ตลอดไป อย่าลืมไปกด "เสร็จสิ้น" ปิดเองที่หน้านี้ทีหลัง
                 </div>
               )}
             </div>

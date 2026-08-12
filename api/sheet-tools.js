@@ -3392,7 +3392,13 @@ async function opLineWebhook(req, res) {
         const [reqId, lotId] = data.slice('stockin-matchlot:'.length).split(':')
         try {
           const matched = await matchStockInRequest({ id: reqId, order_request_id: lotId === 'none' ? undefined : lotId }, approver.name, approver.role)
-          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `Approve สำเร็จ โดย ${approver.name}${lotId !== 'none' ? ' (จับคู่ลอตแล้ว)' : ''}` }])
+          // เตือนถ้าข้ามผูกลอต (owner ขอ 2026-08-12 หลังเจอเคส PY043: ข้ามลอตแล้วลอตเก่าค้าง "รอของเข้า"
+          // ตลอดไป ระบบเข้าใจผิดว่าสั่งไปแล้วไม่ต้องเตือนซ้ำ ทั้งที่ของจริงไม่พอ) — ไม่ได้บล็อกการทำงาน แค่
+          // เตือนให้ไปปิดลอตเก่าด้วยมือที่หน้า Stock Movement ถ้ายังไม่เคลียร์
+          const skipLotWarning = lotId === 'none'
+            ? '\n\n⚠️ ไม่ได้ผูกลอตเก่า — ถ้าลอตที่เคยสั่งไว้ยังไม่มีของเข้าจริง อย่าลืมไปกด "เสร็จสิ้น" ปิดที่หน้า Stock Movement ไม่งั้นระบบจะเข้าใจว่ายังสั่งของอยู่ ไม่เตือนของใกล้หมดซ้ำอีก'
+            : ''
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `Approve สำเร็จ โดย ${approver.name}${lotId !== 'none' ? ' (จับคู่ลอตแล้ว)' : ''}${skipLotWarning}` }])
           const items = await loadOrderableItems()
           await announceStockInResultToGroup(stockInReceivedLine(matched, items))
         } catch (e) {
