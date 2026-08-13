@@ -9,6 +9,10 @@ import { getSkuRedirectMap, resolveRedirect } from './skuMapping.js'
 import { canManageOperations } from '../../shared/roles.js'
 import { authEnabled } from './auth.js'
 import { computeSalesStats } from '../planner-sales.js'
+import {
+  loadQtyRules, loadComboRules, upsertQtyRule, deleteQtyRule, upsertComboRule, deleteComboRule, computeBoxDemand,
+  bulkUpsertQtyRules, bulkUpsertComboRules,
+} from './packagingOrderRules.js'
 
 const ITEMS_SHEET = 'inventory_items'
 const MOVEMENTS_SHEET = 'stock_movements'
@@ -826,6 +830,19 @@ export default async function opInventory(req, res) {
         const groups = await loadOrderGroups()
         return res.status(200).json({ success: true, groups })
       }
+      if (view === 'packaging-qty-rules') {
+        const rules = await loadQtyRules()
+        return res.status(200).json({ success: true, rules })
+      }
+      if (view === 'packaging-combo-rules') {
+        const rules = await loadComboRules()
+        return res.status(200).json({ success: true, rules })
+      }
+      if (view === 'box-demand') {
+        const days = Math.min(90, Math.max(7, parseInt(req.query.days, 10) || 30))
+        const result = await computeBoxDemand(days)
+        return res.status(200).json({ success: true, ...result })
+      }
       const data = await loadItemsWithBalance({ includeHidden: req.query.includeHidden === '1' })
       return res.status(200).json({ success: true, ...data })
     }
@@ -882,6 +899,30 @@ export default async function opInventory(req, res) {
       }
       if (action === 'delete-recipe') {
         const result = await deletePackagingRecipe(req.body)
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'upsert-qty-rule') {
+        const result = await upsertQtyRule(req.body)
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'delete-qty-rule') {
+        const result = await deleteQtyRule(req.body)
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'upsert-combo-rule') {
+        const result = await upsertComboRule(req.body)
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'delete-combo-rule') {
+        const result = await deleteComboRule(req.body)
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'bulk-upsert-qty-rules') {
+        const result = await bulkUpsertQtyRules(Array.isArray(req.body?.items) ? req.body.items : [])
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'bulk-upsert-combo-rules') {
+        const result = await bulkUpsertComboRules(Array.isArray(req.body?.items) ? req.body.items : [])
         return res.status(200).json({ success: true, ...result })
       }
       return res.status(400).json({ success: false, error: 'action ไม่ถูกต้อง' })

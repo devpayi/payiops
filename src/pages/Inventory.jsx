@@ -186,6 +186,9 @@ export default function Inventory() {
   const [data, setData] = useState(null)
   const [salesBySku, setSalesBySku] = useState(new Map()) // sku -> { dailyAverage, abc, units90 }
   const [packagingRecipes, setPackagingRecipes] = useState([]) // [{ packaging_sku, product_sku, product_name, qty_per_unit }]
+  // กล่องพัสดุ (BOXP-*) เท่านั้น — คนละ mechanism จาก packagingRecipes เพราะกล่องพัสดุขึ้นกับองค์ประกอบ
+  // ทั้งออเดอร์ (สินค้า+จำนวนที่มาด้วยกัน) ไม่ใช่ยอดขายต่อสินค้าเดี่ยว ดู api/_lib/packagingOrderRules.js
+  const [boxDemandBySku, setBoxDemandBySku] = useState(new Map()) // BOXP sku -> dailyAverage (กล่อง/วัน)
   const [plannerSafetyBySku, setPlannerSafetyBySku] = useState(new Map()) // master_sku -> safety_percent (จาก Planner Control)
   const [openOrdersBySku, setOpenOrdersBySku] = useState(new Map()) // sku -> [{ qty, order_date, created_at }] (สั่งของไปแล้ว ยังไม่มีของเข้า)
   const [loading, setLoading] = useState(true)
@@ -206,14 +209,16 @@ export default function Inventory() {
       fetch('/api/sheet-tools?op=inventory&view=items&includeHidden=1').then((r) => r.json()),
       fetch('/api/planner-sales?days=30').then((r) => r.json()).catch(() => null),
       fetch('/api/sheet-tools?op=inventory&view=packaging-recipes').then((r) => r.json()).catch(() => null),
+      fetch('/api/sheet-tools?op=inventory&view=box-demand&days=30').then((r) => r.json()).catch(() => null),
       fetch('/api/sheet-tools?op=planner').then((r) => r.json()).catch(() => null),
       fetch('/api/sheet-tools?op=inventory&view=stock-in-requests').then((r) => r.json()).catch(() => null),
     ])
-      .then(([d, planner, recipes, plannerConfig, stockInRequests]) => {
+      .then(([d, planner, recipes, boxDemand, plannerConfig, stockInRequests]) => {
         if (!d.success) throw new Error(d.error || 'โหลดข้อมูลไม่สำเร็จ')
         setData(d)
         setSalesBySku(new Map((planner?.items || []).map((p) => [String(p.masterSku || '').toUpperCase(), p])))
         setPackagingRecipes(recipes?.recipes || [])
+        setBoxDemandBySku(new Map((boxDemand?.items || []).map((b) => [String(b.boxSku).toUpperCase(), b.dailyAverage])))
         setPlannerSafetyBySku(new Map((plannerConfig?.config || [])
           .filter((c) => Number(c.safety_percent) > 0)
           .map((c) => [String(c.master_sku).toUpperCase(), Number(c.safety_percent)])))
@@ -313,6 +318,15 @@ export default function Inventory() {
     for (const it of items) {
       if (it.category !== 'packaging') continue
       const sku = String(it.sku).toUpperCase()
+      // กล่องพัสดุ (BOXP-*) — dailyAverage มาจาก computeBoxDemand ตรงๆ (นับจากองค์ประกอบออเดอร์จริง)
+      // ไม่ผ่าน packaging_recipes/units_per_batch เหมือนสติกเกอร์/BOXMJ เพราะเป็นคนละ mechanism —
+      // เลขที่ได้คือ "กล่อง/วัน" อยู่แล้ว ไม่ต้องแปลงหน่วยเพิ่ม ไม่มี % เผื่อ (ไม่ใช่เบิกไปฟีดการผลิต
+      // ล่วงหน้าแบบสติกเกอร์ แต่ใช้ตอนแพ็คส่งจริงตามออเดอร์ ไม่มีแนวคิด "เผื่อ" แบบเดียวกัน)
+      if (sku.startsWith('BOXP-')) {
+        const dailyAverage = boxDemandBySku.get(sku)
+        if (dailyAverage) result.set(sku, { base: dailyAverage, buffered: dailyAverage, bufferPercent: 0 })
+        continue
+      }
       const recipes = recipesBySku.get(sku)
       if (!recipes?.length || !it.units_per_batch) continue
       const piecesPerDay = recipes.reduce((sum, r) => {
@@ -325,7 +339,7 @@ export default function Inventory() {
       result.set(sku, { base, buffered, bufferPercent })
     }
     return result
-  }, [items, packagingRecipes, salesBySku, allocatedSales, packagingBufferSuggestion])
+  }, [items, packagingRecipes, salesBySku, allocatedSales, packagingBufferSuggestion, boxDemandBySku])
 
   const enriched = useMemo(() => {
     return items.map((it) => {
