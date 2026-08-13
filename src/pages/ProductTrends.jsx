@@ -122,6 +122,7 @@ export default function ProductTrends() {
             <Legend color="#15803d" text="เพิ่มขึ้น" />
             <Legend color="#c2410c" text="ลดลง" />
             <Legend color="#2F6FE0" text="เพิ่งเริ่มขาย" />
+            {metric === 'units' && <Legend color="var(--payi-mint-strong)" text="* = รวมยอดจาก Set แล้ว" />}
           </div>
         </div>
 
@@ -157,7 +158,7 @@ export default function ProductTrends() {
                         </div>
                       </td>
                       {g.monthly.map((cell, i) => (
-                        <MonthCell key={cell.month} cell={cell} prev={i > 0 ? g.monthly[i - 1] : null} valOf={valOf} fmtVal={fmtVal} strong />
+                        <MonthCell key={cell.month} cell={cell} prev={i > 0 ? g.monthly[i - 1] : null} valOf={valOf} fmtVal={fmtVal} metric={metric} strong />
                       ))}
                       <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, color: 'var(--payi-text-strong)' }}>
                         {metric === 'units' ? fmt(total(g.monthly)) : fmtBaht(total(g.monthly))}
@@ -171,7 +172,7 @@ export default function ProductTrends() {
                           <div style={{ fontSize: 10.5, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{m.master_sku}</div>
                         </td>
                         {m.monthly.map((cell, i) => (
-                          <MonthCell key={cell.month} cell={cell} prev={i > 0 ? m.monthly[i - 1] : null} valOf={valOf} fmtVal={fmtVal} />
+                          <MonthCell key={cell.month} cell={cell} prev={i > 0 ? m.monthly[i - 1] : null} valOf={valOf} fmtVal={fmtVal} metric={metric} />
                         ))}
                         <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: 'var(--payi-text)' }}>
                           {metric === 'units' ? fmt(total(m.monthly)) : fmtBaht(total(m.monthly))}
@@ -192,13 +193,18 @@ export default function ProductTrends() {
   )
 }
 
-function MonthCell({ cell, prev, valOf, fmtVal, strong }) {
+function MonthCell({ cell, prev, valOf, fmtVal, metric, strong }) {
   const cur = valOf(cell)
   const pct = prev ? pctChange(valOf(prev), cur) : null
   const ds = deltaStyle(pct)
   return (
     <td style={{ ...tdStyle, textAlign: 'right', verticalAlign: 'top' }}>
-      <div style={{ fontWeight: strong ? 700 : 600, color: cur > 0 ? 'var(--payi-text-strong)' : 'var(--payi-text-faint)' }}>{fmtVal(cur)}</div>
+      <div style={{ fontWeight: strong ? 700 : 600, color: cur > 0 ? 'var(--payi-text-strong)' : 'var(--payi-text-faint)' }}>
+        {fmtVal(cur)}
+        {metric === 'units' && cell.unitsFromSet > 0 && (
+          <span title={`ขายเดี่ยว ${cell.directUnits} + จาก Set ${cell.unitsFromSet}`} style={{ marginLeft: 3, color: 'var(--payi-mint-strong)', fontWeight: 800 }}>*</span>
+        )}
+      </div>
       {prev && (
         <div style={{ display: 'inline-block', marginTop: 3, fontSize: 10.5, fontWeight: 700, padding: pct === null ? 0 : '1px 5px', borderRadius: 5, background: ds.bg, color: ds.color }}>
           {deltaText(pct)}

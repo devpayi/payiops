@@ -225,7 +225,14 @@ export default function ProductDashboard() {
                   <td style={{ ...tdStyle, textAlign: 'center' }}>
                     <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)' }}>{g.skuCount}</span>
                   </td>
-                  <td style={{ ...tdStyle, textAlign: 'right' }}>{fmt(g.units)}</td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    {fmt(g.units)}
+                    {g.unitsFromSet > 0 && (
+                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--payi-mint-strong)' }} title={`ขายเดี่ยว ${fmt(g.directUnits)} + จาก Set ${fmt(g.unitsFromSet)}`}>
+                        รวม Set แล้ว
+                      </div>
+                    )}
+                  </td>
                   <td style={{ ...tdStyle, textAlign: 'right' }}>{fmt(g.orders)}</td>
                   <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--payi-text-muted)' }}>{fmtBaht(g.avgPrice)}</td>
                   <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, color: 'var(--payi-text-strong)' }}>{fmtBaht(g.revenue)}</td>
@@ -266,8 +273,17 @@ function ProductDrawer({ group, onClose }) {
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18, paddingRight: 4 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <MiniStat label="ยอดขายเดือนนี้" value={fmtBaht(group.revenue)} trend={<MomBadge value={group.revenueMoM} />} />
-            <MiniStat label="ขายได้" value={`${fmt(group.units)} ชิ้น`} trend={<MomBadge value={group.unitsMoM} />} />
+            <MiniStat
+              label={group.unitsFromSet > 0 ? 'ขายได้ (รวม Set แล้ว)' : 'ขายได้'}
+              value={`${fmt(group.units)} ชิ้น`}
+              trend={<MomBadge value={group.unitsMoM} />}
+            />
           </div>
+          {group.unitsFromSet > 0 && (
+            <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)', marginTop: -8 }}>
+              ขายเดี่ยว {fmt(group.directUnits)} ชิ้น + แตกยอดจาก Set {fmt(group.unitsFromSet)} ชิ้น
+            </div>
+          )}
 
           {totalPlat > 0 && (
             <div>

@@ -6,7 +6,7 @@
 import { requireAuth, cacheable } from './_lib/auth.js'
 import { getMetaCached, batchGetValues, getSheet } from './_lib/sheets.js'
 import { deriveGroup, buildOverrideMap } from './_lib/productGroup.js'
-import { getSkuRedirectMap, getSetRecipeKeySet, resolveSalesSku } from './_lib/skuMapping.js'
+import { getSkuRedirectMap, getSetRecipeKeySet, resolveSalesSku, SET_RECIPES_SHEET } from './_lib/skuMapping.js'
 
 const isCancelled = (s = '') => s.includes('ยกเลิก') || s.toLowerCase().includes('cancel')
 const isReturned = (s = '') => s.toLowerCase().includes('return')
@@ -39,10 +39,35 @@ export default async function handler(req, res) {
   try {
     // override รายชื่อกลุ่มจาก product_aliases (คอลัมน์ product_group ถ้ามี) — ไม่มีก็ข้าม
     let overrideMap = new Map()
+    let aliasRows = []
     try {
-      overrideMap = buildOverrideMap(await getSheet('product_aliases'))
+      aliasRows = await getSheet('product_aliases')
+      overrideMap = buildOverrideMap(aliasRows)
     } catch { /* ไม่มี sheet หรืออ่านไม่ได้ — ใช้การ strip อัตโนมัติแทน */ }
-    const [redirectMap, recipeKeySet] = await Promise.all([getSkuRedirectMap(), getSetRecipeKeySet()])
+    const [redirectMap, recipeKeySet, setRecipeRows] = await Promise.all([getSkuRedirectMap(), getSetRecipeKeySet(), getSheet(SET_RECIPES_SHEET).catch(() => [])])
+
+    // ชื่อสินค้าจริง (ไม่ใช่ Set) ต่อ master_sku — ใช้ตอนต้องสร้าง/หากลุ่มของสินค้าที่ยอดถูกแตกมาจาก Set
+    // (แถวของ Set เองไม่มีชื่อสินค้าจริงให้ใช้ deriveGroup ต้องเปิด product_aliases หา)
+    const nameBySku = new Map()
+    for (const row of aliasRows) {
+      const sku = String(row.master_sku || '').trim().toUpperCase()
+      if (sku && !nameBySku.has(sku)) nameBySku.set(sku, String(row.display_name || '').trim() || sku)
+    }
+    // set_sku|variation_name -> [{ componentSku, qty }] — เอาไว้บวกจำนวนชิ้นเข้ากลุ่มสินค้าจริง (ไม่บวก
+    // รายได้ เพราะราคา Set ไม่ได้แบ่งสัดส่วนต่อสินค้าจริงชัดเจน โดยเฉพาะ "Set จัดให้" ที่คละหลายแบบราคาเดียว
+    // — ยอดขาย/รายได้ยังเป็นของสินค้าที่ขายเดี่ยวจริงเท่านั้น, ยอดขายของ Set เองก็ยังคงแยกต่างหากเหมือนเดิม
+    // ดู CLAUDE.md "แล้วเซ็ทอื่นพังเหมือนกันไหม" — เจ้าของยืนยันแล้วว่าต้องรวมยอดชิ้นแบบนี้)
+    const setRecipesByKey = new Map()
+    for (const row of setRecipeRows) {
+      const setSku = String(row.set_sku || '').trim().toUpperCase()
+      const variation = String(row.variation_name || '').trim()
+      const componentSku = String(row.component_sku || '').trim().toUpperCase()
+      const qty = Number(row.qty_per_unit) || 0
+      if (!setSku || !variation || !componentSku || qty <= 0) continue
+      const key = `${setSku}|${variation}`
+      if (!setRecipesByKey.has(key)) setRecipesByKey.set(key, [])
+      setRecipesByKey.get(key).push({ componentSku, qty })
+    }
 
     const meta = await getMetaCached()
     const tabs = meta.sheets.map((s) => s.properties.title).filter((t) => t.startsWith('raw_orders'))
@@ -77,11 +102,29 @@ export default async function handler(req, res) {
         if (!g) groups.set(key, (g = { key, label, skus: new Map(), monthly: new Map() }))
 
         let gm = g.monthly.get(ym)
-        if (!gm) g.monthly.set(ym, (gm = { revenue: 0, units: 0, orderIds: new Set(), platforms: new Map() }))
+        if (!gm) g.monthly.set(ym, (gm = { revenue: 0, units: 0, unitsFromSet: 0, orderIds: new Set(), platforms: new Map() }))
         if (orderId) gm.orderIds.add(orderId)
         if (!excluded) {
           gm.revenue += rev; gm.units += qty
           if (plat) gm.platforms.set(plat, (gm.platforms.get(plat) || 0) + rev)
+        }
+
+        // แถวนี้เป็น Set จริง (มีสูตรแตกยอด) — บวกจำนวนชิ้นเข้ากลุ่มสินค้าจริงข้างในด้วย (ไม่บวกรายได้/ออเดอร์
+        // เพราะเป็นของกลุ่ม Set เอง อยู่แล้วในบรรทัดข้างบน — สินค้าจริงแค่ยืมยอด "ชิ้น" มาโชว์รวมด้วย)
+        if (!excluded) {
+          const setKey = `${masterSku}|${variationName || ''}`
+          const recipe = setRecipesByKey.get(setKey)
+          if (recipe) {
+            for (const comp of recipe) {
+              const compName = nameBySku.get(comp.componentSku) || comp.componentSku
+              const { key: ck, label: cl } = deriveGroup(compName, comp.componentSku, overrideMap)
+              let cg = groups.get(ck)
+              if (!cg) groups.set(ck, (cg = { key: ck, label: cl, skus: new Map(), monthly: new Map() }))
+              let cgm = cg.monthly.get(ym)
+              if (!cgm) cg.monthly.set(ym, (cgm = { revenue: 0, units: 0, unitsFromSet: 0, orderIds: new Set(), platforms: new Map() }))
+              cgm.unitsFromSet += qty * comp.qty
+            }
+          }
         }
 
         // สมาชิก SKU ในกลุ่ม — เก็บรายเดือนด้วย เพื่อให้ตาราง/drawer สโคปตามเดือนที่เลือกได้
@@ -106,16 +149,16 @@ export default async function handler(req, res) {
     // ค่าดิบของกลุ่ม g ที่เดือน ym — ym = null หมายถึง "ทั้งหมด" (รวมทุกเดือน)
     const monthRaw = (g, ym) => {
       if (ym === null) {
-        const acc = { revenue: 0, units: 0, orderIds: new Set(), platforms: new Map() }
+        const acc = { revenue: 0, units: 0, unitsFromSet: 0, orderIds: new Set(), platforms: new Map() }
         for (const gm of g.monthly.values()) {
-          acc.revenue += gm.revenue; acc.units += gm.units
+          acc.revenue += gm.revenue; acc.units += gm.units; acc.unitsFromSet += gm.unitsFromSet || 0
           for (const id of gm.orderIds) acc.orderIds.add(id)
           for (const [p, v] of gm.platforms) acc.platforms.set(p, (acc.platforms.get(p) || 0) + v)
         }
-        return { revenue: acc.revenue, units: acc.units, orders: acc.orderIds.size, platforms: acc.platforms }
+        return { revenue: acc.revenue, units: acc.units, unitsFromSet: acc.unitsFromSet, orders: acc.orderIds.size, platforms: acc.platforms }
       }
       const gm = ym ? g.monthly.get(ym) : null
-      return gm ? { revenue: gm.revenue, units: gm.units, orders: gm.orderIds.size, platforms: gm.platforms } : { revenue: 0, units: 0, orders: 0, platforms: new Map() }
+      return gm ? { revenue: gm.revenue, units: gm.units, unitsFromSet: gm.unitsFromSet || 0, orders: gm.orderIds.size, platforms: gm.platforms } : { revenue: 0, units: 0, unitsFromSet: 0, orders: 0, platforms: new Map() }
     }
     // ผลรวมของสมาชิก SKU ในกลุ่ม g ที่ ym — null = รวมทุกเดือน
     const memberRaw = (m, ym) => {
@@ -138,22 +181,30 @@ export default async function handler(req, res) {
           })
           .filter((m) => m.revenue > 0 || m.units > 0)
           .sort((a, b) => b.revenue - a.revenue)
+        // units = จำนวนชิ้นรวม (ขายเดี่ยว + แตกจาก Set) ตัวเลขหลักที่โชว์ในตาราง — directUnits = ขายเดี่ยว
+        // ล้วนๆ ไว้เทียบ/คำนวณราคาเฉลี่ย (avgPrice ใช้ directUnits เพราะรายได้ไม่ได้รวม Set มาด้วย ถ้าหาร
+        // ด้วย units รวมราคาเฉลี่ยจะโชว์ต่ำกว่าจริง) unitsFromSet > 0 = มีส่วนที่มาจาก Set ให้ frontend โชว์
+        // ป้าย "รวม Set แล้ว" กำกับ
+        const curUnits = cur.units + cur.unitsFromSet
+        const prevUnits = prev.units + prev.unitsFromSet
         return {
           key: g.key,
           label: g.label,
           revenue: round2(cur.revenue),
-          units: cur.units,
+          units: curUnits,
+          directUnits: cur.units,
+          unitsFromSet: cur.unitsFromSet,
           orders: cur.orders,
           skuCount: members.length,
           avgPrice: cur.units > 0 ? Math.round(cur.revenue / cur.units) : 0,
           revenueMoM: prevMonth ? pct(cur.revenue, prev.revenue) : null,
-          unitsMoM: prevMonth ? pct(cur.units, prev.units) : null,
+          unitsMoM: prevMonth ? pct(curUnits, prevUnits) : null,
           prevRevenue: prevMonth ? round2(prev.revenue) : null,
           members,
           platforms: Object.fromEntries([...cur.platforms.entries()].map(([k, v]) => [k, round2(v)])),
         }
       })
-      .filter((g) => g.revenue > 0 || g.units > 0) // เฉพาะกลุ่มที่มีขายในเดือนที่เลือก
+      .filter((g) => g.revenue > 0 || g.units > 0) // เฉพาะกลุ่มที่มีขายในเดือนที่เลือก (รวมที่มาจาก Set ล้วนๆ ด้วย)
       .sort((a, b) => b.revenue - a.revenue)
 
     // แนวโน้มรายเดือนของกลุ่มขายดี top N (ของเดือนที่เลือก) — โชว์ประวัติเต็มทุกเดือนที่มีข้อมูล
@@ -180,7 +231,7 @@ export default async function handler(req, res) {
     if (prevMonth) {
       for (const g of groups.values()) {
         const p = monthRaw(g, prevMonth)
-        prevTotalRevenue += p.revenue; prevTotalUnits += p.units
+        prevTotalRevenue += p.revenue; prevTotalUnits += p.units + p.unitsFromSet
       }
     }
 
