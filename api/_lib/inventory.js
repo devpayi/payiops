@@ -525,6 +525,29 @@ async function updateMovement(body, actorName) {
   return after
 }
 
+// ลบ movement จริง (ไม่ใช่ adjust ชดเชย) — owner ขอ 2026-08-12 หลังถามหลายรอบว่าอยากได้ปุ่มลบจริงไหม —
+// เฉพาะ dev/boss เท่านั้น (เข้มกว่า update ธรรมดา เพราะลบแล้วกู้คืนเองไม่ได้ผ่าน UI) ก่อนลบ log
+// before ไว้ที่ stock_movements_history (after: null) เก็บ audit trail ไว้เผื่อย้อนดูว่าใครลบอะไรไปทำไม
+async function deleteMovement(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ลบได้')
+  const id = String(body.id || '').trim()
+  if (!id) throw new Error('ต้องระบุ id')
+
+  await ensureInventorySheets()
+  const movements = await getSheet(MOVEMENTS_SHEET)
+  const idx = movements.findIndex((m) => String(m.id) === id)
+  if (idx === -1) throw new Error('ไม่พบรายการนี้')
+  const before = movements[idx]
+
+  const now = new Date().toISOString()
+  const next = movements.filter((m) => String(m.id) !== id)
+  await Promise.all([
+    overwriteSheet(MOVEMENTS_SHEET, MOVEMENTS_HEADERS, next.map((m) => MOVEMENTS_HEADERS.map((h) => m[h] ?? ''))),
+    appendRows(MOVEMENTS_HISTORY_SHEET, [[`mvhist-${Date.now()}`, id, JSON.stringify(before), JSON.stringify(null), now, actorName || '']]),
+  ])
+  return before
+}
+
 // role กรอง: แถวที่ยัง "สั่งไว้ รอของเข้า" (ไม่มี arrival_date เลย — มาจากพี่หยกกรอกจำนวนสั่งใน
 // Inventory เอง) ให้ boss/dev เห็นเท่านั้น — ตั้งใจไม่ให้ฟ้า(คนรับของ)เห็นจำนวนที่สั่งไว้ล่วงหน้า
 // จะได้นับสต็อกจริงแบบ blind count ไม่ใช่แค่เช็คให้ตรงกับเลขที่คาดไว้ (แถวที่มี arrival_date
@@ -859,6 +882,10 @@ export default async function opInventory(req, res) {
       }
       if (action === 'update-movement') {
         const result = await updateMovement(req.body, actorName)
+        return res.status(200).json({ success: true, movement: result })
+      }
+      if (action === 'delete-movement') {
+        const result = await deleteMovement(req.body, actorName, role)
         return res.status(200).json({ success: true, movement: result })
       }
       if (action === 'create-stock-in-request') {

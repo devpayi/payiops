@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeftRight, Check, Download, PackageMinus, Pencil, Plus, Search, Truck, X } from 'lucide-react'
+import { ArrowLeftRight, Check, Download, PackageMinus, Pencil, Plus, Search, Trash2, Truck, X } from 'lucide-react'
 import { canManageOperations } from '../../shared/roles.js'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
@@ -260,6 +260,28 @@ export default function StockMovement() {
       const json = await res.json()
       if (!json.success) throw new Error(json.error || 'บันทึกไม่สำเร็จ')
       setEditing(null)
+      load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // ลบ movement จริง — owner ขอ 2026-08-12 (เข้มกว่าแก้ไข: ลบแล้วกู้คืนเองผ่านหน้าเว็บไม่ได้ ต้องมั่นใจก่อน
+  // จริงๆ confirm ในเบราว์เซอร์กันมือลั่น) เฉพาะ dev/boss (isBoss) เท่านั้นเห็นปุ่มนี้อยู่แล้ว
+  const deleteMovementRow = async (m) => {
+    if (!window.confirm(`ลบรายการ "${m.display_name}" ${m.type === 'out' ? '' : '+'}${fmt(m.qty)} เมื่อ ${fmtDate(m.date)} ทิ้งถาวร?\n\nกู้คืนเองผ่านหน้านี้ไม่ได้ — ยืนยันลบ?`)) return
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/sheet-tools?op=inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-movement', id: m.id }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'ลบไม่สำเร็จ')
       load()
     } catch (e) {
       setError(e.message)
@@ -612,9 +634,16 @@ export default function StockMovement() {
                       <div style={{ fontSize: 12.5, color: 'var(--payi-text-muted)' }}>ผู้ทำรายการ: {m.created_by || '-'}</div>
                       <div style={{ fontSize: 12.5, color: 'var(--payi-text-muted)' }}>หมายเหตุ: {m.note || '-'}</div>
                       {m.updated_at && <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }} title={fmtDateTime(m.updated_at)}>แก้ไขล่าสุดโดย {m.updated_by || '-'}</div>}
-                      <button onClick={(e) => { e.stopPropagation(); setEditing(m) }} aria-label={`แก้ไขรายการ ${m.display_name}`} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, border: 'none', background: 'var(--payi-surface-muted)', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
-                        <Pencil size={12} /> แก้ไข
-                      </button>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                        <button onClick={(e) => { e.stopPropagation(); setEditing(m) }} aria-label={`แก้ไขรายการ ${m.display_name}`} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'var(--payi-surface-muted)', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
+                          <Pencil size={12} /> แก้ไข
+                        </button>
+                        {isBoss && (
+                          <button onClick={(e) => { e.stopPropagation(); deleteMovementRow(m) }} aria-label={`ลบรายการ ${m.display_name}`} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'var(--payi-danger-bg)', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-danger)' }}>
+                            <Trash2 size={12} /> ลบ
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 6 }}>แตะเพื่อดูหมายเหตุ/ผู้ทำรายการ</div>
@@ -664,9 +693,16 @@ export default function StockMovement() {
                       {m.updated_at && <div style={{ fontSize: 10.5, color: 'var(--payi-text-faint)', marginTop: 2 }} title={fmtDateTime(m.updated_at)}>แก้ไขล่าสุดโดย {m.updated_by || '-'}</div>}
                     </td>
                     <td style={{ padding: '10px', textAlign: 'right' }}>
-                      <button onClick={() => setEditing(m)} aria-label={`แก้ไขรายการ ${m.display_name}`} style={{ border: 'none', background: 'var(--payi-surface-muted)', borderRadius: 8, padding: 7, cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
-                        <Pencil size={13} />
-                      </button>
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <button onClick={() => setEditing(m)} aria-label={`แก้ไขรายการ ${m.display_name}`} style={{ border: 'none', background: 'var(--payi-surface-muted)', borderRadius: 8, padding: 7, cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
+                          <Pencil size={13} />
+                        </button>
+                        {isBoss && (
+                          <button onClick={() => deleteMovementRow(m)} aria-label={`ลบรายการ ${m.display_name}`} style={{ border: 'none', background: 'var(--payi-danger-bg)', borderRadius: 8, padding: 7, cursor: 'pointer', color: 'var(--payi-danger)' }}>
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
