@@ -1484,13 +1484,8 @@ async function handleStockMenuCommand(event) {
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
   const approver = lineUserId ? await findStockApprover(lineUserId) : null
-  console.error('DEBUG handleStockMenuCommand approver:', JSON.stringify(approver), 'lineUserId:', lineUserId)
-  if (!approver) {
-    const r = await replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นค่ะ' }])
-    console.error('DEBUG reply(no-approver) result:', JSON.stringify(r))
-    return r
-  }
-  const r2 = await replyMessage(replyToken, [{
+  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นค่ะ' }])
+  return replyMessage(replyToken, [{
     type: 'text', text: 'งานสต็อค — เลือกได้เลยค่ะ',
     quickReply: { items: [
       { type: 'action', action: { type: 'message', label: 'สั่งของ', text: 'สั่งของ' } },
@@ -1500,8 +1495,6 @@ async function handleStockMenuCommand(event) {
       { type: 'action', action: { type: 'message', label: 'แก้ไขของเข้า', text: STOCK_IN_UNDO_TRIGGER } },
     ] },
   }])
-  console.error('DEBUG reply(menu) result:', JSON.stringify(r2))
-  return r2
 }
 
 async function handleHrMenuCommand(event) {
@@ -3170,7 +3163,6 @@ async function opLineWebhook(req, res) {
   if (!verifySignature(req.rawBody, req.headers['x-line-signature'])) return res.status(401).end()
   await ensureLineFlowSheets()
   const events = Array.isArray(req.body?.events) ? req.body.events : []
-  console.error('DEBUG opLineWebhook events:', JSON.stringify(events))
   for (const event of events) {
     try {
       // ลงทะเบียน groupId ของกลุ่มไลน์ทีมงานอัตโนมัติ ถ้า event นี้มาจากกลุ่ม (ดู comment บน LINE_GROUP_LINK_SHEET)
