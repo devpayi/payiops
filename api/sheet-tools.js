@@ -1484,8 +1484,13 @@ async function handleStockMenuCommand(event) {
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
   const approver = lineUserId ? await findStockApprover(lineUserId) : null
-  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นค่ะ' }])
-  return replyMessage(replyToken, [{
+  console.error('DEBUG handleStockMenuCommand approver:', JSON.stringify(approver), 'lineUserId:', lineUserId)
+  if (!approver) {
+    const r = await replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นค่ะ' }])
+    console.error('DEBUG reply(no-approver) result:', JSON.stringify(r))
+    return r
+  }
+  const r2 = await replyMessage(replyToken, [{
     type: 'text', text: 'งานสต็อค — เลือกได้เลยค่ะ',
     quickReply: { items: [
       { type: 'action', action: { type: 'message', label: 'สั่งของ', text: 'สั่งของ' } },
@@ -1495,6 +1500,8 @@ async function handleStockMenuCommand(event) {
       { type: 'action', action: { type: 'message', label: 'แก้ไขของเข้า', text: STOCK_IN_UNDO_TRIGGER } },
     ] },
   }])
+  console.error('DEBUG reply(menu) result:', JSON.stringify(r2))
+  return r2
 }
 
 async function handleHrMenuCommand(event) {
