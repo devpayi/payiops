@@ -667,12 +667,19 @@ export async function matchStockInRequest(body, actorName, role) {
     if (String(orderReq.sku) !== String(req.sku)) throw new Error('ลอตที่เลือกไม่ตรงกับสินค้านี้')
   }
 
+  // owner ขอ 2026-08-15: ตอน match กับลอต "สั่งของ" ให้โน้ตบอกวันที่สั่งของลอตนั้นไว้ด้วย เห็นได้จากตาราง
+  // ประวัติ Stock Movement เลยไม่ต้องเปิดดู stock_in_requests แยก — ถ้าไม่ได้ผูกลอต (orderIdx === -1) โน้ต
+  // ยังเหมือนเดิมทุกอย่าง ไม่เปลี่ยน
+  const matchedLotDate = orderIdx !== -1 ? isoDate(requests[orderIdx].order_date) : ''
+  const defaultNote = matchedLotDate
+    ? `รับเข้าจากคำขอของ ${req.created_by || '-'} · แมชลอตวันที่ ${matchedLotDate}${req.note ? ` — ${req.note}` : ''}`
+    : `รับเข้าจากคำขอของ ${req.created_by || '-'}${req.note ? ` — ${req.note}` : ''}`
   const movement = await addMovement({
     sku: req.sku,
     type: 'in',
     qty,
     date: req.count_date || req.arrival_date,
-    note: body.note || `รับเข้าจากคำขอของ ${req.created_by || '-'}${req.note ? ` — ${req.note}` : ''}`,
+    note: body.note || defaultNote,
   }, actorName)
 
   const now = new Date().toISOString()
