@@ -1322,28 +1322,33 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
   const pendingForOrders = await loadStockInRequests({ status: 'pending', role: 'boss' })
   const ordersByRequestId = new Map(pendingForOrders.map((r) => [String(r.id), r.available_orders || []]))
   // "สะอาด" = ไม่มีลอตให้เทียบเลย หรือมีลอตเดียวและจำนวนตรงเป๊ะ — เคสอื่น (จำนวนไม่ตรง/มีหลายลอตให้เลือก)
-  // ต้องบังคับกด ✓ ทีละแถวเท่านั้น (ดูเหตุผลเต็มในคอมเมนต์ footerButtons ด้านล่าง)
-  let allClean = true
+  // ต้อง approve ทีละแถวเท่านั้น (เห็นการ์ดเทียบลอตก่อนเสมอ) แยกออกจากกลุ่ม "สะอาด" ที่ approve รวมได้เลย
+  const cleanIds = []
+  const dirtyLabels = []
   const itemRows = done.map((it) => {
     const orders = ordersByRequestId.get(String(it.request.id)) || []
     const suggested = orders[0]
     let extra = ''
+    let clean = true
     if (suggested) {
       const diff = (Number(suggested.qty) || 0) - (Number(it.qty) || 0)
       extra = diff === 0 ? ` · สั่งไว้ ${suggested.qty} ตรงกัน ✅` : diff > 0 ? ` · สั่งไว้ ${suggested.qty} เกิน ${diff} ⚠️` : ` · สั่งไว้ ${suggested.qty} ขาด ${Math.abs(diff)} ⚠️`
-      if (diff !== 0 || orders.length > 1) allClean = false
+      if (diff !== 0 || orders.length > 1) clean = false
       // มีลอตให้เลือกมากกว่า 1 — เตือนไว้ก่อนกด ✓ (ที่กด ✓ แล้วจะเปิดการ์ดเลือกลอตทั้งหมดอยู่แล้ว ดู stockin-approve)
       if (orders.length > 1) extra += ` · +${orders.length - 1} ลอตอื่น`
     }
+    if (clean) cleanIds.push(it.request.id); else dirtyLabels.push(it.display_name)
     return stockInItemRow(it.request.id, it.display_name, `× ${it.qty} ${it.unit}${extra}`)
   })
-  // owner ขอ 2026-08-15: เดิมปุ่ม "Approve ทั้งหมด" ผูกลอตเก่าสุด (FIFO) ให้อัตโนมัติทุกรายการโดยไม่เช็ค
-  // จำนวนตรงไหมเลย (ดู stockin-approve ด้านล่าง) — ถ้ามีรายการไหนจำนวนไม่ตรงหรือมีหลายลอตให้เลือก จะผูกลอต
-  // ผิด/มั่วให้แบบเงียบๆ เลยตัดปุ่มนี้ออกเมื่อไม่ใช่ทุกรายการ "สะอาด" บังคับให้กด ✓ ทีละแถวแทน จะได้เห็นการ์ด
-  // เทียบลอต/เลือกลอตเองก่อนเสมอเวลาไม่แน่ใจ
-  const footerButtons = done.length > 1 && allClean ? [stockCardButton({
-    type: 'postback', label: `Approve ทั้งหมด (${done.length})`, data: `stockin-approve:${done.map((it) => it.request.id).join(',')}`, displayText: `Approve ของเข้า ${done.length} รายการ`,
+  // owner ขอ 2026-08-15: เดิมปุ่ม "Approve ทั้งหมด" ผูกลอตเก่าสุด (FIFO) ให้อัตโนมัติทุกรายการโดยไม่เช็คจำนวน
+  // ตรงไหมเลย (ดู stockin-approve ด้านล่าง) เสี่ยงผูกลอตผิดแบบเงียบๆ — ตอนนี้ปุ่มรวมจะ approve เฉพาะรายการ
+  // "สะอาด" เท่านั้น รายการที่จำนวนไม่ตรง/มีหลายลอตต้องกด ✓ หรือ ✗ เองที่แถวนั้น (เห็นการ์ดเทียบลอตก่อนเสมอ)
+  const footerButtons = cleanIds.length > 1 ? [stockCardButton({
+    type: 'postback', label: `Approve สินค้าที่ตรงทั้งหมด (${cleanIds.length})`, data: `stockin-approve:${cleanIds.join(',')}`, displayText: `Approve ของเข้า ${cleanIds.length} รายการ`,
   }, true)] : []
+  const dirtyNote = dirtyLabels.length
+    ? [stockFlexText(`⚠️ มีอีก ${dirtyLabels.length} รายการไม่ตรง (${dirtyLabels.join(', ')}) — กด ✓ เพื่อเลือกลอต หรือ ✗ เพื่อปฏิเสธที่แถวนั้น`, { color: '#C0392B', size: 'xxs', margin: 'sm', wrap: true })]
+    : []
   const summaryCard = {
     type: 'flex', altText: `แจ้งของเข้า ${done.length} รายการ`,
     contents: {
@@ -1351,6 +1356,7 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
       header: stockCardHeader('แจ้งของเข้าแล้ว', `${done.length} รายการ · เข้า ${arrivalDate} · นับ ${countDate} · โดย ${reporter.name}`, '📦'),
       body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
         { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base, contents: itemRows.length ? itemRows : [stockFlexText('ไม่มีรายการสำเร็จ', {})] },
+        ...dirtyNote,
         ...(failed.length ? [stockFlexText(`ล้มเหลว: ${failed.join('; ')}`, { color: '#C0392B', size: 'xxs', margin: 'sm', wrap: true })] : []),
       ] },
       ...(footerButtons.length ? { footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: footerButtons } } : {}),
