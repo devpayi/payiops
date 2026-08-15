@@ -3163,6 +3163,7 @@ async function opLineWebhook(req, res) {
   if (!verifySignature(req.rawBody, req.headers['x-line-signature'])) return res.status(401).end()
   await ensureLineFlowSheets()
   const events = Array.isArray(req.body?.events) ? req.body.events : []
+  console.error('DEBUG opLineWebhook events:', JSON.stringify(events))
   for (const event of events) {
     try {
       // ลงทะเบียน groupId ของกลุ่มไลน์ทีมงานอัตโนมัติ ถ้า event นี้มาจากกลุ่ม (ดู comment บน LINE_GROUP_LINK_SHEET)
