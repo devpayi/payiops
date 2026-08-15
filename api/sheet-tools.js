@@ -1558,35 +1558,51 @@ async function handleStockPendingListCommand(event) {
   const pending = (await loadStockInRequests({ status: 'pending', role: approver.role })).filter((r) => !r.order_only)
   if (!pending.length) return replyMessage(replyToken, [{ type: 'text', text: '✅ ไม่มีของเข้ารอตรวจตอนนี้ค่ะ' }])
   const items = await loadOrderableItems()
-  const cards = pending.slice(0, 5).map((r) => {
+  // owner ขอ 2026-08-15: เดิมแยกเป็นการ์ดละ 1 รายการ (สูงสุด 5 การ์ด) เปลี่ยนเป็นการ์ดเดียวรวมหลายบรรทัด
+  // เหมือนการ์ดที่เด้งอัตโนมัติตอนแจ้งของเข้าเสร็จ (ดู handleStockInStart-finish) — logic ปุ่ม/คำเตือน
+  // "สะอาด"/"ไม่ตรง" ใช้แบบเดียวกันทุกอย่าง เผื่อรายการจากคนละชุดแจ้งของเข้าปนกันมาด้วย
+  const shown = pending.slice(0, 10)
+  const cleanIds = []
+  const dirtyLabels = []
+  const itemRows = shown.map((r) => {
     const item = items.find((it) => String(it.sku).toUpperCase() === String(r.sku).toUpperCase())
     const label = item?.display_name || r.sku
-    // owner ขอ 2026-08-15: การ์ดนี้ (ดึงดูเองด้วยคำสั่ง "ของเข้ารอตรวจ") ก็ควรเทียบลอตให้เห็นก่อนกด ✓
-    // เหมือนการ์ดที่เด้งอัตโนมัติตอนแจ้งของเข้าเสร็จ (ดู handleStockInStart-finish ด้านบน) — ไม่ต้อง fetch
-    // เพิ่ม เพราะ available_orders ติดมากับ r อยู่แล้วจาก loadStockInRequests (role: approver.role ผ่านเงื่อนไข)
     const orders = r.available_orders || []
     const suggested = orders[0]
     let extra = ''
+    let clean = true
     if (suggested) {
       const diff = (Number(suggested.qty) || 0) - (Number(r.qty) || 0)
       extra = diff === 0 ? ` · สั่งไว้ ${suggested.qty} ตรงกัน ✅` : diff > 0 ? ` · สั่งไว้ ${suggested.qty} เกิน ${diff} ⚠️` : ` · สั่งไว้ ${suggested.qty} ขาด ${Math.abs(diff)} ⚠️`
+      if (diff !== 0 || orders.length > 1) clean = false
       if (orders.length > 1) extra += ` · +${orders.length - 1} ลอตอื่น`
     }
-    return {
-      type: 'flex', altText: `ของเข้ารอตรวจ: ${label} × ${r.qty}`,
-      contents: {
-        type: 'bubble', size: 'mega',
-        header: stockCardHeader('ของเข้ารอตรวจ', `เข้า ${r.arrival_date} · นับ ${r.count_date} · โดย ${r.created_by || '-'}`, '📦'),
-        body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [stockInItemRow(r.id, label, `× ${r.qty} ${item?.unit || ''}${extra}`)] },
-        footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: [
-          stockCardButton({ type: 'postback', label: 'ปฏิเสธ', data: `stockin-reject:${r.id}`, displayText: `ปฏิเสธ ${label}` }),
-          stockCardButton({ type: 'postback', label: 'Approve', data: `stockin-approve:${r.id}`, displayText: `Approve ${label}` }, true),
-        ] },
-      },
-    }
+    if (clean) cleanIds.push(r.id); else dirtyLabels.push(label)
+    return stockInItemRow(r.id, label, `× ${r.qty} ${item?.unit || ''}${extra}`)
   })
-  const suffix = pending.length > 5 ? [{ type: 'text', text: `และอีก ${pending.length - 5} รายการ — เปิดเว็บเพื่อดูทั้งหมด` }] : []
-  return replyMessage(replyToken, [...cards, ...suffix])
+  const footerButtons = cleanIds.length > 1 ? [stockCardButton({
+    type: 'postback', label: `Approve สินค้าที่ตรงทั้งหมด (${cleanIds.length})`, data: `stockin-approve:${cleanIds.join(',')}`, displayText: `Approve ของเข้า ${cleanIds.length} รายการ`,
+  }, true)] : []
+  const dirtyNote = dirtyLabels.length
+    ? [stockFlexText(`⚠️ มีอีก ${dirtyLabels.length} รายการไม่ตรง (${dirtyLabels.join(', ')}) — กด ✓ เพื่อเลือกลอต หรือ ✗ เพื่อปฏิเสธที่แถวนั้น`, { color: '#C0392B', size: 'xxs', margin: 'sm', wrap: true })]
+    : []
+  const moreNote = pending.length > shown.length
+    ? [stockFlexText(`และอีก ${pending.length - shown.length} รายการ — เปิดเว็บเพื่อดูทั้งหมด`, { size: 'xxs', margin: 'sm', wrap: true })]
+    : []
+  const card = {
+    type: 'flex', altText: `ของเข้ารอตรวจ ${pending.length} รายการ`,
+    contents: {
+      type: 'bubble', size: 'giga',
+      header: stockCardHeader('ของเข้ารอตรวจ', `${pending.length} รายการ`, '📦'),
+      body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
+        { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base, contents: itemRows },
+        ...dirtyNote,
+        ...moreNote,
+      ] },
+      ...(footerButtons.length ? { footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: footerButtons } } : {}),
+    },
+  }
+  return replyMessage(replyToken, [card])
 }
 
 async function handleLeavePendingListCommand(event) {
@@ -3337,71 +3353,23 @@ async function opLineWebhook(req, res) {
         if (ids.length === 1) {
           const target = pending.find((r) => String(r.id) === ids[0])
           if (target?.available_orders?.length) {
-            const lots = target.available_orders.slice(0, 11) // carousel เต็มที่ 12 ใบ เผื่อ 1 ใบให้ "ไม่ผูกลอต"
+            const lots = target.available_orders.slice(0, 12)
             const unit = target.unit || ''
             const reportedQty = Number(target.qty) || 0
-            // Carousel ปาดดูทีละลอต แทนลิสต์ยาว + quick reply แยก (owner ขอ 2026-08-06 หลัง preview
-            // เทียบหลายแบบ) แต่ละใบมีปุ่มของตัวเอง ไม่ต้องพึ่ง quick reply เลย ใบสุดท้ายเป็น "ไม่ผูกลอต" เสมอ
-            const lotBubbles = lots.map((o) => {
-              const mismatch = (Number(o.qty) || 0) !== reportedQty
-              const diff = (Number(o.qty) || 0) - reportedQty
-              const color = mismatch ? '#C0392B' : ORDER_CARD.green
-              const diffText = diff === 0 ? 'จำนวนตรง' : diff > 0 ? `เกิน ${diff} ${unit}` : `ขาด ${Math.abs(diff)} ${unit}`
-              return {
-                type: 'bubble', size: 'micro',
-                body: {
-                  type: 'box', layout: 'vertical', paddingAll: '14px', spacing: 'sm', backgroundColor: '#FFFFFF',
-                  borderWidth: '3px', borderColor: color, cornerRadius: '16px',
-                  contents: [
-                    { type: 'box', layout: 'horizontal', contents: [
-                      { type: 'box', layout: 'baseline', flex: 1, contents: [
-                        orderFlexText(String(o.qty), { size: '3xl', weight: 'bold', color }),
-                        orderFlexText(unit, { size: 'sm', color: ORDER_CARD.muted, margin: 'xs' }),
-                      ] },
-                      orderFlexText(mismatch ? '⚠️' : '✅', { size: 'lg', flex: 0 }),
-                    ] },
-                    orderFlexText(`สั่ง ${(o.order_date || o.created_at || '-').slice(0, 10)}`, { size: 'sm', weight: 'bold', color: '#46644E', margin: 'md' }),
-                    orderFlexText(diffText, { size: 'xs', weight: 'bold', color, margin: 'xs' }),
-                  ],
-                },
-                footer: { type: 'box', layout: 'vertical', paddingAll: '8px', contents: [
-                  orderCardButton({ type: 'postback', label: 'เลือกลอตนี้', data: `stockin-matchlot:${target.id}:${o.id}`, displayText: `จับคู่ลอต ${o.qty} (${o.order_date || '-'})` }, true),
-                ] },
-              }
-            })
-            const noneBubble = {
-              type: 'bubble', size: 'micro',
-              body: {
-                type: 'box', layout: 'vertical', paddingAll: '14px', spacing: 'sm', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center',
-                borderWidth: '3px', borderColor: '#96969B', cornerRadius: '16px',
-                contents: [
-                  orderFlexText('❓', { size: 'xxl', align: 'center' }),
-                  orderFlexText('ของที่เข้ามาไม่ตรงกับลอตไหนเลย', { size: 'sm', weight: 'bold', color: '#66666B', align: 'center', margin: 'md', wrap: true }),
-                ],
-              },
-              footer: { type: 'box', layout: 'vertical', paddingAll: '8px', contents: [
-                { type: 'button', style: 'primary', color: '#96969B', height: 'sm', action: { type: 'postback', label: 'ไม่ผูกลอต', data: `stockin-matchlot:${target.id}:none`, displayText: 'ไม่ผูกลอต' } },
-              ] },
-            }
-            const carouselResult = await replyMessage(event.replyToken, [{
-              type: 'flex', altText: `เลือกลอตที่ตรงกับของเข้า "${target.display_name}" (แจ้งเข้า ${reportedQty}${unit})`,
-              contents: { type: 'carousel', contents: [...lotBubbles, noneBubble] },
+            // owner ขอ 2026-08-15: เดิมส่งการ์ด carousel สวยๆ ก่อน แล้ว fallback เป็น quick reply ข้อความล้วน
+            // ถ้า LINE ปฏิเสธการ์ด (เจอจริง 2026-08-11) — โผล่ไม่เหมือนกันทุกรอบทำให้บอสงง เปลี่ยนเป็นใช้ quick
+            // reply แบบเดียวทุกครั้งเลย ไม่ต้องพึ่งการ์ด carousel อีกต่อไป (สม่ำเสมอ ไม่มี edge case ให้ดูแล
+            // 2 เวอร์ชัน) ป้าย label ไม่ใส่ตัวเทียบจำนวน (✅/⚠️) ตามที่ owner ขอ ให้เหมือนของเดิมเป๊ะ
+            const quickItems = lots.map((o) => ({
+              type: 'action',
+              action: { type: 'postback', label: `${o.qty}${unit} · ${(o.order_date || '-').slice(5)}`.slice(0, 20), data: `stockin-matchlot:${target.id}:${o.id}`, displayText: `จับคู่ลอต ${o.qty} (${o.order_date || '-'})` },
+            }))
+            if (quickItems.length < 13) quickItems.push({ type: 'action', action: { type: 'postback', label: 'ไม่ผูกลอต', data: `stockin-matchlot:${target.id}:none`, displayText: 'ไม่ผูกลอต' } })
+            await replyMessage(event.replyToken, [{
+              type: 'text',
+              text: `เลือกลอตที่ตรงกับของเข้า "${target.display_name}" (แจ้งเข้า ${reportedQty}${unit}) ค่ะ — กดเลือกด้านล่าง`,
+              quickReply: { items: quickItems.slice(0, 13) },
             }])
-            // fallback ถ้า LINE ปฏิเสธการ์ด carousel (พบจริง 2026-08-11: กด ✓ แล้วเงียบสนิท ไม่มีการ์ดถามลอต
-            // เลย เพราะ replyMessage ไม่ throw เวลา LINE API พัง แค่คืน ok:false เฉยๆ — โค้ดเดิมไม่เคยเช็คผลลัพธ์
-            // เลยดูเหมือนสำเร็จทั้งที่บอสไม่เห็นอะไรเลย) ส่ง quick reply แบบข้อความล้วนแทน อย่างน้อยก็เลือกลอตได้
-            if (!carouselResult.ok) {
-              const quickItems = lots.slice(0, 12).map((o) => ({
-                type: 'action',
-                action: { type: 'postback', label: `${o.qty}${unit} · ${(o.order_date || '-').slice(5)}`.slice(0, 20), data: `stockin-matchlot:${target.id}:${o.id}`, displayText: `จับคู่ลอต ${o.qty} (${o.order_date || '-'})` },
-              }))
-              if (quickItems.length < 13) quickItems.push({ type: 'action', action: { type: 'postback', label: 'ไม่ผูกลอต', data: `stockin-matchlot:${target.id}:none`, displayText: 'ไม่ผูกลอต' } })
-              await pushMessage(lineUserId, [{
-                type: 'text',
-                text: `เลือกลอตที่ตรงกับของเข้า "${target.display_name}" (แจ้งเข้า ${reportedQty}${unit}) ค่ะ — กดเลือกด้านล่าง`,
-                quickReply: { items: quickItems.slice(0, 13) },
-              }])
-            }
             continue
           }
         }
