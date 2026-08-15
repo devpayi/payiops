@@ -347,6 +347,15 @@ const stockInItemRow = (id, label, value) => ({
     { type: 'button', style: 'secondary', color: '#FDF3D8', height: 'sm', flex: 2, gravity: 'center', action: { type: 'postback', label: '✗', data: `stockin-reject:${id}`, displayText: `${label} ไม่ตรง` } },
   ],
 })
+// นับรายการอื่นในชุด "แจ้งของเข้า" เดียวกัน (arrival_date+count_date+created_by ตรงกัน) ที่ยังไม่ approve —
+// owner ขอ 2026-08-15: กด ✓ ทีละแถวแล้วไม่รู้ว่าเหลืออีกกี่ตัวต้องกดต่อ ต่อท้าย reply ให้เห็นเลยไม่ต้องนับเอง
+function otherPendingBatchNote(pendingList, target, excludeIds = []) {
+  if (!target) return ''
+  const others = pendingList.filter((r) =>
+    r.status === 'pending' && !r.order_only && !excludeIds.includes(String(r.id)) &&
+    r.arrival_date === target.arrival_date && r.count_date === target.count_date && r.created_by === target.created_by)
+  return others.length ? ` · เหลืออีก ${others.length} รายการที่ยังไม่ได้ Approve` : ''
+}
 
 // โทนเขียวละมุนแยกจาก STOCK_CARD (เหลืองอำพัน) — เฉพาะการ์ดที่เกี่ยวกับ "สั่งของ" โดยตรง (ยืนยันสั่งของ/
 // เลือกลอต/รายการที่สั่งไว้) owner ขอ 2026-08-06 ว่าสีเดิมแสบตา การ์ดของเข้า/อนุมัติอื่นๆ ยังเป็นเหลืองเดิม
@@ -1312,16 +1321,27 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
   // (FIFO ตัวแรก) มาโชว์ในการ์ดแจ้งของเข้าเลยตั้งแต่แรก บอสจะได้ตัดสินใจได้ทันทีไม่ต้องเดา/เข้าเว็บ
   const pendingForOrders = await loadStockInRequests({ status: 'pending', role: 'boss' })
   const ordersByRequestId = new Map(pendingForOrders.map((r) => [String(r.id), r.available_orders || []]))
+  // "สะอาด" = ไม่มีลอตให้เทียบเลย หรือมีลอตเดียวและจำนวนตรงเป๊ะ — เคสอื่น (จำนวนไม่ตรง/มีหลายลอตให้เลือก)
+  // ต้องบังคับกด ✓ ทีละแถวเท่านั้น (ดูเหตุผลเต็มในคอมเมนต์ footerButtons ด้านล่าง)
+  let allClean = true
   const itemRows = done.map((it) => {
-    const suggested = (ordersByRequestId.get(String(it.request.id)) || [])[0]
+    const orders = ordersByRequestId.get(String(it.request.id)) || []
+    const suggested = orders[0]
     let extra = ''
     if (suggested) {
       const diff = (Number(suggested.qty) || 0) - (Number(it.qty) || 0)
       extra = diff === 0 ? ` · สั่งไว้ ${suggested.qty} ตรงกัน ✅` : diff > 0 ? ` · สั่งไว้ ${suggested.qty} เกิน ${diff} ⚠️` : ` · สั่งไว้ ${suggested.qty} ขาด ${Math.abs(diff)} ⚠️`
+      if (diff !== 0 || orders.length > 1) allClean = false
+      // มีลอตให้เลือกมากกว่า 1 — เตือนไว้ก่อนกด ✓ (ที่กด ✓ แล้วจะเปิดการ์ดเลือกลอตทั้งหมดอยู่แล้ว ดู stockin-approve)
+      if (orders.length > 1) extra += ` · +${orders.length - 1} ลอตอื่น`
     }
     return stockInItemRow(it.request.id, it.display_name, `× ${it.qty} ${it.unit}${extra}`)
   })
-  const footerButtons = done.length > 1 ? [stockCardButton({
+  // owner ขอ 2026-08-15: เดิมปุ่ม "Approve ทั้งหมด" ผูกลอตเก่าสุด (FIFO) ให้อัตโนมัติทุกรายการโดยไม่เช็ค
+  // จำนวนตรงไหมเลย (ดู stockin-approve ด้านล่าง) — ถ้ามีรายการไหนจำนวนไม่ตรงหรือมีหลายลอตให้เลือก จะผูกลอต
+  // ผิด/มั่วให้แบบเงียบๆ เลยตัดปุ่มนี้ออกเมื่อไม่ใช่ทุกรายการ "สะอาด" บังคับให้กด ✓ ทีละแถวแทน จะได้เห็นการ์ด
+  // เทียบลอต/เลือกลอตเองก่อนเสมอเวลาไม่แน่ใจ
+  const footerButtons = done.length > 1 && allClean ? [stockCardButton({
     type: 'postback', label: `Approve ทั้งหมด (${done.length})`, data: `stockin-approve:${done.map((it) => it.request.id).join(',')}`, displayText: `Approve ของเข้า ${done.length} รายการ`,
   }, true)] : []
   const summaryCard = {
@@ -3380,10 +3400,11 @@ async function opLineWebhook(req, res) {
           try { approved.push(await matchStockInRequest({ id, order_request_id: fifoLotId }, approver.name, approver.role)) }
           catch (e) { failed.push(e.message) }
         }
+        const batchNote = otherPendingBatchNote(pending, pending.find((r) => String(r.id) === ids[0]), ids)
         if (event.replyToken) await replyMessage(event.replyToken, [{
           type: 'text', text: failed.length
             ? `Approve สำเร็จ ${approved.length} รายการ\nไม่สำเร็จ: ${failed.join('; ')}`
-            : `Approve สำเร็จ ${approved.length} รายการ โดย ${approver.name}`,
+            : `Approve สำเร็จ ${approved.length} รายการ โดย ${approver.name}${batchNote}`,
         }])
         // การ์ดจริงส่ง 1:1 ไม่ได้ขึ้นในกลุ่มแล้ว — แจ้งผลสั้นๆ เข้ากลุ่มแทน ให้ทีมเห็นว่า Match ไปแล้ว
         // owner ขอ (2026-08-05): บอกรับเข้าอะไร/จำนวนเท่าไหร่ตรงๆ ไม่ใช่แค่ "Approve สำเร็จ" เฉยๆ
@@ -3411,7 +3432,9 @@ async function opLineWebhook(req, res) {
           const skipLotWarning = lotId === 'none'
             ? '\n\n⚠️ ไม่ผูกลอต — ลอตเก่าจะค้าง อย่าลืมปิดเองที่ Stock Movement'
             : ''
-          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `Approve สำเร็จ โดย ${approver.name}${lotId !== 'none' ? ' (จับคู่ลอตแล้ว)' : ''}${skipLotWarning}` }])
+          const stillPending = await loadStockInRequests({ status: 'pending', role: approver.role })
+          const batchNote = otherPendingBatchNote(stillPending, matched)
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `Approve สำเร็จ โดย ${approver.name}${lotId !== 'none' ? ' (จับคู่ลอตแล้ว)' : ''}${batchNote}${skipLotWarning}` }])
           const items = await loadOrderableItems()
           await announceStockInResultToGroup(stockInReceivedLine(matched, items))
         } catch (e) {
