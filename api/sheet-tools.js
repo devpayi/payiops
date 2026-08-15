@@ -1307,7 +1307,20 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
   // ปุ่ม ✓/✗ แยกต่อรายการ (ของเข้าหลายรายการอาจตรงไม่หมดทุกอัน) + ปุ่ม "Approve ทั้งหมด" รวม
   // ไว้ตรงกดจบทีเดียวถ้าตรงหมด — สองแบบอยู่ด้วยกันได้ กด ✗ รายการไหนไปแล้ว กด "ทั้งหมด" ซ้ำ
   // แค่รายการนั้นจะ error เฉยๆ (เช็ค status pending อยู่แล้วใน matchStockInRequest)
-  const itemRows = done.map((it) => stockInItemRow(it.request.id, it.display_name, `× ${it.qty} ${it.unit}`))
+  // owner ขอ 2026-08-15: เดิมบอสต้องกด Approve ก่อนถึงจะเห็นลอตที่สั่งไว้เทียบด้วย (หรือไม่เห็นเลยถ้ากด
+  // "Approve ทั้งหมด" แบบ batch เพราะ batch ข้ามการเลือกลอตไปเลยตามคอมเมนต์ด้านบน) — เอาจำนวนที่สั่งไว้ล่าสุด
+  // (FIFO ตัวแรก) มาโชว์ในการ์ดแจ้งของเข้าเลยตั้งแต่แรก บอสจะได้ตัดสินใจได้ทันทีไม่ต้องเดา/เข้าเว็บ
+  const pendingForOrders = await loadStockInRequests({ status: 'pending', role: 'boss' })
+  const ordersByRequestId = new Map(pendingForOrders.map((r) => [String(r.id), r.available_orders || []]))
+  const itemRows = done.map((it) => {
+    const suggested = (ordersByRequestId.get(String(it.request.id)) || [])[0]
+    let extra = ''
+    if (suggested) {
+      const diff = (Number(suggested.qty) || 0) - (Number(it.qty) || 0)
+      extra = diff === 0 ? ` · สั่งไว้ ${suggested.qty} ตรงกัน ✅` : diff > 0 ? ` · สั่งไว้ ${suggested.qty} เกิน ${diff} ⚠️` : ` · สั่งไว้ ${suggested.qty} ขาด ${Math.abs(diff)} ⚠️`
+    }
+    return stockInItemRow(it.request.id, it.display_name, `× ${it.qty} ${it.unit}${extra}`)
+  })
   const footerButtons = done.length > 1 ? [stockCardButton({
     type: 'postback', label: `Approve ทั้งหมด (${done.length})`, data: `stockin-approve:${done.map((it) => it.request.id).join(',')}`, displayText: `Approve ของเข้า ${done.length} รายการ`,
   }, true)] : []
