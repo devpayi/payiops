@@ -1561,12 +1561,23 @@ async function handleStockPendingListCommand(event) {
   const cards = pending.slice(0, 5).map((r) => {
     const item = items.find((it) => String(it.sku).toUpperCase() === String(r.sku).toUpperCase())
     const label = item?.display_name || r.sku
+    // owner ขอ 2026-08-15: การ์ดนี้ (ดึงดูเองด้วยคำสั่ง "ของเข้ารอตรวจ") ก็ควรเทียบลอตให้เห็นก่อนกด ✓
+    // เหมือนการ์ดที่เด้งอัตโนมัติตอนแจ้งของเข้าเสร็จ (ดู handleStockInStart-finish ด้านบน) — ไม่ต้อง fetch
+    // เพิ่ม เพราะ available_orders ติดมากับ r อยู่แล้วจาก loadStockInRequests (role: approver.role ผ่านเงื่อนไข)
+    const orders = r.available_orders || []
+    const suggested = orders[0]
+    let extra = ''
+    if (suggested) {
+      const diff = (Number(suggested.qty) || 0) - (Number(r.qty) || 0)
+      extra = diff === 0 ? ` · สั่งไว้ ${suggested.qty} ตรงกัน ✅` : diff > 0 ? ` · สั่งไว้ ${suggested.qty} เกิน ${diff} ⚠️` : ` · สั่งไว้ ${suggested.qty} ขาด ${Math.abs(diff)} ⚠️`
+      if (orders.length > 1) extra += ` · +${orders.length - 1} ลอตอื่น`
+    }
     return {
       type: 'flex', altText: `ของเข้ารอตรวจ: ${label} × ${r.qty}`,
       contents: {
         type: 'bubble', size: 'kilo',
         header: stockCardHeader('ของเข้ารอตรวจ', `เข้า ${r.arrival_date} · นับ ${r.count_date} · โดย ${r.created_by || '-'}`, '📦'),
-        body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [stockInItemRow(r.id, label, `× ${r.qty} ${item?.unit || ''}`)] },
+        body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [stockInItemRow(r.id, label, `× ${r.qty} ${item?.unit || ''}${extra}`)] },
         footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: [
           stockCardButton({ type: 'postback', label: 'ปฏิเสธ', data: `stockin-reject:${r.id}`, displayText: `ปฏิเสธ ${label}` }),
           stockCardButton({ type: 'postback', label: 'Approve', data: `stockin-approve:${r.id}`, displayText: `Approve ${label}` }, true),
