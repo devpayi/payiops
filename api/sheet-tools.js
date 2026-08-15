@@ -1575,7 +1575,7 @@ async function handleStockPendingListCommand(event) {
     return {
       type: 'flex', altText: `ของเข้ารอตรวจ: ${label} × ${r.qty}`,
       contents: {
-        type: 'bubble', size: 'kilo',
+        type: 'bubble', size: 'mega',
         header: stockCardHeader('ของเข้ารอตรวจ', `เข้า ${r.arrival_date} · นับ ${r.count_date} · โดย ${r.created_by || '-'}`, '📦'),
         body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [stockInItemRow(r.id, label, `× ${r.qty} ${item?.unit || ''}${extra}`)] },
         footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '8px', backgroundColor: STOCK_CARD.base, contents: [
