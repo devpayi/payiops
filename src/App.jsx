@@ -10,7 +10,7 @@ import {
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
   LayoutDashboard, UploadCloud, Radar, Megaphone, CalendarClock, Boxes,
   ArrowLeftRight, Users, ShieldAlert, BookOpen, Link2,
-  Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship,
+  Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -34,6 +34,7 @@ const ContentOSPrototype = lazy(() => import('./pages/ContentOSPrototype'))
 const Inventory = lazy(() => import('./pages/Inventory'))
 const StockMovement = lazy(() => import('./pages/StockMovement'))
 const ImportTracking = lazy(() => import('./pages/ImportTracking'))
+const CfoDashboard = lazy(() => import('./pages/CfoDashboard'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 const API_BASE = '/api'
@@ -91,6 +92,7 @@ const Icons = {
   Inventory: Boxes,
   StockMovement: ArrowLeftRight,
   ImportTracking: Ship,
+  CFO: Wallet,
   WorkforceOT: Users,
   HR: CalendarCheck,
   Claims: ShieldAlert,
@@ -103,7 +105,7 @@ const Icons = {
 const KNOWN_TABS = new Set([
   'Home', 'Executive', 'Monthly', 'FeedProducts', 'Products', 'ProductTrends',
   'AdsChannels', 'ContentOS', 'MarketingRadar', 'Planner Control', 'Inventory',
-  'Import Tracking', 'Stock Movement', 'Workforce OT', 'HR', 'Claims',
+  'Import Tracking', 'Stock Movement', 'Workforce OT', 'HR', 'Claims', 'CFO',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings',
 ])
 
@@ -134,6 +136,12 @@ const menuGroups = [
       { id: 'Workforce OT', label: 'Manpower & OT', renderIcon: Icons.WorkforceOT, dotColor: '#7dd3fc' },
       { id: 'HR', label: 'พนักงาน (ลา)', renderIcon: Icons.HR },
       { id: 'Claims', label: 'Claims', renderIcon: Icons.Claims }
+    ]
+  },
+  {
+    title: 'การเงิน',
+    items: [
+      { id: 'CFO', label: 'CFO Dashboard', renderIcon: Icons.CFO, dotColor: '#16a34a' }
     ]
   },
   {
@@ -1423,6 +1431,7 @@ export default function App() {
           ['Planner Control', <PlannerControl onNavigate={setActiveTab} />],
           ['Inventory', <Inventory />],
           ['Import Tracking', <ImportTracking />],
+          ['CFO', <CfoDashboard />],
           ['Stock Movement', <StockMovement />],
           ['Workforce OT', <WorkforceOT />],
           ['HR', <HR />],
@@ -1445,6 +1454,51 @@ export default function App() {
         )}
         </Suspense>
       </div>
+
+      {/* TOP SKUs — ดูทั้งหมด MODAL */}
+      {showSkuModal && (
+        <div onClick={() => setShowSkuModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.28)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', zIndex: 999, padding: 16, boxSizing: 'border-box' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--payi-surface)', borderRadius: 16, width: 720, maxWidth: '92vw', maxHeight: '90vh', overflow: 'hidden', boxShadow: '0 20px 60px rgba(15,23,42,0.2)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 0', flexShrink: 0 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--payi-text-strong)' }}>สินค้าขายดีติดอันดับ ({filteredSkus.length})</div>
+              <button onClick={() => setShowSkuModal(false)} style={{ border: 'none', background: 'var(--payi-border)', borderRadius: '50%', width: 28, height: 28, display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
+                <X size={14} />
+              </button>
+            </div>
+            <div style={{ padding: 24, overflowY: 'auto', minHeight: 0 }}>
+              <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse', fontSize: 13, textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: 'var(--payi-surface-muted)', borderBottom: '1px solid var(--payi-border)' }}>
+                    <th style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--payi-text)', fontSize: 11, textAlign: 'center' }}>SKU</th>
+                    <th style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--payi-text)', fontSize: 11 }}>ชื่อสินค้า</th>
+                    <th style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--payi-text)', fontSize: 11, textAlign: 'right' }}>จำนวนออเดอร์</th>
+                    <th style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--payi-text)', fontSize: 11, textAlign: 'right' }}>จำนวนชิ้น</th>
+                    <th style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--payi-text)', fontSize: 11, textAlign: 'right' }}>ยอดขายรวม</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSkus.map((s) => (
+                    <tr
+                      key={s.key}
+                      onClick={() => { setSelectedSkuData(s); setIsDrawerOpen(true); setShowSkuModal(false); }}
+                      className="payi-interactive-row"
+                      style={{ borderBottom: '1px solid var(--payi-border)', cursor: 'pointer', transition: 'background-color 150ms ease' }}
+                    >
+                      <td style={{ padding: '12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)' }}>{s.skuCount}</span>
+                      </td>
+                      <td style={{ padding: '12px', color: 'var(--payi-text-strong)', fontWeight: 500 }}>{s.display_name}</td>
+                      <td style={{ padding: '12px', color: 'var(--payi-text)', textAlign: 'right' }}>{fmt(s.orders)}</td>
+                      <td style={{ padding: '12px', color: 'var(--payi-text)', textAlign: 'right' }}>{fmt(s.qty)}</td>
+                      <td style={{ padding: '12px', color: 'var(--payi-text-strong)', fontWeight: 600, textAlign: 'right' }}>฿{fmt(s.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PRODUCT INSIGHT SIDE DRAWER */}
       <ProductInsightDrawer
