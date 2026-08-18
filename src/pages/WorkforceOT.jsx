@@ -414,7 +414,7 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
     const regularNames = regularManpower.map((r) => annotate(r.employee === 'มะปราง' ? 'ปราง' : r.employee))
     const regularHeadcount = regularManpower.reduce((s, r) => s + Number(r.fraction || 1), 0)
     // ออฟฟิศตอนนี้อ่านจากตารางกะจริง (workforce_schedule_snapshot) เหมือนบ้านล่างแล้ว ไม่ใช่ "มาทุกวันเสมอเว้นลา" แบบเดิม — ลาก็หักให้แล้วตั้งแต่ฝั่ง backend (getCalendarPresence)
-    const officePresentNames = officeManpower.map((r) => annotate(r.employee))
+    const officePresentNames = officeManpower.map((r) => annotate(r.employee === 'มะปราง' ? 'ปราง' : r.employee))
     const lowPackingManpower = regularHeadcount <= 2
     const isToday = date === today()
     const promoTitleForDate = events.filter((e) => e.date === date)
