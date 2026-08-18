@@ -1767,6 +1767,50 @@ async function getHolidaysWithConflicts(personMap) {
   })
 }
 
+const WEEKDAY_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
+const HOLIDAY_REMINDER_RUNS_SHEET = 'holiday_reminder_runs'
+const HOLIDAY_REMINDER_RUNS_HEADERS = ['date', 'sent_at', 'notified_count']
+const holidayReminderText = (h) => `📅 อีก 7 วัน ถึงวันหยุดนักขัต "${h.name}" (${h.date}) ซึ่งตรงกับวันหยุดประจำของคุณพอดี (วัน${WEEKDAY_TH[new Date(`${h.date}T00:00:00`).getDay()]}) — ถ้าไม่แจ้งสลับวันหยุด ระบบจะยังนับว่าคุณหยุดแค่วันเดียวตามปกติ ลองแจ้งบอสเพื่อสลับวันหยุด หรือขอมาทำ OT แทนได้นะคะ`
+// cron รายวัน: หาวันนักขัตที่อีก 7 วันถึง แล้วเช็คว่าใครวันหยุดประจำชนพอดี — ส่ง LINE เตือนตรงถึงคนนั้นเลย (ไม่ผ่านบอส)
+// ?dry=1 คำนวณ+คืนรายชื่อที่จะแจ้งเฉยๆ ไม่ส่งจริง ใช้ตรวจสอบได้โดยไม่ยิง LINE จริง
+async function opHolidayReminderCron(req, res) {
+  if (req.method !== 'GET') return res.status(405).end()
+  const auth = req.headers.authorization || ''
+  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ error: 'unauthorized' })
+  const dryRun = req.query.dry === '1'
+  try {
+    await ensureSheet(HOLIDAY_REMINDER_RUNS_SHEET, HOLIDAY_REMINDER_RUNS_HEADERS)
+    const today = todayBKK()
+    if (!dryRun) {
+      const runs = await getSheet(HOLIDAY_REMINDER_RUNS_SHEET)
+      if (runs.some((r) => r.date === today)) return res.status(200).json({ success: true, skipped: 'already sent today' })
+    }
+    const targetDate = (() => { const d = new Date(`${today}T00:00:00`); d.setDate(d.getDate() + 7); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })()
+    const [personMap, officeMap] = await Promise.all([getPersonMap(), getOfficePeopleMap()])
+    const holidays = (await getHolidaysWithConflicts({ ...personMap, ...officeMap })).filter((h) => h.date === targetDate && h.conflictCodes.length)
+    if (!holidays.length) {
+      if (!dryRun) await appendRows(HOLIDAY_REMINDER_RUNS_SHEET, [[today, new Date().toISOString(), 0]])
+      return res.status(200).json({ success: true, targetDate, notified: 0 })
+    }
+    const links = await getSheet('hr_line_links')
+    const plan = []
+    for (const h of holidays) {
+      for (const code of h.conflictCodes) {
+        const link = links.find((l) => l.username === `mp:${code}` && l.line_user_id)
+        plan.push({ code, name: personMap[code]?.[0] || officeMap[code]?.[0] || code, holiday: h.name, date: h.date, line_user_id: link?.line_user_id || null, text: holidayReminderText(h) })
+      }
+    }
+    if (dryRun) return res.status(200).json({ success: true, dryRun: true, targetDate, plan })
+    const sendable = plan.filter((p) => p.line_user_id)
+    await Promise.all(sendable.map((p) => pushMessage(p.line_user_id, [{ type: 'text', text: p.text }])))
+    await appendRows(HOLIDAY_REMINDER_RUNS_SHEET, [[today, new Date().toISOString(), sendable.length]])
+    return res.status(200).json({ success: true, targetDate, notified: sendable.length, unlinked: plan.length - sendable.length })
+  } catch (e) {
+    console.error('opHolidayReminderCron:', e.message)
+    return res.status(500).json({ success: false, error: e.message })
+  }
+}
+
 // กลุ่มออฟฟิศ — ชีตแยกจาก workforce_people (จงใจไม่รวม เพราะไม่ต้องการให้ขึ้นปฏิทิน Manpower & OT/ นับ headcount บ้านล่าง)
 // เพิ่ม/ลบคนได้จากปุ่มในหน้าเว็บ (action add-employee/remove-employee, group='ออฟฟิศ') — ลบ = ตั้ง active='0' ไม่ลบแถวทิ้งจริง กันประวัติ leave หาย
 async function getOfficePeopleMap() {
@@ -3569,6 +3613,7 @@ export default async function handler(req, res) {
   if (op === 'line-webhook') return opLineWebhook(req, res)
   // Vercel Cron เรียกไม่มี user token — ข้าม requireAuth เหมือน line-webhook แล้วเช็ค CRON_SECRET แทนในตัวมันเอง
   if (op === 'inventory' && req.query.cron === 'low-stock') return opLowStockCron(req, res)
+  if (op === 'workforce' && req.query.cron === 'holiday-reminder') return opHolidayReminderCron(req, res)
   if (!requireAuth(req, res)) return
   // Staff only needs the data behind its operational areas (now includes
   // inventory, per owner request to open Inventory/Stock Movement to staff).
