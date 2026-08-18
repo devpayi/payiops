@@ -38,6 +38,10 @@ const OT_APPROVAL_HISTORY_HEADERS = ['id', 'month', 'employee', 'before_minutes'
 // บันทึกวันพิเศษ: โอทีเต็มวัน (มาทำวันหยุด/นักขัตฤกษ์) หรือมาชดเชยเฉยๆไม่รับโอที — แยกจาก workforce_ot ที่เป็น OT รายชั่วโมง
 // สลับวันหยุด ("จากวันไหนไปวันไหน") มีอยู่แล้วเป็น leave_type 'สลับวันหยุด' ใน hr_leave ไม่ต้องทำซ้ำที่นี่
 const DAYRECORD_HEADERS = ['id', 'date', 'employee', 'team', 'kind', 'reason', 'paid_ot', 'note', 'created_at', 'created_by']
+// วันหยุดนักขัตฤกษ์ประจำปี — ใช้ cross-check กับวันหยุดประจำสัปดาห์รายคน (dayOffMap) ว่าใครวันหยุดประจำชนวันนักขัตพอดี
+// (เจอวันนั้นแล้วไม่ได้หยุดเพิ่มจริง ต้องสลับวันหยุด/ได้โอทีเต็มวันชดเชยแทน) โชว์เป็น badge เตือนในปฏิทิน ไม่ auto-apply
+// อะไรเอง — บอสยังต้องเลือกเองว่าจะสลับหรือให้โอที ใช้เครื่องมือที่มีอยู่แล้ว (สลับวันหยุด/dayrecord kind=ot_full)
+const HOLIDAY_HEADERS = ['id', 'date', 'name', 'created_at']
 const LEAVE_HEADERS = ['id', 'username', 'employee_name', 'leave_type', 'start_date', 'end_date', 'days', 'reason', 'status', 'requested_by', 'requested_at', 'decided_by', 'decided_at', 'decision_note', 'backup_office', 'leave_period', 'edit_pending', 'edit_payload', 'edit_requested_at', 'edit_requested_by', 'understaffed_dates']
 
 // wrapper รอบ appendRowsVerified (sheets.js) สำหรับ record เดียวแบบ object+headers (hr_leave เสี่ยงสุด:
@@ -1685,7 +1689,15 @@ const PLANNER_CONFIG_SHEET = 'planner_config'
 const PLANNER_DAILY_SHEET = 'planner_daily'
 const PLANNER_CONFIG_HEADERS = ['master_sku', 'enabled', 'reserve_days', 'safety_percent', 'updated_at', 'updated_by']
 const PLANNER_DAILY_HEADERS = ['id', 'date', 'master_sku', 'fg', 'sales_average', 'demand_mode', 'recommended_feed', 'planned_feed', 'feeders', 'updated_at', 'updated_by']
-const WORKFORCE_SHEETS = [['workforce_ot', OT_HEADERS], ['workforce_manpower', MANPOWER_HEADERS], ['workforce_events', EVENT_HEADERS], ['workforce_ot_history', OT_HISTORY_HEADERS], ['workforce_ot_approvals', OT_APPROVAL_HEADERS], ['workforce_people', PEOPLE_HEADERS], ['workforce_ot_limits', OT_LIMIT_HEADERS], ['workforce_ot_approval_history', OT_APPROVAL_HISTORY_HEADERS], ['workforce_schedule_snapshot', SCHEDULE_SNAPSHOT_HEADERS], ['workforce_schedule_overrides', SCHEDULE_OVERRIDE_HEADERS], ['workforce_dayrecords', DAYRECORD_HEADERS]]
+const WORKFORCE_SHEETS = [['workforce_ot', OT_HEADERS], ['workforce_manpower', MANPOWER_HEADERS], ['workforce_events', EVENT_HEADERS], ['workforce_ot_history', OT_HISTORY_HEADERS], ['workforce_ot_approvals', OT_APPROVAL_HEADERS], ['workforce_people', PEOPLE_HEADERS], ['workforce_ot_limits', OT_LIMIT_HEADERS], ['workforce_ot_approval_history', OT_APPROVAL_HISTORY_HEADERS], ['workforce_schedule_snapshot', SCHEDULE_SNAPSHOT_HEADERS], ['workforce_schedule_overrides', SCHEDULE_OVERRIDE_HEADERS], ['workforce_dayrecords', DAYRECORD_HEADERS], ['workforce_holidays', HOLIDAY_HEADERS]]
+// เริ่มไล่จากสิงหาคม 2569/2026 เป็นต้นไปเท่านั้น (ตามที่บอสขอ — วันก่อนหน้านั้นผ่านไปแล้ว ไม่ต้องย้อนใส่)
+const DEFAULT_HOLIDAY_ROWS = [
+  ['holiday-seed-1', '2026-08-12', 'วันแม่', ''],
+  ['holiday-seed-2', '2026-10-13', 'วันนวมินทรมหาราช', ''],
+  ['holiday-seed-3', '2026-10-23', 'วันปิยมหาราช', ''],
+  ['holiday-seed-4', '2026-12-05', 'วันพ่อ', ''],
+  ['holiday-seed-5', '2026-12-31', 'วันสิ้นปี', ''],
+]
 let workforceEnsurePromise
 let workforceCache = { at: 0, data: null }
 const ensureWorkforceSheets = () => workforceEnsurePromise ||= ensureSheets(WORKFORCE_SHEETS)
@@ -1731,6 +1743,28 @@ async function getDayOffMap() {
     if (w !== '') map[String(p.code).toUpperCase()] = { weekday: w, from: String(p.day_off_effective_from ?? '').trim() }
   }
   return map
+}
+
+async function getHolidayRows() {
+  const rows = await getSheet('workforce_holidays')
+  if (!rows.length) { await appendRows('workforce_holidays', DEFAULT_HOLIDAY_ROWS); return getHolidayRows() }
+  return rows
+}
+// หาคนที่วันหยุดประจำสัปดาห์ตรงกับวันนักขัตพอดี (เจอวันนั้นไม่ได้หยุดเพิ่มจริง เพราะเป็นวันหยุดประจำอยู่แล้ว) —
+// เอาไว้เตือนในปฏิทินเฉยๆ ไม่ auto สลับ/ให้โอทีอะไรให้เอง บอสต้องเลือกเองต่อคน
+async function getHolidaysWithConflicts(personMap) {
+  const [holidayRows, dayOffMap] = await Promise.all([getHolidayRows(), getDayOffMap()])
+  return holidayRows.map((h) => {
+    const weekday = String(new Date(`${h.date}T00:00:00`).getDay())
+    const conflictCodes = Object.keys(dayOffMap).filter((code) => {
+      const entry = dayOffMap[code]
+      if (entry.weekday !== weekday) return false
+      if (entry.from && h.date < entry.from) return false
+      return true
+    })
+    const conflictNames = conflictCodes.map((code) => personMap[code]?.[0]).filter(Boolean)
+    return { id: h.id, date: h.date, name: h.name, conflictCodes, conflictNames }
+  })
 }
 
 // กลุ่มออฟฟิศ — ชีตแยกจาก workforce_people (จงใจไม่รวม เพราะไม่ต้องการให้ขึ้นปฏิทิน Manpower & OT/ นับ headcount บ้านล่าง)
@@ -2053,7 +2087,8 @@ async function opWorkforceInner(req, res) {
       ...Object.entries(personMap).map(([code, [name, group]]) => ({ code, name, group, ...withDayOff(code) })),
       ...Object.entries(officeMap).map(([code, [name]]) => ({ code, name, group: 'ออฟฟิศ', ...withDayOff(code) })),
     ]
-    const data = { success: true, rows: rows.sort((a, b) => String(b.date).localeCompare(String(a.date))), manpower, sourceManpower, events, history, approvals, approvalHistory, otLimits, people, schedulePeople, officePeople, officeAbsences, sourceYear: '2026', dayRecords: dayRecords.sort((a, b) => String(b.date).localeCompare(String(a.date))) }
+    const holidays = await getHolidaysWithConflicts({ ...personMap, ...officeMap }).catch((e) => { console.error('holidays:', e.message); return [] })
+    const data = { success: true, rows: rows.sort((a, b) => String(b.date).localeCompare(String(a.date))), manpower, sourceManpower, events, history, approvals, approvalHistory, otLimits, people, schedulePeople, officePeople, officeAbsences, holidays, sourceYear: '2026', dayRecords: dayRecords.sort((a, b) => String(b.date).localeCompare(String(a.date))) }
     workforceCache = { at: Date.now(), data }
     return res.status(200).json(data)
   }
@@ -2166,6 +2201,22 @@ async function opWorkforceInner(req, res) {
     const current = await getSheet('workforce_events')
     const kept = current.filter((r) => String(r.id) !== String(body.id)).map((r) => EVENT_HEADERS.map((h) => r[h] ?? ''))
     await overwriteSheet('workforce_events', EVENT_HEADERS, kept)
+    clearWorkforceCache()
+    return res.status(200).json({ success: true, deleted: current.length - kept.length })
+  }
+  if (action === 'add-holiday') {
+    if (!requireAdmin(req, res)) return
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.date || '')) || !String(body.name || '').trim()) return res.status(400).json({ error: 'กรุณาระบุวันที่และชื่อวันหยุด' })
+    await appendRows('workforce_holidays', [[`holiday-${Date.now()}`, body.date, String(body.name).trim(), new Date().toISOString()]])
+    clearWorkforceCache()
+    return res.status(200).json({ success: true })
+  }
+  if (action === 'delete-holiday') {
+    if (!requireAdmin(req, res)) return
+    if (!body.id) return res.status(400).json({ error: 'กรุณาระบุ id' })
+    const current = await getSheet('workforce_holidays')
+    const kept = current.filter((r) => String(r.id) !== String(body.id)).map((r) => HOLIDAY_HEADERS.map((h) => r[h] ?? ''))
+    await overwriteSheet('workforce_holidays', HOLIDAY_HEADERS, kept)
     clearWorkforceCache()
     return res.status(200).json({ success: true, deleted: current.length - kept.length })
   }

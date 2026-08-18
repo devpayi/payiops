@@ -42,6 +42,7 @@ export default function WorkforceOT({ preview = false }) {
   const [people, setPeople] = useState([])
   const [schedulePeople, setSchedulePeople] = useState([])
   const [officePeople, setOfficePeople] = useState([])
+  const [holidays, setHolidays] = useState([])
   const groupByName = useMemo(() => Object.fromEntries(people.filter((p) => p.name).map((p) => [p.name, p.group])), [people])
   // คนที่ถูกลบออกแล้ว (active='0') — กันไม่ให้โผล่ในตัวเลือก "เพิ่มคน OT ใหม่" อีก แม้ชื่อจะยังค้างในประวัติเดิม
   const inactiveNames = useMemo(() => new Set(people.filter((p) => p.name && String(p.active) === '0').map((p) => p.name)), [people])
@@ -98,6 +99,7 @@ export default function WorkforceOT({ preview = false }) {
       setPeople(d.people || [])
       setSchedulePeople(d.schedulePeople?.length ? d.schedulePeople : (d.people || []).filter((person) => String(person.active) !== '0' && person.code && person.name))
       setOfficePeople(d.officePeople || [])
+      setHolidays(d.holidays || [])
       setOtLimitsState(d.otLimits || {})
       setSourceStatus({ state: d.sourceManpower?.length ? 'ok' : 'error', count: d.sourceManpower?.length || 0 })
       setNames((current) => [...new Set([...current, ...loadedRows.map((row) => row.employee).filter(Boolean), ...(d.sourceManpower || []).map((row) => row.employee).filter(Boolean), ...(d.manpower || []).map((row) => row.employee).filter(Boolean)])])
@@ -203,7 +205,7 @@ export default function WorkforceOT({ preview = false }) {
         {loading ? <Empty text="กำลังโหลด…" /> : !planned.length ? <Empty text="ไม่มีรายการ OT ที่รอยืนยัน" /> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820, fontSize: 13 }}><thead><tr style={{ background: '#f0f7fd', color: '#52677a', textAlign: 'left' }}>{['วันที่','ชื่อ','งาน','เวลาแผน','เริ่มจริง','จบจริง','สถานะ',''].map((h) => <th key={h} style={{ padding: '10px 12px' }}>{h}</th>)}</tr></thead><tbody>{planned.map((r) => { const e = edits[r.id] || {}; return <tr key={r.id} style={{ borderTop: '1px solid #e5eef7' }}><td style={td}>{r.date}</td><td style={{ ...td, fontWeight: 900 }}>{r.employee}</td><td style={td}>{r.task}</td><td style={td}>{r.planned_start}–{r.planned_end}<div style={{ fontSize: 11, color: '#94a3b8' }}>{fmtMinutes(r.planned_minutes)}</div></td><td style={td}><input type="time" value={e.actual_start ?? r.planned_start} onChange={(x) => setEdits({ ...edits, [r.id]: { ...e, actual_start: x.target.value } })} style={{ ...inputStyle, width: 105, padding: 7 }} /></td><td style={td}><input type="time" value={e.actual_end ?? r.planned_end} onChange={(x) => setEdits({ ...edits, [r.id]: { ...e, actual_end: x.target.value } })} style={{ ...inputStyle, width: 105, padding: 7 }} /></td><td style={td}><select value={e.status || 'completed'} onChange={(x) => setEdits({ ...edits, [r.id]: { ...e, status: x.target.value } })} style={{ ...inputStyle, width: 110, padding: 7 }}><option value="completed">ทำแล้ว</option><option value="cancelled">ยกเลิก</option></select></td><td style={td}><button onClick={() => closeRows([r])} aria-label={`ยืนยัน ${r.employee}`} style={{ border: 0, background: '#e7f7f2', color: '#16866f', borderRadius: 8, padding: 8, cursor: 'pointer' }}><CheckCircle2 size={17} /></button></td></tr> })}</tbody></table></div>}
       </section>}
 
-      {tab === 'calendar' && <CalendarPlanner rows={rows} manpower={manpower} events={events} history={history} names={names} preview={preview} onSaved={load} error={error} setError={setError} otLimits={otLimits} closeRows={closeRows} deleteRows={deleteRows} edits={edits} setEdits={setEdits} saving={saving} groupByName={groupByName} officePeople={officePeople} inactiveNames={inactiveNames} schedulePeople={schedulePeople} canEditManpower={canEditManpowerSchedule && !preview} dayRecords={dayRecords} swapLeaves={swapLeaves} />}
+      {tab === 'calendar' && <CalendarPlanner rows={rows} manpower={manpower} events={events} history={history} names={names} preview={preview} onSaved={load} error={error} setError={setError} otLimits={otLimits} closeRows={closeRows} deleteRows={deleteRows} edits={edits} setEdits={setEdits} saving={saving} groupByName={groupByName} officePeople={officePeople} inactiveNames={inactiveNames} schedulePeople={schedulePeople} canEditManpower={canEditManpowerSchedule && !preview} dayRecords={dayRecords} swapLeaves={swapLeaves} holidays={holidays} isBoss={isBoss} />}
       {tab === 'overview' && isBoss && <OverviewOT rows={rows} approvals={approvals} otLimits={otLimits} />}
       {tab === 'summary' && isBoss && <PlanControlSummary rows={rows} approvals={approvals} setApprovals={setApprovals} approvalHistory={approvalHistory} preview={preview} setError={setError} otLimits={otLimits} setOtLimits={saveOtLimit} currentUser={currentUser} onSaved={load} />}
     </div>
@@ -218,7 +220,8 @@ const td = { padding: '11px 12px', color: '#334155', verticalAlign: 'middle' }
 // ป้าย OT เต็มวัน/ชดเชย ในปฏิทิน — มาจาก workforce_dayrecords (บันทึกที่หน้า HR) แสดงแยกจากชื่อในกล่องปกติ
 const DAY_RECORD_LABEL = { ot_full: 'OT', comp: 'ชดเชย' }
 
-function CalendarPlanner({ rows, manpower, events, history = [], names, preview, onSaved, error, setError, otLimits = {}, closeRows, deleteRows, edits = {}, setEdits, saving, groupByName = {}, officePeople = [], inactiveNames = new Set(), schedulePeople = [], canEditManpower = false, dayRecords = [], swapLeaves = [] }) {
+function CalendarPlanner({ rows, manpower, events, history = [], names, preview, onSaved, error, setError, otLimits = {}, closeRows, deleteRows, edits = {}, setEdits, saving, groupByName = {}, officePeople = [], inactiveNames = new Set(), schedulePeople = [], canEditManpower = false, dayRecords = [], swapLeaves = [], holidays = [], isBoss = false }) {
+  const holidayByDate = useMemo(() => new Map(holidays.map((h) => [h.date, h])), [holidays])
   const dayRecordByNameDate = useMemo(() => {
     const map = new Map()
     for (const r of dayRecords) { if (r.employee && r.date && DAY_RECORD_LABEL[r.kind]) map.set(`${r.date}|${r.employee}`, DAY_RECORD_LABEL[r.kind]) }
@@ -418,7 +421,8 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
     const lowPackingManpower = regularHeadcount <= 2
     const isToday = date === today()
     const promoTitleForDate = events.filter((e) => e.date === date)
-    return { isPromo, isFeed, partTime, packers, feedNames, regularNames, officePresentNames, regularHeadcount, lowPackingManpower, isToday, promoEvents: promoTitleForDate }
+    const holiday = holidayByDate.get(date) || null
+    return { isPromo, isFeed, partTime, packers, feedNames, regularNames, officePresentNames, regularHeadcount, lowPackingManpower, isToday, promoEvents: promoTitleForDate, holiday }
   }
   const monthDates = cells.filter(Boolean)
   const defaultMobileDate = monthDates.includes(today()) ? today() : (monthDates[0] || today())
@@ -440,6 +444,7 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
         </div>}
         {isMobile && mobileView === 'calendar' && calZoom !== 1 && <button type="button" onClick={() => setCalZoom(1)} style={miniTab(false)}>รีเซ็ตซูม {calZoom.toFixed(1)}x</button>}
         <button onClick={() => { setPromoEnd(`${month}-01`); setPromoTeam('ทุกทีม'); setLeadDays('0'); setLagDays('0'); setModal({ type: 'promo', date: `${month}-01` }) }} style={miniTab(false)}>+ วันโปร</button>
+        <button onClick={() => setModal({ type: 'holiday' })} style={miniTab(false)}>🎌 วันนักขัต{holidays.length ? ` (${holidays.length})` : ''}</button>
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ ...inputStyle, width: 155 }} />
       </div>
     </div>
@@ -484,8 +489,8 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
           <div key={wi} style={{ display: 'flex', gap: 5, alignItems: 'stretch' }}>
             {week.map((date, i) => {
               if (!date) return <div key={`blank-${wi}-${i}`} style={{ flex: '1 1 0', minWidth: 0, minHeight: 132, borderRadius: 12, background: 'transparent' }} />
-              const { isPromo, isFeed, partTime, packers, feedNames, regularNames, officePresentNames, regularHeadcount, lowPackingManpower, isToday } = computeDayInfo(date)
-              return <div key={date} style={{ flex: '1 1 0', minWidth: 0, minHeight: 132, padding: 7, textAlign: 'left', borderRadius: 12, border: isToday ? '2px solid #355872' : `1px solid ${isPromo ? '#c3b1ea' : isFeed ? '#e4d9f7' : '#e2e8ef'}`, background: isPromo ? 'linear-gradient(135deg,#ede7fb,#f5f1fd)' : isFeed ? 'linear-gradient(180deg,#f5f1fd,#faf8fe)' : 'linear-gradient(180deg,#ffffff,#fbfdff)', boxShadow: isToday ? '0 4px 16px rgba(53,88,114,.20)' : '0 2px 10px rgba(53,88,114,.07)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', overflow: 'visible' }}>
+              const { isPromo, isFeed, partTime, packers, feedNames, regularNames, officePresentNames, regularHeadcount, lowPackingManpower, isToday, holiday } = computeDayInfo(date)
+              return <div key={date} style={{ flex: '1 1 0', minWidth: 0, minHeight: 132, padding: 7, textAlign: 'left', borderRadius: 12, border: isToday ? '2px solid #355872' : holiday ? '1px solid #fbbf24' : `1px solid ${isPromo ? '#c3b1ea' : isFeed ? '#e4d9f7' : '#e2e8ef'}`, background: holiday ? 'linear-gradient(135deg,#fffbeb,#fffef5)' : isPromo ? 'linear-gradient(135deg,#ede7fb,#f5f1fd)' : isFeed ? 'linear-gradient(180deg,#f5f1fd,#faf8fe)' : 'linear-gradient(180deg,#ffffff,#fbfdff)', boxShadow: isToday ? '0 4px 16px rgba(53,88,114,.20)' : '0 2px 10px rgba(53,88,114,.07)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', overflow: 'visible' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
                     <span style={isToday ? { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 18, height: 18, borderRadius: 6, background: '#355872', color: '#fff', fontSize: 11, fontWeight: 900 } : { fontSize: 12, fontWeight: 900, color: '#334155' }}>{Number(date.slice(-2))}</span>
@@ -496,6 +501,8 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
                     <button type="button" onClick={() => openOT(date)} aria-label={`เพิ่ม OT วันที่ ${date}`} title="เพิ่ม OT" style={{ width: 22, height: 22, padding: 0, display: 'grid', placeItems: 'center', border: 0, borderRadius: 6, background: 'transparent', color: '#7AAACE', opacity: .55, cursor: 'pointer' }}><Plus size={13} strokeWidth={2.1} aria-hidden="true" /></button>
                   </span>
                 </div>
+                {holiday && <div style={{ marginTop: 3, fontSize: 9, fontWeight: 900, color: '#92400e' }} title="วันหยุดนักขัตฤกษ์">🎌 {holiday.name}</div>}
+                {holiday && holiday.conflictNames.length > 0 && <div style={{ marginTop: 2, fontSize: 9, fontWeight: 800, color: '#dc2626' }} title="วันหยุดประจำของคนนี้ตรงกับวันนักขัตพอดี — ไม่ได้หยุดเพิ่มจริง ต้องสลับวันหยุด/ให้โอทีเต็มวันแทน">⚠️ {holiday.conflictNames.join(', ')} ชนวันหยุด</div>}
                 {events.filter((e) => e.date === date).map((e) => <div key={e.id} style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, minWidth: 0, color: '#be185d', fontSize: 10, fontWeight: 900 }}><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.title}>{e.title}</span><span role="button" aria-label={`ลบ ${e.title}`} onClick={(ev) => { ev.stopPropagation(); deleteEvent(e) }} style={{ flexShrink: 0, cursor: 'pointer', color: '#be185d', opacity: .6, padding: '0 3px' }}>×</span></div>)}
                 {(regularNames.length > 0 || feedNames.length > 0 || officePresentNames.length > 0) && <div style={{ marginTop: 4, borderRadius: 8, padding: '4px 6px', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                   {regularNames.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
@@ -519,7 +526,8 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
         ))}
       </div>
     </div></div>}
-    {modal && (() => { const modalDayRows = modal.type === 'ot' ? rows.filter((r) => r.date === modal.date && r.status !== 'cancelled') : []; return <div onMouseDown={() => setModal(null)} style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(15,23,42,.28)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', padding: 18 }}><div onMouseDown={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: 'calc(100vw - 36px)', background: '#fff', borderRadius: 18, padding: 20, boxShadow: '0 24px 70px rgba(15,23,42,.22)', maxHeight: '86vh', overflowY: 'auto' }}>
+    {modal?.type === 'holiday' && <HolidayModal holidays={holidays} isBoss={isBoss} onClose={() => setModal(null)} onChanged={onSaved} />}
+    {modal && modal.type !== 'holiday' && (() => { const modalDayRows = modal.type === 'ot' ? rows.filter((r) => r.date === modal.date && r.status !== 'cancelled') : []; return <div onMouseDown={() => setModal(null)} style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(15,23,42,.28)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', padding: 18 }}><div onMouseDown={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: 'calc(100vw - 36px)', background: '#fff', borderRadius: 18, padding: 20, boxShadow: '0 24px 70px rgba(15,23,42,.22)', maxHeight: '86vh', overflowY: 'auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}><div><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div style={{ fontSize: 17, fontWeight: 900, color: '#102a43' }}>{modal.type === 'schedule' ? 'แก้ Manpower' : modal.type === 'ot' ? 'เพิ่มแผน OT' : 'เพิ่มวันโปร'}</div>{modalDayRows.length > 0 && <span style={{ background: '#fef3c7', color: '#633806', fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: 999 }}>แก้ไข</span>}</div><div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>{modal.date}</div></div><button onClick={() => setModal(null)} aria-label="ปิด" style={{ width: 40, height: 40, display: 'grid', placeItems: 'center', border: 0, background: 'transparent', color: '#64748b', cursor: 'pointer', borderRadius: 10 }}><X size={18}/></button></div>
       {error && !(modal.type === 'ot' && modalDayRows.length > 0) && <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 9, background: '#fff1f2', color: '#be123c', fontSize: 12, fontWeight: 800 }}>{error}</div>}
 
@@ -563,6 +571,57 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}><button onClick={() => setModal(null)} style={{ minHeight: 44, border: '1px solid #d7e3ef', background: '#fff', borderRadius: 10, padding: '9px 15px', color: '#64748b', fontWeight: 800 }}>ยกเลิก</button><button onClick={save} disabled={busy} style={{ minHeight: 44, border: 0, background: modal.type === 'schedule' ? '#0284c7' : '#ec4899', color: '#fff', borderRadius: 10, padding: '9px 17px', fontWeight: 900 }}>{busy ? 'กำลังบันทึก…' : modal.type === 'schedule' ? 'บันทึก Manpower' : 'บันทึก'}</button></div>
     </div></div> })()}
   </section>
+}
+
+// รายการวันหยุดนักขัตฤกษ์ + เตือนคนที่วันหยุดประจำชนวันนั้นพอดี — บอส/dev เท่านั้นที่เพิ่ม/ลบได้ (backend gate ไว้แล้ว
+// ด้วย requireAdmin) แต่ทุกคนดูรายการ+badge ในปฏิทินได้ ไม่ auto สลับ/ให้โอทีอะไรเอง แค่เตือนให้บอสเลือกทำเอง
+function HolidayModal({ holidays, isBoss, onClose, onChanged }) {
+  const [date, setDate] = useState(today())
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const sorted = [...holidays].sort((a, b) => a.date.localeCompare(b.date))
+  const add = async () => {
+    if (!date || !name.trim()) return setError('กรุณาระบุวันที่และชื่อวันหยุด')
+    setSaving(true); setError('')
+    try {
+      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add-holiday', date, name: name.trim() }) })
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || 'เพิ่มไม่สำเร็จ')
+      setName(''); await onChanged()
+    } catch (e) { setError(e.message) } finally { setSaving(false) }
+  }
+  const remove = async (id) => {
+    setSaving(true); setError('')
+    try {
+      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete-holiday', id }) })
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || 'ลบไม่สำเร็จ')
+      await onChanged()
+    } catch (e) { setError(e.message) } finally { setSaving(false) }
+  }
+  return <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(15,23,42,.28)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', padding: 18 }}>
+    <div onMouseDown={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: 'calc(100vw - 36px)', background: '#fff', borderRadius: 18, padding: 20, boxShadow: '0 24px 70px rgba(15,23,42,.22)', maxHeight: '86vh', overflowY: 'auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <div><div style={{ fontSize: 17, fontWeight: 900, color: '#102a43' }}>🎌 วันหยุดนักขัตฤกษ์</div><div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>ใครวันหยุดประจำชนวันนี้พอดี จะเตือนในปฏิทิน — เลือกเองว่าจะสลับวันหยุด/ให้โอทีเต็มวัน</div></div>
+        <button onClick={onClose} aria-label="ปิด" style={{ width: 40, height: 40, display: 'grid', placeItems: 'center', border: 0, background: 'transparent', color: '#64748b', cursor: 'pointer', borderRadius: 10 }}><X size={18}/></button>
+      </div>
+      {error && <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 9, background: '#fff1f2', color: '#be123c', fontSize: 12, fontWeight: 800 }}>{error}</div>}
+      {isBoss && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr auto', gap: 8, marginTop: 16 }}>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อวันหยุด" style={inputStyle} />
+        <button onClick={add} disabled={saving} style={{ border: 0, borderRadius: 10, padding: '0 14px', background: '#92400e', color: '#fff', fontWeight: 900, cursor: 'pointer' }}>+ เพิ่ม</button>
+      </div>}
+      <div style={{ display: 'grid', gap: 8, marginTop: 16 }}>
+        {sorted.length === 0 && <div style={{ padding: 20, textAlign: 'center', color: '#94a3b8' }}>ยังไม่มีวันหยุดนักขัตในระบบ</div>}
+        {sorted.map((h) => <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: '1px solid #fde68a', borderRadius: 11, background: '#fffbeb' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: '#92400e' }}>{h.date} · {h.name}</div>
+            {h.conflictNames.length > 0 && <div style={{ fontSize: 11, fontWeight: 800, color: '#dc2626', marginTop: 2 }}>⚠️ {h.conflictNames.join(', ')} วันหยุดประจำชนวันนี้ — ต้องสลับวันหยุด/ให้โอทีเต็มวัน</div>}
+          </div>
+          {isBoss && <button onClick={() => remove(h.id)} disabled={saving} aria-label={`ลบ ${h.name}`} style={{ flexShrink: 0, border: 0, background: 'transparent', color: '#be123c', opacity: .7, cursor: 'pointer', padding: 6 }}>ลบ</button>}
+        </div>)}
+      </div>
+    </div>
+  </div>
 }
 
 function ScheduleDayEditor({ people = [], draft = {}, setDraft, otDraft = {}, setOtDraft }) {
