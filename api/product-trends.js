@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' })
 
   const { business = 'all', platform = 'all' } = req.query
-  const keepBiz = (b) => business === 'all' || b === business
+  const keepBiz = (b) => business === 'all' || b === business || (business === 'Payi' && b === 'Payi Outlet')
   const keepPlat = (p) => platform === 'all' || p === platform
 
   const cacheKey = `${business}|${platform}`

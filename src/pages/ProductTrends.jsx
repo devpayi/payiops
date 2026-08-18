@@ -12,7 +12,7 @@ const monthLabel = (ym) => {
   return (THAI_MONTH[mo] || ym) + ' ' + yr
 }
 
-const BUSINESSES = ['Payi', 'Payi Outlet', 'กรอบรูป']
+const BUSINESSES = ['Payi', 'กรอบรูป']
 const PLATFORMS = ['Shopee', 'TikTok Shop', 'Lazada']
 
 // % เปลี่ยนแปลงเทียบเดือนก่อน — คืน null ถ้าคำนวณไม่ได้ (เดือนก่อน = 0)

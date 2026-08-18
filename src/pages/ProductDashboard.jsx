@@ -18,7 +18,7 @@ const monthLabel = (ym) => (ym === 'all' ? 'ทั้งหมด' : THAI_MONTH[
 // ป้ายช่วงเวลาไว้ต่อท้ายหัวข้อการ์ด — "all" = "ทั้งหมด" เฉยๆ, เดือนอื่นนำหน้าด้วย "เดือน"
 const periodLabel = (ym) => (ym === 'all' ? 'ทั้งหมด' : `เดือน${monthLabel(ym)}`)
 
-const BUSINESSES = ['Payi', 'Payi Outlet', 'กรอบรูป']
+const BUSINESSES = ['Payi', 'กรอบรูป']
 const PLATFORMS = ['Shopee', 'TikTok Shop', 'Lazada']
 
 function TooltipBox({ active, payload, label, moneyKeys = [] }) {
