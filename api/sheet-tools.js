@@ -632,9 +632,12 @@ const isSkipQtyText = (text) => SKIP_QTY_TEXTS.has(String(text || '').trim().toL
 // ถามจำนวนของ 1 รายการที่เพิ่งค้นหา/เลือกได้ — พอตอบจำนวนแล้วเข้าตะกร้า (addToCartAndAskMore) ไม่จบทันที
 // ต่างจาก approve/reject วันลาที่กดปุ่มจบในทีเดียว ใช้ร่วมกันทั้งกดปุ่มจากการ์ดแจ้งเตือน (handleStockOrderPostback)
 // และเลือกจากผลค้นหา (handleStockPickPostback)
+// ข้อความสั้นลง (owner ขอ 2026-08-12: การ์ดของใกล้หมดบอกจำนวนแนะนำไว้แล้ว ถามยาวซ้ำไม่จำเป็น) — บอสสั่ง
+// จำนวนเองเสมอ ไม่ใส่ปุ่มแนะนำจำนวน (ตัดสินใจเอง ไม่ต้องมีตัวเลือกให้กดข้าม)
 async function askOrderQty(replyToken, lineUserId, item) {
   await upsertStockOrderSession(lineUserId, { step: 'await_item_qty', sku: item.sku, qty: '' })
-  await replyMessage(replyToken, [{ type: 'text', text: `สั่ง "${item.display_name}" กี่${item.unit || 'ชิ้น'}คะ? พิมพ์ตัวเลขได้เลย หรือพิมพ์ "ไม่ทราบ" ถ้ายังไม่รู้จำนวน (เช่น ของเก่าก่อนเริ่มใช้ระบบ)\nคงเหลือตอนนี้ ${item.balance} ${item.unit || 'ชิ้น'}` }])
+  const text = `สั่ง "${item.display_name}" กี่${item.unit || 'ชิ้น'}คะ? (คงเหลือ ${item.balance} ${item.unit || 'ชิ้น'})`
+  await replyMessage(replyToken, [{ type: 'text', text }])
 }
 
 async function handleStockOrderPostback(event, sku) {
