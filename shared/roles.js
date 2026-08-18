@@ -1,4 +1,4 @@
-export const ROLES = Object.freeze({ DEV: 'dev', BOSS: 'boss', STAFF: 'staff', STOCK: 'stock', MARKETING: 'marketing' })
+export const ROLES = Object.freeze({ DEV: 'dev', BOSS: 'boss', STAFF: 'staff', STOCK: 'stock', MARKETING: 'marketing', FINANCE: 'finance' })
 
 // `admin` was the owner role before roles were split. Treat it as `dev` so the
 // existing owner account keeps full access without a manual data migration.
@@ -24,10 +24,15 @@ export const STOCK_TABS = Object.freeze(['Inventory', 'Stock Movement'])
 // โดยเฉพาะ ไม่ใช้ canManageOperations เพราะนั่นจะให้สิทธิ์ Inventory/HR/OT ไปด้วยซึ่งเกินขอบเขตที่ขอ)
 export const MARKETING_TABS = Object.freeze(['Executive', 'Monthly', 'Products', 'ProductTrends', 'MarketingRadar'])
 
+// role แคบสำหรับฝ่ายบัญชี/การเงิน (พี่หยก, พี่แต้ว) — เห็นแค่ CFO เท่านั้น ไม่ปนกับ canManageOperations
+// เพราะนั่นจะให้สิทธิ์ Inventory/HR/OT ไปด้วยซึ่งเกินขอบเขต (ตาม pattern เดียวกับ marketing ด้านบน)
+export const FINANCE_TABS = Object.freeze(['CFO'])
+
 const BOSS_HIDDEN_TABS = new Set(['Import Orders', 'Dev Hub', 'Settings'])
 const STAFF_TAB_SET = new Set(STAFF_TABS)
 const STOCK_TAB_SET = new Set(STOCK_TABS)
 const MARKETING_TAB_SET = new Set(MARKETING_TABS)
+const FINANCE_TAB_SET = new Set(FINANCE_TABS)
 
 export function canAccessTab(role, tab) {
   const normalized = normalizeRole(role)
@@ -35,6 +40,7 @@ export function canAccessTab(role, tab) {
   if (normalized === ROLES.BOSS) return !BOSS_HIDDEN_TABS.has(tab)
   if (normalized === ROLES.STOCK) return STOCK_TAB_SET.has(tab)
   if (normalized === ROLES.MARKETING) return MARKETING_TAB_SET.has(tab)
+  if (normalized === ROLES.FINANCE) return FINANCE_TAB_SET.has(tab)
   return STAFF_TAB_SET.has(tab)
 }
 
@@ -51,4 +57,9 @@ export function canManageOperations(role) {
 // Inventory/Workforce/HR ที่ canManageOperations คุมอยู่
 export function canManageMarketing(role) {
   return [ROLES.DEV, ROLES.BOSS, ROLES.MARKETING].includes(normalizeRole(role))
+}
+
+// จัดการ CFO module ได้ (บันทึกเงินทุน/fix cost) — dev/boss ได้อยู่แล้วเหมือนเดิม บวก role finance โดยเฉพาะ
+export function canManageFinance(role) {
+  return [ROLES.DEV, ROLES.BOSS, ROLES.FINANCE].includes(normalizeRole(role))
 }

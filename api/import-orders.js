@@ -16,7 +16,9 @@ const num = (v) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0
 // into the Sheets UI keeps it literal, and is a no-op for values already non-numeric.
 const forceText = (v) => { const s = String(v ?? ''); return s ? `'${s}` : s }
 
-const RAW_HEADERS = ['order_key', 'order_id', 'order_item_id', 'date', 'platform', 'business', 'sku_platform', 'product_name', 'variation_name', 'master_sku', 'display_name', 'qty', 'revenue', 'order_status', 'imported_at', 'source_file', 'import_id', 'alias_key']
+// province ต่อท้าย (2026-08) — เพื่อทำ demographic ตามพื้นที่ (payi-insights) แถวเก่าก่อนหน้านี้จะว่างช่องนี้
+// (ไม่ backfill ย้อนหลัง ตามกฎ append-only เดียวกับ claims id/source_file)
+const RAW_HEADERS = ['order_key', 'order_id', 'order_item_id', 'date', 'platform', 'business', 'sku_platform', 'product_name', 'variation_name', 'master_sku', 'display_name', 'qty', 'revenue', 'order_status', 'imported_at', 'source_file', 'import_id', 'alias_key', 'province']
 
 function pick(row, keys) {
   const entries = Object.entries(row)
@@ -253,6 +255,7 @@ export default async function handler(req, res) {
       // Amount") เป็น candidate แบบ exact-match ไว้ก่อน กัน pass 2 (substring) ไปจับผิดคอลัมน์
       const revenue = num(pick(row, ['revenue', 'ยอดขาย', 'sku subtotal after discount', 'order amount', 'total', 'ราคาขายสุทธิ', 'grand total', 'ยอดรวม', 'paidprice']))
       const status = pick(row, ['order_status', 'status', 'สถานะ', 'order status']) || ''
+      const province = pick(row, ['province', 'จังหวัด', 'ship province', 'buyer province']) || ''
 
       // ไฟล์ export บางแพลตฟอร์ม (เช่น Shopee) ไม่มีคอลัมน์ item id แยกต่างหาก —
       // ถ้าไม่มี ให้ไล่เลขบรรทัดต่อออเดอร์ กันไม่ให้ order ที่มีหลายสินค้าถูกมองว่าเป็นแถวซ้ำ
@@ -282,7 +285,7 @@ export default async function handler(req, res) {
       if (!byMonth.has(tab)) byMonth.set(tab, [])
       byMonth.get(tab).push({
         orderKey,
-        arr: [orderKey, forceText(orderId), forceText(orderItemId), date, platform, business, forceText(skuPlatform), productName, variation, alias?.master_sku || '', alias?.display_name || productName, qty, revenue, status, importedAt, fileName, importId, aliasKey],
+        arr: [orderKey, forceText(orderId), forceText(orderItemId), date, platform, business, forceText(skuPlatform), productName, variation, alias?.master_sku || '', alias?.display_name || productName, qty, revenue, status, importedAt, fileName, importId, aliasKey, province],
       })
     }
 

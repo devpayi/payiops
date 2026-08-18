@@ -422,6 +422,7 @@ function UserManagementCard({ me, usersData, usersLoading, reloadUsers }) {
           <option value="staff">Staff — Tang</option>
           <option value="stock">Stock — สต็อกเท่านั้น</option>
           <option value="marketing">Marketing — Dashboard + Marketing Radar</option>
+          <option value="finance">Finance — CFO เท่านั้น</option>
           <option value="boss">Boss</option>
           <option value="dev">Dev</option>
         </select>
