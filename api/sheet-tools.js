@@ -1771,6 +1771,23 @@ const WEEKDAY_TH = ['อาทิตย์', 'จันทร์', 'อังค
 const HOLIDAY_REMINDER_RUNS_SHEET = 'holiday_reminder_runs'
 const HOLIDAY_REMINDER_RUNS_HEADERS = ['date', 'sent_at', 'notified_count']
 const holidayReminderText = (h) => `📅 อีก 7 วัน ถึงวันหยุดนักขัต "${h.name}" (${h.date}) ซึ่งตรงกับวันหยุดประจำของคุณพอดี (วัน${WEEKDAY_TH[new Date(`${h.date}T00:00:00`).getDay()]}) — ถ้าไม่แจ้งสลับวันหยุด ระบบจะยังนับว่าคุณหยุดแค่วันเดียวตามปกติ ลองแจ้งบอสเพื่อสลับวันหยุด หรือขอมาทำ OT แทนได้นะคะ`
+// การ์ดสวยสำหรับแจ้งเตือนวันหยุดชนวันนักขัต — ธีมเดียวกับการ์ดลา (LINE_CARD/lineCardHeader/factRow) ให้ดูเป็นชุดเดียวกัน
+const holidayReminderFlexMessage = (h) => {
+  const weekdayLabel = WEEKDAY_TH[new Date(`${h.date}T00:00:00`).getDay()]
+  return {
+    type: 'flex', altText: `อีก 7 วัน ถึง "${h.name}" ตรงวันหยุดประจำของคุณ`,
+    contents: {
+      type: 'bubble', size: 'kilo',
+      header: lineCardHeader(h.name, `อีก 7 วัน · ${lineDate(h.date)}`, '📅'),
+      body: { type: 'box', layout: 'vertical', paddingAll: '14px', spacing: 'md', backgroundColor: LINE_CARD.white, contents: [
+        factRow('วันหยุดประจำของคุณ', `วัน${weekdayLabel}`),
+        flexText('วันนี้ตรงกับวันหยุดประจำของคุณพอดี ถ้าไม่แจ้งสลับวันหยุด ระบบจะยังนับว่าคุณหยุดแค่วันเดียวตามปกติค่ะ', { margin: 'sm' }),
+        { type: 'separator', margin: 'md' },
+        flexText('พิมพ์ "ลา" เพื่อขอสลับวันหยุด หรือแจ้งบอสขอมาทำ OT แทนได้เลยนะคะ', { margin: 'md', color: LINE_CARD.blueDark, weight: 'bold' }),
+      ] },
+    },
+  }
+}
 // cron รายวัน: หาวันนักขัตที่อีก 7 วันถึง แล้วเช็คว่าใครวันหยุดประจำชนพอดี — ส่ง LINE เตือนตรงถึงคนนั้นเลย (ไม่ผ่านบอส)
 // ?dry=1 คำนวณ+คืนรายชื่อที่จะแจ้งเฉยๆ ไม่ส่งจริง ใช้ตรวจสอบได้โดยไม่ยิง LINE จริง
 async function opHolidayReminderCron(req, res) {
@@ -1802,7 +1819,7 @@ async function opHolidayReminderCron(req, res) {
     }
     if (dryRun) return res.status(200).json({ success: true, dryRun: true, targetDate, plan })
     const sendable = plan.filter((p) => p.line_user_id)
-    await Promise.all(sendable.map((p) => pushMessage(p.line_user_id, [{ type: 'text', text: p.text }])))
+    await Promise.all(sendable.map((p) => pushMessageWithFallback(p.line_user_id, [holidayReminderFlexMessage({ name: p.holiday, date: p.date })], [{ type: 'text', text: p.text }])))
     await appendRows(HOLIDAY_REMINDER_RUNS_SHEET, [[today, new Date().toISOString(), sendable.length]])
     return res.status(200).json({ success: true, targetDate, notified: sendable.length, unlinked: plan.length - sendable.length })
   } catch (e) {
