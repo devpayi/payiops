@@ -8,7 +8,7 @@ import LeaveEditPanel from '../components/LeaveEditPanel'
 import { canManageOperations } from '../../shared/roles.js'
 
 const API = '/api/sheet-tools?op=hr'
-const LEAVE_TYPES = ['พักร้อน', 'ลากิจ', 'ลาป่วย', 'ขาดงาน', 'สลับวันหยุด']
+const LEAVE_TYPES = ['พักร้อน', 'ลากิจ', 'ลาป่วย', 'ขาดงาน', 'สลับวันหยุด', 'หยุดเพิ่มนักขัต']
 const EMPLOYEE_GROUPS = ['คนแพ็ก', 'คนฟีด', 'พาร์ทไทม์', 'อื่น ๆ', 'ออฟฟิศ']
 // 0=อาทิตย์...6=เสาร์ ตรงกับ Date.getDay() ฝั่ง backend (ดู isFixedDayOff ใน api/sheet-tools.js)
 const WEEKDAY_OPTIONS = [

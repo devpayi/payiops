@@ -207,7 +207,7 @@ const factRow = (label, value) => ({
   type: 'box', layout: 'horizontal', spacing: 'md',
   contents: [flexText(label, { size: 'xs', color: LINE_CARD.muted, flex: 2 }), flexText(value, { size: 'sm', weight: 'bold', color: LINE_CARD.blueDark, align: 'end', flex: 4 })],
 })
-const leaveTypeIcon = (type) => ({ 'พักร้อน': '🏖️', 'ลากิจ': '📌', 'ลาป่วย': '🏥', 'ขาดงาน': '⚠️', 'สลับวันหยุด': '🔁' }[type] || '📅')
+const leaveTypeIcon = (type) => ({ 'พักร้อน': '🏖️', 'ลากิจ': '📌', 'ลาป่วย': '🏥', 'ขาดงาน': '⚠️', 'สลับวันหยุด': '🔁', 'หยุดเพิ่มนักขัต': '🎌' }[type] || '📅')
 const summaryTile = (label, value, backgroundColor, valueColor = '#17243B') => ({
   type: 'box', layout: 'vertical', flex: 1, paddingAll: '10px', cornerRadius: '14px', backgroundColor, alignItems: 'center',
   contents: [
@@ -1770,21 +1770,42 @@ async function getHolidaysWithConflicts(personMap) {
 const WEEKDAY_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
 const HOLIDAY_REMINDER_RUNS_SHEET = 'holiday_reminder_runs'
 const HOLIDAY_REMINDER_RUNS_HEADERS = ['date', 'sent_at', 'notified_count']
-const holidayReminderText = (h) => `📅 อีก 7 วัน ถึงวันหยุดนักขัต "${h.name}" (${h.date}) ซึ่งตรงกับวันหยุดประจำของคุณพอดี (วัน${WEEKDAY_TH[new Date(`${h.date}T00:00:00`).getDay()]}) — ถ้าไม่แจ้งสลับวันหยุด ระบบจะยังนับว่าคุณหยุดแค่วันเดียวตามปกติ ลองแจ้งบอสเพื่อสลับวันหยุด หรือขอมาทำ OT แทนได้นะคะ`
-// การ์ดสวยสำหรับแจ้งเตือนวันหยุดชนวันนักขัต — ธีมเดียวกับการ์ดลา (LINE_CARD/lineCardHeader/factRow) ให้ดูเป็นชุดเดียวกัน
+// "สลับวันหยุด" ในระบบคือให้ 1 วันคืน 1 วัน (ย้ายวันหยุด ไม่ได้เพิ่มวันหยุด) — ชนนักขัตแล้วสลับก็ยังหยุดแค่วันเดียว
+// เหมือนเดิม ไม่ตรง policy จริง (owner ยืนยัน 2026-08-18: ต้องได้หยุดเพิ่มอีกวัน หรือถ้าไม่หยุดเพิ่มต้องได้โอทีแทน)
+// เพิ่ม leave_type ใหม่ "หยุดเพิ่มนักขัต" ให้ตรงกับ policy จริง (เพิ่มวันหยุดจริง ไม่ใช่ย้าย) — ใช้ flow "ลา" ปกติ
+// ได้เลย (ไม่ใช่ isSwap เลยไม่ต้องมีวันคู่/ไม่ต้อง swapBackMap พิเศษ ไหลผ่าน path เดียวกับลาป่วย/ลากิจ)
+const holidayReminderText = (h) => `📅 อีก 7 วัน ถึงวันหยุดนักขัต "${h.name}" (${h.date}) ซึ่งตรงกับวันหยุดประจำของคุณพอดี (วัน${WEEKDAY_TH[new Date(`${h.date}T00:00:00`).getDay()]}) — พิมพ์ "ลา" แล้วเลือก "หยุดเพิ่มนักขัต" เพื่อขอวันหยุดเพิ่ม หรือแจ้งหัวหน้าขอมาทำ OT แทนได้นะคะ`
+// โทนแดงแป๊ด ตัวหนังสือดำ (owner ขอ 2026-08-18) — สไตล์การ์ดเลขใหญ่+ขอบสีหนา อ้างอิงการ์ดจับคู่ลอตของเข้าเดิม
+// (stockin-matchlot, ลบไปแล้วตอนเปลี่ยนเป็น quick-reply — ดู git log "Replace the lot-picker carousel") ที่
+// owner ชอบหน้าตา: bubble เล็ก ขอบหนาสี ตัวเลข/ข้อความเด่นตรงกลาง ไม่มี header กล่องแบบการ์ดลา
+const HOLIDAY_CARD_RED = { bg: '#E8342A', badge: '#FFE3E0', ink: '#111111', muted: '#4A4A4A' }
+const holidayCardText = (text, options = {}) => ({ type: 'text', text: String(text ?? ''), color: HOLIDAY_CARD_RED.ink, size: 'sm', wrap: true, scaling: true, ...options })
+// การ์ดสวยสำหรับแจ้งเตือนวันหยุดชนวันนักขัต — โทนแดงเพราะเป็นเคส "ชนกัน" ต้องรีบจัดการ ต่างจากการ์ดลา (โทนฟ้า) ที่เป็นสถานะปกติ
 const holidayReminderFlexMessage = (h) => {
   const weekdayLabel = WEEKDAY_TH[new Date(`${h.date}T00:00:00`).getDay()]
   return {
     type: 'flex', altText: `อีก 7 วัน ถึง "${h.name}" ตรงวันหยุดประจำของคุณ`,
     contents: {
       type: 'bubble', size: 'kilo',
-      header: lineCardHeader(h.name, `อีก 7 วัน · ${lineDate(h.date)}`, '📅'),
-      body: { type: 'box', layout: 'vertical', paddingAll: '14px', spacing: 'md', backgroundColor: LINE_CARD.white, contents: [
-        factRow('วันหยุดประจำของคุณ', `วัน${weekdayLabel}`),
-        flexText('วันนี้ตรงกับวันหยุดประจำของคุณพอดี ถ้าไม่แจ้งสลับวันหยุด ระบบจะยังนับว่าคุณหยุดแค่วันเดียวตามปกติค่ะ', { margin: 'sm' }),
-        { type: 'separator', margin: 'md' },
-        flexText('พิมพ์ "ลา" เพื่อขอสลับวันหยุด หรือแจ้งบอสขอมาทำ OT แทนได้เลยนะคะ', { margin: 'md', color: LINE_CARD.blueDark, weight: 'bold' }),
-      ] },
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'sm', backgroundColor: '#FFFFFF',
+        borderWidth: '4px', borderColor: HOLIDAY_CARD_RED.bg, cornerRadius: '20px',
+        contents: [
+          { type: 'box', layout: 'horizontal', alignItems: 'center', contents: [
+            { type: 'box', layout: 'baseline', flex: 1, contents: [
+              holidayCardText('อีก', { size: 'sm', weight: 'bold', color: HOLIDAY_CARD_RED.muted }),
+              holidayCardText('7', { size: '4xl', weight: 'bold', color: HOLIDAY_CARD_RED.bg, margin: 'xs' }),
+              holidayCardText('วัน', { size: 'sm', weight: 'bold', color: HOLIDAY_CARD_RED.muted, margin: 'xs' }),
+            ] },
+            { type: 'box', layout: 'vertical', width: '34px', height: '34px', cornerRadius: '17px', backgroundColor: HOLIDAY_CARD_RED.badge, justifyContent: 'center', alignItems: 'center', flex: 0, contents: [holidayCardText('📅', { size: 'md', align: 'center' })] },
+          ] },
+          holidayCardText(h.name, { size: 'lg', weight: 'bold', color: HOLIDAY_CARD_RED.ink, margin: 'md' }),
+          holidayCardText(lineDate(h.date), { size: 'xs', color: HOLIDAY_CARD_RED.muted }),
+          { type: 'separator', margin: 'md' },
+          holidayCardText(`ตรงวันหยุดประจำของคุณพอดี (วัน${weekdayLabel}) ⚠️`, { size: 'sm', weight: 'bold', color: HOLIDAY_CARD_RED.bg, margin: 'md' }),
+          holidayCardText('พิมพ์ "ลา" แล้วเลือก "หยุดเพิ่มนักขัต" เพื่อขอวันหยุดเพิ่ม หรือแจ้งหัวหน้าขอมาทำ OT แทนได้เลยนะคะ', { size: 'sm', weight: 'bold', color: HOLIDAY_CARD_RED.ink, margin: 'md' }),
+        ],
+      },
     },
   }
 }
@@ -2941,7 +2962,7 @@ const LEAVE_CANCEL_TRIGGER = 'ยกเลิกลา'
 const LEAVE_SUMMARY_TRIGGER = 'สรุปลา'
 const LEAVE_HISTORY_TRIGGER = 'ประวัติลา'
 // ลากิจ/ขาดงาน ตัดออกจากตัวเลือกใน LINE (ลาเองไม่ได้) — เก็บไว้ในเว็บให้ HR เพิ่ม/แก้เองได้ (เผื่อลาส่วนตัว/คุยนอกรอบ)
-const LEAVE_TYPES_LINE = ['พักร้อน', 'ลาป่วย', 'สลับวันหยุด']
+const LEAVE_TYPES_LINE = ['พักร้อน', 'ลาป่วย', 'สลับวันหยุด', 'หยุดเพิ่มนักขัต']
 const THAI_MONTH_ABBR = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
 const addDaysStr = (dateStr, n) => { const d = new Date(`${dateStr}T00:00:00`); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
