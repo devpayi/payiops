@@ -768,6 +768,23 @@ function AllSkusModal({ topSkus, onClose, onSelectSku }) {
 
 // แท็ป "ประวัติเคลมล่าสุด" — flat list ข้ามสินค้าทั้งหมด เรียงตามล่าสุดกรอกก่อน
 // (คนละอันกับ SkuDetailPanel ที่ต้องกดเข้าไปทีละสินค้าถึงเห็นประวัติ — อันนั้นเก็บไว้เหมือนเดิม)
+// เดือนย้อนหลัง 24 เดือนจากวันนี้ ให้เลือกกรองได้ — ["", "2026-08", "2026-07", ...] ("" = ทั้งหมด)
+const RECENT_MONTH_OPTIONS = (() => {
+  const out = ['']
+  const d = new Date()
+  for (let i = 0; i < 24; i++) {
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    d.setMonth(d.getMonth() - 1)
+  }
+  return out
+})()
+const RECENT_BUSINESS_OPTIONS = ['', 'Payi', 'Payi Outlet', 'กรอบรูป']
+const monthLabelC = (ym) => { const [y, m] = ym.split('-').map(Number); return `${THAI_MONTHS[m - 1]} ${y}` }
+const lastDayOfMonth = (ym) => {
+  const [y, m] = ym.split('-').map(Number)
+  return new Date(y, m, 0).getDate()
+}
+
 function RecentClaimsPanel() {
   const [records, setRecords] = useState([])
   const [totalCount, setTotalCount] = useState(0)
@@ -775,11 +792,18 @@ function RecentClaimsPanel() {
   const [err, setErr] = useState(null)
   const [limit, setLimit] = useState(100)
   const [search, setSearch] = useState('')
+  const [month, setMonth] = useState('')
+  const [business, setBusiness] = useState('')
+
+  useEffect(() => { setLimit(100) }, [month, business])
 
   useEffect(() => {
     let alive = true
     setLoading(true); setErr(null)
-    fetch(`${API_BASE_C}/claims?view=recent&limit=${limit}`)
+    const params = new URLSearchParams({ view: 'recent', limit: String(limit) })
+    if (month) { params.set('startDate', `${month}-01`); params.set('endDate', `${month}-${String(lastDayOfMonth(month)).padStart(2, '0')}`) }
+    if (business) params.set('business', business)
+    fetch(`${API_BASE_C}/claims?${params}`)
       .then((r) => r.json())
       .then((d) => {
         if (!alive) return
@@ -789,7 +813,7 @@ function RecentClaimsPanel() {
       .catch((e) => alive && setErr(e.message))
       .finally(() => alive && setLoading(false))
     return () => { alive = false }
-  }, [limit])
+  }, [limit, month, business])
 
   const q = search.trim().toLowerCase()
   const filtered = q
@@ -809,11 +833,19 @@ function RecentClaimsPanel() {
     <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>เคลมที่กรอกล่าสุด ({fmtC(totalCount)} รายการทั้งหมด)</div>
-        <input
-          value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="ค้นหาสินค้า / SKU"
-          style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', fontSize: 12, minWidth: 180 }}
-        />
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <select value={month} onChange={(e) => setMonth(e.target.value)} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', fontSize: 12 }}>
+            {RECENT_MONTH_OPTIONS.map((m) => <option key={m || 'all'} value={m}>{m ? monthLabelC(m) : 'ทุกเดือน'}</option>)}
+          </select>
+          <select value={business} onChange={(e) => setBusiness(e.target.value)} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', fontSize: 12 }}>
+            {RECENT_BUSINESS_OPTIONS.map((b) => <option key={b || 'all'} value={b}>{b || 'ทุกร้าน'}</option>)}
+          </select>
+          <input
+            value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="ค้นหาสินค้า / SKU"
+            style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', fontSize: 12, minWidth: 180 }}
+          />
+        </div>
       </div>
 
       {loading && <div style={{ padding: '30px 0', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>กำลังโหลด...</div>}
