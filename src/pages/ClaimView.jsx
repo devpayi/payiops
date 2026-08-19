@@ -768,17 +768,18 @@ function AllSkusModal({ topSkus, onClose, onSelectSku }) {
 
 // แท็ป "ประวัติเคลมล่าสุด" — flat list ข้ามสินค้าทั้งหมด เรียงตามล่าสุดกรอกก่อน
 // (คนละอันกับ SkuDetailPanel ที่ต้องกดเข้าไปทีละสินค้าถึงเห็นประวัติ — อันนั้นเก็บไว้เหมือนเดิม)
-// เดือนย้อนหลัง 24 เดือนจากวันนี้ ให้เลือกกรองได้ — ["", "2026-08", "2026-07", ...] ("" = ทั้งหมด)
+// เดือนย้อนหลังจากวันนี้ถึงมกราคม 2026 (ข้อมูลเคลมเริ่มมีจริงตั้งแต่ปีนี้) — ["", "2026-08", "2026-07", ...] ("" = ทั้งหมด)
 const RECENT_MONTH_OPTIONS = (() => {
   const out = ['']
   const d = new Date()
-  for (let i = 0; i < 24; i++) {
+  while (d.getFullYear() > 2026 || (d.getFullYear() === 2026)) {
     out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    if (d.getFullYear() === 2026 && d.getMonth() === 0) break
     d.setMonth(d.getMonth() - 1)
   }
   return out
 })()
-const RECENT_BUSINESS_OPTIONS = ['', 'Payi', 'Payi Outlet', 'กรอบรูป']
+const RECENT_BUSINESS_OPTIONS = ['', 'Payi', 'กรอบรูป']
 const monthLabelC = (ym) => { const [y, m] = ym.split('-').map(Number); return `${THAI_MONTHS[m - 1]} ${y}` }
 const lastDayOfMonth = (ym) => {
   const [y, m] = ym.split('-').map(Number)
@@ -1080,15 +1081,16 @@ export default function ClaimView() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <span style={{ fontSize: 12, color: '#94a3b8' }}>อัปเดตล่าสุด {ts || '—'}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <input type="date" value={startDate} onChange={e => setStart(e.target.value)} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: '#334155', background: '#f8fafc' }} />
-          <span style={{ color: '#94a3b8', fontSize: 12 }}>ถึง</span>
-          <input type="date" value={endDate} onChange={e => setEnd(e.target.value)} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: '#334155', background: '#f8fafc' }} />
-          <input value={productInput} onChange={e => setProductInput(e.target.value)} placeholder="ค้นหาสินค้า" style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', fontSize: 12 }} />
-          <select value={reasonFilter} onChange={e => setReasonFilter(e.target.value)} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', fontSize: 12 }}><option value="">ทุกสาเหตุ</option><option value="damaged">เสียหาย</option><option value="incomplete">ส่งไม่ครบ</option><option value="wrong">ส่งผิด</option><option value="unspecified">ไม่ระบุ</option></select>
-          
-          <button onClick={load} disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#111827', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-            <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} /> รีเฟรช
-          </button>
+          {pageTab === 'overview' && <>
+            <input type="date" value={startDate} onChange={e => setStart(e.target.value)} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: '#334155', background: '#f8fafc' }} />
+            <span style={{ color: '#94a3b8', fontSize: 12 }}>ถึง</span>
+            <input type="date" value={endDate} onChange={e => setEnd(e.target.value)} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: '#334155', background: '#f8fafc' }} />
+            <input value={productInput} onChange={e => setProductInput(e.target.value)} placeholder="ค้นหาสินค้า" style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', fontSize: 12 }} />
+            <select value={reasonFilter} onChange={e => setReasonFilter(e.target.value)} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', fontSize: 12 }}><option value="">ทุกสาเหตุ</option><option value="damaged">เสียหาย</option><option value="incomplete">ส่งไม่ครบ</option><option value="wrong">ส่งผิด</option><option value="unspecified">ไม่ระบุ</option></select>
+            <button onClick={load} disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#111827', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} /> รีเฟรช
+            </button>
+          </>}
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 8px 18px rgba(37,99,235,0.22)' }}>
             <Upload size={14} /> {importing ? 'กำลังนำเข้าไฟล์...' : 'Import Excel ใบเคลม'}
