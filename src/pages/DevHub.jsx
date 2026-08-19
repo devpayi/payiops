@@ -1,63 +1,50 @@
-import { Server, Database, Layers, GitBranch, ExternalLink } from 'lucide-react'
+import { useState } from 'react'
+import { Database, Rocket, GitBranch, Boxes, Code2, Triangle, Bot, MessageCircle, Cloud, Receipt, ExternalLink } from 'lucide-react'
 
 // ลิงก์ด่วนไปเครื่องมือ/บัญชีที่ dev ใช้บ่อย — เอามาจาก bookmark bar ของเจ้าของ
 const quickLinks = [
-  { label: 'mona-ops-db', url: 'https://docs.google.com/spreadsheets/d/13eMPa3ISNd8HwrlsK-CtQsmzRvzqxpimy67cJVRBZGg/edit' },
-  { label: 'Payi Ops', url: 'https://payiops.vercel.app/' },
-  { label: 'GitHub', url: 'https://github.com/devpayi/payiops' },
-  { label: 'Turso', url: 'https://app.turso.tech/monalll13' },
-  { label: 'Apps Script', url: 'https://script.google.com/home/?hl=th' },
-  { label: 'Vercel', url: 'https://vercel.com/devpayis-projects' },
-  { label: 'LINE Developers', url: 'https://developers.line.biz/console/' },
-  { label: 'Line oa', url: 'https://manager.line.biz/account/@924byetu' },
-  { label: 'Google Cloud', url: 'https://console.cloud.google.com/iam-admin/serviceaccounts/details/112495795638398129224/keys?project=mona-ops' },
-  { label: 'ออกใบกำกับภาษี', url: 'https://script.google.com/macros/s/AKfycby-unnrh8gMNJDvWYK7n3FA-eTFhPJIoq4GOKEeEns9oNMslRDwUZ-tHh8O3JEM8Ns-/exec' },
+  { label: 'mona-ops-db', desc: 'Google Sheet ฐานข้อมูลหลักของระบบ (raw_orders, claims, product_aliases ฯลฯ)', icon: Database, url: 'https://docs.google.com/spreadsheets/d/13eMPa3ISNd8HwrlsK-CtQsmzRvzqxpimy67cJVRBZGg/edit' },
+  { label: 'Payi Ops', desc: 'เว็บแอปที่ใช้งานจริง (production)', icon: Rocket, url: 'https://payiops.vercel.app/' },
+  { label: 'GitHub', desc: 'โค้ด repository ทั้งหมดของระบบ', icon: GitBranch, url: 'https://github.com/devpayi/payiops' },
+  { label: 'Turso', desc: 'ฐานข้อมูล SQL แยกต่างหาก (ใช้กับโปรเจกต์อื่นนอก Payi Ops)', icon: Boxes, url: 'https://app.turso.tech/monalll13' },
+  { label: 'Apps Script', desc: 'จัดการโปรเจกต์ Google Apps Script', icon: Code2, url: 'https://script.google.com/home/?hl=th' },
+  { label: 'Vercel', desc: 'Dashboard ดู deploy / build log ของเว็บ', icon: Triangle, url: 'https://vercel.com/devpayis-projects' },
+  { label: 'LINE Developers', desc: 'จัดการ LINE bot / Messaging API', icon: Bot, url: 'https://developers.line.biz/console/' },
+  { label: 'Line oa', desc: 'จัดการ LINE Official Account (ข้อความ/broadcast)', icon: MessageCircle, url: 'https://manager.line.biz/account/@924byetu' },
+  { label: 'Google Cloud', desc: 'จัดการ service account ที่ระบบใช้ต่อ Google Sheets', icon: Cloud, url: 'https://console.cloud.google.com/iam-admin/serviceaccounts/details/112495795638398129224/keys?project=mona-ops' },
+  { label: 'ออกใบกำกับภาษี', desc: 'เครื่องมือออกใบกำกับภาษี', icon: Receipt, url: 'https://script.google.com/macros/s/AKfycby-unnrh8gMNJDvWYK7n3FA-eTFhPJIoq4GOKEeEns9oNMslRDwUZ-tHh8O3JEM8Ns-/exec' },
 ]
 
-// หน้าสำหรับ dev / คนใหม่ — อธิบายสถาปัตยกรรมและ endpoint ของระบบ
-const sections = [
-  {
-    icon: Layers,
-    title: 'สถาปัตยกรรม',
-    items: [
-      'Frontend: React 19 + Vite + Recharts (โฮสต์เป็น static บน Vercel)',
-      'Backend: Vercel Serverless Functions ในโฟลเดอร์ /api',
-      'Database: Google Sheets (mona-ops-db) ผ่าน service account',
-      'ทุกอย่างใช้ free tier — ไม่มีค่าใช้จ่าย',
-    ],
-  },
-  {
-    icon: Database,
-    title: 'โครงสร้างข้อมูล (Google Sheets)',
-    items: [
-      'raw_orders_YYYY_MM — ออเดอร์ดิบแยกรายเดือน (~190k แถว)',
-      'claims — ข้อมูลเคลมสินค้า',
-      'product_aliases — จับคู่ชื่อสินค้าจากแพลตฟอร์ม → master_sku',
-      'import_log — ประวัติการนำเข้าไฟล์',
-    ],
-  },
-  {
-    icon: Server,
-    title: 'API Endpoints',
-    items: [
-      'GET /api/dashboard — สรุป Executive (totals, trends, top SKUs)',
-      'GET /api/claims?view=summary|monthly|sku — ข้อมูลเคลม',
-      'POST /api/claims-import — นำเข้าไฟล์เคลม',
-      'GET /api/sheet-tools?op=summary — สรุปยอดขายรวม',
-      'GET /api/sheet-tools?op=sheet&name=... — อ่าน sheet ตรง ๆ',
-    ],
-  },
-  {
-    icon: GitBranch,
-    title: 'เริ่มพัฒนา',
-    items: [
-      'npm install — ติดตั้ง dependencies',
-      'npm run dev — รันทั้ง frontend + API (localhost:5173)',
-      'ต้องมีไฟล์ .env (GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY, SHEET_ID)',
-      'npm run build — build สำหรับ production',
-    ],
-  },
-]
+function QuickLinkCard({ l }) {
+  const [hover, setHover] = useState(false)
+  const Icon = l.icon
+  return (
+    <a
+      href={l.url} target="_blank" rel="noopener noreferrer"
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: 10,
+        padding: '16px 18px', borderRadius: 14, textDecoration: 'none',
+        background: hover ? 'var(--payi-mint-soft)' : 'var(--payi-surface)',
+        border: `1px solid ${hover ? 'var(--payi-mint)' : 'var(--payi-border)'}`,
+        boxShadow: hover ? '0 8px 20px rgba(0,0,0,0.08)' : 'none',
+        transform: hover ? 'translateY(-2px)' : 'none',
+        transition: 'all 0.15s ease',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)', flexShrink: 0 }}>
+          <Icon size={17} />
+        </span>
+        <ExternalLink size={13} style={{ flexShrink: 0, opacity: hover ? 0.8 : 0.35, transition: 'opacity 0.15s ease' }} />
+      </div>
+      <div>
+        <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--payi-text-strong)', marginBottom: 3 }}>{l.label}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)', lineHeight: 1.5 }}>{l.desc}</div>
+      </div>
+    </a>
+  )
+}
 
 export default function DevHub() {
   return (
@@ -66,41 +53,8 @@ export default function DevHub() {
         คู่มือสำหรับ developer และคนใหม่ที่เข้ามาช่วยพัฒนาระบบ Payi Ops
       </div>
 
-      <div className="payi-glass-card" style={{ padding: 20, marginBottom: 16 }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--payi-text-strong)', marginBottom: 14 }}>ลิงก์ด่วน</div>
-        <div className="app-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
-          {quickLinks.map((l) => (
-            <a
-              key={l.label} href={l.url} target="_blank" rel="noopener noreferrer"
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                padding: '10px 14px', borderRadius: 10, textDecoration: 'none',
-                background: 'var(--payi-mint-soft)', color: 'var(--payi-text-strong)',
-                fontSize: 12.5, fontWeight: 700,
-              }}
-            >
-              {l.label} <ExternalLink size={13} style={{ flexShrink: 0, opacity: 0.6 }} />
-            </a>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
-        {sections.map((s) => (
-          <div key={s.title} className="payi-glass-card" style={{ padding: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-              <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)' }}>
-                <s.icon size={17} />
-              </span>
-              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--payi-text-strong)' }}>{s.title}</span>
-            </div>
-            <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {s.items.map((it, i) => (
-                <li key={i} style={{ fontSize: 12.5, color: 'var(--payi-text)', lineHeight: 1.5 }}>{it}</li>
-              ))}
-            </ul>
-          </div>
-        ))}
+      <div className="app-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+        {quickLinks.map((l) => <QuickLinkCard key={l.label} l={l} />)}
       </div>
     </div>
   )
