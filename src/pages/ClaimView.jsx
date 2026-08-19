@@ -766,6 +766,106 @@ function AllSkusModal({ topSkus, onClose, onSelectSku }) {
   )
 }
 
+// แท็ป "ประวัติเคลมล่าสุด" — flat list ข้ามสินค้าทั้งหมด เรียงตามล่าสุดกรอกก่อน
+// (คนละอันกับ SkuDetailPanel ที่ต้องกดเข้าไปทีละสินค้าถึงเห็นประวัติ — อันนั้นเก็บไว้เหมือนเดิม)
+function RecentClaimsPanel() {
+  const [records, setRecords] = useState([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState(null)
+  const [limit, setLimit] = useState(100)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true); setErr(null)
+    fetch(`${API_BASE_C}/claims?view=recent&limit=${limit}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return
+        if (!d.success) throw new Error(d.error)
+        setRecords(d.records || []); setTotalCount(d.totalCount || 0)
+      })
+      .catch((e) => alive && setErr(e.message))
+      .finally(() => alive && setLoading(false))
+    return () => { alive = false }
+  }, [limit])
+
+  const q = search.trim().toLowerCase()
+  const filtered = q
+    ? records.filter((r) => (r.display_name || r.product_name || '').toLowerCase().includes(q) || (r.master_sku || '').toLowerCase().includes(q))
+    : records
+
+  const reasonLabel = (r) => {
+    const parts = []
+    if (r.is_damaged) parts.push(<span key="d" style={{ color: FLAG_COLORS.damaged }}>เสียหาย</span>)
+    if (r.is_incomplete) parts.push(<span key="i" style={{ color: FLAG_COLORS.incomplete }}>ไม่ครบ</span>)
+    if (r.is_wrong_item) parts.push(<span key="w" style={{ color: FLAG_COLORS.wrong }}>ผิดรายการ</span>)
+    if (!parts.length) return <span style={{ color: FLAG_COLORS.unspecified }}>ไม่ระบุ</span>
+    return parts.reduce((acc, el, i) => (i === 0 ? [el] : [...acc, ', ', el]), [])
+  }
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>เคลมที่กรอกล่าสุด ({fmtC(totalCount)} รายการทั้งหมด)</div>
+        <input
+          value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder="ค้นหาสินค้า / SKU"
+          style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', fontSize: 12, minWidth: 180 }}
+        />
+      </div>
+
+      {loading && <div style={{ padding: '30px 0', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>กำลังโหลด...</div>}
+      {err && !loading && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 18px', color: '#dc2626', fontSize: 12 }}>⚠️ {err}</div>}
+
+      {!loading && !err && (
+        <>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', minWidth: 700, borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>
+                  <th style={{ padding: '10px 12px', textAlign: 'left' }}>วันที่</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'left' }}>แบรนด์</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'left' }}>สินค้าที่เคลม</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'left' }}>สาเหตุ</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>มูลค่า (฿)</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'left' }}>หมายเหตุ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r, i) => (
+                  <tr key={r.id || i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '9px 12px', color: '#64748b' }}>{r.date}</td>
+                    <td style={{ padding: '9px 12px', color: '#1e293b' }}>{r.business}</td>
+                    <td style={{ padding: '9px 12px', color: '#1e293b', fontWeight: 600 }}>{r.display_name || r.product_name || r.master_sku || '—'}</td>
+                    <td style={{ padding: '9px 12px' }}>{reasonLabel(r)}</td>
+                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700 }}>{r.claim_value > 0 ? <span style={{ color: '#dc2626' }}>฿{fmtC(r.claim_value)}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                    <td style={{ padding: '9px 12px', color: '#94a3b8' }}>{[r.free_item, r.note].filter(Boolean).join(' · ') || '—'}</td>
+                  </tr>
+                ))}
+                {!filtered.length && (
+                  <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>ไม่พบรายการเคลม</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {records.length >= limit && totalCount > limit && (
+            <div style={{ marginTop: 12, textAlign: 'center' }}>
+              <button
+                onClick={() => setLimit((l) => Math.min(l + 100, 500))}
+                style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 20px', fontSize: 12, fontWeight: 600, color: '#475569', cursor: 'pointer' }}
+              >
+                โหลดเพิ่ม
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function ClaimView() {
   const [data, setData]         = useState(null)
   const [loading, setLoading]   = useState(false)
@@ -790,6 +890,7 @@ export default function ClaimView() {
   const [mapSearch, setMapSearch] = useState('')
   const [mapSaving, setMapSaving] = useState(false)
   const [showAddClaim, setShowAddClaim] = useState(false)
+  const [pageTab, setPageTab] = useState('overview') // 'overview' | 'recent' — แท็ปแยกจากภาพรวมเดิม ไม่กระทบของเดิม
 
   const loadMonthly = useCallback(async () => {
     setMonthlyLoading(true)
@@ -972,6 +1073,29 @@ export default function ClaimView() {
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
+      {/* แท็ป: ภาพรวม (เดิม) / ประวัติเคลมล่าสุด (ใหม่ — flat list ข้ามสินค้า เรียงล่าสุดก่อน) */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18, borderBottom: '1px solid #e2e8f0' }}>
+        {[{ key: 'overview', label: 'ภาพรวม' }, { key: 'recent', label: 'ประวัติเคลมล่าสุด' }].map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setPageTab(t.key)}
+            style={{
+              border: 'none', background: 'none', cursor: 'pointer',
+              padding: '10px 16px', fontSize: 13, fontWeight: 700,
+              color: pageTab === t.key ? '#2563eb' : '#94a3b8',
+              borderBottom: pageTab === t.key ? '2px solid #2563eb' : '2px solid transparent',
+              marginBottom: -1,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {pageTab === 'recent' && <RecentClaimsPanel />}
+
+      {pageTab === 'overview' && <>
+
       {err && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 18px', color: '#dc2626', fontSize: 12, marginBottom: 16 }}>⚠️ เกิดข้อผิดพลาด: {err}</div>}
       {importResult && (
         <div style={{ background: importResult.success ? '#f0fdf4' : '#fef2f2', border: `1px solid ${importResult.success ? '#bbf7d0' : '#fecaca'}`, borderRadius: 10, padding: '12px 18px', fontSize: 13, color: importResult.success ? '#15803d' : '#dc2626', marginBottom: 16 }}>
@@ -1126,6 +1250,8 @@ export default function ClaimView() {
           </div>
         )}
       </div>
+
+      </>}
 
       {/* Modal: ดูทั้งหมด */}
       {showAllSkus && (

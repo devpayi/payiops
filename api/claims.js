@@ -1,4 +1,4 @@
-// /api/claims?view=summary|monthly|sku|by-product|imports-list|import|create-claim|create-claims-bulk
+// /api/claims?view=summary|monthly|sku|by-product|recent|imports-list|import|create-claim|create-claims-bulk
 // อ่าน/จัดการข้อมูลเคลมจาก sheet "claims" (Google Sheets)
 import { requireAuth } from './_lib/auth.js'
 import { getSheet, getMetaCached, batchGetValues, appendRows, appendRowsVerified, overwriteSheet, ensureSheet } from './_lib/sheets.js'
@@ -294,6 +294,25 @@ export default async function handler(req, res) {
       for (const b of businesses) byBizTotal[b].value = round2(byBizTotal[b].value)
 
       return sendCached({ success: true, monthly, monthlyTotal, businesses, byBusinessMonthly: byBiz, byBusinessTotal: byBizTotal })
+    }
+
+    if (view === 'recent') {
+      // ประวัติเคลมล่าสุดข้ามสินค้าทั้งหมด (เหมือน log การเบิกของใน Stock Movement) —
+      // เรียงตาม imported_at (เวลาที่กรอกเข้าระบบจริง) ก่อน ไม่ใช่วันที่เคลม เพราะจุดประสงค์คือ
+      // "ดูว่าเพิ่งกรอกอะไรเข้ามาบ้าง" ไม่ใช่ไล่ตามวันที่เกิดเหตุ
+      const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500)
+      const matched = rows.filter((r) => inDate(r.date) && keepBiz(r.business))
+      const sorted = [...matched].sort((a, b) => String(b.imported_at || b.date || '').localeCompare(String(a.imported_at || a.date || '')))
+      return sendCached({
+        success: true,
+        totalCount: matched.length,
+        records: sorted.slice(0, limit).map((r) => ({
+          id: r.id, date: r.date, business: r.business, master_sku: r.master_sku, display_name: r.display_name, product_name: r.product_name,
+          claim_value: num(r.claim_value),
+          is_damaged: truthy(r.is_damaged), is_incomplete: truthy(r.is_incomplete), is_wrong_item: truthy(r.is_wrong_item),
+          note: r.note, free_item: r.free_item, imported_at: r.imported_at,
+        })),
+      })
     }
 
     if (view === 'sku') {
