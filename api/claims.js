@@ -297,12 +297,11 @@ export default async function handler(req, res) {
     }
 
     if (view === 'recent') {
-      // ประวัติเคลมล่าสุดข้ามสินค้าทั้งหมด (เหมือน log การเบิกของใน Stock Movement) —
-      // เรียงตาม imported_at (เวลาที่กรอกเข้าระบบจริง) ก่อน ไม่ใช่วันที่เคลม เพราะจุดประสงค์คือ
-      // "ดูว่าเพิ่งกรอกอะไรเข้ามาบ้าง" ไม่ใช่ไล่ตามวันที่เกิดเหตุ
+      // ประวัติเคลมล่าสุดข้ามสินค้าทั้งหมด — เรียงตามวันที่เคลม (r.date) ใหม่สุดก่อน
+      // (ไม่ใช่ imported_at — เจ้าของยืนยันอยากเห็นไล่ตามวันที่เกิดเหตุ ไม่ใช่ลำดับที่กรอกเข้าระบบ)
       const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500)
       const matched = rows.filter((r) => inDate(r.date) && keepBiz(r.business))
-      const sorted = [...matched].sort((a, b) => String(b.imported_at || b.date || '').localeCompare(String(a.imported_at || a.date || '')))
+      const sorted = [...matched].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
       return sendCached({
         success: true,
         totalCount: matched.length,
