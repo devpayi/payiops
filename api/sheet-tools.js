@@ -2,7 +2,7 @@
 // รวม 4 endpoint เครื่องมือชีตเดิม (/api/summary /api/sheet /api/append /api/overwrite)
 // เป็นฟังก์ชันเดียว — Vercel Hobby จำกัด 12 serverless functions ต่อโปรเจค
 import { requireAuth, cacheable, authEnabled } from './_lib/auth.js'
-import { canManageOperations, canManageFinance, normalizeRole } from '../shared/roles.js'
+import { canManageOperations, canManageFinance, canManageMarketing, normalizeRole } from '../shared/roles.js'
 import { getMetaCached, batchGetValues, getSheet, appendRows, appendRowsVerified, overwriteSheet, ensureSheet, ensureSheets } from './_lib/sheets.js'
 import { verifySignature, pushMessage, pushMessageWithFallback, replyMessage, linkRichMenuToUser } from './_lib/line.js'
 import {
@@ -14,6 +14,7 @@ import { isoDate } from './_lib/dates.js'
 import opInventory, { computeLowStockList, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
 import opImportTracking from './_lib/importTracking.js'
 import opCfo from './_lib/cfo.js'
+import opDemographic from './_lib/demographic.js'
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
 // req.body ยังใช้ได้ตามปกติในทุก op เดิม เพราะ readRawBody() ด้านล่าง parse JSON ให้เหมือน Vercel ทำเอง
@@ -3665,6 +3666,14 @@ export default async function handler(req, res) {
     }
     return opCfo(req, res)
   }
+  // Demographic (จังหวัดลูกค้า) gated by canManageMarketing (dev/boss/marketing) — ข้อมูลลูกค้า
+  // เชิงการตลาด ไม่ใช่ operations ทั่วไป
+  if (op === 'demographic') {
+    if (authEnabled() && !canManageMarketing(req.user?.role)) {
+      return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงส่วนนี้' })
+    }
+    return opDemographic(req, res)
+  }
   // Staff only needs the data behind its operational areas (now includes
   // inventory, per owner request to open Inventory/Stock Movement to staff).
   // Raw sheet tools, HR and settings data remain restricted even if called directly.
@@ -3680,5 +3689,5 @@ export default async function handler(req, res) {
   if (op === 'hr') return opHr(req, res)
   if (op === 'inventory') return opInventory(req, res)
   if (op === 'import-tracking') return opImportTracking(req, res)
-  return res.status(400).json({ error: 'ต้องระบุ ?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|cfo|line-webhook' })
+  return res.status(400).json({ error: 'ต้องระบุ ?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|cfo|demographic|line-webhook' })
 }

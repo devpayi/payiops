@@ -10,7 +10,7 @@ import {
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
   LayoutDashboard, UploadCloud, Radar, Megaphone, CalendarClock, Boxes,
   ArrowLeftRight, Users, ShieldAlert, BookOpen, Link2,
-  Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet,
+  Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet, MapPin,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -35,6 +35,7 @@ const Inventory = lazy(() => import('./pages/Inventory'))
 const StockMovement = lazy(() => import('./pages/StockMovement'))
 const ImportTracking = lazy(() => import('./pages/ImportTracking'))
 const CfoDashboard = lazy(() => import('./pages/CfoDashboard'))
+const DemographicDashboard = lazy(() => import('./pages/DemographicDashboard'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 const API_BASE = '/api'
@@ -93,6 +94,7 @@ const Icons = {
   StockMovement: ArrowLeftRight,
   ImportTracking: Ship,
   CFO: Wallet,
+  Demographic: MapPin,
   WorkforceOT: Users,
   HR: CalendarCheck,
   Claims: ShieldAlert,
@@ -105,7 +107,7 @@ const Icons = {
 const KNOWN_TABS = new Set([
   'Home', 'Executive', 'Monthly', 'FeedProducts', 'Products', 'ProductTrends',
   'AdsChannels', 'ContentOS', 'MarketingRadar', 'Planner Control', 'Inventory',
-  'Import Tracking', 'Stock Movement', 'Workforce OT', 'HR', 'Claims', 'CFO',
+  'Import Tracking', 'Stock Movement', 'Workforce OT', 'HR', 'Claims', 'CFO', 'Demographic',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings',
 ])
 
@@ -122,6 +124,7 @@ const menuGroups = [
     items: [
       { id: 'Import Orders', label: 'Import Orders', renderIcon: Icons.ImportOrders, dotColor: 'var(--payi-success)' },
       { id: 'MarketingRadar', label: 'Marketing Radar', renderIcon: Icons.MarketingRadar, dotColor: 'var(--payi-mint)' },
+      { id: 'Demographic', label: 'เดโมกราฟฟิกลูกค้า', renderIcon: Icons.Demographic, dotColor: '#0ea5e9' },
       { id: 'AdsChannels', label: 'Ads & Channels', renderIcon: Icons.AdsChannels },
       { id: 'ContentOS', label: 'Content OS Prototype', renderIcon: Icons.ContentOS, dotColor: 'var(--payi-mint)' }
     ]
@@ -1432,6 +1435,7 @@ export default function App() {
           ['Inventory', <Inventory />],
           ['Import Tracking', <ImportTracking />],
           ['CFO', <CfoDashboard />],
+          ['Demographic', <DemographicDashboard />],
           ['Stock Movement', <StockMovement />],
           ['Workforce OT', <WorkforceOT />],
           ['HR', <HR />],
