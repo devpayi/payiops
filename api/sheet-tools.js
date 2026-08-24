@@ -11,7 +11,7 @@ import {
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides, LEGACY_OVERRIDE_EXEMPT_CODES } from './_lib/scheduleOverrides.js'
 import { isoDate } from './_lib/dates.js'
-import opInventory, { computeLowStockList, computeOverdueOrders, muteOrderReminder, snoozeOrderReminder, cancelOrderRequest, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
+import opInventory, { computeLowStockList, computeOverdueOrders, muteOrderReminder, snoozeOrderReminder, cancelOrderRequest, undoOverdueOrderAction, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
 import opImportTracking from './_lib/importTracking.js'
 import opCfo from './_lib/cfo.js'
 import opDemographic from './_lib/demographic.js'
@@ -3668,20 +3668,41 @@ async function opLineWebhook(req, res) {
           continue
         }
         const [, action, reqId] = data.match(/^order-remind-(wait|snooze|cancel):(.+)$/) || []
+        // ปุ่ม "↩️ ย้อนกลับ" แปะติดข้อความยืนยันทันที เผื่อกดผิด (owner ขอ 2026-08-24 — ปุ่มเดิมเคยตัวอักษร
+        // ถูกตัดจนอ่านไม่ออก กังวลว่ากดพลาดตอนมองไม่ชัด) กดได้ตราบใดที่ยังไม่ลบข้อความทิ้ง
+        const undoQuickReply = { items: [{ type: 'action', action: { type: 'postback', label: '↩️ ย้อนกลับ', data: `order-remind-undo:${reqId}`, displayText: 'ย้อนกลับการตัดสินใจล่าสุด' } }] }
         try {
           const req = await getStockInRequestById(reqId)
           const items = await loadOrderableItems()
           const label = items.find((it) => String(it.sku).toUpperCase() === String(req?.sku).toUpperCase())?.display_name || req?.sku || reqId
           if (action === 'wait') {
             await muteOrderReminder({ id: reqId }, approver.name, approver.role)
-            if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `รับทราบค่ะ — จะไม่เตือน "${label}" อีกจนกว่าจะมีของเข้าหรือยกเลิก` }])
+            if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `รับทราบค่ะ — จะไม่เตือน "${label}" อีกจนกว่าจะมีของเข้าหรือยกเลิก`, quickReply: undoQuickReply }])
           } else if (action === 'snooze') {
             await snoozeOrderReminder({ id: reqId, days: 10 }, approver.name, approver.role)
-            if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `โอเคค่ะ จะเตือน "${label}" อีกทีใน 10 วัน` }])
+            if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `โอเคค่ะ จะเตือน "${label}" อีกทีใน 10 วัน`, quickReply: undoQuickReply }])
           } else {
             await cancelOrderRequest({ id: reqId }, approver.name, approver.role)
-            if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ยกเลิกรายการ "${label}" แล้วค่ะ` }])
+            if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ยกเลิกรายการ "${label}" แล้วค่ะ`, quickReply: undoQuickReply }])
           }
+        } catch (e) {
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
+        }
+        continue
+      }
+      if (data.startsWith('order-remind-undo:')) {
+        const approver = lineUserId ? await findStockApprover(lineUserId) : null
+        if (!approver) {
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นที่ทำรายการนี้ได้ค่ะ' }])
+          continue
+        }
+        const reqId = data.slice('order-remind-undo:'.length).trim()
+        try {
+          const req = await getStockInRequestById(reqId)
+          const items = await loadOrderableItems()
+          const label = items.find((it) => String(it.sku).toUpperCase() === String(req?.sku).toUpperCase())?.display_name || req?.sku || reqId
+          await undoOverdueOrderAction({ id: reqId }, approver.name, approver.role)
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ย้อนกลับ "${label}" แล้วค่ะ — กลับไปรอของเข้าเหมือนเดิม` }])
         } catch (e) {
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
         }

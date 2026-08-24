@@ -499,6 +499,32 @@ export async function cancelOrderRequest(body, actorName, role) {
   return requests[idx]
 }
 
+// ย้อนกลับปุ่มใดปุ่มหนึ่งใน 3 ปุ่มข้างบนที่กดพลาด (owner ขอ 2026-08-24 หลังกังวลว่ากดผิดตอนมองไม่เห็นชัด
+// เพราะปุ่มเดิมตัวอักษรถูกตัด) — รีเซ็ตกลับสภาพเดิมทั้งหมดทีเดียว ไม่ต้องรู้ว่าเพิ่งกดปุ่มไหนไป: cancelled
+// กลับเป็น pending, ปลด mute, ล้างวันเลื่อนเตือน — ปุ่มนี้แปะติดในข้อความยืนยันทันทีหลังกด ใช้ได้แค่ช่วงสั้นๆ
+// หลังกด (ไม่ต้องเข้าเมนูอื่น)
+export async function undoOverdueOrderAction(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ทำรายการนี้ได้')
+  const id = String(body.id || '').trim()
+  if (!id) throw new Error('ต้องระบุ id')
+  await ensureInventorySheets()
+  const requests = await getSheet(STOCK_IN_REQUESTS_SHEET)
+  const idx = requests.findIndex((r) => String(r.id) === id)
+  if (idx === -1) throw new Error('ไม่พบคำขอนี้')
+  const wasCancelled = requests[idx].status === 'cancelled'
+  requests[idx] = {
+    ...requests[idx],
+    status: wasCancelled ? 'pending' : requests[idx].status,
+    matched_by: wasCancelled ? '' : requests[idx].matched_by,
+    matched_at: wasCancelled ? '' : requests[idx].matched_at,
+    reject_reason: wasCancelled ? '' : requests[idx].reject_reason,
+    reminder_muted: '',
+    next_reminder_at: '',
+  }
+  await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
+  return requests[idx]
+}
+
 // ลบทิ้งจริง (ไม่ใช่ append-only แบบ stock_movements) — เฉพาะแถวที่ถูกปฏิเสธแล้วเท่านั้น
 // เพราะเป็นแค่คำขอที่ยังไม่กระทบยอดคงเหลือเลย (pending/matched ห้ามลบ กันหลักฐานหาย)
 async function deleteStockInRequest(body, actorName, role) {
