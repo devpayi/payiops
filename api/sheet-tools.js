@@ -11,7 +11,7 @@ import {
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides, LEGACY_OVERRIDE_EXEMPT_CODES } from './_lib/scheduleOverrides.js'
 import { isoDate } from './_lib/dates.js'
-import opInventory, { computeLowStockList, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
+import opInventory, { computeLowStockList, computeOverdueOrders, muteOrderReminder, snoozeOrderReminder, cancelOrderRequest, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
 import opImportTracking from './_lib/importTracking.js'
 import opCfo from './_lib/cfo.js'
 import opDemographic from './_lib/demographic.js'
@@ -446,6 +446,42 @@ function lowStockFallbackMessage(items) {
   }
 }
 
+// เตือน "สั่งของ" ที่ค้างนานเกิน ORDER_REMINDER_DAYS วันไม่มีของเข้า (owner ขอ 2026-08-12, ย่อให้สั้น
+// 2026-08-24: ค้างหลาย SKU พร้อมกันแล้วรก — ตัด header/footer แยกออก เหลือกล่องเดียวบรรทัดเดียว + ปุ่ม
+// แถวเดียวแนวนอน สั้นกว่าเดิมมาก ไม่มีวันหมดอายุ/ประมวลผลช้าเพิ่ม (ยังเป็นข้อความเดียวส่งเหมือนเดิม)
+function overdueOrderReminderMessage(o) {
+  const qtyText = o.qty > 0 ? `× ${o.qty}${o.unit}` : 'ไม่ระบุจำนวน'
+  return {
+    type: 'flex', altText: `สั่ง "${o.display_name}" ค้างนาน ยังไม่มีของเข้า`,
+    contents: {
+      type: 'bubble', size: 'micro',
+      body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'sm', backgroundColor: ORDER_CARD.soft, contents: [
+        orderFlexText(`⏰ ${o.display_name} ${qtyText}`, { size: 'xs', weight: 'bold', wrap: true }),
+        orderFlexText(`สั่งไว้ ${o.order_date}`, { size: 'xxs', color: ORDER_CARD.muted }),
+        { type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'sm', contents: [
+          { type: 'button', style: 'primary', color: '#E0A324', height: 'sm', flex: 1, action: { type: 'postback', label: 'เลื่อน', data: `order-remind-snooze:${o.id}`, displayText: `เลื่อนเตือน 10 วัน - ${o.display_name}` } },
+          { type: 'button', style: 'primary', color: '#C0392B', height: 'sm', flex: 1, action: { type: 'postback', label: 'ยกเลิก', data: `order-remind-cancel:${o.id}`, displayText: `ยกเลิก - ${o.display_name}` } },
+          { type: 'button', style: 'secondary', height: 'sm', flex: 1, action: { type: 'postback', label: 'รอต่อ', data: `order-remind-wait:${o.id}`, displayText: `รอต่อ - ${o.display_name}` } },
+        ] },
+      ] },
+    },
+  }
+}
+
+// fallback ถ้าการ์ด flex ข้างบนส่งไม่ผ่าน — ข้อความ+ปุ่ม (ไม่มีสี แต่ยังกดทำงานได้ครบ 3 ตัวเลือกเหมือนกัน)
+function overdueOrderReminderFallback(o) {
+  const qtyText = o.qty > 0 ? `× ${o.qty}${o.unit}` : 'ไม่ระบุจำนวน'
+  return {
+    type: 'text',
+    text: `⏰ สั่ง "${o.display_name}" ${qtyText} ไว้ตั้งแต่ ${o.order_date} ยังไม่มีของเข้าเลยค่ะ — จะเอายังไงต่อดีคะ?`,
+    quickReply: { items: [
+      { type: 'action', action: { type: 'postback', label: 'เลื่อนเตือน 10 วัน', data: `order-remind-snooze:${o.id}`, displayText: `เลื่อนเตือน 10 วัน - ${o.display_name}` } },
+      { type: 'action', action: { type: 'postback', label: 'ยกเลิก', data: `order-remind-cancel:${o.id}`, displayText: `ยกเลิก - ${o.display_name}` } },
+      { type: 'action', action: { type: 'postback', label: 'รอต่อ ไม่ต้องเตือน', data: `order-remind-wait:${o.id}`, displayText: `รอต่อ - ${o.display_name}` } },
+    ] },
+  }
+}
+
 // คำสั่ง "เช็คของที่ต้องสั่ง" — ให้บอส/dev เรียกดูรายการของใกล้หมด/หมด ณ ตอนนี้ได้ทันทีทุกเมื่อ ไม่ต้องรอ
 // การ์ดแจ้งเตือนรายวันจาก cron (opLowStockCron ด้านล่าง) ใช้ตัวกรอง/สูตรชุดเดียวกันเป๊ะ (computeLowStockList)
 // รวมถึงกันไม่โชว์ของที่สั่งไปแล้วรอของเข้าอยู่ (loadOpenOrderSkus ใน _lib/inventory.js) ให้ตอบตรงกับสิ่งที่
@@ -494,18 +530,16 @@ async function opLowStockCron(req, res) {
       if (runs.some((r) => r.date === today)) return res.status(200).json({ success: true, skipped: 'already sent today' })
     }
 
-    const lowItems = await computeLowStockList()
-    if (dryRun) return res.status(200).json({ success: true, dryRun: true, item_count: lowItems.length, items: lowItems })
-
-    if (!lowItems.length) {
-      await appendRows(STOCK_ALERT_RUNS_SHEET, [[today, new Date().toISOString(), 0]])
-      return res.status(200).json({ success: true, item_count: 0 })
-    }
+    const [lowItems, overdueOrders] = await Promise.all([computeLowStockList(), computeOverdueOrders()])
+    if (dryRun) return res.status(200).json({ success: true, dryRun: true, item_count: lowItems.length, items: lowItems, overdue_count: overdueOrders.length, overdue: overdueOrders })
 
     const targets = await getStockLineTargets()
-    if (targets.length) await Promise.all(targets.map((t) => pushMessageWithFallback(t.line_user_id, [lowStockFlexMessage(lowItems)], [lowStockFallbackMessage(lowItems)])))
+    if (targets.length) {
+      if (lowItems.length) await Promise.all(targets.map((t) => pushMessageWithFallback(t.line_user_id, [lowStockFlexMessage(lowItems)], [lowStockFallbackMessage(lowItems)])))
+      if (overdueOrders.length) await Promise.all(targets.map((t) => Promise.all(overdueOrders.map((o) => pushMessageWithFallback(t.line_user_id, [overdueOrderReminderMessage(o)], [overdueOrderReminderFallback(o)])))))
+    }
     await appendRows(STOCK_ALERT_RUNS_SHEET, [[today, new Date().toISOString(), lowItems.length]])
-    return res.status(200).json({ success: true, item_count: lowItems.length, notified: targets.length })
+    return res.status(200).json({ success: true, item_count: lowItems.length, overdue_count: overdueOrders.length, notified: targets.length })
   } catch (e) {
     console.error('opLowStockCron:', e.message)
     return res.status(500).json({ success: false, error: e.message })
@@ -3619,6 +3653,33 @@ async function opLineWebhook(req, res) {
           const reverted = await undoStockInDecision({ id }, approver.name, approver.role)
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ย้อนกลับ "${label}" แล้ว โดย ${approver.name} — กลับไปรอ approve/ปฏิเสธใหม่ค่ะ` }])
           await announceStockInResultToGroup(`↩️ ${approver.name} ย้อนกลับรายการ "${label}" (${before?.status === 'matched' ? 'เคย Approve' : 'เคยปฏิเสธ'})`)
+        } catch (e) {
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
+        }
+        continue
+      }
+      // 3 ปุ่มตอบการ์ดเตือน "สั่งของค้างนาน" (opLowStockCron -> overdueOrderReminderMessage)
+      if (data.startsWith('order-remind-wait:') || data.startsWith('order-remind-snooze:') || data.startsWith('order-remind-cancel:')) {
+        const approver = lineUserId ? await findStockApprover(lineUserId) : null
+        if (!approver) {
+          if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นที่ทำรายการนี้ได้ค่ะ' }])
+          continue
+        }
+        const [, action, reqId] = data.match(/^order-remind-(wait|snooze|cancel):(.+)$/) || []
+        try {
+          const req = await getStockInRequestById(reqId)
+          const items = await loadOrderableItems()
+          const label = items.find((it) => String(it.sku).toUpperCase() === String(req?.sku).toUpperCase())?.display_name || req?.sku || reqId
+          if (action === 'wait') {
+            await muteOrderReminder({ id: reqId }, approver.name, approver.role)
+            if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `รับทราบค่ะ — จะไม่เตือน "${label}" อีกจนกว่าจะมีของเข้าหรือยกเลิก` }])
+          } else if (action === 'snooze') {
+            await snoozeOrderReminder({ id: reqId, days: 10 }, approver.name, approver.role)
+            if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `โอเคค่ะ จะเตือน "${label}" อีกทีใน 10 วัน` }])
+          } else {
+            await cancelOrderRequest({ id: reqId }, approver.name, approver.role)
+            if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ยกเลิกรายการ "${label}" แล้วค่ะ` }])
+          }
         } catch (e) {
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
         }

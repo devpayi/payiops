@@ -48,8 +48,18 @@ const PACKAGING_RECIPES_HEADERS = ['packaging_sku', 'product_sku', 'qty_per_unit
 const STOCK_IN_REQUESTS_SHEET = 'stock_in_requests'
 // linked_order_id: ต่อท้ายล่าสุด — ผูกแถว "แจ้งของเข้า" (มี arrival_date) เข้ากับแถว "สั่งของ"
 // (order_only) ที่ boss เลือก match ด้วยตอนกดยืนยัน ใช้ตรวจสอบย้อนหลังว่าของล็อตนี้คือของที่สั่งลอตไหน
-const STOCK_IN_REQUESTS_HEADERS = ['id', 'sku', 'arrival_date', 'count_date', 'qty', 'note', 'status', 'created_by', 'created_at', 'matched_by', 'matched_at', 'movement_id', 'reject_reason', 'linked_order_id', 'order_date']
-const STOCK_IN_STATUSES = new Set(['pending', 'matched', 'rejected'])
+// next_reminder_at/reminder_muted: ต่อท้ายล่าสุด — เตือน "สั่งของ" (order_only) ที่ค้างนานไม่มีของเข้า
+// (owner ขอ 2026-08-12: สั่งไปแล้ว 15 วันไม่มีของเข้า อยากให้เด้งถามว่า "รอต่อ/เตือนอีกที 10 วัน/ยกเลิก"
+// ป้องกันเคสลอตค้างเงียบๆ แบบ PY043 ที่เจอมาก่อน) next_reminder_at ว่าง = ยังไม่เคยตั้ง คำนวณ due date
+// สดจาก order_date/created_at + 15 วันแทน (ดู computeOverdueOrders) — ตั้งจริงเฉพาะตอน snooze/mute
+const STOCK_IN_REQUESTS_HEADERS = ['id', 'sku', 'arrival_date', 'count_date', 'qty', 'note', 'status', 'created_by', 'created_at', 'matched_by', 'matched_at', 'movement_id', 'reject_reason', 'linked_order_id', 'order_date', 'next_reminder_at', 'reminder_muted']
+const STOCK_IN_STATUSES = new Set(['pending', 'matched', 'rejected', 'done', 'cancelled'])
+const ORDER_REMINDER_DAYS = 15
+const addDaysIso = (iso, days) => {
+  const d = new Date((iso || todayBKK()) + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
 export const isPackagingItem = (item) => item.category === 'packaging' || /^(PKG-|BOXMJ-|BOXP-)/i.test(String(item.sku || ''))
 
 let ensurePromise
@@ -222,6 +232,26 @@ export async function computeLowStockList() {
     lowItems.push({ sku: it.sku, display_name: it.display_name, unit: it.unit, balance: it.balance, effectiveSafety, effectiveStatus, recommendedOrder })
   }
   return lowItems
+}
+
+// รายการ "สั่งของ" (order_only) ที่ค้างนานเกิน ORDER_REMINDER_DAYS วันไม่มีของเข้า — ให้ boss/dev เลือกว่า
+// จะรอต่อ (เงียบตลอดไป)/เตือนอีกทีอีก 10 วัน/ยกเลิก (owner ขอ 2026-08-12 คู่กับ cron ของใกล้หมดรายวันเดิม —
+// piggyback cron เดียวกัน ไม่เพิ่ม endpoint ใหม่ ติด cap 12 ฟังก์ชันของ Vercel Hobby)
+export async function computeOverdueOrders() {
+  await ensureInventorySheets()
+  const [requests, items] = await Promise.all([getSheet(STOCK_IN_REQUESTS_SHEET), getSheet(ITEMS_SHEET)])
+  const nameBySku = new Map(items.map((it) => [String(it.sku), { display_name: it.display_name, unit: it.unit }]))
+  const today = todayBKK()
+  const out = []
+  for (const r of requests) {
+    if (r.status !== 'pending' || isoDate(r.arrival_date)) continue // เฉพาะ order_only ที่ยังไม่มีของเข้า
+    if (String(r.reminder_muted) === '1') continue
+    const dueDate = r.next_reminder_at || addDaysIso(r.order_date || isoDate(r.created_at), ORDER_REMINDER_DAYS)
+    if (dueDate > today) continue
+    const meta = nameBySku.get(String(r.sku)) || {}
+    out.push({ id: r.id, sku: r.sku, display_name: meta.display_name || r.sku, unit: meta.unit || '', qty: num(r.qty), order_date: r.order_date || isoDate(r.created_at), created_by: r.created_by || '' })
+  }
+  return out
 }
 
 async function loadMovements({ type, q, from, to }) {
@@ -421,6 +451,50 @@ async function finishOrderRequest(body, actorName, role) {
 
   const now = new Date().toISOString()
   requests[idx] = { ...requests[idx], status: 'done', matched_by: actorName || '', matched_at: now }
+  await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
+  return requests[idx]
+}
+
+// 3 ปุ่มตอบการ์ดเตือน "สั่งของค้างนาน" (computeOverdueOrders) — ทั้ง 3 แก้แค่ order-only row เดียวกัน
+// ไม่แตะ stock_movements เลย (ไม่มีของเข้าจริง ยังไงก็ไม่กระทบยอดคงเหลือ)
+async function findOverdueOrderIdx(requests, id) {
+  const idx = requests.findIndex((r) => String(r.id) === String(id))
+  if (idx === -1) throw new Error('ไม่พบคำขอนี้')
+  if (requests[idx].status !== 'pending' || requests[idx].arrival_date) throw new Error('รายการนี้ไม่ใช่ของเข้ารอ (อาจมีของเข้ามาแล้ว)')
+  return idx
+}
+
+// "รอต่อ ไม่ต้องเตือน" — เงียบตลอดไป (ไม่ตั้งวันเตือนใหม่ ไม่ปิดรายการ ยังค้างสถานะ pending รอของจริง)
+export async function muteOrderReminder(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ทำรายการนี้ได้')
+  await ensureInventorySheets()
+  const requests = await getSheet(STOCK_IN_REQUESTS_SHEET)
+  const idx = await findOverdueOrderIdx(requests, body.id)
+  requests[idx] = { ...requests[idx], reminder_muted: '1' }
+  await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
+  return requests[idx]
+}
+
+// "เตือนอีกที N วัน" — เลื่อนวันเตือนถัดไป ไม่เปลี่ยนอย่างอื่น
+export async function snoozeOrderReminder(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ทำรายการนี้ได้')
+  const days = Number(body.days) || 10
+  await ensureInventorySheets()
+  const requests = await getSheet(STOCK_IN_REQUESTS_SHEET)
+  const idx = await findOverdueOrderIdx(requests, body.id)
+  requests[idx] = { ...requests[idx], next_reminder_at: addDaysIso(todayBKK(), days) }
+  await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
+  return requests[idx]
+}
+
+// "ยกเลิก" — เปลี่ยนร้าน/ไม่รอของล็อตนี้แล้ว ปิดสถานะจริง (ต่างจาก finishOrderRequest ที่แปลว่าของมาครบแล้ว)
+export async function cancelOrderRequest(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ทำรายการนี้ได้')
+  await ensureInventorySheets()
+  const requests = await getSheet(STOCK_IN_REQUESTS_SHEET)
+  const idx = await findOverdueOrderIdx(requests, body.id)
+  const now = new Date().toISOString()
+  requests[idx] = { ...requests[idx], status: 'cancelled', matched_by: actorName || '', matched_at: now, reject_reason: body.note || 'ยกเลิก ไม่รอของล็อตนี้แล้ว' }
   await overwriteSheet(STOCK_IN_REQUESTS_SHEET, STOCK_IN_REQUESTS_HEADERS, requests.map((r) => STOCK_IN_REQUESTS_HEADERS.map((h) => r[h] ?? '')))
   return requests[idx]
 }
