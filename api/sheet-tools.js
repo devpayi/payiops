@@ -449,12 +449,14 @@ function lowStockFallbackMessage(items) {
 // เตือน "สั่งของ" ที่ค้างนานเกิน ORDER_REMINDER_DAYS วันไม่มีของเข้า (owner ขอ 2026-08-12, ย่อให้สั้น
 // 2026-08-24: ค้างหลาย SKU พร้อมกันแล้วรก — ตัด header/footer แยกออก เหลือกล่องเดียวบรรทัดเดียว + ปุ่ม
 // แถวเดียวแนวนอน สั้นกว่าเดิมมาก ไม่มีวันหมดอายุ/ประมวลผลช้าเพิ่ม (ยังเป็นข้อความเดียวส่งเหมือนเดิม)
+// bubble size 'micro' (2026-08-24 v1) แคบเกินไป — ทดสอบจริงแล้วปุ่ม 3 อันในแถวเดียวถูกตัดข้อความเหลือ
+// ตัวอักษรเดียว ("เ."/"ย."/"ร.") อ่านแยกไม่ออก เปลี่ยนเป็น 'kilo' ให้ปุ่มมีที่พอ ยังไม่มี header/footer เหมือนเดิม
 function overdueOrderReminderMessage(o) {
   const qtyText = o.qty > 0 ? `× ${o.qty}${o.unit}` : 'ไม่ระบุจำนวน'
   return {
     type: 'flex', altText: `สั่ง "${o.display_name}" ค้างนาน ยังไม่มีของเข้า`,
     contents: {
-      type: 'bubble', size: 'micro',
+      type: 'bubble', size: 'kilo',
       body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'sm', backgroundColor: ORDER_CARD.soft, contents: [
         orderFlexText(`⏰ ${o.display_name} ${qtyText}`, { size: 'xs', weight: 'bold', wrap: true }),
         orderFlexText(`สั่งไว้ ${o.order_date}`, { size: 'xxs', color: ORDER_CARD.muted }),
