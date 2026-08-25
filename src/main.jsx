@@ -4,7 +4,6 @@ import './theme.css'
 import App from './App.jsx'
 import Login from './pages/Login.jsx'
 
-const ManagerClaimsPrototype = lazy(() => import('./pages/ManagerClaimsPrototype.jsx'))
 const WorkforceOTPreview = lazy(() => import('./pages/WorkforceOT.jsx'))
 const HRMobile = lazy(() => import('./pages/HRMobile.jsx'))
 
@@ -39,8 +38,7 @@ window.fetch = async (input, init = {}) => {
   return res
 }
 
-// PROTOTYPE switch: เปิด /?manager เพื่อดูโหมดผู้จัดการ (มือถือ) โดยไม่กระทบแอปหลัก
-const showManagerPrototype = new URLSearchParams(window.location.search).has('manager')
+// PROTOTYPE switch
 const showOTPreview = new URLSearchParams(window.location.search).has('ot-preview')
 const showHrMobile = new URLSearchParams(window.location.search).has('hr')
 
@@ -80,11 +78,6 @@ function Root() {
   const needLogin = status.enabled && !(localStorage.getItem(TOKEN_KEY) && user)
   if (needLogin) return <Login firstTime={!status.hasUsers} onLogin={setUser} />
 
-  if (showManagerPrototype) return (
-    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--payi-text-muted)', fontSize: 14 }}>กำลังโหลด...</div>}>
-      <ManagerClaimsPrototype />
-    </Suspense>
-  )
   if (showHrMobile) return (
     <Suspense fallback={<div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--payi-text-muted)', fontSize: 14 }}>กำลังโหลด...</div>}>
       <HRMobile />

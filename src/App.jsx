@@ -9,7 +9,7 @@ import {
   Bell, Search, UserCircle2, ShoppingBag, Package, TrendingUp, Percent,
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
   LayoutDashboard, UploadCloud, Radar, Megaphone, Boxes,
-  ArrowLeftRight, ShieldAlert, BookOpen, Link2,
+  ArrowLeftRight, BookOpen, Link2,
   Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet, MapPin,
 } from 'lucide-react'
 import {
@@ -20,7 +20,6 @@ import {
 const Upload = lazy(() => import('./pages/Upload'))
 const LinksHub = lazy(() => import('./pages/LinksHub'))
 const DevHub = lazy(() => import('./pages/DevHub'))
-const ClaimView = lazy(() => import('./pages/ClaimView'))
 const MonthlyDashboard = lazy(() => import('./pages/MonthlyDashboard'))
 const HR = lazy(() => import('./pages/HR'))
 const ProductDashboard = lazy(() => import('./pages/ProductDashboard'))
@@ -92,7 +91,6 @@ const Icons = {
   CFO: Wallet,
   Demographic: MapPin,
   HR: CalendarCheck,
-  Claims: ShieldAlert,
   SOPs: BookOpen,
   LinksHub: Link2,
   DevHub: Code2,
@@ -102,7 +100,7 @@ const Icons = {
 const KNOWN_TABS = new Set([
   'Home', 'Executive', 'Monthly', 'Products', 'ProductTrends',
   'AdsChannels', 'ContentOS', 'MarketingRadar', 'Inventory',
-  'Import Tracking', 'Stock Movement', 'HR', 'Claims', 'CFO', 'Demographic',
+  'Import Tracking', 'Stock Movement', 'HR', 'CFO', 'Demographic',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings',
 ])
 
@@ -130,8 +128,7 @@ const menuGroups = [
       { id: 'Inventory', label: 'Inventory', renderIcon: Icons.Inventory, dotColor: 'var(--payi-danger)' },
       { id: 'Stock Movement', label: 'Stock Movement', renderIcon: Icons.StockMovement },
       { id: 'Import Tracking', label: 'ติดตามนำเข้า', renderIcon: Icons.ImportTracking, dotColor: '#0ea5e9' },
-      { id: 'HR', label: 'พนักงาน (ลา)', renderIcon: Icons.HR },
-      { id: 'Claims', label: 'Claims', renderIcon: Icons.Claims }
+      { id: 'HR', label: 'พนักงาน (ลา)', renderIcon: Icons.HR }
     ]
   },
   {
@@ -162,10 +159,9 @@ const menuGroups = [
 const MOBILE_TAB_CANDIDATES = [
   { id: 'Executive', label: 'หน้าหลัก', renderIcon: Icons.Executive, group: ['Executive', 'Monthly'] },
   { id: 'Inventory', label: 'สต็อก', renderIcon: Icons.Inventory },
-  { id: 'Claims', label: 'เคลม', renderIcon: Icons.Claims },
 ]
 // ป้ายสั้นสำหรับ role แคบที่โชว์ทุกแท็บตรงๆ บน bottom bar (label เต็มใน menuGroups ยาวเกินจะพอดีปุ่มเล็ก)
-const MOBILE_SHORT_LABELS = { Inventory: 'สต็อก', 'Stock Movement': 'เข้า-ออก', Executive: 'หน้าหลัก', Claims: 'เคลม' }
+const MOBILE_SHORT_LABELS = { Inventory: 'สต็อก', 'Stock Movement': 'เข้า-ออก', Executive: 'หน้าหลัก' }
 // จำนวนแท็บสูงสุดที่ยัดลง bottom bar ได้พอดีโดยไม่ต้องมีปุ่ม "เมนู" เพิ่ม (นิ้วโป้งกดถนัด)
 const MOBILE_TAB_LIMIT = 5
 
@@ -761,11 +757,6 @@ export default function App() {
       title: 'Stock Movement',
       eyebrow: 'Operations Planning',
       subtitle: 'ประวัติรายการรับเข้า-เบิกออกสต็อกทั้งหมด'
-    },
-    Claims: {
-      title: 'Claim View',
-      eyebrow: 'Operations Planning',
-      subtitle: 'วิเคราะห์สถิติจดแจ้งยอดเคลมสินค้า'
     },
     ContentOS: {
       title: 'Content OS Prototype',
@@ -1416,7 +1407,6 @@ export default function App() {
           ['Demographic', <DemographicDashboard />],
           ['Stock Movement', <StockMovement />],
           ['HR', <HR />],
-          ['Claims', <ClaimView />],
           ['Import Orders', <Upload onNavigate={handleNavigate} />],
           ['Links Hub', <LinksHub />],
           ['Dev Hub', <DevHub />],
