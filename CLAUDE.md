@@ -580,6 +580,27 @@ a new one.
      `createOrderRequest`/`editStockInRequest`, shown in the "สั่งไว้ รอของเข้า" list and in
      the FIFO lot picker inside `MatchRequestModal`. Old rows created before this column
      existed show `-` (blank order_date), expected — not backfilled.
+   - ✅ **DONE (undocumented until now, found 2026-08-21) — full LINE bot flow for
+     "สั่งของ" and "แจ้งของเข้า" already exists**, built later than the notes above and
+     never written up here — this whole doc previously said the LINE-based arrival idea
+     was "discussed but not built"; that's stale. Real behavior in `api/sheet-tools.js`
+     (`opLineWebhook`, same bot/webhook as HR leave approval, ~line 299 onward):
+     **"สั่งของ"** — boss/dev only (`findManagerLink` + `notify_stock` checkbox gate) —
+     type "สั่งของ" or tap "สั่ง" on a low-stock alert card, search/pick items (supports
+     multi-line batch like "sky 35-36 = 10"), quantities, pick a date, confirms as a
+     `stock_in_requests` order-only row (mirrors the web `OrderRequestModal`/
+     `createOrderRequest`, same `stock_order_sessions` cart pattern). **"แจ้งของเข้า"** —
+     open to **any** LINE-linked staff (`resolveArrivalReporter`, not gated to boss/dev),
+     mirrors the same cart/search/qty/date flow into `stock_in_sessions`, lands as a
+     pending `stock_in_requests` row via `addStockInRequest` (identical end state to the
+     web "แจ้งของเข้า" button — still requires boss to Match from the web, still
+     blind-count safe: the reporter never sees the ordered qty). A generic
+     "ของเข้ารอตรวจ/รายการที่สั่งไว้/เช็คของ/แก้ไขของเข้า" menu and an approve-from-LINE
+     flow (with FIFO lot matching) exist too. **Practical implication:** ฟ้า does not
+     need any web form to report goods arrival — she already does it via LINE chat today.
+     If Inventory/Stock Movement ever move to a different app (e.g. payi-floor), only the
+     boss-side web "Match" UI needs to exist there — the arrival-reporting step is already
+     covered by LINE and doesn't need porting.
 8. ✅ **REMOVED (2026-07-21)** — "PAYI Brain" AI Assistant tab was fake (canned
    if/else replies, no LLM call). Owner decided to delete rather than keep a
    fake-AI page (`AIAssistantView` function, menu item, icon mapping, ternary branch
@@ -668,6 +689,19 @@ a new one.
       `ManagerClaimsPrototype.jsx` and `HRMobile.jsx` are separate mobile-only routes
       (reached via URL query param, not the sidebar) — already mobile-first by design,
       out of scope for this pass.
+11. **NOT STARTED — LINE claim intake for เกด.** Idea only, agreed 2026-08-21, not built.
+    Real current process: customer sends a claim message (name/address/phone/reason,
+    screenshot from a marketplace chat), staff screenshots it and forwards into an
+    internal LINE group as a record — never enters `claims` sheet automatically. Owner
+    considered a LINE-bot parse flow (like the "สั่งของ"/"แจ้งของเข้า" bot flows already
+    live, see Inventory section) but decided against it — wants a **separate lightweight
+    web page for เกด instead** (own "1 person 1 web" site, not part of payi-floor/แตง's
+    app): a form (product/reason/qty, maybe customer info) that POSTs straight to the
+    existing `create-claim` action and lands in Claims history immediately. Owner
+    explicitly asked to keep this **as light as possible — a single static HTML file, no
+    React/Vite/build step, no new scaffolded project** — just fetch() to mona-ops's
+    existing claim-create endpoint (needs CORS opened for whatever origin hosts it).
+    Deferred — owner said "โน๊ตไว้ก่อน" (note it, don't build yet).
 
 ## Gotchas
 

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<title>PAYI Insights — mockup</title>
+<style>
+  :root{
+    --mint:#2563eb; --mint-strong:#0b63d8; --mint-soft:#eaf3ff;
+    --ink:#0f172a; --muted:#64748b; --line:rgba(148,163,184,.26);
+    --surface:#fff; --surface-muted:#f7fbff;
+    --success:#10b981; --success-bg:#ecfdf3;
+    --danger:#ef4444; --danger-bg:#fef2f2;
+    --amber:#f59e0b; --amber-bg:#fffbeb;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Segoe UI',Inter,system-ui,sans-serif;background:var(--surface-muted);color:var(--ink);}
+  header{background:linear-gradient(135deg,var(--mint),var(--mint-strong));color:#fff;padding:18px 28px;display:flex;align-items:center;justify-content:space-between;}
+  header h1{margin:0;font-size:18px;font-weight:700;}
+  header p{margin:2px 0 0;font-size:12px;opacity:.85;}
+  nav{display:flex;gap:8px;background:#fff;padding:10px 24px;border-bottom:1px solid var(--line);}
+  nav button{border:none;background:transparent;padding:9px 16px;border-radius:10px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;}
+  nav button.active{background:var(--mint-soft);color:var(--mint-strong);}
+  main{padding:24px 28px;max-width:1180px;margin:0 auto;}
+  .page{display:none;}
+  .page.active{display:block;}
+  .banner{background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:12.5px;padding:10px 14px;border-radius:10px;margin-bottom:18px;}
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;}
+  .kpi .label{font-size:12px;color:var(--muted);margin-bottom:6px;}
+  .kpi .value{font-size:24px;font-weight:800;}
+  .kpi .sub{font-size:11px;color:var(--muted);margin-top:4px;}
+  .kpi.warn .value{color:var(--danger);}
+  .kpi.ok .value{color:var(--success);}
+  .row{display:grid;grid-template-columns:1.3fr .9fr;gap:16px;margin-bottom:16px;}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;}
+  .card h3{margin:0 0 12px;font-size:14px;}
+  .card h3 span{font-weight:400;color:var(--muted);font-size:12px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;color:var(--muted);font-weight:600;font-size:11.5px;padding:6px 8px;border-bottom:1px solid var(--line);}
+  td{padding:7px 8px;border-bottom:1px solid #f0f3f8;}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;}
+  input.mock{width:90px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-size:12.5px;text-align:right;}
+  .bars{display:flex;align-items:flex-end;gap:8px;height:140px;padding-top:10px;}
+  .bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
+  .bar{width:100%;border-radius:6px 6px 0 0;background:var(--mint);}
+  .bar.neg{background:var(--danger);}
+  .bar-label{font-size:10.5px;color:var(--muted);}
+  .hbar-row{display:flex;align-items:center;gap:8px;margin-bottom:9px;font-size:12.5px;}
+  .hbar-name{width:96px;flex-shrink:0;color:var(--text);}
+  .hbar-track{flex:1;background:#eef2f7;border-radius:6px;height:16px;overflow:hidden;}
+  .hbar-fill{height:100%;background:var(--mint);border-radius:6px;}
+  .hbar-val{width:44px;text-align:right;color:var(--muted);font-size:11.5px;}
+  .pie-wrap{display:flex;align-items:center;gap:18px;}
+  .legend{font-size:12.5px;}
+  .legend div{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+  .dot{width:10px;height:10px;border-radius:3px;}
+  .add-row{margin-top:10px;font-size:12.5px;color:var(--mint-strong);cursor:pointer;}
+  footer{text-align:center;font-size:11.5px;color:var(--muted);padding:20px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>PAYI Insights <span style="font-weight:400;opacity:.8">(ชื่อชั่วคราว)</span></h1>
+    <p>โปรเจกต์แยก — mockup หน้าตา ยังไม่ต่อข้อมูลจริง</p>
+  </div>
+  <div style="font-size:12px;opacity:.85">mockup local · ไม่มี backend</div>
+</header>
+
+<nav>
+  <button class="active" onclick="showPage('cfo',this)">💰 การเงิน (CFO)</button>
+  <button onclick="showPage('demo',this)">👥 ลูกค้า (Demographic)</button>
+</nav>
+
+<main>
+
+  <!-- ================= CFO PAGE ================= -->
+  <section id="cfo" class="page active">
+    <div class="banner">ตัวเลขในหน้านี้เป็น <b>ข้อมูลตัวอย่าง (dummy)</b> ทั้งหมด — ของจริงพี่กรอกเองผ่านฟอร์มด้านล่าง</div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="label">เงินทุนคงเหลือ</div><div class="value">฿842,000</div><div class="sub">อัปเดตล่าสุด 15 ส.ค.</div></div>
+      <div class="kpi"><div class="label">Fix cost / เดือน</div><div class="value">฿186,500</div><div class="sub">เงินเดือน+ค่าเช่า+อื่นๆ</div></div>
+      <div class="kpi warn"><div class="label">Burn rate เดือนนี้</div><div class="value">-฿41,200</div><div class="sub">รายรับ &lt; fix cost</div></div>
+      <div class="kpi ok"><div class="label">Runway</div><div class="value">20.4 เดือน</div><div class="sub">ถ้าไม่มีงานเข้าเพิ่ม</div></div>
+    </div>
+
+    <div class="row">
+      <div class="card">
+        <h3>เงินทุนคงเหลือรายเดือน <span>(dummy 6 เดือนล่าสุด)</span></h3>
+        <div class="bars" id="cashBars"></div>
+      </div>
+      <div class="card">
+        <h3>Fix cost แยกรายการ <span>กรอกเองได้</span></h3>
+        <table>
+          <thead><tr><th>รายการ</th><th style="text-align:right">บาท/เดือน</th></tr></thead>
+          <tbody id="fixCostTable"></tbody>
+        </table>
+        <div class="add-row">+ เพิ่มรายการ</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>บันทึกเงินทุน <span>snapshot รายเดือน — กรอกเล่นๆ ตามฟีล</span></h3>
+      <table>
+        <thead><tr><th>วันที่</th><th style="text-align:right">เงินทุนคงเหลือ (บาท)</th><th>โน้ต</th></tr></thead>
+        <tbody>
+          <tr><td>2026-08-15</td><td class="num"><input class="mock" value="842,000"></td><td><input class="mock" style="width:220px;text-align:left" placeholder="เช่น หลังจ่ายเงินเดือน"></td></tr>
+          <tr><td>2026-07-15</td><td class="num">790,300</td><td style="color:var(--muted)">-</td></tr>
+          <tr><td>2026-06-15</td><td class="num">855,900</td><td style="color:var(--muted)">-</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= DEMOGRAPHIC PAGE ================= -->
+  <section id="demo" class="page">
+    <div class="banner">รอไฟล์ export จริงตรวจว่ามีคอลัมน์จังหวัดไหม — ตัวเลขด้านล่างเป็น <b>ตัวอย่างล้วนๆ</b> ยังไม่ใช่ของจริง / อายุ-เพศ platform ไม่ให้มาต้องกรอกมือจาก Seller Center</div>
+
+    <div class="row">
+      <div class="card">
+        <h3>ลูกค้าตามจังหวัด <span>Top 10 (dummy)</span></h3>
+        <div id="provinceBars"></div>
+      </div>
+      <div class="card">
+        <h3>เพศ <span>dummy</span></h3>
+        <div class="pie-wrap">
+          <svg width="120" height="120" viewBox="0 0 32 32">
+            <circle r="16" cx="16" cy="16" fill="#eaf3ff"/>
+            <path d="M16 16 L16 0 A16 16 0 0 1 29.8 24 Z" fill="#2563eb"/>
+            <path d="M16 16 L29.8 24 A16 16 0 0 1 4.4 27.7 Z" fill="#93c5fd"/>
+            <path d="M16 16 L4.4 27.7 A16 16 0 0 1 16 0 Z" fill="#dbeafe"/>
+          </svg>
+          <div class="legend">
+            <div><span class="dot" style="background:#2563eb"></span> หญิง 68%</div>
+            <div><span class="dot" style="background:#93c5fd"></span> ชาย 27%</div>
+            <div><span class="dot" style="background:#dbeafe"></span> ไม่ระบุ 5%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>ช่วงอายุ <span>dummy</span></h3>
+      <div class="bars" id="ageBars" style="height:110px"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>PAYI Insights mockup — เปิดเป็นไฟล์ local ยังไม่ deploy</footer>
+
+<script>
+function showPage(id, btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// cash trend bars
+const cash = [{m:'มี.ค.',v:720},{m:'เม.ย.',v:768},{m:'พ.ค.',v:810},{m:'มิ.ย.',v:856},{m:'ก.ค.',v:790},{m:'ส.ค.',v:842}];
+const maxCash = Math.max(...cash.map(c=>c.v));
+document.getElementById('cashBars').innerHTML = cash.map(c=>`
+  <div class="bar-col">
+    <div style="font-size:10.5px;color:var(--muted)">${c.v}k</div>
+    <div class="bar" style="height:${c.v/maxCash*100}px"></div>
+    <div class="bar-label">${c.m}</div>
+  </div>`).join('');
+
+// fix cost table
+const fixcosts = [['เงินเดือนพนักงาน',120000],['ค่าเช่าคลัง/ออฟฟิศ',35000],['ค่าน้ำ/ไฟ/เน็ต',8500],['ค่าระบบ/ซอฟต์แวร์',3000],['อื่นๆ',20000]];
+document.getElementById('fixCostTable').innerHTML = fixcosts.map(([n,v])=>`
+  <tr><td>${n}</td><td class="num">${v.toLocaleString()}</td></tr>`).join('') +
+  `<tr style="font-weight:700"><td>รวม</td><td class="num">${fixcosts.reduce((s,[,v])=>s+v,0).toLocaleString()}</td></tr>`;
+
+// province bars
+const provinces = [['กรุงเทพฯ',312],['นนทบุรี',98],['ปทุมธานี',76],['ชลบุรี',64],['เชียงใหม่',58],['สมุทรปราการ',51],['นครราชสีมา',44],['ขอนแก่น',39],['สงขลา',33],['อื่นๆ',210]];
+const maxP = Math.max(...provinces.map(p=>p[1]));
+document.getElementById('provinceBars').innerHTML = provinces.map(([n,v])=>`
+  <div class="hbar-row">
+    <div class="hbar-name">${n}</div>
+    <div class="hbar-track"><div class="hbar-fill" style="width:${v/maxP*100}%"></div></div>
+    <div class="hbar-val">${v}</div>
+  </div>`).join('');
+
+// age bars
+const ages = [['<20',5],['20-29',34],['30-39',38],['40-49',16],['50+',7]];
+const maxA = Math.max(...ages.map(a=>a[1]));
+document.getElementById('ageBars').innerHTML = ages.map(([n,v])=>`
+  <div class="bar-col">
+    <div style="font-size:10.5px;color:var(--muted)">${v}%</div>
+    <div class="bar" style="height:${v/maxA*90}px"></div>
+    <div class="bar-label">${n}</div>
+  </div>`).join('');
+</script>
+
+</body>
+</html>

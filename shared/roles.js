@@ -11,8 +11,7 @@ export function normalizeRole(role) {
 export const STAFF_TABS = Object.freeze([
   'Executive', 'Monthly',
   'Products', 'ProductTrends',
-  'Planner Control', 'FeedProducts',
-  'Workforce OT', 'Claims',
+  'Claims',
   'Inventory', 'Stock Movement',
 ])
 

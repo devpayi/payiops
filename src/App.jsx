@@ -8,8 +8,8 @@ const getMeUser = () => { try { return JSON.parse(localStorage.getItem('payi-use
 import {
   Bell, Search, UserCircle2, ShoppingBag, Package, TrendingUp, Percent,
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
-  LayoutDashboard, UploadCloud, Radar, Megaphone, CalendarClock, Boxes,
-  ArrowLeftRight, Users, ShieldAlert, BookOpen, Link2,
+  LayoutDashboard, UploadCloud, Radar, Megaphone, Boxes,
+  ArrowLeftRight, ShieldAlert, BookOpen, Link2,
   Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet, MapPin,
 } from 'lucide-react'
 import {
@@ -22,9 +22,6 @@ const LinksHub = lazy(() => import('./pages/LinksHub'))
 const DevHub = lazy(() => import('./pages/DevHub'))
 const ClaimView = lazy(() => import('./pages/ClaimView'))
 const MonthlyDashboard = lazy(() => import('./pages/MonthlyDashboard'))
-const PlannerControl = lazy(() => import('./pages/PlannerControl'))
-const FeedProducts = lazy(() => import('./pages/FeedProducts'))
-const WorkforceOT = lazy(() => import('./pages/WorkforceOT'))
 const HR = lazy(() => import('./pages/HR'))
 const ProductDashboard = lazy(() => import('./pages/ProductDashboard'))
 const ProductTrends = lazy(() => import('./pages/ProductTrends'))
@@ -89,13 +86,11 @@ const Icons = {
   MarketingRadar: Radar,
   AdsChannels: Megaphone,
   ContentOS: Sparkles,
-  PlannerControl: CalendarClock,
   Inventory: Boxes,
   StockMovement: ArrowLeftRight,
   ImportTracking: Ship,
   CFO: Wallet,
   Demographic: MapPin,
-  WorkforceOT: Users,
   HR: CalendarCheck,
   Claims: ShieldAlert,
   SOPs: BookOpen,
@@ -105,9 +100,9 @@ const Icons = {
 }
 
 const KNOWN_TABS = new Set([
-  'Home', 'Executive', 'Monthly', 'FeedProducts', 'Products', 'ProductTrends',
-  'AdsChannels', 'ContentOS', 'MarketingRadar', 'Planner Control', 'Inventory',
-  'Import Tracking', 'Stock Movement', 'Workforce OT', 'HR', 'Claims', 'CFO', 'Demographic',
+  'Home', 'Executive', 'Monthly', 'Products', 'ProductTrends',
+  'AdsChannels', 'ContentOS', 'MarketingRadar', 'Inventory',
+  'Import Tracking', 'Stock Movement', 'HR', 'Claims', 'CFO', 'Demographic',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings',
 ])
 
@@ -135,8 +130,6 @@ const menuGroups = [
       { id: 'Inventory', label: 'Inventory', renderIcon: Icons.Inventory, dotColor: 'var(--payi-danger)' },
       { id: 'Stock Movement', label: 'Stock Movement', renderIcon: Icons.StockMovement },
       { id: 'Import Tracking', label: 'ติดตามนำเข้า', renderIcon: Icons.ImportTracking, dotColor: '#0ea5e9' },
-      { id: 'Planner Control', label: 'Planner Control', renderIcon: Icons.PlannerControl, dotColor: '#8b5cf6', group: ['Planner Control', 'FeedProducts'] },
-      { id: 'Workforce OT', label: 'Manpower & OT', renderIcon: Icons.WorkforceOT, dotColor: '#7dd3fc' },
       { id: 'HR', label: 'พนักงาน (ลา)', renderIcon: Icons.HR },
       { id: 'Claims', label: 'Claims', renderIcon: Icons.Claims }
     ]
@@ -170,7 +163,6 @@ const MOBILE_TAB_CANDIDATES = [
   { id: 'Executive', label: 'หน้าหลัก', renderIcon: Icons.Executive, group: ['Executive', 'Monthly'] },
   { id: 'Inventory', label: 'สต็อก', renderIcon: Icons.Inventory },
   { id: 'Claims', label: 'เคลม', renderIcon: Icons.Claims },
-  { id: 'Planner Control', label: 'แพลน', renderIcon: Icons.PlannerControl, group: ['Planner Control', 'FeedProducts'] },
 ]
 // ป้ายสั้นสำหรับ role แคบที่โชว์ทุกแท็บตรงๆ บน bottom bar (label เต็มใน menuGroups ยาวเกินจะพอดีปุ่มเล็ก)
 const MOBILE_SHORT_LABELS = { Inventory: 'สต็อก', 'Stock Movement': 'เข้า-ออก', Executive: 'หน้าหลัก', Claims: 'เคลม' }
@@ -180,11 +172,9 @@ const MOBILE_TAB_LIMIT = 5
 // แท็บย่อยของ Dashboard ใหญ่ที่ยุบมาจากหลายหน้า (render เดิมของแต่ละหน้ายังอยู่ครบ)
 const SALES_SUBTABS = [['Executive', 'ภาพรวม'], ['Monthly', 'รายเดือน']]
 const PRODUCT_SUBTABS = [['Products', 'ภาพรวมสินค้า'], ['ProductTrends', '% เปลี่ยนแปลง']]
-const PLANNER_SUBTABS = [['Planner Control', 'แพลนฟีด'], ['FeedProducts', 'สินค้าที่ต้องฟีด']]
 const SUB_TABS = {
   Executive: SALES_SUBTABS, Monthly: SALES_SUBTABS,
   Products: PRODUCT_SUBTABS, ProductTrends: PRODUCT_SUBTABS,
-  'Planner Control': PLANNER_SUBTABS, FeedProducts: PLANNER_SUBTABS,
 }
 
 function AlertsSection({ alerts }) {
@@ -613,7 +603,7 @@ export default function App() {
 
   const dashFetchSig = useRef(null)
   useEffect(() => {
-    if (activeTab === 'Executive' || activeTab === 'FeedProducts') {
+    if (activeTab === 'Executive') {
       const sig = JSON.stringify({ business, platform, startDate, endDate })
       if (dashFetchSig.current === sig) return // แค่สลับแท็บกลับมา ข้อมูลเดิมยังใช้ได้ ไม่ต้องโหลดซ้ำ
       dashFetchSig.current = sig
@@ -756,16 +746,6 @@ export default function App() {
       title: 'เรดาร์การตลาด',
       eyebrow: 'Marketing',
       subtitle: 'บันทึกสิ่งที่เปลี่ยน วัดจำนวนชิ้นหลัง 7/30 วัน และส่งงานให้ Boss ตัดสินใจ'
-    },
-    'Planner Control': {
-      title: 'Planner Control',
-      eyebrow: 'Operations Planning',
-      subtitle: 'วางแผนผลิตจาก Stock, ยอดออก, Manpower & OT และความเสี่ยงจาก Claims'
-    },
-    FeedProducts: {
-      title: 'สินค้าที่ต้องฟีด',
-      eyebrow: 'Operations Planning',
-      subtitle: 'จำนวนสินค้าราย SKU สำหรับใช้ประกอบการวางแผนฟีด'
     },
     HR: {
       title: 'พนักงาน (ลา)',
@@ -1425,19 +1405,16 @@ export default function App() {
         {/* แท็บพวกนี้ mount ค้างไว้เมื่อเคยเปิดแล้ว (ซ่อนด้วย CSS แทนการ unmount) กัน fetch ข้อมูลซ้ำทุกครั้งที่กดสลับแท็บไปมา */}
         {[
           ['Monthly', <MonthlyDashboard />],
-          ['FeedProducts', <FeedProducts dashData={dashData} loading={isFetching} error={error} onRetry={fetchDashboard} />],
           ['Products', <ProductDashboard />],
           ['ProductTrends', <ProductTrends />],
           ['AdsChannels', <AdsChannels />],
           ['ContentOS', <ContentOSPrototype />],
           ['MarketingRadar', <MarketingRadar />],
-          ['Planner Control', <PlannerControl onNavigate={setActiveTab} />],
           ['Inventory', <Inventory />],
           ['Import Tracking', <ImportTracking />],
           ['CFO', <CfoDashboard />],
           ['Demographic', <DemographicDashboard />],
           ['Stock Movement', <StockMovement />],
-          ['Workforce OT', <WorkforceOT />],
           ['HR', <HR />],
           ['Claims', <ClaimView />],
           ['Import Orders', <Upload onNavigate={handleNavigate} />],
