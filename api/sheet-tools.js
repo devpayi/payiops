@@ -1376,7 +1376,10 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
     let extra = ''
     let clean = true
     if (suggested) {
-      const diff = (Number(suggested.qty) || 0) - (Number(it.qty) || 0)
+      // diff = ของจริงที่นับได้ (it.qty) - จำนวนที่สั่งไว้ (suggested.qty) — เดิมคำนวณสลับด้าน ทำให้นับได้
+      // เกินสั่งไว้กลับขึ้นว่า "ขาด" (บั๊กจริง 2026-08-27: นับได้ 2153 สั่งไว้ 2000 ควรขึ้น "เกิน 153" แต่ขึ้น
+      // "ขาด 153" แทน) แก้ให้ diff เป็นบวกเมื่อได้ของมากกว่าสั่ง ตรงกับความหมาย เกิน/ขาด จริง
+      const diff = (Number(it.qty) || 0) - (Number(suggested.qty) || 0)
       extra = diff === 0 ? ` · สั่งไว้ ${suggested.qty} ตรงกัน ✅` : diff > 0 ? ` · สั่งไว้ ${suggested.qty} เกิน ${diff} ⚠️` : ` · สั่งไว้ ${suggested.qty} ขาด ${Math.abs(diff)} ⚠️`
       if (diff !== 0 || orders.length > 1) clean = false
       // มีลอตให้เลือกมากกว่า 1 — เตือนไว้ก่อนกด ✓ (ที่กด ✓ แล้วจะเปิดการ์ดเลือกลอตทั้งหมดอยู่แล้ว ดู stockin-approve)
