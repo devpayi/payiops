@@ -19,6 +19,20 @@ async function loadFixCost() {
   return getSheet('cfo_fixcost')
 }
 
+// ค่าแอดส์รายเดือน (รวมทุกธุรกิจ/แพลตฟอร์ม) จาก marketing_inputs — metric='ads' (กรอกมือ, ดูรายละเอียดที่ AdsChannels.jsx)
+async function monthlyAdsSpend() {
+  await ensureSheet('marketing_inputs', ['month', 'business', 'platform', 'metric', 'value', 'updated_at'])
+  const rows = await getSheet('marketing_inputs')
+  const byMonth = new Map()
+  for (const r of rows) {
+    if (String(r.metric || '').trim() !== 'ads') continue
+    const ym = String(r.month || '').slice(0, 7)
+    if (!ym) continue
+    byMonth.set(ym, (byMonth.get(ym) || 0) + num(r.value))
+  }
+  return byMonth
+}
+
 // ยอดขายจริงรายเดือน (ไม่รวมยกเลิก) จาก raw_orders_* — D=date, M=revenue(index 9), N=order_status(index 10)
 async function monthlyRevenue() {
   const meta = await getMetaCached()
@@ -76,7 +90,7 @@ export default async function opCfo(req, res) {
     }
 
     if ((req.query.view || 'summary') === 'summary') {
-      const [capitalRows, fixcostRows, revenueByMonth] = await Promise.all([loadCapital(), loadFixCost(), monthlyRevenue()])
+      const [capitalRows, fixcostRows, revenueByMonth, adsByMonth] = await Promise.all([loadCapital(), loadFixCost(), monthlyRevenue(), monthlyAdsSpend()])
 
       const capitalSorted = [...capitalRows].sort((a, b) => a.date.localeCompare(b.date))
       const latestCapital = capitalSorted.length ? num(capitalSorted[capitalSorted.length - 1].amount) : 0
@@ -88,7 +102,10 @@ export default async function opCfo(req, res) {
       const currentYm = new Date().toISOString().slice(0, 7)
       const closedMonths = months.filter((m) => m < currentYm).slice(-3)
       const avgRevenue = closedMonths.length ? closedMonths.reduce((s, m) => s + revenueByMonth.get(m), 0) / closedMonths.length : 0
-      const burnRate = round2(fixCostMonthly - avgRevenue)
+      // ค่าแอดส์เฉลี่ยจาก marketing_inputs — เดือนที่กรอกมือ (ไม่จำเป็นต้องตรงกับ closedMonths ของยอดขายเป๊ะ เพราะกรอกแยกกัน)
+      const adsMonths = [...adsByMonth.keys()].sort().filter((m) => m < currentYm).slice(-3)
+      const avgAdsSpend = adsMonths.length ? adsMonths.reduce((s, m) => s + adsByMonth.get(m), 0) / adsMonths.length : 0
+      const burnRate = round2(fixCostMonthly + avgAdsSpend - avgRevenue)
       const runwayMonths = latestCapital > 0 && burnRate > 0 ? round2(latestCapital / burnRate) : null
 
       const cashTrend = capitalSorted.slice(-6).map((r) => ({ date: r.date, amount: num(r.amount), note: r.note }))
@@ -99,6 +116,7 @@ export default async function opCfo(req, res) {
         fixCostMonthly,
         fixCostItems: activeFixCost.map((r) => ({ id: r.id, item: r.item, amount: num(r.amount) })),
         avgRevenue: round2(avgRevenue),
+        avgAdsSpend: round2(avgAdsSpend),
         burnRate,
         runwayMonths,
         cashTrend,

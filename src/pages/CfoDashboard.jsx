@@ -86,7 +86,7 @@ export default function CfoDashboard() {
         <div style={kpi({ color: isProfit ? 'var(--payi-success)' : 'var(--payi-danger)' })}>
           <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginBottom: 6 }}>{isProfit ? 'กำไร/เดือน' : 'Burn rate (ขาดทุน)'}</div>
           <div style={{ fontSize: 24, fontWeight: 800 }}>{isProfit ? `+${thb(-data.burnRate)}` : `-${thb(data.burnRate)}`}</div>
-          <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 4 }}>เทียบยอดขายเฉลี่ย 3 เดือน</div>
+          <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 4 }}>fix cost + ค่าแอดส์เฉลี่ย {thb(data.avgAdsSpend)} − ยอดขายเฉลี่ย 3 เดือน</div>
         </div>
         <div style={kpi({ color: !isProfit && data.runwayMonths != null && data.runwayMonths < 6 ? 'var(--payi-danger)' : 'var(--payi-success)' })}>
           <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginBottom: 6 }}>Runway</div>
