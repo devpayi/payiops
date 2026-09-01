@@ -6,8 +6,18 @@ import { requireDev } from './_lib/auth.js'
 import { getSheet, appendRows, batchGetValues, overwriteSheet, getMeta } from './_lib/sheets.js'
 import { isoDate } from './_lib/dates.js'
 import ZIP_TO_PROVINCE from './_lib/zipToProvince.js'
+import { createHash } from 'node:crypto'
 
 const normalize = (s) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+
+// buyer_hash — เก็บ hash ของ username ผู้ซื้อ ไม่เก็บชื่อจริง (ชีตเคย link-public) แค่พอให้จับ
+// "ลูกค้าคนเดิม" ได้ (hash เท่ากัน = คนเดียวกัน ภายในแพลตฟอร์มเดียวกัน). pepper กันเดา rainbow ของ
+// username สั้นๆ — repo เป็น private อยู่แล้ว ไม่ใช่ความลับระดับ secret
+const BUYER_PEPPER = 'payiops-buyer-v1'
+const buyerHash = (name) => {
+  const s = normalize(name)
+  return s ? createHash('sha256').update(BUYER_PEPPER + s).digest('hex').slice(0, 16) : ''
+}
 const num = (v) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0
 // Sheets (USER_ENTERED) auto-converts numeric-looking strings to real numbers — not just
 // plain digit strings (which then risk float64 precision loss past ~16 digits) but also
@@ -19,9 +29,9 @@ const forceText = (v) => { const s = String(v ?? ''); return s ? `'${s}` : s }
 
 // province ต่อท้าย (2026-08) — เพื่อทำ demographic ตามพื้นที่ (payi-insights) แถวเก่าก่อนหน้านี้จะว่างช่องนี้
 // (ไม่ backfill ย้อนหลัง ตามกฎ append-only เดียวกับ claims id/source_file)
-// shipping_option / fulfillment_type ต่อท้าย (2026-09) — วิเคราะห์ % ส่งด่วน/ส่งทันที และประเมิน
-// ความคุ้มของ fulfillment (append-only เดียวกับ province — แถวเก่าก่อนหน้านี้จะว่าง 2 ช่องนี้ ไม่ backfill)
-const RAW_HEADERS = ['order_key', 'order_id', 'order_item_id', 'date', 'platform', 'business', 'sku_platform', 'product_name', 'variation_name', 'master_sku', 'display_name', 'qty', 'revenue', 'order_status', 'imported_at', 'source_file', 'import_id', 'alias_key', 'province', 'shipping_option', 'fulfillment_type']
+// shipping_option / fulfillment_type / buyer_hash ต่อท้าย (2026-09) — วิเคราะห์ % ส่งด่วน/ส่งทันที,
+// ความคุ้มของ fulfillment, และ % ลูกค้าซื้อซ้ำ (append-only เดียวกับ province — แถวเก่าจะว่าง ไม่ backfill)
+const RAW_HEADERS = ['order_key', 'order_id', 'order_item_id', 'date', 'platform', 'business', 'sku_platform', 'product_name', 'variation_name', 'master_sku', 'display_name', 'qty', 'revenue', 'order_status', 'imported_at', 'source_file', 'import_id', 'alias_key', 'province', 'shipping_option', 'fulfillment_type', 'buyer_hash']
 
 function pick(row, keys) {
   const entries = Object.entries(row)
@@ -278,6 +288,9 @@ export default async function handler(req, res) {
       // Lazada: "deliveryType" (STANDARD/EXPRESS/...)  TikTok: "Delivery Option" (การจัดส่งแบบมาตรฐาน/ด่วน)
       const shippingOption = String(pick(row, ['ตัวเลือกการจัดส่ง', 'delivery option', 'deliverytype', 'delivery type', 'shipping option']) || '').trim()
       const fulfillmentType = String(pick(row, ['fulfillment type', 'fulfillmenttype']) || '').trim()
+      // username ผู้ซื้อ — Shopee "ชื่อผู้ใช้ (ผู้ซื้อ)", TikTok "Buyer Username", Lazada "customerName"
+      // (เก็บเป็น hash เท่านั้น ดู buyerHash ด้านบน)
+      const buyerHashVal = buyerHash(pick(row, ['ชื่อผู้ใช้ (ผู้ซื้อ)', 'buyer username', 'customername', 'ชื่อผู้ใช้']))
 
       // ไฟล์ export บางแพลตฟอร์ม (เช่น Shopee) ไม่มีคอลัมน์ item id แยกต่างหาก —
       // ถ้าไม่มี ให้ไล่เลขบรรทัดต่อออเดอร์ กันไม่ให้ order ที่มีหลายสินค้าถูกมองว่าเป็นแถวซ้ำ
@@ -307,7 +320,7 @@ export default async function handler(req, res) {
       if (!byMonth.has(tab)) byMonth.set(tab, [])
       byMonth.get(tab).push({
         orderKey,
-        arr: [orderKey, forceText(orderId), forceText(orderItemId), date, platform, business, forceText(skuPlatform), productName, variation, alias?.master_sku || '', alias?.display_name || productName, qty, revenue, status, importedAt, fileName, importId, aliasKey, province, shippingOption, fulfillmentType],
+        arr: [orderKey, forceText(orderId), forceText(orderItemId), date, platform, business, forceText(skuPlatform), productName, variation, alias?.master_sku || '', alias?.display_name || productName, qty, revenue, status, importedAt, fileName, importId, aliasKey, province, shippingOption, fulfillmentType, buyerHashVal],
       })
     }
 

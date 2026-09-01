@@ -26,6 +26,8 @@ const RELEVANT_HEADER_HINTS = [
   // TikTok "Delivery Option" + "Fulfillment Type" (เพื่อวิเคราะห์ % ส่งด่วน + คุ้ม fulfillment ไหม)
   'ตัวเลือกการจัดส่ง', 'delivery option', 'deliverytype', 'delivery type', 'shipping option',
   'fulfillment type', 'fulfillmenttype',
+  // username ผู้ซื้อ — คำนวณ % ลูกค้าซื้อซ้ำ (เก็บเป็น hash เท่านั้น ดู buyerHash ใน import-orders.js)
+  'ชื่อผู้ใช้ (ผู้ซื้อ)', 'ชื่อผู้ใช้', 'buyer username', 'customername',
 ]
 const normalizeHeader = (s) => String(s || '').trim().toLowerCase()
 

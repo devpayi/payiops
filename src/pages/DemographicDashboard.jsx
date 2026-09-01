@@ -30,6 +30,7 @@ export default function DemographicDashboard() {
   const shipMax = Math.max(1, ...shopeeShipping.map((s) => s.orders))
   const shipPct = (n) => (shopeeWithOption ? Math.round((n / shopeeWithOption) * 1000) / 10 : 0)
   const byProduct = data.shopeeShippingByProduct || []
+  const repeat = data.repeatByPlatform || []
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -73,6 +74,27 @@ export default function DemographicDashboard() {
               </div>
               <div style={{ width: 130, textAlign: 'right', color: 'var(--payi-text-muted)', fontSize: 11.5 }}>
                 {g.fastPct}% ด่วน ({g.fast}/{g.orders})
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {repeat.length > 0 && (
+        <div style={card}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>ลูกค้าซื้อซ้ำ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>แยกตามแพลตฟอร์ม</span></h3>
+          <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
+            นับราย order — จับคนเดิมจาก username (เก็บเป็น hash ไม่เก็บชื่อจริง) ข้ามแพลตฟอร์มจับไม่ได้ เก็บตั้งแต่ 2026-09
+          </div>
+          {repeat.map((rp) => (
+            <div key={rp.platform} style={{ marginBottom: 12, fontSize: 12.5 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontWeight: 600 }}>{rp.platform}</span>
+                <span style={{ color: 'var(--payi-text-muted)', fontSize: 11.5 }}>ครอบคลุม {rp.coveragePct}% ของออเดอร์</span>
+              </div>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <span>ออเดอร์ซ้ำ <b style={{ color: '#c2410c' }}>{rp.repeatOrderPct}%</b> <span style={{ color: 'var(--payi-text-muted)', fontSize: 11 }}>({rp.repeatOrders.toLocaleString()}/{rp.ordersWithBuyer.toLocaleString()})</span></span>
+                <span>ลูกค้าที่กลับมาซื้อ <b style={{ color: '#c2410c' }}>{rp.repeatBuyerPct}%</b> <span style={{ color: 'var(--payi-text-muted)', fontSize: 11 }}>({rp.repeatBuyers.toLocaleString()}/{rp.buyers.toLocaleString()} คน)</span></span>
               </div>
             </div>
           ))}
