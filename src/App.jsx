@@ -915,6 +915,7 @@ export default function App() {
                 placeholder="ค้นหา SKU หรือแคมเปญ"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
+                autoComplete="off"
                 style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: 13, color: 'var(--payi-surface-dark)', background: 'transparent' }}
               />
             </div>

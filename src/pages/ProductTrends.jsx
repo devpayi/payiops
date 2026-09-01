@@ -103,7 +103,7 @@ export default function ProductTrends() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 220, background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 8, padding: '8px 12px' }}>
           <Search size={15} color="var(--payi-text-muted)" />
-          <input placeholder="ค้นหาสินค้า / SKU" value={search} onChange={(e) => setSearch(e.target.value)}
+          <input placeholder="ค้นหาสินค้า / SKU" value={search} onChange={(e) => setSearch(e.target.value)} autoComplete="off"
             style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--payi-text-strong)' }} />
         </div>
       </div>
