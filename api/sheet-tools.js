@@ -2,7 +2,7 @@
 // รวม 4 endpoint เครื่องมือชีตเดิม (/api/summary /api/sheet /api/append /api/overwrite)
 // เป็นฟังก์ชันเดียว — Vercel Hobby จำกัด 12 serverless functions ต่อโปรเจค
 import { requireAuth, cacheable, authEnabled } from './_lib/auth.js'
-import { canManageOperations, canManageFinance, canManageMarketing, normalizeRole } from '../shared/roles.js'
+import { canManageOperations, normalizeRole } from '../shared/roles.js'
 import { getMetaCached, batchGetValues, getSheet, appendRows, appendRowsVerified, overwriteSheet, ensureSheet, ensureSheets } from './_lib/sheets.js'
 import { verifySignature, pushMessage, pushMessageWithFallback, replyMessage, linkRichMenuToUser } from './_lib/line.js'
 import {
@@ -3745,21 +3745,26 @@ export default async function handler(req, res) {
   if (op === 'inventory' && req.query.cron === 'low-stock') return opLowStockCron(req, res)
   if (op === 'workforce' && req.query.cron === 'holiday-reminder') return opHolidayReminderCron(req, res)
   if (!requireAuth(req, res)) return
-  // CFO gated by canManageFinance (dev/boss/finance) instead of canManageOperations —
-  // finance role (พี่หยก/พี่แต้ว) ไม่ควรได้สิทธิ์ Inventory/HR/OT ไปด้วยจากการเปิด op นี้
+  // CFO / Demographic / Import Tracking — เปิดให้เฉพาะ DEV เท่านั้น (owner ขอ 2026-09-01)
+  // role อื่นเห็นแท็บได้แต่หน้าเป็น placeholder (ดู DevOnlyLock ใน App.jsx) — endpoint ปิดตายด้วย
+  // pair กับ authEnabled() เสมอ: local dev ไม่มี AUTH_SECRET → req.user undefined → ข้ามเช็ค
   if (op === 'cfo') {
-    if (authEnabled() && !canManageFinance(req.user?.role)) {
+    if (authEnabled() && normalizeRole(req.user?.role) !== 'dev') {
       return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงส่วนนี้' })
     }
     return opCfo(req, res)
   }
-  // Demographic (จังหวัดลูกค้า) gated by canManageMarketing (dev/boss/marketing) — ข้อมูลลูกค้า
-  // เชิงการตลาด ไม่ใช่ operations ทั่วไป
   if (op === 'demographic') {
-    if (authEnabled() && !canManageMarketing(req.user?.role)) {
+    if (authEnabled() && normalizeRole(req.user?.role) !== 'dev') {
       return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงส่วนนี้' })
     }
     return opDemographic(req, res)
+  }
+  if (op === 'import-tracking') {
+    if (authEnabled() && normalizeRole(req.user?.role) !== 'dev') {
+      return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงส่วนนี้' })
+    }
+    return opImportTracking(req, res)
   }
   // Staff only needs the data behind its operational areas (now includes
   // inventory, per owner request to open Inventory/Stock Movement to staff).
@@ -3775,6 +3780,5 @@ export default async function handler(req, res) {
   if (op === 'planner') return opPlanner(req, res)
   if (op === 'hr') return opHr(req, res)
   if (op === 'inventory') return opInventory(req, res)
-  if (op === 'import-tracking') return opImportTracking(req, res)
   return res.status(400).json({ error: 'ต้องระบุ ?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|cfo|demographic|line-webhook' })
 }

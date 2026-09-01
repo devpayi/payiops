@@ -424,10 +424,24 @@ function ProductInsightDrawer({ isOpen, onClose, selectedSku }) {
   );
 }
 
+// หน้าที่เปิดให้เฉพาะ DEV — role อื่นเห็นเป็นหน้า "กำลังจัดเตรียม" เหมือนโมดูลที่ยังไม่เปิด
+// (จงใจให้หน้าตาเหมือน placeholder ทั่วไป ไม่บอกว่ามีข้อมูลจริงอยู่ข้างใน)
+function DevOnlyLock({ label }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--payi-text-faint)' }}>
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 16, color: 'var(--payi-line)' }}>
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      </svg>
+      <div style={{ fontSize: '15px', fontWeight: '500', color: 'var(--payi-text)' }}>โมดูล {label} กำลังจัดเตรียมโครงสร้างคลังข้อมูล</div>
+    </div>
+  )
+}
+
 export default function App() {
   const currentRole = (() => {
     try { return normalizeRole(JSON.parse(localStorage.getItem('payi-user') || 'null')?.role || 'dev') } catch { return 'dev' }
   })()
+  const isDev = currentRole === 'dev'
   const visibleMenuGroups = menuGroups
     .map((group) => ({ ...group, items: group.items.filter((item) => canAccessTab(currentRole, item.id)) }))
     .filter((group) => group.items.length > 0)
@@ -1403,9 +1417,9 @@ export default function App() {
           ['ContentOS', <ContentOSPrototype />],
           ['MarketingRadar', <MarketingRadar />],
           ['Inventory', <Inventory />],
-          ['Import Tracking', <ImportTracking />],
-          ['CFO', <CfoDashboard />],
-          ['Demographic', <DemographicDashboard />],
+          ['Import Tracking', isDev ? <ImportTracking /> : <DevOnlyLock label="ติดตามนำเข้า" />],
+          ['CFO', isDev ? <CfoDashboard /> : <DevOnlyLock label="CFO Dashboard" />],
+          ['Demographic', isDev ? <DemographicDashboard /> : <DevOnlyLock label="เดโมกราฟฟิกลูกค้า" />],
           ['Stock Movement', <StockMovement />],
           ['HR', <HR />],
           ['Import Orders', <Upload onNavigate={handleNavigate} />],
