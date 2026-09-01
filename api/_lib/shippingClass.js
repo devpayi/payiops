@@ -15,6 +15,15 @@ const isShopee = (platform = '') => String(platform).trim().toLowerCase().includ
 // — เก็บไว้เพื่อแยก Instant Delivery 2 ชม. กับ 30 นาที. วงเล็บอื่น (ชื่อโปรแกรม เช่น "(SHP Food)") ตัดทิ้ง
 const SPEED_PAREN = /\(([^)]*(?:\d|ชั่วโมง|ชม\.?|นาที|วัน)[^)]*)\)/
 
+// บางแถว Shopee เขียนแค่ชื่อบริษัทขนส่ง ไม่มี "Standard Delivery - " นำหน้า — พวกนี้ไม่รู้ว่าด่วน/ธรรมดา
+// ยุบเป็น "ไม่ระบุประเภท" ไม่ให้โผล่เป็นหมวดขนส่งแยก (ประเภทจัดส่งจริงๆ ที่ยังไม่รู้จักจะยังขึ้นเองปกติ)
+const CARRIER_ONLY = new Set([
+  'spx express', 'spx instant', 'spx', 'flash express', 'flash', 'j&t express', 'j&t', 'jnt express',
+  'kerry express', 'kerry', 'ninja van', 'ninjavan', 'best express', 'best inter express', 'dhl',
+  'ems', 'shopee xpress', 'ไปรษณีย์ไทย',
+])
+const UNKNOWN_LABEL = 'ไม่ระบุประเภท'
+
 // คืนชื่อประเภทการจัดส่ง Shopee ตามคอลัมน์ (เช่น "Standard Delivery", "Instant Delivery (แพ็ก 2 ชั่วโมง)")
 // — คืน '' ถ้าไม่ใช่ Shopee/ไม่มีค่า
 export function shopeeShippingOption(rawOption, platform = '') {
@@ -22,6 +31,7 @@ export function shopeeShippingOption(rawOption, platform = '') {
   const raw = String(rawOption || '').trim()
   if (!raw) return ''
   const prefix = raw.split(' - ')[0].trim()
+  if (CARRIER_ONLY.has(prefix.toLowerCase())) return UNKNOWN_LABEL
   const m = raw.match(SPEED_PAREN)
   return m ? `${prefix} (${m[1].trim()})` : prefix
 }
