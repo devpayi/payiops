@@ -25,3 +25,9 @@ export function shopeeShippingOption(rawOption, platform = '') {
   const m = raw.match(SPEED_PAREN)
   return m ? `${prefix} (${m[1].trim()})` : prefix
 }
+
+// ยุบ label ตัวเลือก Shopee เป็น ด่วน/ธรรมดา (ใช้ในมุมมองรายสินค้า ที่โชว์ทุก label จะรก)
+// Instant / Express / Sameday / Next Day = ด่วน ; Standard (รวม Bulky) = ธรรมดา
+export function isFastShopeeOption(optionLabel) {
+  return /^(instant|express|same[\s-]?day|next[\s-]?day)/i.test(String(optionLabel || '').trim())
+}

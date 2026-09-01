@@ -29,6 +29,7 @@ export default function DemographicDashboard() {
   const shipCoverage = shopeeTotal ? Math.round((shopeeWithOption / shopeeTotal) * 100) : 0
   const shipMax = Math.max(1, ...shopeeShipping.map((s) => s.orders))
   const shipPct = (n) => (shopeeWithOption ? Math.round((n / shopeeWithOption) * 1000) / 10 : 0)
+  const byProduct = data.shopeeShippingByProduct || []
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -57,6 +58,26 @@ export default function DemographicDashboard() {
           <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ยังไม่มีข้อมูลตัวเลือกจัดส่ง Shopee — ต้อง import ออเดอร์ใหม่หลังอัปเดตนี้</div>
         )}
       </div>
+
+      {byProduct.length > 0 && (
+        <div style={card}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>สินค้าไหนลูกค้ารีบ — Shopee <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>% ส่งด่วน/ทันที ต่อกลุ่มสินค้า</span></h3>
+          <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
+            เรียงตาม % ด่วนมากไปน้อย — เฉพาะกลุ่มที่มีออเดอร์ Shopee (มีข้อมูลจัดส่ง) ตั้งแต่ 20 ขึ้นไป
+          </div>
+          {byProduct.map((g) => (
+            <div key={g.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9, fontSize: 12.5 }}>
+              <div style={{ width: 190, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={g.label}>{g.label}</div>
+              <div style={{ flex: 1, background: '#eef2f7', borderRadius: 6, height: 16, overflow: 'hidden' }}>
+                <div style={{ height: '100%', background: '#c2410c', borderRadius: 6, width: `${g.fastPct}%` }} />
+              </div>
+              <div style={{ width: 130, textAlign: 'right', color: 'var(--payi-text-muted)', fontSize: 11.5 }}>
+                {g.fastPct}% ด่วน ({g.fast}/{g.orders})
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={card}>
         <h3 style={{ margin: '0 0 12px', fontSize: 14 }}>ลูกค้าตามจังหวัด <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>Top 15 จากออเดอร์จริง</span></h3>
