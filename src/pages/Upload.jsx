@@ -18,6 +18,14 @@ const RELEVANT_HEADER_HINTS = [
   'qty', 'quantity', 'จำนวน', 'amount',
   'revenue', 'ยอดขาย', 'total', 'ราคาขายสุทธิ', 'grand total', 'ยอดรวม', 'paidprice',
   'order_status', 'status', 'สถานะ', 'order status',
+  'province', 'จังหวัด', 'ship province', 'buyer province',
+  // Lazada มาส์กที่อยู่ผู้ซื้อทั้งหมด ไม่มีคอลัมน์จังหวัดอ่านได้ตรงๆ — ใช้รหัสไปรษณีย์เดาจังหวัดแทน (ดู
+  // api/import-orders.js + api/_lib/zipToProvince.js)
+  'shippingpostcode', 'postal code', 'ไปรษณีย์', 'zip', 'zipcode',
+  // ประเภทการจัดส่ง (ส่งด่วน/ส่งธรรมดา) — Shopee "ตัวเลือกการจัดส่ง", Lazada "deliveryType",
+  // TikTok "Delivery Option" + "Fulfillment Type" (เพื่อวิเคราะห์ % ส่งด่วน + คุ้ม fulfillment ไหม)
+  'ตัวเลือกการจัดส่ง', 'delivery option', 'deliverytype', 'delivery type', 'shipping option',
+  'fulfillment type', 'fulfillmenttype',
 ]
 const normalizeHeader = (s) => String(s || '').trim().toLowerCase()
 

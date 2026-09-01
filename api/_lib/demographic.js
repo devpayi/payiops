@@ -1,7 +1,8 @@
 // GET /api/sheet-tools?op=demographic&view=province — สรุปยอดขายตามจังหวัด จาก raw_orders_* (คอลัมน์ province)
 // dev/boss/marketing เท่านั้น — เหมือน pattern ของ cfo.js
-// D:S = date(0) ... qty(8) revenue(9) order_status(10) ... province(15)
+// D:U = date(0) platform(1) ... qty(8) revenue(9) order_status(10) ... province(15) shipping_option(16) fulfillment_type(17)
 import { getMetaCached, batchGetValues } from './sheets.js'
+import { shopeeShippingOption } from './shippingClass.js'
 
 const num = (v) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0
 const isCancelled = (s = '') => String(s).includes('ยกเลิก') || String(s).toLowerCase().includes('cancel')
@@ -10,22 +11,39 @@ export default async function opDemographic(req, res) {
   try {
     const meta = await getMetaCached()
     const tabs = meta.sheets.map((s) => s.properties.title).filter((t) => t.startsWith('raw_orders'))
-    if (!tabs.length) return res.status(200).json({ success: true, provinces: [], totalOrders: 0, withProvince: 0 })
+    if (!tabs.length) return res.status(200).json({ success: true, provinces: [], totalOrders: 0, withProvince: 0, shopeeShipping: [], shopeeTotal: 0, shopeeWithOption: 0 })
 
-    const vr = await batchGetValues(tabs.map((t) => `${t}!D:S`))
+    const vr = await batchGetValues(tabs.map((t) => `${t}!D:U`))
     const byProvince = new Map()
     let totalOrders = 0, withProvince = 0
+    // Shopee เท่านั้น — นับตามชื่อประเภทการจัดส่ง (verbatim จากคอลัมน์)
+    const shopeeByOption = new Map()
+    let shopeeTotal = 0, shopeeWithOption = 0
 
     for (let i = 0; i < tabs.length; i++) {
       const rows = vr[i].values || []
       for (let j = 1; j < rows.length; j++) {
         const r = rows[j] || []
         const date = r[0]
+        const platform = String(r[1] || '').trim()
         const qty = num(r[8])
         const status = r[10]
         const province = String(r[15] || '').trim()
         if (!date || isCancelled(status)) continue
         totalOrders++
+
+        if (platform.toLowerCase().includes('shopee')) {
+          shopeeTotal++
+          const opt = shopeeShippingOption(r[16], platform)
+          if (opt) {
+            shopeeWithOption++
+            const e = shopeeByOption.get(opt) || { option: opt, orders: 0, units: 0 }
+            e.orders++
+            e.units += qty
+            shopeeByOption.set(opt, e)
+          }
+        }
+
         if (!province) continue
         withProvince++
         const p = byProvince.get(province) || { province, orders: 0, units: 0 }
@@ -36,7 +54,11 @@ export default async function opDemographic(req, res) {
     }
 
     const provinces = [...byProvince.values()].sort((a, b) => b.orders - a.orders)
-    return res.status(200).json({ success: true, provinces, totalOrders, withProvince })
+    const shopeeShipping = [...shopeeByOption.values()].sort((a, b) => b.orders - a.orders)
+    return res.status(200).json({
+      success: true, provinces, totalOrders, withProvince,
+      shopeeShipping, shopeeTotal, shopeeWithOption,
+    })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })
   }

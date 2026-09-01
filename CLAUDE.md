@@ -23,38 +23,57 @@ demand planning, marketing tracking, and a LINE bot.
 - **Backend**: Vercel **serverless functions** in `api/*.js`, reading Google Sheets via a
   service account (`api/_lib/sheets.js`). Frontend calls **flat** `/api/<name>` endpoints
   (query params for sub-routing, e.g. `/api/claims?view=monthly`). No nested paths.
-- **⚠️ Vercel Hobby caps 12 serverless functions — we are AT the cap (12/12 files in
-  `api/`).** Any new feature (e.g. inventory/stock) MUST piggyback an existing file via
-  a new query param + a new `api/_lib/*.js` impl — do NOT add a new `api/*.js` file
-  without first retiring one. `sheet-tools.js` (`op=`) and `marketing.js` (`kind=`) are
-  the established multiplexing pattern to copy.
+- **⚠️ Vercel Hobby caps 12 serverless functions — we are at 9/12 (3 free)** after
+  Claims was removed entirely (commit `8d2bf9e`, freed 3 slots: `claims.js`,
+  `claims-import.js`, `manager-claims.js`). Still: any new feature MUST piggyback an
+  existing file via a new query param + a new `api/_lib/*.js` impl before reaching for a
+  new `api/*.js` file — `sheet-tools.js` (`op=`) and `marketing.js` (`kind=`) are the
+  established multiplexing pattern to copy.
 - **File uploads parse xlsx CLIENT-SIDE** (via the `xlsx` dep) and POST JSON — never
   multipart. Deliberate so imports work on serverless.
 - **Dev**: `npm run dev` runs Vite AND serves `/api/*` locally (middleware in
   `vite.config.js`). Requires root `.env`. `npm run build` to check compile.
-- **Role-based access** (`shared/roles.js`): roles are `dev` / `boss` / `staff`
-  (`admin` is a legacy alias, normalized to `dev`). `STAFF_TABS` whitelist gates what a
-  `staff` login can see in the sidebar; `boss` sees everything except `Import Orders`,
-  `Dev Hub`, `Settings`. Server-side guards mirror this: `requireAuth` (any logged-in
+- **Role-based access** (`shared/roles.js`): 6 roles — `dev`/`boss`/`staff` plus 3
+  narrow single-purpose roles added since: `stock` (ฟ้า — sees only Inventory/Stock
+  Movement), `marketing` (ตูน — sees Dashboard/Products + Marketing Radar + Demographic),
+  `finance` (พี่หยก/พี่แต้ว — sees only CFO Dashboard). `admin` is a legacy alias,
+  normalized to `dev`. `canAccessTab(role, tab)`: `dev` sees everything; `boss` sees
+  everything except `Import Orders`/`Dev Hub`/`Settings`; `stock`/`marketing`/`finance`
+  are restricted to their own `*_TABS` whitelist only; default (`staff`) uses
+  `STAFF_TAB_SET` (`Executive`, `Monthly`, `Products`, `ProductTrends`, `Inventory`,
+  `Stock Movement`). Server-side guards mirror this: `requireAuth` (any logged-in
   user), `requireDev` (dev only — used by `import-orders.js`), `requireManager`
-  (dev+boss — used by `manager-claims.js`, marketing endpoints).
+  (dev+boss), `canManageOperations` (dev/boss — Inventory/HR/Import Tracking ops),
+  `canManageMarketing` (dev/boss/marketing — Marketing Radar writes, basket analysis,
+  Demographic op), `canManageFinance` (dev/boss/finance — CFO op). The narrow-role
+  guards must be paired with `authEnabled() &&` (local dev has no `AUTH_SECRET`, so
+  `req.user` is `undefined` and would otherwise get normalized down to `staff` and
+  rejected — bit the team once building the stock-in-request matcher).
 
 ## Data (Google Sheets: "mona-ops-db", SHEET_ID in .env)
 
-**Sales/product tabs**: `raw_orders_2026_MM` (~190k order rows), `claims`,
+**Sales/product tabs**: `raw_orders_2026_MM` (~190k+ order rows),
 `product_aliases`, `import_log`, `users`. Businesses: **Payi**, **Payi Outlet**,
-**กรอบรูป**. Platforms: **Shopee**, **TikTok Shop**, **Lazada**.
+**กรอบรูป**. Platforms: **Shopee**, **TikTok Shop**, **Lazada**. **`claims` sheet tab
+itself likely still exists with historical data but no app code reads/writes it anymore**
+— Claims was removed entirely (commit `8d2bf9e`), see TODO #3.
 
-`raw_orders` columns (A–R): order_key, order_id, order_item_id, date, platform, business,
+`raw_orders` columns (A–S): order_key, order_id, order_item_id, date, platform, business,
 sku_platform, product_name, variation_name, master_sku, display_name, qty, revenue,
-order_status, imported_at, source_file, import_id, alias_key.
-`claims` columns: date, business, product_name, free_item, claim_value, is_damaged,
-is_incomplete, is_wrong_item, note, master_sku, display_name, imported_at, import_id,
-**id, source_file** (appended later — never insert mid-schema, older rows are
-column-position dependent; `id` backfilled lazily on first load for pre-existing rows).
+order_status, imported_at, source_file, import_id, alias_key, **province** (appended
+2026-08-25, see TODO #12 — feeds the Demographic dashboard).
 `product_aliases`: master_sku, display_name, business, platform, alias_product_name,
 alias_variation, alias_key, created_at (+ optional `product_group` override column).
-`users`: scrypt-hashed passwords, `role` column (dev/boss/staff/admin-legacy).
+`users`: scrypt-hashed passwords, `role` column (dev/boss/staff/stock/marketing/finance,
+admin = legacy alias for dev).
+`sku_redirects` (`api/_lib/skuMapping.js`): old_sku, new_sku, note, created_at —
+Sheets-backed replacement for the old hardcoded `SKU_REDIRECTS` map in
+`planner-sales.js` (see TODO #7 sub-note).
+`set_recipes` (`api/_lib/skuMapping.js`): set_sku, variation_name, component_sku,
+qty_per_unit, keep_set_sales — decomposes Set/bundle SKU sales into real component
+demand, see TODO #7 sub-note.
+`cfo_capital` / `cfo_fixcost` (`api/_lib/cfo.js`): capital injections log + recurring
+fixed-cost line items, backing the CFO Dashboard — see Files section.
 
 **HR/workforce tabs** (auto-created via `ensureSheet`, all managed through
 `api/sheet-tools.js?op=hr|workforce`): `hr_leave`, `hr_leave_backups`, `hr_leave_quota`,
@@ -68,7 +87,9 @@ settings), `planner_daily` (daily FG/feed history).
 
 **Marketing tabs** (`api/marketing.js`): `marketing_events` (action log + sales
 snapshot), `marketing_inputs` (manual monthly Ads spend / TikTok channel split — not
-derivable from `raw_orders`).
+derivable from `raw_orders`). `marketing.js` also has a `?kind=basket` op
+(`_lib/marketingBasket.js`) — "bought together" basket analysis computed live from
+`raw_orders`, no separate sheet.
 
 Conventions: **exclude cancelled orders** (`order_status` contains "ยกเลิก"/"cancel");
 aggregate server-side and set `Cache-Control` s-maxage / in-memory cache
@@ -81,18 +102,26 @@ Sheets rate limits.
 - `MonthlyDashboard.jsx` (sales by store, MoM, platform donut, trend — tab `Dashboard สรุปยอดขาย`)
 - `ProductDashboard.jsx` + `ProductTrends.jsx` (product-family dashboard + MoM trends — tab `Dashboard สินค้า`)
 - `Upload.jsx` → used inside `Import Orders` tab (import orders, dev-only)
-- `ClaimView.jsx` (claims, desktop) / `ManagerClaimsPrototype.jsx` (claims, mobile manager view — real data since 2026-07-04, see roadmap below)
 - `MarketingRadar.jsx` (marketing action log + event tracking)
+- **`DemographicDashboard.jsx`** — "เดโมกราฟฟิกลูกค้า", province-level sales breakdown,
+  `sheet-tools.js?op=demographic` (`_lib/demographic.js`, reads `raw_orders`'s `province`
+  column, see TODO #12). Gated `canManageMarketing` (dev/boss/marketing).
 - `AdsChannels.jsx` (manual Ads spend / TikTok channel entry + monthly sales overlay)
+- **`CfoDashboard.jsx`** — "CFO Dashboard", cash runway/burn-rate view,
+  `sheet-tools.js?op=cfo` (`_lib/cfo.js`, `cfo_capital`/`cfo_fixcost` sheets). Gated
+  `canManageFinance` (dev/boss/finance) — see TODO #13.
 - `PlannerControl.jsx` + `FeedProducts.jsx` (demand planning: ABC, FG tracking, recommended feed)
-- `WorkforceOT.jsx` (manpower & OT scheduling)
 - `HR.jsx` / `HRMobile.jsx` (leave requests/approvals, LINE-bot-integrated)
 - `LinksHub.jsx`, `DevHub.jsx` (static link/doc hubs — real content, no backend)
 - `Login.jsx`, `Settings.jsx` (auth screens, user management)
 - **`ContentOSPrototype.jsx`** ("Content OS Prototype") — **UI-only prototype, no API
   calls, no backend.** Not usable yet.
-- **`PackingView.jsx`** — dead/unused; Packing was removed from the sidebar permanently
-  (commit `fee17e7`). Do not wire it up without checking with the owner first.
+
+**Removed (undated, found stale 2026-08-26):** `WorkforceOT.jsx` component file still
+exists on disk but is **not imported/lazy-loaded in `App.jsx` at all** — Manpower & OT
+was removed from the sidebar (commit `a6685a9`); treat it as dead code, same as
+`PackingView.jsx` which has since been deleted outright (was previously noted here as
+"dead/unused, do not wire up" — now actually gone from `src/pages/`).
 
 **Removed (2026-07-21, owner decision):**
 - **`SalesView.jsx`** ("Off-Platform Sales") — was localStorage-first, never migrated to
@@ -156,19 +185,16 @@ Sheets rate limits.
 "กำลังจัดเตรียมโครงสร้างคลังข้อมูล" placeholder in `App.jsx`. Real sidebar entry, zero
 backing code. Lower priority (see TODO #9).
 
-### Backend — `api/` (12/12 files, at the Vercel Hobby cap)
+### Backend — `api/` (9/12 files, 3 free — see architecture note above)
 - `dashboard.js` — Executive daily view (`requireAuth`)
 - `monthly.js` — monthly sales by store (`requireAuth`)
 - `products.js` / `product-trends.js` — product-family aggregation + MoM trends (`requireAuth`)
-- `claims.js` (`?view=summary|monthly|sku|by-product|imports-list|import[DELETE]`) (`requireAuth`)
-- `claims-import.js` — POST parsed xlsx into `claims` (`requireAuth`)
-- `import-orders.js` (`?view=log` + POST map→alias-match→dedup→route to `raw_orders_YYYY_MM` + log; DELETE by import batch) (`requireDev` — dev-only, this is the destructive one)
-- `manager-claims.js` — mobile manager claim-rate view (`requireManager`)
-- `planner-sales.js` — ABC classification + sales average over a `?days=N` window (default 90; Inventory/Stock Movement/Planner Control all call `?days=30` as of 2026-07-25), 6h in-memory cache per `days` value (`requireAuth`). Decomposes Set/bundle SKU sales into real component demand via `set_recipes` sheet — see Files section
-- `marketing.js` (`?kind=events|inputs` — multiplexes `_lib/marketingEvents.js` / `_lib/marketingInputs.js`, each with its own `requireManager`)
-- `sheet-tools.js` (`?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|line-webhook`) — the biggest file; HR, workforce/OT, planner CRUD, generic sheet tools, and the LINE webhook all live here to stay under the function cap. `line-webhook` op is unauthenticated (verified via LINE signature instead, see `_lib/line.js`). `op=inventory` (added 2026-07-21) delegates to `_lib/inventory.js` — not in the staff op-whitelist (`summary`/`workforce`/`planner`), so Inventory/Stock Movement are dev+boss only for now, same as it's currently absent from `STAFF_TABS`. `op=import-tracking` (added 2026-07-24) delegates to `_lib/importTracking.js` — same dev+boss-only gating, see Files section
+- `import-orders.js` (`?view=log|mapping-options|map-product|validate-dates` + POST map→alias-match→dedup→route to `raw_orders_YYYY_MM` + log; DELETE by import batch) (`requireDev` — dev-only, this is the destructive one). Now also resolves `province` on import — direct column or postal-code fallback via `ZIP_TO_PROVINCE`, see TODO #12.
+- `planner-sales.js` — ABC classification + sales average over a `?days=N` window (default 90; Inventory/Stock Movement/Planner Control all call `?days=30` as of 2026-07-25), 6h in-memory cache per `days` value (`requireAuth`). Decomposes Set/bundle SKU sales into real component demand via `set_recipes` sheet, and resolves renamed SKUs via `sku_redirects` — both now Sheets-backed through `_lib/skuMapping.js`, see TODO #7 sub-note and Files section
+- `marketing.js` (`?kind=events|inputs|basket` — multiplexes `_lib/marketingEvents.js` / `_lib/marketingInputs.js` / `_lib/marketingBasket.js`, each with its own `requireManager`/`canManageMarketing`)
+- `sheet-tools.js` (`?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|cfo|demographic|line-webhook`) — the biggest file; HR, workforce/OT, planner CRUD, generic sheet tools, CFO, Demographic, and the LINE webhook all live here to stay under the function cap. `line-webhook` op is unauthenticated (verified via LINE signature instead, see `_lib/line.js`); it and a `&cron=low-stock`/`holiday-reminder` mode (Vercel Cron) both bypass `requireAuth` by design. `op=inventory` (added 2026-07-21) delegates to `_lib/inventory.js` — `stock` role has full access, `staff` also now sees Inventory/Stock Movement (in `STAFF_TABS`). `op=import-tracking` (added 2026-07-24) delegates to `_lib/importTracking.js` — dev+boss-only (`canManageOperations`). `op=cfo` delegates to `_lib/cfo.js` (`canManageFinance` — dev/boss/finance). `op=demographic` delegates to `_lib/demographic.js` (`canManageMarketing` — dev/boss/marketing)
 - `auth.js` — login/setup/create-user/list-users/delete-user (deliberately NOT behind `requireAuth` — it IS the auth entrypoint)
-- `_lib/`: `sheets.js` (Sheets client), `auth.js` (HMAC token issuing + guards), `productGroup.js` (see below), `inventory.js` (stock items + movements, see Files section above), `claimMapping.js` + `claimImport.js` + `claimsSchema.js` (claims import support), `marketingEvents.js` + `marketingInputs.js` (marketing impls), `dates.js` (date normalization), `line.js` (LINE Messaging API), `leaveCoverage.js` + `scheduleOverrides.js` (HR/workforce logic)
+- `_lib/`: `sheets.js` (Sheets client), `auth.js` (HMAC token issuing + guards), `productGroup.js` (see below), `inventory.js` (stock items + movements, see Files section above), `marketingEvents.js` + `marketingInputs.js` + `marketingBasket.js` (marketing impls), `cfo.js` (CFO Dashboard backing, see Files section), `demographic.js` (province-level sales summary), `skuMapping.js` (`sku_redirects` + `set_recipes` lookups, see Data section), `zipToProvince.js` (955-entry Thai postal-code→province table, sourced from `kongvut/thai-province-data`, used only as a fallback for Lazada rows whose export masks buyer address but leaves postal code readable), `packagingOrderRules.js` (box-packaging rule engine used by Inventory's packaging/BOM logic), `dates.js` (date normalization), `line.js` (LINE Messaging API), `leaveCoverage.js` + `scheduleOverrides.js` (HR/workforce logic), `importTracking.js` (Import Tracking backing)
 - `shared/roles.js` — role constants + tab access rules, imported by both frontend (`App.jsx`) and backend (`sheet-tools.js`)
 
 `api/_lib/productGroup.js` — **the ONE reusable product-family grouping util.**
@@ -176,11 +202,11 @@ backing code. Lower priority (see TODO #9).
 color** tokens that stand alone (space-separated) from display_name — sizes (M/L/XL,
 ไซส์/เบอร์/ขนาด X, trailing `(...)`) and colors (ดำ/ขาว/ฟ้า/… + English). Honors a manual
 `product_group` override column in `product_aliases` if present. Used by `products.js`,
-`product-trends.js`, `claims.js?view=by-product`, `dashboard.js`, and
-`manager-claims.js`. Verified on real data: PY006 "2in1 M" + PY007 "2in1 L" → "ถุงเท้าเจล
-2in1"; PY015–018 "แผ่นรองเท้า M/L ดำ/ฟ้า" → one "แผ่นรองเท้า" (4 SKUs), while "แผ่นรองเท้า
-Heavy" stays separate. **Limitation:** colors glued to a word without a space (e.g.
-"สลิปเปอร์ฟ้า" vs "สลิปเปอร์ขาว") are NOT auto-stripped — use a `product_group` override.
+`product-trends.js`, and `dashboard.js`. Verified on real data: PY006 "2in1 M" + PY007
+"2in1 L" → "ถุงเท้าเจล 2in1"; PY015–018 "แผ่นรองเท้า M/L ดำ/ฟ้า" → one "แผ่นรองเท้า" (4
+SKUs), while "แผ่นรองเท้า Heavy" stays separate. **Limitation:** colors glued to a word
+without a space (e.g. "สลิปเปอร์ฟ้า" vs "สลิปเปอร์ขาว") are NOT auto-stripped — use a
+`product_group` override.
 
 ## Status & how to deploy
 
@@ -216,12 +242,17 @@ a new one.
    products/trends/claims/dashboard/manager-claims. Open item: owner can add
    `product_group` overrides in `product_aliases` for cases auto-strip can't catch
    (colors glued to the word, or totally different names for the same product).
-3. ✅ **DONE — Claims mobile manager view** (`ManagerClaimsPrototype.jsx` +
-   `api/manager-claims.js`, real data, claim rate = claims ÷ units via shared
+3. ✅ **DONE, then REMOVED — Claims mobile manager view.** Was `ManagerClaimsPrototype.jsx`
+   + `api/manager-claims.js` (real data, claim rate = claims ÷ units via shared
    `deriveGroup`, RuRu mascot mood auto from alert count, small-sample guard
-   `MIN_UNITS = 100`). ✅ Thresholds (`RED = 1.0`, `AMBER = 0.2`) **confirmed correct by
-   owner (2026-07-22)**.
-   Open: period selector (currently all-time), drill-down to actual claim records.
+   `MIN_UNITS = 100`, thresholds `RED = 1.0`/`AMBER = 0.2` confirmed correct by owner
+   2026-07-22). **Claims was removed entirely from mona-ops** (commit `8d2bf9e`) —
+   `claims.js`, `claims-import.js`, `manager-claims.js`, `ClaimView.jsx`,
+   `ManagerClaimsPrototype.jsx`, and their `_lib` support (`claimMapping.js`/
+   `claimImport.js`/`claimsSchema.js`) are all gone; fully moved to **payi-floor**
+   (see the `app-portfolio-plan` note — payi-floor is แตง's live app). No trace left in
+   `src/`/`api/` except historical comments citing the old `claims` sheet as a schema
+   precedent, and a stale `test/claims.test.js` that should eventually be deleted too.
 4. ✅ **DONE — Dashboard IA split** — `Dashboard สรุปยอดขาย` (Executive/Monthly) and
    `Dashboard สินค้า` (Products/ProductTrends) are both live, separate top-level menu
    items.
@@ -338,9 +369,11 @@ a new one.
      PY026's real sales numbers. Fixed via the same `set_recipes` mechanism (6 rows,
      `keep_set_sales=0` since this isn't a real Set line, just a mislabeled listing) —
      verified live: PY075 dropped 124→52 units/90d (real ball-only sales), PY026 gained
-     the redirected chair units (1923→1995). **`SKU_REDIRECTS` is a hardcoded map for now
-     (one entry)** — fine at this scale, but if renames become frequent, move it to a
-     Sheets tab like `set_recipes` instead of requiring a code deploy per rename.
+     the redirected chair units (1923→1995). ✅ **DONE (undated) — `SKU_REDIRECTS` moved
+     off the hardcoded map into a real `sku_redirects` Sheets tab** (`old_sku, new_sku,
+     note, created_at`), read via the new shared `api/_lib/skuMapping.js`
+     (`getSkuRedirectMap()` / `resolveRedirect()` / `resolveSalesSku()`, also shared with
+     `set_recipes` lookup) — renames no longer require a code deploy.
    - ✅ **DONE (2026-07-22) — `product_aliases` catalog cleanup**, safe/cosmetic only:
      fixed a stray typo duplicate (`PY047` had one row spelled "ผ้านุุ่่ม" with doubled
      combining vowel marks — merged to the correct "ผ้านุ่ม" spelling); relabeled the 3
@@ -703,6 +736,33 @@ a new one.
     existing claim-create endpoint (needs CORS opened for whatever origin hosts it).
     Deferred — owner said "โน๊ตไว้ก่อน" (note it, don't build yet).
 
+12. ✅ **DONE (2026-08-25/26) — Demographic dashboard (เดโมกราฟฟิกลูกค้า) + province
+    backfill fix.** New `DemographicDashboard.jsx` (`sheet-tools.js?op=demographic`,
+    `_lib/demographic.js`) shows province-level sales, gated `canManageMarketing`.
+    **Root cause fixed while building it:** `province` had been empty on all 240k+
+    historical `raw_orders` rows — `Upload.jsx`'s client-side xlsx column filter
+    (`RELEVANT_HEADER_HINTS`) was silently stripping province/postal-code columns before
+    they ever reached `import-orders.js`. Fixed by adding `province`,
+    `shippingpostcode`, `postal code`, `ไปรษณีย์`, `zip`, `zipcode` to the hint list.
+    `import-orders.js` now also falls back to guessing province from postal code via a
+    new 955-entry `ZIP_TO_PROVINCE` table (`api/_lib/zipToProvince.js`, sourced from
+    `kongvut/thai-province-data`) when no direct province column exists — needed
+    specifically for **Lazada**, whose export masks buyer city/name (`ค*a`) but leaves
+    the postal code readable. `province` appended as a new column at the end of
+    `raw_orders` (append-only rule, per the claims/inventory precedent). Only covers
+    orders imported *after* this fix, plus any historical Lazada rows re-derivable from
+    postal code — older Shopee/TikTok rows with no province column and no postal code
+    stay blank, not backfilled.
+13. ✅ **DONE (undated, found 2026-08-26) — CFO Dashboard.** `CfoDashboard.jsx` +
+    `sheet-tools.js?op=cfo` (`_lib/cfo.js`), gated `canManageFinance` (dev/boss/finance —
+    the `finance` role is scoped to พี่หยก/พี่แต้ว, `FINANCE_TABS = ['CFO']` only). Tracks
+    `cfo_capital` (capital injections: id/date/amount/note) and `cfo_fixcost` (recurring
+    fixed costs: id/item/amount/active) sheets. `summary` view computes
+    `latestCapital`, `fixCostMonthly`, `avgRevenue`, `avgAdsSpend` (from
+    `marketing_inputs`, last 3 closed months), `burnRate = fixCostMonthly + avgAdsSpend −
+    avgRevenue`, `runwayMonths`, `cashTrend`, `capitalHistory`. New top-level sidebar
+    group "การเงิน" (finance) holds just this one tab.
+
 ## Gotchas
 
 - The preview screenshot tool often times out on chart-heavy (Recharts) pages — that's a
@@ -711,5 +771,6 @@ a new one.
   (~5–12s); `vercel.json` sets `maxDuration: 60`.
 - `vite.config.js` honors `process.env.PORT` (strictPort) so the preview harness can bind the
   dev server to its assigned port. Without a PORT env, dev picks 5173 as before.
-- `api/` is at the 12-function Hobby cap — check this section's "12/12" note before ever
-  proposing a new `api/*.js` file.
+- `api/` is at 9/12 of the Hobby cap (3 free after Claims removal) — still piggyback
+  existing files via query params rather than adding a new `api/*.js` file casually; see
+  the architecture note at the top of this doc.

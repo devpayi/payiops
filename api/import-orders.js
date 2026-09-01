@@ -5,6 +5,7 @@
 import { requireDev } from './_lib/auth.js'
 import { getSheet, appendRows, batchGetValues, overwriteSheet, getMeta } from './_lib/sheets.js'
 import { isoDate } from './_lib/dates.js'
+import ZIP_TO_PROVINCE from './_lib/zipToProvince.js'
 
 const normalize = (s) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
 const num = (v) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0
@@ -18,7 +19,9 @@ const forceText = (v) => { const s = String(v ?? ''); return s ? `'${s}` : s }
 
 // province ต่อท้าย (2026-08) — เพื่อทำ demographic ตามพื้นที่ (payi-insights) แถวเก่าก่อนหน้านี้จะว่างช่องนี้
 // (ไม่ backfill ย้อนหลัง ตามกฎ append-only เดียวกับ claims id/source_file)
-const RAW_HEADERS = ['order_key', 'order_id', 'order_item_id', 'date', 'platform', 'business', 'sku_platform', 'product_name', 'variation_name', 'master_sku', 'display_name', 'qty', 'revenue', 'order_status', 'imported_at', 'source_file', 'import_id', 'alias_key', 'province']
+// shipping_option / fulfillment_type ต่อท้าย (2026-09) — วิเคราะห์ % ส่งด่วน/ส่งทันที และประเมิน
+// ความคุ้มของ fulfillment (append-only เดียวกับ province — แถวเก่าก่อนหน้านี้จะว่าง 2 ช่องนี้ ไม่ backfill)
+const RAW_HEADERS = ['order_key', 'order_id', 'order_item_id', 'date', 'platform', 'business', 'sku_platform', 'product_name', 'variation_name', 'master_sku', 'display_name', 'qty', 'revenue', 'order_status', 'imported_at', 'source_file', 'import_id', 'alias_key', 'province', 'shipping_option', 'fulfillment_type']
 
 function pick(row, keys) {
   const entries = Object.entries(row)
@@ -98,11 +101,13 @@ export default async function handler(req, res) {
 
       let deleted = 0
       for (const tab of tabs) {
-        const vr = await batchGetValues([`${tab}!A:R`])
+        const vr = await batchGetValues([`${tab}!A:Z`])
         const values = vr[0]?.values || []
         if (!values.length) continue
         const headers = values[0]
         const idIdx = headers.indexOf('import_id')
+        // NOTE: อ่านให้ครบทุกคอลัมน์ (A:Z) — เดิมเป็น A:R ทำให้ province + shipping_option/fulfillment_type
+        // (คอลัมน์ S,T,U) หลุดหายทุกครั้งที่ลบล็อต เพราะ overwriteSheet เขียนกลับตามที่อ่านมาเท่านั้น
         const kept = values.slice(1).filter((row) => (row[idIdx] || '') !== importId)
         if (values.length - 1 === kept.length) continue // ไม่มีแถวของ import นี้ใน tab นี้ ข้ามไป ไม่ต้องเขียนทับเปล่าๆ
         deleted += values.length - 1 - kept.length
@@ -255,7 +260,24 @@ export default async function handler(req, res) {
       // Amount") เป็น candidate แบบ exact-match ไว้ก่อน กัน pass 2 (substring) ไปจับผิดคอลัมน์
       const revenue = num(pick(row, ['revenue', 'ยอดขาย', 'sku subtotal after discount', 'order amount', 'total', 'ราคาขายสุทธิ', 'grand total', 'ยอดรวม', 'paidprice']))
       const status = pick(row, ['order_status', 'status', 'สถานะ', 'order status']) || ''
-      const province = pick(row, ['province', 'จังหวัด', 'ship province', 'buyer province']) || ''
+      // province ว่างเปล่าทุกแถวมาตลอด (withProvince=0 จาก 240k+ ออเดอร์ ตรวจพบ 2026-08-25) — ไม่ใช่ที่ pick()
+      // นี้เลย ต้นตอจริงคือ Upload.jsx (slimRow/RELEVANT_HEADER_HINTS) กรองคอลัมน์จังหวัดทิ้งไปตั้งแต่ฝั่ง client
+      // ก่อนส่งมาถึง endpoint นี้ด้วยซ้ำ — แก้แล้วที่นั่น ตรงนี้ pick ตามปกติ
+      // Lazada ต่างจาก Shopee/TikTok: export มาส์กที่อยู่ผู้ซื้อทั้งหมด (ชื่อ/เมือง) เป็น "ค*a" เพื่อความเป็น
+      // ส่วนตัว ไม่มีคอลัมน์จังหวัดที่อ่านได้ตรงๆ เลย — เหลือแค่รหัสไปรษณีย์ (shippingPostCode) ที่ไม่มาส์ก
+      // เมื่อ pick ตรงๆ ไม่เจอ ถอยไปเดาจากรหัสไปรษณีย์แทน (ดู api/_lib/zipToProvince.js)
+      let province = pick(row, ['province', 'จังหวัด', 'ship province', 'buyer province']) || ''
+      if (!province) {
+        const zip = String(pick(row, ['shippingpostcode', 'postal code', 'ไปรษณีย์', 'zip', 'zipcode']) || '').trim().slice(0, 5)
+        if (ZIP_TO_PROVINCE[zip]) province = ZIP_TO_PROVINCE[zip]
+      }
+
+      // ประเภทการจัดส่ง — เก็บค่าดิบตามที่แพลตฟอร์มส่งมา ไม่จำแนกด่วน/ธรรมดาตรงนี้
+      // (จำแนกในชั้น dashboard ผ่าน api/_lib/shippingClass.js เพื่อปรับกฎได้โดยไม่ต้อง import ใหม่)
+      // Shopee: "ตัวเลือกการจัดส่ง" (เช่น "Standard Delivery - ส่งธรรมดาในประเทศ-SPX Express")
+      // Lazada: "deliveryType" (STANDARD/EXPRESS/...)  TikTok: "Delivery Option" (การจัดส่งแบบมาตรฐาน/ด่วน)
+      const shippingOption = String(pick(row, ['ตัวเลือกการจัดส่ง', 'delivery option', 'deliverytype', 'delivery type', 'shipping option']) || '').trim()
+      const fulfillmentType = String(pick(row, ['fulfillment type', 'fulfillmenttype']) || '').trim()
 
       // ไฟล์ export บางแพลตฟอร์ม (เช่น Shopee) ไม่มีคอลัมน์ item id แยกต่างหาก —
       // ถ้าไม่มี ให้ไล่เลขบรรทัดต่อออเดอร์ กันไม่ให้ order ที่มีหลายสินค้าถูกมองว่าเป็นแถวซ้ำ
@@ -285,7 +307,7 @@ export default async function handler(req, res) {
       if (!byMonth.has(tab)) byMonth.set(tab, [])
       byMonth.get(tab).push({
         orderKey,
-        arr: [orderKey, forceText(orderId), forceText(orderItemId), date, platform, business, forceText(skuPlatform), productName, variation, alias?.master_sku || '', alias?.display_name || productName, qty, revenue, status, importedAt, fileName, importId, aliasKey, province],
+        arr: [orderKey, forceText(orderId), forceText(orderItemId), date, platform, business, forceText(skuPlatform), productName, variation, alias?.master_sku || '', alias?.display_name || productName, qty, revenue, status, importedAt, fileName, importId, aliasKey, province, shippingOption, fulfillmentType],
       })
     }
 
