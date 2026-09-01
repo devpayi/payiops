@@ -44,8 +44,13 @@ demand planning, marketing tracking, and a LINE bot.
   `Stock Movement`). Server-side guards mirror this: `requireAuth` (any logged-in
   user), `requireDev` (dev only — used by `import-orders.js`), `requireManager`
   (dev+boss), `canManageOperations` (dev/boss — Inventory/HR/Import Tracking ops),
-  `canManageMarketing` (dev/boss/marketing — Marketing Radar writes, basket analysis,
-  Demographic op), `canManageFinance` (dev/boss/finance — CFO op). The narrow-role
+  `canManageMarketing` (dev/boss/marketing — Marketing Radar writes, basket analysis),
+  `canManageFinance` (dev/boss/finance — legacy, no longer gates anything after the
+  2026-09-01 lockdown). **⚠️ `op=cfo` / `op=demographic` / `op=import-tracking` are
+  DEV-ONLY as of 2026-09-01** (owner request — `normalizeRole(req.user?.role) !== 'dev'`
+  → 403). Other roles still see the sidebar entry but `App.jsx` renders `DevOnlyLock`
+  (a fake "module being prepared" placeholder, deliberately indistinguishable from an
+  unbuilt tab). The narrow-role
   guards must be paired with `authEnabled() &&` (local dev has no `AUTH_SECRET`, so
   `req.user` is `undefined` and would otherwise get normalized down to `staff` and
   rejected — bit the team once building the stock-in-request matcher).
@@ -58,10 +63,16 @@ demand planning, marketing tracking, and a LINE bot.
 itself likely still exists with historical data but no app code reads/writes it anymore**
 — Claims was removed entirely (commit `8d2bf9e`), see TODO #3.
 
-`raw_orders` columns (A–S): order_key, order_id, order_item_id, date, platform, business,
+`raw_orders` columns (A–V): order_key, order_id, order_item_id, date, platform, business,
 sku_platform, product_name, variation_name, master_sku, display_name, qty, revenue,
-order_status, imported_at, source_file, import_id, alias_key, **province** (appended
-2026-08-25, see TODO #12 — feeds the Demographic dashboard).
+order_status, imported_at, source_file, import_id, alias_key, **province** (S, appended
+2026-08-25, see TODO #12), **shipping_option** (T), **fulfillment_type** (U),
+**buyer_hash** (V) — the last three appended 2026-09-01 (see TODO #14). All four are
+populated only for orders imported after their respective dates — no backfill; older
+rows are blank there. `Upload.jsx`'s `RELEVANT_HEADER_HINTS` had to be widened each
+time so the client-side column filter stops stripping them before upload. **DELETE
+`?importId=` reads `A:Z`** (was `A:R` — that silently wiped province+ on any
+import-batch delete; fixed 2026-09-01).
 `product_aliases`: master_sku, display_name, business, platform, alias_product_name,
 alias_variation, alias_key, created_at (+ optional `product_group` override column).
 `users`: scrypt-hashed passwords, `role` column (dev/boss/staff/stock/marketing/finance,
@@ -104,12 +115,18 @@ Sheets rate limits.
 - `Upload.jsx` → used inside `Import Orders` tab (import orders, dev-only)
 - `MarketingRadar.jsx` (marketing action log + event tracking)
 - **`DemographicDashboard.jsx`** — "เดโมกราฟฟิกลูกค้า", province-level sales breakdown,
-  `sheet-tools.js?op=demographic` (`_lib/demographic.js`, reads `raw_orders`'s `province`
-  column, see TODO #12). Gated `canManageMarketing` (dev/boss/marketing).
+  `sheet-tools.js?op=demographic` (`_lib/demographic.js`, see TODO #12). **DEV-ONLY**
+  since 2026-09-01. Also computes, from `raw_orders` T/U/V: Shopee delivery-option
+  breakdown (`_lib/shippingClass.js` — parses the label from the raw Shopee string,
+  folds carrier-only values to "ไม่ระบุประเภท"), the same split per `deriveGroup`
+  product family (% fast vs standard), and per-platform repeat-customer rate (counted
+  per distinct `order_id`, buyers matched on `buyer_hash`). Province names normalized
+  at read time via `_lib/provinceNormalize.js` (merges "จังหวัดนนทบุรี"/"นนทบุรี"/
+  "Nonthaburi" etc. — fixes existing data, no re-import).
 - `AdsChannels.jsx` (manual Ads spend / TikTok channel entry + monthly sales overlay)
 - **`CfoDashboard.jsx`** — "CFO Dashboard", cash runway/burn-rate view,
-  `sheet-tools.js?op=cfo` (`_lib/cfo.js`, `cfo_capital`/`cfo_fixcost` sheets). Gated
-  `canManageFinance` (dev/boss/finance) — see TODO #13.
+  `sheet-tools.js?op=cfo` (`_lib/cfo.js`, `cfo_capital`/`cfo_fixcost` sheets). **DEV-ONLY**
+  since 2026-09-01 (was `canManageFinance`) — see TODO #13.
 - `PlannerControl.jsx` + `FeedProducts.jsx` (demand planning: ABC, FG tracking, recommended feed)
 - `HR.jsx` / `HRMobile.jsx` (leave requests/approvals, LINE-bot-integrated)
 - `LinksHub.jsx`, `DevHub.jsx` (static link/doc hubs — real content, no backend)
@@ -192,9 +209,9 @@ backing code. Lower priority (see TODO #9).
 - `import-orders.js` (`?view=log|mapping-options|map-product|validate-dates` + POST map→alias-match→dedup→route to `raw_orders_YYYY_MM` + log; DELETE by import batch) (`requireDev` — dev-only, this is the destructive one). Now also resolves `province` on import — direct column or postal-code fallback via `ZIP_TO_PROVINCE`, see TODO #12.
 - `planner-sales.js` — ABC classification + sales average over a `?days=N` window (default 90; Inventory/Stock Movement/Planner Control all call `?days=30` as of 2026-07-25), 6h in-memory cache per `days` value (`requireAuth`). Decomposes Set/bundle SKU sales into real component demand via `set_recipes` sheet, and resolves renamed SKUs via `sku_redirects` — both now Sheets-backed through `_lib/skuMapping.js`, see TODO #7 sub-note and Files section
 - `marketing.js` (`?kind=events|inputs|basket` — multiplexes `_lib/marketingEvents.js` / `_lib/marketingInputs.js` / `_lib/marketingBasket.js`, each with its own `requireManager`/`canManageMarketing`)
-- `sheet-tools.js` (`?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|cfo|demographic|line-webhook`) — the biggest file; HR, workforce/OT, planner CRUD, generic sheet tools, CFO, Demographic, and the LINE webhook all live here to stay under the function cap. `line-webhook` op is unauthenticated (verified via LINE signature instead, see `_lib/line.js`); it and a `&cron=low-stock`/`holiday-reminder` mode (Vercel Cron) both bypass `requireAuth` by design. `op=inventory` (added 2026-07-21) delegates to `_lib/inventory.js` — `stock` role has full access, `staff` also now sees Inventory/Stock Movement (in `STAFF_TABS`). `op=import-tracking` (added 2026-07-24) delegates to `_lib/importTracking.js` — dev+boss-only (`canManageOperations`). `op=cfo` delegates to `_lib/cfo.js` (`canManageFinance` — dev/boss/finance). `op=demographic` delegates to `_lib/demographic.js` (`canManageMarketing` — dev/boss/marketing)
+- `sheet-tools.js` (`?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|cfo|demographic|line-webhook`) — the biggest file; HR, workforce/OT, planner CRUD, generic sheet tools, CFO, Demographic, and the LINE webhook all live here to stay under the function cap. `line-webhook` op is unauthenticated (verified via LINE signature instead, see `_lib/line.js`); it and a `&cron=low-stock`/`holiday-reminder` mode (Vercel Cron) both bypass `requireAuth` by design. `op=inventory` (added 2026-07-21) delegates to `_lib/inventory.js` — `stock` role has full access, `staff` also now sees Inventory/Stock Movement (in `STAFF_TABS`). `op=import-tracking` (added 2026-07-24) delegates to `_lib/importTracking.js` — **DEV-ONLY since 2026-09-01** (was dev+boss). `op=cfo` → `_lib/cfo.js`, `op=demographic` → `_lib/demographic.js` — both also **DEV-ONLY since 2026-09-01** (see the role note near the top of this doc + TODO #14)
 - `auth.js` — login/setup/create-user/list-users/delete-user (deliberately NOT behind `requireAuth` — it IS the auth entrypoint)
-- `_lib/`: `sheets.js` (Sheets client), `auth.js` (HMAC token issuing + guards), `productGroup.js` (see below), `inventory.js` (stock items + movements, see Files section above), `marketingEvents.js` + `marketingInputs.js` + `marketingBasket.js` (marketing impls), `cfo.js` (CFO Dashboard backing, see Files section), `demographic.js` (province-level sales summary), `skuMapping.js` (`sku_redirects` + `set_recipes` lookups, see Data section), `zipToProvince.js` (955-entry Thai postal-code→province table, sourced from `kongvut/thai-province-data`, used only as a fallback for Lazada rows whose export masks buyer address but leaves postal code readable), `packagingOrderRules.js` (box-packaging rule engine used by Inventory's packaging/BOM logic), `dates.js` (date normalization), `line.js` (LINE Messaging API), `leaveCoverage.js` + `scheduleOverrides.js` (HR/workforce logic), `importTracking.js` (Import Tracking backing)
+- `_lib/`: `sheets.js` (Sheets client), `auth.js` (HMAC token issuing + guards), `productGroup.js` (see below), `inventory.js` (stock items + movements, see Files section above), `marketingEvents.js` + `marketingInputs.js` + `marketingBasket.js` (marketing impls), `cfo.js` (CFO Dashboard backing, see Files section), `demographic.js` (province-level sales summary), `skuMapping.js` (`sku_redirects` + `set_recipes` lookups, see Data section), `zipToProvince.js` (955-entry Thai postal-code→province table, sourced from `kongvut/thai-province-data`, used only as a fallback for Lazada rows whose export masks buyer address but leaves postal code readable), `provinceNormalize.js` (merges the 3 platforms' province spellings — prefix/suffix strip, bilingual cells, EN→TH aliases — used at read time by `demographic.js`), `shippingClass.js` (parses the Shopee `ตัวเลือกการจัดส่ง` label; `isFastShopeeOption` for the per-product view), `packagingOrderRules.js` (box-packaging rule engine used by Inventory's packaging/BOM logic), `dates.js` (date normalization), `line.js` (LINE Messaging API), `leaveCoverage.js` + `scheduleOverrides.js` (HR/workforce logic), `importTracking.js` (Import Tracking backing)
 - `shared/roles.js` — role constants + tab access rules, imported by both frontend (`App.jsx`) and backend (`sheet-tools.js`)
 
 `api/_lib/productGroup.js` — **the ONE reusable product-family grouping util.**
@@ -762,6 +779,29 @@ a new one.
     `marketing_inputs`, last 3 closed months), `burnRate = fixCostMonthly + avgAdsSpend −
     avgRevenue`, `runwayMonths`, `cashTrend`, `capitalHistory`. New top-level sidebar
     group "การเงิน" (finance) holds just this one tab.
+14. ✅ **DONE (2026-09-01) — shipping-type + repeat-customer analytics + DEV-only lockdown.**
+    - `raw_orders` gained 3 trailing columns: **`shipping_option`** (T — Shopee
+      "ตัวเลือกการจัดส่ง" / Lazada `deliveryType` / TikTok "Delivery Option", raw),
+      **`fulfillment_type`** (U — TikTok "Fulfillment Type", the rest blank),
+      **`buyer_hash`** (V — sha256 of the buyer username + a code pepper, first 16 hex;
+      **never the raw name** — the Sheet has been link-public). No backfill; owner
+      decided to only re-import August onward ("ต้องอัพอยู่แล้ว") + future months.
+    - `import-orders.js` DELETE path `A:R`→`A:Z` (was silently dropping province on any
+      import-batch delete).
+    - `DemographicDashboard.jsx` (still `op=demographic`) gained 3 cards: Shopee
+      delivery-option breakdown, "สินค้าไหนลูกค้ารีบ" (% fast per `deriveGroup` family),
+      and per-platform repeat-customer rate. `_lib/shippingClass.js` +
+      `_lib/provinceNormalize.js` are new. Province names now normalized at read time
+      (merges "จังหวัดนนทบุรี"/"นนทบุรี"/"Nonthaburi").
+    - **CFO / Demographic / Import Tracking are now DEV-ONLY** (owner request). Non-dev
+      roles still see the sidebar entry but get `DevOnlyLock` in `App.jsx` — a fake
+      "โมดูล ... กำลังจัดเตรียมโครงสร้างคลังข้อมูล" placeholder, deliberately identical to
+      an unbuilt tab. Endpoints 403 for non-dev too. `canManageFinance` /
+      `canManageMarketing` no longer gate any op (kept in `shared/roles.js` for the tab
+      whitelists + tests).
+    - Still open: `SPX Express`-style carrier-only values are folded to "ไม่ระบุประเภท"
+      via a hardcoded `CARRIER_ONLY` set in `shippingClass.js` — extend it if new couriers
+      show up. Coverage of the shipping/buyer columns climbs only as new months import.
 
 ## Gotchas
 
