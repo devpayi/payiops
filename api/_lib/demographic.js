@@ -5,6 +5,7 @@
 import { getMetaCached, batchGetValues, getSheet } from './sheets.js'
 import { shopeeShippingOption, isFastShopeeOption } from './shippingClass.js'
 import { deriveGroup, buildOverrideMap } from './productGroup.js'
+import { normalizeProvince } from './provinceNormalize.js'
 
 const MIN_PRODUCT_ORDERS = 20   // ตัดหางยาว — โชว์เฉพาะกลุ่มสินค้าที่มีออเดอร์ Shopee (มี label จัดส่ง) ตั้งแต่นี้ขึ้นไป
 
@@ -44,7 +45,7 @@ export default async function opDemographic(req, res) {
         const platform = String(r[1] || '').trim()
         const qty = num(r[8])
         const status = r[10]
-        const province = String(r[15] || '').trim()
+        const province = normalizeProvince(r[15])
         const buyerHash = String(r[18] || '').trim()
         if (!date || isCancelled(status)) continue
         totalOrders++
