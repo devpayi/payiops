@@ -1,9 +1,36 @@
 import { useEffect, useState } from 'react'
 
 const thb = (n) => `฿${Math.round(n || 0).toLocaleString()}`
-const card = { background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 16, padding: 20 }
+
+// ── Liquid glass (light theme) ──
+const card = {
+  background: 'rgba(255,255,255,0.62)',
+  backdropFilter: 'blur(16px) saturate(180%)',
+  WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+  border: '1px solid rgba(255,255,255,0.75)',
+  borderRadius: 16,
+  padding: 22,
+  boxShadow: '0 12px 32px rgba(15,23,42,0.10), inset 0 1px 0 rgba(255,255,255,0.65)',
+}
+const glassInput = {
+  background: 'rgba(255,255,255,0.55)',
+  border: '1px solid rgba(255,255,255,0.7)',
+  borderRadius: 10,
+  boxShadow: 'inset 0 2px 5px rgba(15,23,42,0.07)',
+  outline: 'none',
+}
+const glowDot = (c) => ({ width: 9, height: 9, borderRadius: '50%', background: c, flexShrink: 0, boxShadow: `0 0 7px ${c}, 0 0 2px ${c}` })
+// สีทึบเดิม + ไล่แสงขาวบางๆ ด้านบน (ใช้ได้กับทุกค่าสีรวม var())
+const barGrad = (c) => `linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0) 45%), ${c}`
+const barRadius = '8px 8px 0 0'
 const VERDICT_COLOR = { act: '#dc2626', watch: '#c2410c', hold: '#16a34a', unknown: '#94a3b8' }
 const VERDICT_LABEL = { act: 'ถึงจังหวะแล้ว', watch: 'ใกล้ถึง', hold: 'ยังไม่ถึง', unknown: 'ข้อมูลไม่พอ' }
+const VERDICT_TINT = {
+  hold: { bg: 'rgba(34,197,94,0.09)', glow: '0 10px 30px rgba(22,163,74,0.14), inset 0 0 0 1px rgba(34,197,94,0.28), inset 0 1px 0 rgba(255,255,255,0.6)' },
+  watch: { bg: 'rgba(234,88,12,0.09)', glow: '0 10px 30px rgba(194,65,12,0.14), inset 0 0 0 1px rgba(234,88,12,0.28), inset 0 1px 0 rgba(255,255,255,0.6)' },
+  act: { bg: 'rgba(220,38,38,0.09)', glow: '0 10px 30px rgba(220,38,38,0.16), inset 0 0 0 1px rgba(220,38,38,0.3), inset 0 1px 0 rgba(255,255,255,0.6)' },
+  unknown: { bg: 'rgba(148,163,184,0.09)', glow: '0 10px 30px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.6)' },
+}
 const PVERDICT = {
   'fbs-candidate': { t: 'ลอง FBS ได้', c: '#16a34a' },
   'keep-self': { t: 'เก็บแพ็คเอง', c: '#c2410c' },
@@ -114,7 +141,7 @@ export default function Fulfillment() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
         <span style={{ color: 'var(--payi-text-muted)' }}>ช่วงข้อมูล:</span>
         <select value={range} onChange={(e) => setRange(e.target.value)}
-          style={{ padding: '6px 10px', border: '1px solid var(--payi-border)', borderRadius: 8, fontSize: 13 }}>
+          style={{ ...glassInput, padding: '6px 10px', fontSize: 13 }}>
           <option value="3">3 เดือนล่าสุด</option>
           <option value="6">6 เดือนล่าสุด</option>
           <option value="all">ทั้งหมด</option>
@@ -128,12 +155,12 @@ export default function Fulfillment() {
       {tiles.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(160px, 1fr))`, gap: 10 }}>
           {tiles.map((t, i) => (
-            <div key={i} style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderTop: `3px solid ${t.dot}`, borderRadius: 12, padding: '12px 14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--payi-text-muted)', marginBottom: 6 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.dot, flexShrink: 0 }} />{t.label}
+            <div key={i} style={{ ...card, padding: '14px 16px', borderRadius: 14, borderTop: `2px solid ${t.dot}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: 'var(--payi-text-muted)', marginBottom: 7 }}>
+                <span style={glowDot(t.dot)} />{t.label}
               </div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--payi-text-strong)', lineHeight: 1.35 }}>{t.big}</div>
-              {t.sub && <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 4 }}>{t.sub}</div>}
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--payi-text-strong)', lineHeight: 1.35, letterSpacing: '-0.01em' }}>{t.big}</div>
+              {t.sub && <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 5 }}>{t.sub}</div>}
             </div>
           ))}
         </div>
@@ -145,11 +172,11 @@ export default function Fulfillment() {
       </div>
 
       {/* VERDICT */}
-      <div style={{ ...card, borderLeft: `4px solid ${VERDICT_COLOR[v.level]}` }}>
+      <div style={{ ...card, background: VERDICT_TINT[v.level].bg, border: '1px solid rgba(255,255,255,0.6)', boxShadow: VERDICT_TINT[v.level].glow }}>
         <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginBottom: 4 }}>คำแนะนำ — ย้ายงานแพ็คเข้า Fulfillment?</div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: VERDICT_COLOR[v.level], marginBottom: 6 }}>{VERDICT_LABEL[v.level]}</div>
-        <div style={{ fontSize: 13, color: 'var(--payi-text)', lineHeight: 1.6 }}>{v.text}</div>
-        {stockoutNote && <div style={{ fontSize: 12, color: '#16a34a', marginTop: 8 }}>✓ {stockoutNote}</div>}
+        <div style={{ fontSize: 19, fontWeight: 700, color: VERDICT_COLOR[v.level], marginBottom: 8, letterSpacing: '-0.01em' }}>{VERDICT_LABEL[v.level]}</div>
+        <div style={{ fontSize: 13, color: 'var(--payi-text)', lineHeight: 1.65 }}>{v.text}</div>
+        {stockoutNote && <div style={{ fontSize: 12, color: '#15803d', marginTop: 10 }}>✓ {stockoutNote}</div>}
       </div>
 
       {/* CAPACITY — monthly */}
@@ -165,13 +192,13 @@ export default function Fulfillment() {
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 110, borderBottom: '1px solid var(--payi-border)', position: 'relative' }}>
               {/* เส้นเพดาน */}
-              <div style={{ position: 'absolute', left: 0, right: 0, bottom: `${(cap.capacityPerDay / capMax) * 100}%`, borderTop: '1px dashed #dc2626' }}>
-                <span style={{ fontSize: 9, color: '#dc2626', position: 'absolute', right: 0, top: -12 }}>เพดาน {cap.maxFinish}</span>
+              <div style={{ position: 'absolute', left: 0, right: 0, bottom: `${(cap.capacityPerDay / capMax) * 100}%`, borderTop: '1px dashed rgba(220,38,38,0.38)' }}>
+                <span style={{ fontSize: 9, color: 'rgba(220,38,38,0.75)', position: 'absolute', right: 0, top: -12 }}>เพดาน {cap.maxFinish}</span>
               </div>
               {cap.series.map((m) => (
                 <div key={m.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }} title={`${mLabel(m.month)}: ~${m.avgPerDay}/วัน เลิก ${m.finish}`}>
                   <div style={{ fontSize: 9, fontWeight: 600, color: m.finish > cap.maxFinish ? '#dc2626' : 'var(--payi-text)' }}>{m.finish}</div>
-                  <div style={{ width: '70%', background: m.partial ? '#cbd5e1' : (m.finish > cap.maxFinish ? '#dc2626' : 'var(--payi-mint)'), height: `${Math.max(2, (m.avgPerDay / capMax) * 88)}px`, borderRadius: '3px 3px 0 0' }} />
+                  <div style={{ width: '70%', background: barGrad(m.partial ? '#cbd5e1' : (m.finish > cap.maxFinish ? '#dc2626' : 'var(--payi-mint)')), height: `${Math.max(2, (m.avgPerDay / capMax) * 88)}px`, borderRadius: barRadius, boxShadow: '0 4px 12px rgba(15,23,42,0.12)' }} />
                 </div>
               ))}
             </div>
@@ -204,7 +231,9 @@ export default function Fulfillment() {
               <span>ค่าธรรมเนียม FBS ต่อชิ้น</span>
               <input type="number" step="any" placeholder="0" value={feeSim}
                 onChange={(e) => setFeeSim(e.target.value)}
-                style={{ width: 80, padding: '6px 8px', border: '1px solid var(--payi-border)', borderRadius: 8, fontSize: 13 }} />
+                onFocus={(e) => { e.target.style.boxShadow = 'inset 0 2px 5px rgba(15,23,42,0.07), 0 0 0 3px rgba(37,99,235,0.18)' }}
+                onBlur={(e) => { e.target.style.boxShadow = glassInput.boxShadow }}
+                style={{ ...glassInput, width: 80, padding: '6px 8px', fontSize: 13 }} />
               <span style={{ color: 'var(--payi-text-muted)' }}>บาท</span>
             </div>
             {fbsPO == null ? (
@@ -260,7 +289,7 @@ export default function Fulfillment() {
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 56 }}>
             {wd.series.map((s) => (
               <div key={s.day} style={{ flex: 1, textAlign: 'center' }} title={`${s.day}: ~${s.avgOrders}`}>
-                <div style={{ background: s.day === wd.peakDay ? '#dc2626' : '#cbd5e1', height: `${Math.max(2, (s.avgOrders / wdMax) * 42)}px`, borderRadius: 3 }} />
+                <div style={{ background: barGrad(s.day === wd.peakDay ? '#dc2626' : '#cbd5e1'), height: `${Math.max(2, (s.avgOrders / wdMax) * 42)}px`, borderRadius: barRadius }} />
                 <div style={{ fontSize: 9, color: 'var(--payi-text-muted)', marginTop: 2 }}>{s.day.slice(0, 2)}</div>
                 <div style={{ fontSize: 9, fontWeight: 600 }}>{s.avgOrders.toLocaleString()}</div>
               </div>
@@ -284,7 +313,7 @@ export default function Fulfillment() {
               const inWin = pw.bestWindow && s.day >= pw.bestWindow.start && s.day <= pw.bestWindow.end
               return (
                 <div key={s.day} style={{ flex: 1, textAlign: 'center' }} title={`วันที่ ${s.day}: ~${s.avgOrders}`}>
-                  <div style={{ background: inWin ? '#16a34a' : '#cbd5e1', height: `${Math.max(2, (s.avgOrders / pwMax) * 46)}px`, borderRadius: 2 }} />
+                  <div style={{ background: barGrad(inWin ? '#16a34a' : '#cbd5e1'), height: `${Math.max(2, (s.avgOrders / pwMax) * 46)}px`, borderRadius: '4px 4px 0 0' }} />
                   <div style={{ fontSize: 8, color: 'var(--payi-text-muted)', marginTop: 1 }}>{s.day}</div>
                 </div>
               )
@@ -338,7 +367,7 @@ export default function Fulfillment() {
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 50 }}>
             {fbs.trend.map((m) => (
               <div key={m.month} style={{ flex: 1, textAlign: 'center' }} title={`${mLabel(m.month)}: ${m.fbsPct}%`}>
-                <div style={{ background: 'var(--payi-mint)', height: `${Math.max(2, m.fbsPct * 0.6)}px`, borderRadius: 3 }} />
+                <div style={{ background: barGrad('var(--payi-mint)'), height: `${Math.max(2, m.fbsPct * 0.6)}px`, borderRadius: barRadius }} />
                 <div style={{ fontSize: 9, color: 'var(--payi-text-muted)', marginTop: 2 }}>{mLabel(m.month)}</div>
               </div>
             ))}
@@ -380,8 +409,8 @@ export default function Fulfillment() {
                   title={`${mLabel(s.month)}: ${s.otHours} ชม. (${thb(s.otCost)})${ot.hasFeedData ? ` — ฟีด ${s.feedUnits.toLocaleString()}` : ''}`}>
                   <div style={{ fontSize: 9, fontWeight: 600 }}>{s.otHours}</div>
                   <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', width: '80%', height: '100%' }}>
-                    <div style={{ flex: 1, background: '#c2410c', height: `${(s.otHours / otMax) * 72}px`, borderRadius: '3px 3px 0 0' }} />
-                    {ot.hasFeedData && <div style={{ flex: 1, background: 'var(--payi-mint)', height: `${(s.feedUnits / feedMax) * 72}px`, borderRadius: '3px 3px 0 0' }} title="ปริมาณฟีด" />}
+                    <div style={{ flex: 1, background: barGrad('#c2410c'), height: `${(s.otHours / otMax) * 72}px`, borderRadius: barRadius }} />
+                    {ot.hasFeedData && <div style={{ flex: 1, background: barGrad('var(--payi-mint)'), height: `${(s.feedUnits / feedMax) * 72}px`, borderRadius: barRadius }} title="ปริมาณฟีด" />}
                   </div>
                 </div>
               ))}
@@ -406,7 +435,7 @@ export default function Fulfillment() {
                 {label}
                 <input type="number" step="any" value={form[k] ?? ''}
                   onChange={(e) => setForm({ ...form, [k]: e.target.value })}
-                  style={{ width: '100%', marginTop: 4, padding: '6px 8px', border: '1px solid var(--payi-border)', borderRadius: 8, fontSize: 13 }} />
+                  style={{ ...glassInput, width: '100%', marginTop: 4, padding: '6px 8px', fontSize: 13 }} />
               </label>
             ))}
           </div>
