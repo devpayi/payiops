@@ -844,7 +844,10 @@ a new one.
     data the 5th hire lands ~฿0.9/order (cheaper than OT), and FBS at any realistic fee
     loses to both — the card says so and points to the operational reasons for FBS. FBS
     fee fields are 0 for now (owner: FBS free until ~Oct 2026, rate unknown). No new
-    `api/*.js` file (piggybacks , still 9/12). Open to dev+boss+finance (2026-09-02).
+    `api/*.js` file (piggybacks `sheet-tools.js`, still 9/12). **Open to dev + boss +
+    finance** as of 2026-09-02 (was DEV-only) — `FINANCE_TABS` gained `Fulfillment`, the
+    `op=fulfillment` guard and `App.jsx` render allow those three roles. Every card (and
+    the verdict) has a click-to-open ⓘ tooltip spelling out how its numbers are derived.
 
 ## Gotchas
 
