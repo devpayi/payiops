@@ -56,18 +56,18 @@ const CONFIG_FIELDS = [
 ]
 const mLabel = (ym) => { const [y, m] = ym.split('-'); return `${['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][+m]} ${String(y).slice(2)}` }
 
-// ⓘ กดแล้วอธิบายวิธีคิด/คำนวณ ของการ์ดนั้น
+// ⓘ กดแล้วอธิบายวิธีคิด/คำนวณ — โน้ตดันเนื้อหาลง (flow) ไม่ทับข้อความ
 function InfoTip({ note }) {
   const [open, setOpen] = useState(false)
   if (!note) return null
   return (
-    <span style={{ display: 'inline-block', marginLeft: 6, verticalAlign: 'middle' }}>
+    <>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-label="วิธีคิด"
-        style={{ width: 15, height: 15, borderRadius: '50%', border: '1px solid var(--payi-border)', background: open ? 'rgba(15,23,42,0.08)' : 'transparent', color: 'var(--payi-text-muted)', fontSize: 10, fontWeight: 700, cursor: 'pointer', lineHeight: '12px', padding: 0 }}>i</button>
+        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 15, height: 15, marginLeft: 6, borderRadius: '50%', border: '1px solid var(--payi-border)', background: open ? 'rgba(15,23,42,0.08)' : 'transparent', color: 'var(--payi-text-muted)', fontSize: 10, fontWeight: 700, cursor: 'pointer', lineHeight: 1, padding: 0, verticalAlign: 'middle' }}>i</button>
       {open && (
-        <span style={{ display: 'block', position: 'absolute', top: 44, left: 22, right: 22, zIndex: 40, padding: '10px 13px', borderRadius: 10, background: 'rgba(15,23,42,0.045)', fontSize: 11.5, lineHeight: 1.7, color: 'var(--payi-text-muted)', whiteSpace: 'pre-line', fontWeight: 400, textAlign: 'left' }}>{note}</span>
+        <span style={{ display: 'block', margin: '8px 0 2px', padding: '10px 13px', borderRadius: 10, background: 'rgba(15,23,42,0.045)', fontSize: 11.5, lineHeight: 1.75, color: 'var(--payi-text-muted)', whiteSpace: 'pre-line', fontWeight: 400 }}>{note}</span>
       )}
-    </span>
+    </>
   )
 }
 const NOTE = {
