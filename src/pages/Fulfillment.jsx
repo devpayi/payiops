@@ -28,6 +28,7 @@ export default function Fulfillment() {
   const [range, setRange] = useState('3')
   const [form, setForm] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [feeSim, setFeeSim] = useState('')
 
   const load = (rng) => {
     setLoading(true)
@@ -56,7 +57,7 @@ export default function Fulfillment() {
   if (error) return <div style={{ padding: 16, borderRadius: 12, background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)' }}>เกิดข้อผิดพลาด: {error}</div>
   if (!data) return null
 
-  const { capacity: cap, weekday: wd, prepWindow: pw, fbsUsage: fbs, byProduct = [], otAudit: ot, fbsRetention: fr, verdict: v, stockoutNote } = data
+  const { capacity: cap, weekday: wd, prepWindow: pw, fbsUsage: fbs, byProduct = [], otAudit: ot, fbsRetention: fr, verdict: v, stockoutNote, breakeven: be } = data
   const candidates = byProduct.filter((p) => p.verdict === 'fbs-candidate')
   const keepSelf = byProduct.filter((p) => p.verdict === 'keep-self')
   const pwMax = pw?.ready ? Math.max(...pw.series.map((s) => s.avgOrders)) : 1
@@ -124,6 +125,50 @@ export default function Fulfillment() {
           </>
         ) : <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ข้อมูลออเดอร์ยังไม่พอ</div>}
       </div>
+
+      {/* BREAK-EVEN */}
+      {be?.ready && (() => {
+        const feeVal = feeSim !== '' ? parseFloat(feeSim) : be.fbsFeePerPiece
+        const fbsPO = feeVal > 0 ? Math.round(feeVal * be.piecesPerOrder * 100) / 100 : null
+        const alt = be.cheapestAlt
+        const bars = [
+          { label: 'OT (4 คน)', v: be.otCostPerOrder, c: '#94a3b8' },
+          { label: 'จ้างคนที่ 5', v: be.hireCostPerOrder, c: '#94a3b8' },
+          { label: 'FBS', v: fbsPO, c: fbsPO != null && alt != null ? (fbsPO <= alt ? '#16a34a' : '#dc2626') : '#cbd5e1' },
+        ]
+        const bmax = Math.max(0.1, ...bars.map((b) => b.v || 0))
+        return (
+          <div style={card}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>ต้นทุนส่วนเพิ่ม/ออเดอร์ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>เมื่อโตเกินทีม</span></h3>
+            <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
+              ค่าแรง 4 คน fixed อยู่แล้ว ไม่นับ. ที่นับคือส่วนที่เพิ่มเมื่อรับออเดอร์เกินกำลัง — ~{be.piecesPerOrder} ชิ้น/ออเดอร์ (ส่งธรรมดา Shopee)
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 12.5 }}>
+              <span>ลองใส่ค่าธรรมเนียม FBS/ชิ้น:</span>
+              <input type="number" step="any" placeholder={be.fbsFeePerPiece || '0'} value={feeSim}
+                onChange={(e) => setFeeSim(e.target.value)}
+                style={{ width: 90, padding: '5px 8px', border: '1px solid var(--payi-border)', borderRadius: 8, fontSize: 13 }} />
+              <span style={{ color: 'var(--payi-text-muted)', fontSize: 11 }}>= ฿{fbsPO ?? '?'}/ออเดอร์</span>
+            </div>
+            {bars.map((b) => (
+              <div key={b.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 12.5 }}>
+                <div style={{ width: 90, flexShrink: 0 }}>{b.label}</div>
+                <div style={{ flex: 1, background: '#eef2f7', borderRadius: 6, height: 16, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${((b.v || 0) / bmax) * 100}%`, background: b.c, borderRadius: 6 }} />
+                </div>
+                <div style={{ width: 70, textAlign: 'right', fontWeight: 600 }}>{b.v != null ? `฿${b.v}` : '—'}</div>
+              </div>
+            ))}
+            {fbsPO != null && alt != null && (
+              <div style={{ fontSize: 12, marginTop: 8, color: fbsPO <= alt ? '#16a34a' : '#92400e', lineHeight: 1.5 }}>
+                {fbsPO <= alt
+                  ? `FBS ถูกกว่า — คุ้มตามต้นทุน ต่างกัน ~฿${Math.round((alt - fbsPO) * 100) / 100}/ออเดอร์`
+                  : `FBS แพงกว่า ~฿${Math.round((fbsPO - alt) * 100) / 100}/ออเดอร์ — ไม่คุ้มถ้าดูแค่ต้นทุน. เหตุผลที่ยังควรใช้ = ไม่ต้องจัดการคนเพิ่ม / รับพีควันแคมเปญ / OT มีเพดาน (คนล้า, กฎหมาย)`}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* WEEKDAY */}
       {wd?.ready && (

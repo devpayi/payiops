@@ -347,9 +347,47 @@ function fbsRetention(rows) {
   }
 }
 
-function verdict(cap, cfg, wd) {
+// ต้นทุนส่วนเพิ่มต่อออเดอร์ เมื่อปริมาณโตเกินทีม — เทียบ 3 ทาง
+// ค่าแรง 4 คน fixed อยู่แล้ว ไม่นับ. ที่นับคือ marginal: OT / จ้างคนที่ 5 / FBS
+function breakeven(rows, cap, cfg) {
+  if (!cap.ready) return { ready: false }
+  const oph = cap.ordersPerPersonHour
+  const hc = cfg.pack_headcount || 4
+  const normalHours = Math.max(0.5, cfg.normal_finish - cfg.pack_start)
+  // ชิ้น/ออเดอร์ เฉลี่ย (Shopee ส่งธรรมดา — คือของที่จะเข้า FBS)
+  const shopeeStd = rows.filter((r) => isShopee(r) && r.shipOption && !isFastShopeeOption(shopeeShippingOption(r.shipOption, r.platform)))
+  const stdOrderIds = new Set(shopeeStd.map((r) => `${r.platform}:${r.orderId}`))
+  const stdUnits = shopeeStd.reduce((s, r) => s + r.qty, 0)
+  const piecesPerOrder = stdOrderIds.size ? Math.round((stdUnits / stdOrderIds.size) * 100) / 100 : 1.5
+
+  const otCostPerOrder = oph > 0 ? Math.round((cfg.ot_rate_per_hour / oph) * 100) / 100 : null      // 4 คน OT 1 ชม. = 4×เรต, ได้ oph×4 ออเดอร์ -> เรต/oph
+  const hireCostPerOrder = (oph > 0 && normalHours > 0) ? Math.round((cfg.daily_wage / (oph * normalHours)) * 100) / 100 : null
+  const feeKnown = cfg.fbs_fee_per_piece > 0
+  const fbsCostPerOrder = feeKnown ? Math.round((cfg.fbs_fee_per_piece * piecesPerOrder) * 100) / 100 : null
+
+  return {
+    ready: true,
+    piecesPerOrder,
+    otCostPerOrder,
+    hireCostPerOrder,
+    fbsCostPerOrder,
+    fbsFeePerPiece: cfg.fbs_fee_per_piece,
+    // ให้ frontend คำนวณ "ลองใส่ค่าธรรมเนียม" ได้เอง
+    cheapestAlt: hireCostPerOrder != null && otCostPerOrder != null ? Math.min(otCostPerOrder, hireCostPerOrder) : (otCostPerOrder ?? hireCostPerOrder),
+  }
+}
+
+function verdict(cap, cfg, wd, be) {
   if (!cap.ready) return { level: 'unknown', text: 'ข้อมูลออเดอร์ยังไม่พอสร้างโมเดล capacity' }
-  const feeNote = cfg.fbs_fee_per_piece > 0 ? '' : ' รอค่าธรรมเนียม FBS มากรอก แล้วโมเดลจะเทียบ break-even กับค่า OT/จ้างเพิ่มให้'
+  let feeNote = ' รอค่าธรรมเนียม FBS มากรอก แล้วโมเดลจะเทียบ break-even กับค่า OT/จ้างเพิ่มให้'
+  if (cfg.fbs_fee_per_piece > 0 && be?.ready) {
+    const fbs = be.fbsCostPerOrder, alt = be.cheapestAlt
+    feeNote = fbs != null && alt != null
+      ? (fbs <= alt
+        ? ` ต้นทุน FBS ~฿${fbs}/ออเดอร์ ถูกกว่าค่า OT/จ้างเพิ่ม (~฿${alt}) — คุ้มตามต้นทุน`
+        : ` ต้นทุน FBS ~฿${fbs}/ออเดอร์ แพงกว่าค่า OT/จ้างเพิ่ม (~฿${alt}) — ไม่คุ้มถ้าดูแค่ต้นทุน. ใช้ FBS เพื่อไม่ต้องจัดการคนเพิ่ม/รับพีควันแคมเปญแทน`)
+      : ''
+  }
   if (wd?.ready && wd.peakOverCeiling && !cap.overCeiling) {
     return { level: 'watch', text: `ค่าเฉลี่ยยังไหว (เดือน ${cap.calMonth} เลิก ~${cap.finishLastMonth}) แต่วัน${wd.peakDay}ทีมเลิก ~${wd.finishOnPeakDay} เกิน ${cap.maxFinish} — วัน${wd.peakDay}คือตัวจริง. ย้ายสินค้าส่งธรรมดา 1-2 ตัวเข้า FBS ช่วยลดโหลดวันนั้น.${feeNote}` }
   }
@@ -387,6 +425,7 @@ export default async function opFulfillment(req, res) {
 
     const cap = capacity(rows, cfg)
     const wd = weekdayLoad(all, cap, cfg)
+    const be = breakeven(rows, cap, cfg)
     const bp = await byProduct(rows)
     return res.status(200).json({
       success: true,
@@ -402,7 +441,8 @@ export default async function opFulfillment(req, res) {
       byProductMeta: { dataMonths: bp.dataMonths, dataFrom: bp.dataFrom, dataTo: bp.dataTo },
       fbsRetention: fbsRetention(rows),
       otAudit: await otAudit(rows, cfg),
-      verdict: verdict(cap, cfg, wd),
+      breakeven: be,
+      verdict: verdict(cap, cfg, wd, be),
       stockoutNote: STOCKOUT_NOTE,
     })
   } catch (e) {

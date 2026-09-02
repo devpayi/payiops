@@ -825,7 +825,12 @@ a new one.
     TikTok `fulfillment_type` came back empty in the exports); (g) per-`deriveGroup` FBS
     candidate/keep-self scoring (fast <20% + standard/FBS ≥55% = candidate; fast ≥25% =
     keep self); (h) OT-padding audit — days with logged OT but below-median order volume,
-    ฿ estimate. FBS fee fields are 0 for now (owner: FBS free until ~Oct 2026, rate
+    ฿ estimate; (i) **marginal-cost break-even** — ฿/order for OT (`ot_rate_per_hour` ÷
+    calibrated oph) vs a 5th hire (`daily_wage` ÷ oph ÷ normal hours) vs FBS
+    (`fbs_fee_per_piece` × avg pieces/order for Shopee standard orders), with a live
+    "try a fee" input; the verdict text folds in the result. On real data OT is ~฿1.3/order
+    so FBS almost never wins on pure cost — the card says so and points to the operational
+    reasons instead. FBS fee fields are 0 for now (owner: FBS free until ~Oct 2026, rate
     unknown). No new `api/*.js` file (piggybacks `sheet-tools.js`, still 9/12).
 
 ## Gotchas
