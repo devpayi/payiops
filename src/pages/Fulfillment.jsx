@@ -4,6 +4,7 @@ const thb = (n) => `฿${Math.round(n || 0).toLocaleString()}`
 
 // ── Glass surface (ขับเคลื่อนด้วย CSS var + fallback — เผื่อ theme อื่น) ──
 const card = {
+  position: 'relative',
   background: 'var(--card-bg, rgba(255,255,255,0.7))',
   backdropFilter: 'blur(12px)',
   WebkitBackdropFilter: 'blur(12px)',
@@ -60,11 +61,11 @@ function InfoTip({ note }) {
   const [open, setOpen] = useState(false)
   if (!note) return null
   return (
-    <span style={{ position: 'relative', display: 'inline-block', marginLeft: 6, verticalAlign: 'middle' }}>
+    <span style={{ display: 'inline-block', marginLeft: 6, verticalAlign: 'middle' }}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-label="วิธีคิด"
         style={{ width: 16, height: 16, borderRadius: '50%', border: '1px solid var(--payi-border)', background: open ? 'var(--payi-mint)' : '#fff', color: open ? '#fff' : 'var(--payi-text-muted)', fontSize: 10, fontWeight: 700, cursor: 'pointer', lineHeight: '13px', padding: 0 }}>i</button>
       {open && (
-        <span style={{ display: 'block', position: 'absolute', top: 22, left: 0, zIndex: 30, width: 300, maxWidth: '76vw', padding: '11px 13px', borderRadius: 12, background: '#fff', border: '1px solid var(--payi-border)', boxShadow: '0 14px 32px rgba(15,23,42,0.18)', fontSize: 11.5, lineHeight: 1.75, color: 'var(--payi-text)', whiteSpace: 'pre-line', fontWeight: 400 }}>{note}</span>
+        <span style={{ display: 'block', position: 'absolute', top: 46, left: 22, right: 22, zIndex: 40, padding: '11px 14px', borderRadius: 12, background: '#fff', border: '1px solid var(--payi-border)', boxShadow: '0 16px 36px rgba(15,23,42,0.2)', fontSize: 11.5, lineHeight: 1.7, color: 'var(--payi-text)', whiteSpace: 'pre-line', fontWeight: 400, textAlign: 'left' }}>{note}</span>
       )}
     </span>
   )
