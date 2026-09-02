@@ -63,9 +63,9 @@ function InfoTip({ note }) {
   return (
     <span style={{ display: 'inline-block', marginLeft: 6, verticalAlign: 'middle' }}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-label="วิธีคิด"
-        style={{ width: 16, height: 16, borderRadius: '50%', border: '1px solid var(--payi-border)', background: open ? 'var(--payi-mint)' : '#fff', color: open ? '#fff' : 'var(--payi-text-muted)', fontSize: 10, fontWeight: 700, cursor: 'pointer', lineHeight: '13px', padding: 0 }}>i</button>
+        style={{ width: 15, height: 15, borderRadius: '50%', border: '1px solid var(--payi-border)', background: open ? 'rgba(15,23,42,0.08)' : 'transparent', color: 'var(--payi-text-muted)', fontSize: 10, fontWeight: 700, cursor: 'pointer', lineHeight: '12px', padding: 0 }}>i</button>
       {open && (
-        <span style={{ display: 'block', position: 'absolute', top: 46, left: 22, right: 22, zIndex: 40, padding: '11px 14px', borderRadius: 12, background: '#fff', border: '1px solid var(--payi-border)', boxShadow: '0 16px 36px rgba(15,23,42,0.2)', fontSize: 11.5, lineHeight: 1.7, color: 'var(--payi-text)', whiteSpace: 'pre-line', fontWeight: 400, textAlign: 'left' }}>{note}</span>
+        <span style={{ display: 'block', position: 'absolute', top: 44, left: 22, right: 22, zIndex: 40, padding: '10px 13px', borderRadius: 10, background: 'rgba(15,23,42,0.045)', fontSize: 11.5, lineHeight: 1.7, color: 'var(--payi-text-muted)', whiteSpace: 'pre-line', fontWeight: 400, textAlign: 'left' }}>{note}</span>
       )}
     </span>
   )
