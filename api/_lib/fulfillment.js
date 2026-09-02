@@ -65,6 +65,7 @@ async function readOrders() {
         qty: num(r[8]),
         revenue: num(r[9]),
         shipOption: r[16] || '',
+        buyerHash: String(r[18] || '').trim(),
       })
     }
   }
@@ -152,6 +153,34 @@ async function byProduct(rows) {
     })
     .sort((a, b) => b.orders - a.orders)
   return { list, dataMonths: Math.round(months * 10) / 10, dataFrom: minD < maxD ? minD : null, dataTo: minD < maxD ? maxD : null }
+}
+
+// โหลดตามวันในสัปดาห์ — วันพีค (จันทร์?) คือตัวจริงที่ชนเพดาน ไม่ใช่ค่าเฉลี่ย
+function weekdayLoad(rows, cap, cfg) {
+  const DOW = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
+  const byDay = ordersPerDay(rows)
+  const bucket = Array.from({ length: 7 }, () => ({ sum: 0, n: 0 }))
+  for (const [date, orders] of byDay) {
+    const d = new Date(date)
+    if (isNaN(d)) continue
+    bucket[d.getDay()].sum += orders; bucket[d.getDay()].n++
+  }
+  const series = bucket.map((b, w) => ({ day: DOW[w], avgOrders: b.n ? Math.round(b.sum / b.n) : 0 })).filter((x) => x.avgOrders > 0)
+  if (series.length < 5 || !cap?.ready) return { ready: false }
+  const overallAvg = series.reduce((s, x) => s + x.avgOrders, 0) / series.length
+  const peak = [...series].sort((a, b) => b.avgOrders - a.avgOrders)[0]
+  const oph = cap.ordersPerPersonHour, hc = cfg.pack_headcount || 4
+  const finishPeak = cfg.pack_start + (oph > 0 ? peak.avgOrders / (hc * oph) : 0)
+  return {
+    ready: true,
+    series,
+    overallAvg: Math.round(overallAvg),
+    peakDay: peak.day,
+    peakAvgOrders: peak.avgOrders,
+    peakRatio: overallAvg ? Math.round((peak.avgOrders / overallAvg) * 100) / 100 : 1,
+    finishOnPeakDay: hhmm(finishPeak),
+    peakOverCeiling: finishPeak > cfg.max_finish,
+  }
 }
 
 // โหลดออเดอร์ตามวันที่ของเดือน (1-31) — หาช่วง 4 วันที่เบาสุดสำหรับเตรียมส่งของเข้า FBS
@@ -275,10 +304,43 @@ async function otAudit(rows, cfg) {
   }
 }
 
-function verdict(cap, cfg) {
+// สังเกต: ลูกค้าที่เคยได้ FBS กลับมาซื้อซ้ำมากกว่าลูกค้าที่ได้แต่แพ็คเองไหม
+// (Shopee เท่านั้น — จับคนจาก buyer_hash. ไม่ใช่หลักฐานเชิงเหตุผล มี confounder เยอะ + ข้อมูลยังสั้น)
+function fbsRetention(rows) {
+  const shopee = rows.filter((r) => r.platform.toLowerCase().includes('shopee') && r.buyerHash && r.shipOption)
+  const byBuyer = new Map()
+  for (const r of shopee) {
+    const b = byBuyer.get(r.buyerHash) || { orders: new Set(), fbs: false }
+    if (r.orderId) b.orders.add(r.orderId)
+    if (isFbsOption(r.shipOption)) b.fbs = true
+    byBuyer.set(r.buyerHash, b)
+  }
+  const grp = { fbs: { buyers: 0, repeat: 0 }, self: { buyers: 0, repeat: 0 } }
+  for (const b of byBuyer.values()) {
+    const g = b.fbs ? grp.fbs : grp.self
+    g.buyers++
+    if (b.orders.size >= 2) g.repeat++
+  }
+  const rate = (g) => (g.buyers ? Math.round((g.repeat / g.buyers) * 1000) / 10 : 0)
+  const enough = grp.fbs.buyers >= 100 && grp.self.buyers >= 100
+  return {
+    ready: byBuyer.size > 0,
+    enoughSample: enough,
+    fbsBuyers: grp.fbs.buyers,
+    fbsRepeatPct: rate(grp.fbs),
+    selfBuyers: grp.self.buyers,
+    selfRepeatPct: rate(grp.self),
+  }
+}
+
+function verdict(cap, cfg, wd) {
   if (!cap.ready) return { level: 'unknown', text: 'ข้อมูลออเดอร์ยังไม่พอสร้างโมเดล capacity (ต้องมีอย่างน้อย 14 วัน)' }
   const feeKnown = cfg.fbs_fee_per_piece > 0
   const feeNote = feeKnown ? '' : ' รอค่าธรรมเนียม FBS เดือนหน้ามากรอก แล้วโมเดลจะเทียบ break-even กับค่า OT/จ้างเพิ่มให้'
+  // วันพีคชนเพดานแล้วแม้ค่าเฉลี่ยยังโอเค — วันพีคคือตัวจริง
+  if (wd?.ready && wd.peakOverCeiling && cap.recentAvgPerDay < cap.capacityPerDay) {
+    return { level: 'watch', text: `ค่าเฉลี่ยยังไหว (เลิก ~${cap.finishNow}) แต่วัน${wd.peakDay}ทีมเลิก ~${wd.finishOnPeakDay} เกิน ${cap.maxFinish} — วัน${wd.peakDay}คือตัวจริง. ย้ายสินค้าส่งธรรมดา 1-2 ตัวเข้า FBS ช่วยลดโหลดวันนั้น.${feeNote}` }
+  }
   if (cap.recentAvgPerDay >= cap.capacityPerDay) {
     return { level: 'act', text: `ปริมาณตอนนี้ทำให้ทีมเลิกงาน ~${cap.finishNow} เลย ${cap.maxFinish} — ถึงจังหวะย้ายส่วนส่งธรรมดาเข้า FBS แทนจ้างคนเพิ่ม/OT.${feeNote}` }
   }
@@ -308,6 +370,7 @@ export default async function opFulfillment(req, res) {
     const cfg = await loadConfig()
     const rows = await readOrders()
     const cap = capacity(rows, cfg)
+    const wd = weekdayLoad(rows, cap, cfg)
     const bp = await byProduct(rows)
     return res.status(200).json({
       success: true,
@@ -316,9 +379,11 @@ export default async function opFulfillment(req, res) {
       byProduct: bp.list,
       byProductMeta: { dataMonths: bp.dataMonths, dataFrom: bp.dataFrom, dataTo: bp.dataTo },
       prepWindow: dayOfMonthLoad(rows),
+      weekday: wd,
+      fbsRetention: fbsRetention(rows),
       capacity: cap,
       otAudit: await otAudit(rows, cfg),
-      verdict: verdict(cap, cfg),
+      verdict: verdict(cap, cfg, wd),
       stockoutNote: STOCKOUT_NOTE,
     })
   } catch (e) {

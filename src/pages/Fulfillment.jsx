@@ -55,7 +55,8 @@ export default function Fulfillment() {
   if (error) return <div style={{ padding: 16, borderRadius: 12, background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)' }}>เกิดข้อผิดพลาด: {error}</div>
   if (!data) return null
 
-  const { fbsUsage: fbs, byProduct = [], capacity: cap, otAudit: ot, verdict: v, prepWindow: pw, stockoutNote } = data
+  const { fbsUsage: fbs, byProduct = [], capacity: cap, otAudit: ot, verdict: v, prepWindow: pw, weekday: wd, fbsRetention: fr, stockoutNote } = data
+  const wdMax = wd?.ready ? Math.max(...wd.series.map((s) => s.avgOrders)) : 1
   const candidates = byProduct.filter((p) => p.verdict === 'fbs-candidate')
   const keepSelf = byProduct.filter((p) => p.verdict === 'keep-self')
   const pwMax = pw?.ready ? Math.max(...pw.series.map((s) => s.avgOrders)) : 1
@@ -131,6 +132,59 @@ export default function Fulfillment() {
           </>
         ) : <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ข้อมูลออเดอร์ยังไม่พอ (ต้องมีอย่างน้อย 14 วัน)</div>}
       </div>
+
+      {/* WEEKDAY */}
+      {wd?.ready && (
+        <div style={card}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>โหลดตามวันในสัปดาห์ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>วันพีคคือตัวจริงที่ชนเพดาน</span></h3>
+          <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
+            วัน{wd.peakDay}ออเดอร์เยอะสุด ~{wd.peakAvgOrders.toLocaleString()} ({wd.peakRatio}× ค่าเฉลี่ย {wd.overallAvg.toLocaleString()}) —
+            ทีมเลิกงานวันนั้น ~<b style={{ color: wd.peakOverCeiling ? '#dc2626' : 'inherit' }}>{wd.finishOnPeakDay}</b>
+            {wd.peakOverCeiling ? ` (เกินเพดาน ${cap.maxFinish})` : ''}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 60 }}>
+            {wd.series.map((s) => (
+              <div key={s.day} style={{ flex: 1, textAlign: 'center' }} title={`${s.day}: ~${s.avgOrders}`}>
+                <div style={{ background: s.day === wd.peakDay ? '#dc2626' : '#cbd5e1', height: `${Math.max(2, (s.avgOrders / wdMax) * 46)}px`, borderRadius: 3 }} />
+                <div style={{ fontSize: 9, color: 'var(--payi-text-muted)', marginTop: 2 }}>{s.day.slice(0, 2)}</div>
+                <div style={{ fontSize: 9, fontWeight: 600 }}>{s.avgOrders.toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* FBS RETENTION */}
+      {fr?.ready && (
+        <div style={card}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>FBS ช่วยให้ลูกค้ากลับมาซื้อซ้ำไหม <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>Shopee — สังเกต ไม่ใช่ข้อพิสูจน์</span></h3>
+          {fr.enoughSample ? (
+            <>
+              <div style={{ display: 'flex', gap: 24, marginTop: 8 }}>
+                <div>
+                  <div style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>ลูกค้าที่เคยได้ FBS</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: '#16a34a' }}>{fr.fbsRepeatPct}%</div>
+                  <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>ซื้อซ้ำ ({fr.fbsBuyers.toLocaleString()} คน)</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>ลูกค้าที่ได้แต่แพ็คเอง</div>
+                  <div style={{ fontSize: 22, fontWeight: 700 }}>{fr.selfRepeatPct}%</div>
+                  <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>ซื้อซ้ำ ({fr.selfBuyers.toLocaleString()} คน)</div>
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: '#92400e', marginTop: 10, lineHeight: 1.5 }}>
+                ⚠️ มี bias: ลูกค้าที่ซื้อหลายครั้งมีโอกาสเจอออเดอร์ FBS สักครั้งอยู่แล้ว (ยิ่งซื้อบ่อยยิ่งติดกลุ่ม FBS) —
+                ตัวเลขนี้จึงเอียงสูงเกินจริง. ดูเป็นสัญญาณคร่าวๆ ไม่ใช่ผลว่า FBS ทำให้คนกลับมาซื้อ
+              </div>
+            </>
+          ) : (
+            <div style={{ color: 'var(--payi-text-muted)', fontSize: 12.5, marginTop: 6 }}>
+              ข้อมูลยังไม่พอ (FBS {fr.fbsBuyers.toLocaleString()} คน / แพ็คเอง {fr.selfBuyers.toLocaleString()} คน — ต้องการฝั่งละ ≥100).
+              FBS เพิ่งเริ่มเก็บ ส.ค. + ต้องมีเวลาให้ลูกค้ากลับมา — ตัวเลขจะมีความหมายในอีก 2-3 เดือน
+            </div>
+          )}
+        </div>
+      )}
 
       {/* FBS USAGE */}
       <div style={card}>
