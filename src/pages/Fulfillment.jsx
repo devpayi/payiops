@@ -216,8 +216,6 @@ export default function Fulfillment() {
   if (!data) return null
 
   const { capacity: cap, weekday: wd, prepWindow: pw, fbsUsage: fbs, byProduct = [], otMonthly: ot, fbsRetention: fr, verdict: v, stockoutNote, breakeven: be, campaign: camp } = data
-  const otMax = ot?.ready ? Math.max(1, ...ot.series.map((s) => s.otHours)) : 1
-  const feedMax = ot?.hasFeedData ? Math.max(1, ...ot.series.map((s) => s.feedUnits)) : 1
   const candidates = byProduct.filter((p) => p.verdict === 'fbs-candidate')
   const keepSelf = byProduct.filter((p) => p.verdict === 'keep-self')
   const pwMax = pw?.ready ? Math.max(...pw.series.map((s) => s.avgOrders)) : 1
@@ -535,36 +533,12 @@ export default function Fulfillment() {
         {byProduct.length === 0 && <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ยังไม่มีข้อมูลตัวเลือกจัดส่งในช่วงนี้</div>}
       </div>
 
-      {/* OT MONTHLY */}
-      <div style={card}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>OT รายเดือน <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>ชั่วโมง / บาท</span><InfoTip note={NOTE.ot} /></h3>
-        {ot.ready ? (
-          <>
-            <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
-              OT ส่วนใหญ่เป็นงานฟีด/รีแพ็คของ (ขึ้นกับ FG ที่ต้องเตรียม) ไม่ใช่การแพ็คออเดอร์ — แพ็คเสร็จ พัก 1 ชม. แล้วมาฟีดต่อจนเลิกงาน
-            </div>
-            <div style={{ fontSize: 13, marginBottom: 12 }}>OT รวมช่วงนี้ <b>{ot.totalHours} ชม.</b> ({thb(ot.totalCost)})</div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 90, borderBottom: '1px solid rgba(15,23,42,0.06)' }}>
-              {ot.series.map((s) => (
-                <div key={s.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}
-                  title={`${mLabel(s.month)}: ${s.otHours} ชม. (${thb(s.otCost)})${ot.hasFeedData ? ` — ฟีด ${s.feedUnits.toLocaleString()}` : ''}`}>
-                  <div style={{ fontSize: 9, fontWeight: 600 }}>{s.otHours}</div>
-                  <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', width: '80%', height: '100%' }}>
-                    <div style={{ flex: 1, background: BAR.amber, height: `${(s.otHours / otMax) * 72}px`, borderRadius: barRadius }} />
-                    {ot.hasFeedData && <div style={{ flex: 1, background: BAR.main, height: `${(s.feedUnits / feedMax) * 72}px`, borderRadius: barRadius }} title="ปริมาณฟีด" />}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
-              {ot.series.map((s) => <div key={s.month} style={{ flex: 1, textAlign: 'center', fontSize: 9, color: 'var(--payi-text-muted)' }}>{mLabel(s.month)}</div>)}
-            </div>
-            {ot.hasFeedData
-              ? <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}><span style={{ color: 'rgb(230,146,53)' }}>■</span> OT ชม. &nbsp; <span style={{ color: 'rgb(85,102,230)' }}>■</span> ปริมาณฟีด (planner_daily) — เดือนที่ฟีดเยอะควรมี OT เยอะตาม</div>
-              : <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}>ยังไม่มีข้อมูลปริมาณฟีดรายวัน (planner_daily ว่าง) — กรอกในหน้า Planner Control แล้วจะเทียบ OT กับปริมาณฟีดได้</div>}
-          </>
-        ) : <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ยังไม่มีข้อมูล OT ในช่วงนี้</div>}
-      </div>
+      {/* OT รวม — บรรทัดเดียว (ใช้ในการคิด break-even จ้างคนที่ 5) */}
+      {ot?.ready && (
+        <div style={{ ...card, padding: '14px 20px', fontSize: 12.5, color: 'var(--payi-text-muted)' }}>
+          OT รวมช่วงนี้ <b style={{ color: 'var(--payi-text)' }}>{ot.totalHours} ชม.</b> ({thb(ot.totalCost)}) — ส่วนใหญ่เป็นงานฟีด/รีแพ็คของ ขึ้นกับ FG ไม่ใช่การแพ็คออเดอร์
+        </div>
+      )}
 
       {/* CONFIG */}
       {form && (
