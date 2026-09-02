@@ -282,6 +282,76 @@ function dayOfMonthLoad(allRows) {
   }
 }
 
+// วันแคมเปญ = วันที่ = เดือน (9.9, 11.11, 12.12, ...) — วันที่ทีมเครียดสุด
+const isCampaignDate = (dateStr) => {
+  const [, m, d] = String(dateStr).split('-')
+  return m && d && m === d
+}
+// คืน { str: 'YYYY-MM-DD', daysUntil } ของวันแคมเปญถัดไป (เลี่ยง timezone จาก toISOString)
+function nextCampaign(fromStr) {
+  const y = parseInt(fromStr.slice(0, 4), 10)
+  let best = null
+  for (const yy of [y, y + 1]) {
+    for (let mm = 1; mm <= 12; mm++) {
+      const s = `${yy}-${String(mm).padStart(2, '0')}-${String(mm).padStart(2, '0')}`
+      if (s >= fromStr && (!best || s < best)) best = s
+    }
+  }
+  if (!best) return null
+  const daysUntil = Math.round((new Date(best) - new Date(fromStr)) / 86400000)
+  return { str: best, daysUntil }
+}
+const median = (arr) => { if (!arr.length) return null; const s = [...arr].sort((a, b) => a - b); return s[Math.floor(s.length / 2)] }
+function campaignModel(allRows, cap, cfg) {
+  if (!cap?.ready) return { ready: false }
+  const byDay = ordersPerDay(allRows)
+  const dates = [...byDay.keys()].sort()
+  if (!dates.length) return { ready: false }
+  const dnum = (s) => new Date(s).getTime() / 86400000
+  const campDayNums = dates.filter(isCampaignDate).map(dnum)
+  const nearCamp = (n) => campDayNums.some((c) => Math.abs(c - n) <= 2)
+
+  const observed = []
+  for (const date of dates) {
+    if (!isCampaignDate(date)) continue
+    const c = dnum(date)
+    const base = dates.filter((x) => {
+      const xn = dnum(x)
+      return Math.abs(xn - c) >= 3 && Math.abs(xn - c) <= 12 && !nearCamp(xn)
+    }).map((x) => byDay.get(x)).sort((a, b) => a - b)
+    if (base.length < 4) continue
+    const baseline = base[Math.floor(base.length / 2)]
+    const orders = byDay.get(date)
+    observed.push({ date, orders, baseline, multiplier: baseline ? Math.round((orders / baseline) * 100) / 100 : null })
+  }
+  // ใช้ median ของ 4 วันแคมเปญล่าสุด (ตัดวันหยุด เช่น 1.1 ที่ยอดตก + จับ trend ล่าสุด)
+  const mults = observed.map((o) => o.multiplier).filter((m) => m)
+  const recentMults = mults.slice(-4)
+  const avgMultiplier = median(recentMults.length >= 3 ? recentMults : mults)
+
+  const complete = (cap.series || []).filter((m) => !m.partial)
+  const lastAvg = complete.length ? complete[complete.length - 1].avgPerDay : cap.lastAvgPerDay
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const nc = nextCampaign(todayStr)
+  const nextStr = nc?.str || null
+  const daysUntil = nc?.daysUntil ?? null
+
+  let predictedOrders = null, predictedFinish = null, overCeiling = false
+  if (avgMultiplier && lastAvg) {
+    predictedOrders = Math.round(lastAvg * avgMultiplier)
+    const oph = cap.ordersPerPersonHour, hc = cfg.pack_headcount || 4
+    const finishH = cfg.pack_start + (oph > 0 ? predictedOrders / (hc * oph) : 0)
+    predictedFinish = hhmm(finishH)
+    overCeiling = finishH > cfg.max_finish
+  }
+  return {
+    ready: observed.length > 0,
+    observed: observed.sort((a, b) => a.date.localeCompare(b.date)),
+    avgMultiplier,
+    next: nextStr ? { date: nextStr, daysUntil, predictedOrders, predictedFinish, overCeiling } : null,
+  }
+}
+
 async function otAudit(rows, cfg) {
   let ot
   try { ot = await getSheet('workforce_ot') } catch { return { ready: false } }
@@ -377,8 +447,12 @@ function breakeven(rows, cap, cfg) {
   }
 }
 
-function verdict(cap, cfg, wd, be) {
+function verdict(cap, cfg, wd, be, camp) {
   if (!cap.ready) return { level: 'unknown', text: 'ข้อมูลออเดอร์ยังไม่พอสร้างโมเดล capacity' }
+  // วันแคมเปญใกล้ + ทำนายทีมพัง = เตือนก่อน (ทับ verdict ปกติชั่วคราว)
+  if (camp?.ready && camp.next?.daysUntil != null && camp.next.daysUntil <= 10 && camp.next.overCeiling) {
+    return { level: 'watch', text: `อีก ${camp.next.daysUntil} วันคือ ${camp.next.date} (วันแคมเปญ) — จากประวัติออเดอร์พุ่ง ~${camp.avgMultiplier}× ทีมจะเลิกงาน ~${camp.next.predictedFinish} (เกิน ${cap.maxFinish}). เตรียมส่งของเข้า FBS ก่อน / จัด OT ล่วงหน้า` }
+  }
   let feeNote = ' รอค่าธรรมเนียม FBS มากรอก แล้วโมเดลจะเทียบ break-even กับค่า OT/จ้างเพิ่มให้'
   if (cfg.fbs_fee_per_piece > 0 && be?.ready) {
     const fbs = be.fbsCostPerOrder, alt = be.cheapestAlt
@@ -426,6 +500,7 @@ export default async function opFulfillment(req, res) {
     const cap = capacity(rows, cfg)
     const wd = weekdayLoad(all, cap, cfg)
     const be = breakeven(rows, cap, cfg)
+    const camp = campaignModel(all, cap, cfg)
     const bp = await byProduct(rows)
     return res.status(200).json({
       success: true,
@@ -442,7 +517,8 @@ export default async function opFulfillment(req, res) {
       fbsRetention: fbsRetention(rows),
       otAudit: await otAudit(rows, cfg),
       breakeven: be,
-      verdict: verdict(cap, cfg, wd, be),
+      campaign: camp,
+      verdict: verdict(cap, cfg, wd, be, camp),
       stockoutNote: STOCKOUT_NOTE,
     })
   } catch (e) {

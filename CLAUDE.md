@@ -811,13 +811,17 @@ a new one.
     can't do same-day), not move it; FBS stockout is safe (orders fall back to self-pack);
     FBS restock is monthly. **`?range=all|N|YYYY-MM`** (default `3` = last 3 complete
     months) scopes capacity/fbsUsage/byProduct/otAudit/fbsRetention; prepWindow + weekday
-    always pool all months. Cards: (a) verdict hold/watch/act; (b) **month-over-month
+    + campaign always pool all months. Cards: (a) verdict hold/watch/act (a near campaign
+    day whose predicted finish blows the ceiling temporarily overrides it); (b) **month-over-month
     capacity** — a bar per month of the team's projected finish time; `orders_per_person_hour`
     is calibrated = last complete month's avg orders/day ÷ headcount ÷ normal work hours,
     ceiling line at `max_finish`, growth = least-squares slope on complete months,
     months-to-ceiling from that slope. Deliberately NOT a rolling-14-day window — that was
-    fragile to import timing and unverifiable by the owner. (c) weekday load (peak weekday
-    = the real constraint); (d) FBS restock-day recommender (lightest 4-day window of the
+    fragile to import timing and unverifiable by the owner. (b2) campaign-day model — the
+    order multiplier on each N.N date (day===month: 9.9/11.11/12.12) vs the surrounding
+    normal days, predicts the next one's volume (median of the last 4 real campaign days —
+    excludes the 1.1 New-Year dip) and finish time; on real data 9.9 lands the team ~22:00.
+    (c) weekday load (peak weekday = the real constraint); (d) FBS restock-day recommender (lightest 4-day window of the
     month) + per-candidate send units (~1 month of standard-delivery demand); (e)
     FBS-vs-retention observation (repeat rate of buyers who ever got FBS vs self-only,
     Shopee/`buyer_hash` — carries an explicit "frequent buyers land in the FBS group

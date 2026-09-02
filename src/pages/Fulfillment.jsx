@@ -57,7 +57,7 @@ export default function Fulfillment() {
   if (error) return <div style={{ padding: 16, borderRadius: 12, background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)' }}>เกิดข้อผิดพลาด: {error}</div>
   if (!data) return null
 
-  const { capacity: cap, weekday: wd, prepWindow: pw, fbsUsage: fbs, byProduct = [], otAudit: ot, fbsRetention: fr, verdict: v, stockoutNote, breakeven: be } = data
+  const { capacity: cap, weekday: wd, prepWindow: pw, fbsUsage: fbs, byProduct = [], otAudit: ot, fbsRetention: fr, verdict: v, stockoutNote, breakeven: be, campaign: camp } = data
   const candidates = byProduct.filter((p) => p.verdict === 'fbs-candidate')
   const keepSelf = byProduct.filter((p) => p.verdict === 'keep-self')
   const pwMax = pw?.ready ? Math.max(...pw.series.map((s) => s.avgOrders)) : 1
@@ -169,6 +169,29 @@ export default function Fulfillment() {
           </div>
         )
       })()}
+
+      {/* CAMPAIGN */}
+      {camp?.ready && (
+        <div style={card}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>วันแคมเปญ (9.9 / 11.11 / 12.12) <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>วันที่ทีมเครียดสุด</span></h3>
+          {camp.next && camp.next.predictedOrders != null && (
+            <div style={{ fontSize: 13.5, marginBottom: 12, lineHeight: 1.6, padding: '10px 12px', borderRadius: 10, background: camp.next.overCeiling ? '#fef2f2' : '#f0fdf4' }}>
+              <b>{camp.next.date}</b> (อีก {camp.next.daysUntil} วัน) — คาดออเดอร์ ~<b>{camp.next.predictedOrders.toLocaleString()}</b> (พุ่ง {camp.avgMultiplier}× จากปกติ) →
+              ทีมเลิกงาน ~<b style={{ color: camp.next.overCeiling ? '#dc2626' : '#16a34a' }}>{camp.next.predictedFinish}</b>
+              {camp.next.overCeiling ? ` — เกินเพดาน ${cap.maxFinish}! เตรียมส่ง FBS ก่อน / จัด OT ล่วงหน้า` : ' — ยังไหว'}
+            </div>
+          )}
+          <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)', marginBottom: 6 }}>ประวัติวันแคมเปญ (เทียบวันปกติรอบๆ)</div>
+          {camp.observed.map((o) => (
+            <div key={o.date} style={{ display: 'flex', gap: 12, fontSize: 12.5, marginBottom: 3 }}>
+              <span style={{ width: 90 }}>{o.date}</span>
+              <span style={{ width: 130 }}>{o.orders.toLocaleString()} ออเดอร์</span>
+              <span style={{ color: '#c2410c', fontWeight: 600 }}>{o.multiplier}× </span>
+              <span style={{ color: 'var(--payi-text-muted)' }}>(ปกติ ~{o.baseline.toLocaleString()})</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* WEEKDAY */}
       {wd?.ready && (
