@@ -19,10 +19,10 @@ const glassInput = {
   boxShadow: 'inset 0 2px 5px rgba(15,23,42,0.07)',
   outline: 'none',
 }
-const glowDot = (c) => ({ width: 9, height: 9, borderRadius: '50%', background: c, flexShrink: 0, boxShadow: `0 0 7px ${c}, 0 0 2px ${c}` })
-// สีทึบเดิม + ไล่แสงขาวบางๆ ด้านบน (ใช้ได้กับทุกค่าสีรวม var())
-const barGrad = (c) => `linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0) 45%), ${c}`
-const barRadius = '8px 8px 0 0'
+const glowDot = (c) => ({ width: 8, height: 8, borderRadius: '50%', background: c, flexShrink: 0, boxShadow: c.startsWith('#') ? `0 0 6px ${c}66` : 'none' })
+// แท่งกราฟ — โทนโปร่ง นุ่ม เข้ากับ glass (ไม่ใช่สีทึบจัด)
+const BAR = { main: 'rgba(79,110,247,0.55)', soft: 'rgba(100,116,139,0.28)', alert: 'rgba(225,90,70,0.6)', ok: 'rgba(34,160,110,0.55)' }
+const barRadius = '6px 6px 0 0'
 const VERDICT_COLOR = { act: '#dc2626', watch: '#c2410c', hold: '#16a34a', unknown: '#94a3b8' }
 const VERDICT_LABEL = { act: 'ถึงจังหวะแล้ว', watch: 'ใกล้ถึง', hold: 'ยังไม่ถึง', unknown: 'ข้อมูลไม่พอ' }
 const VERDICT_TINT = {
@@ -198,7 +198,7 @@ export default function Fulfillment() {
               {cap.series.map((m) => (
                 <div key={m.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }} title={`${mLabel(m.month)}: ~${m.avgPerDay}/วัน เลิก ${m.finish}`}>
                   <div style={{ fontSize: 9, fontWeight: 600, color: m.finish > cap.maxFinish ? '#dc2626' : 'var(--payi-text)' }}>{m.finish}</div>
-                  <div style={{ width: '70%', background: barGrad(m.partial ? '#cbd5e1' : (m.finish > cap.maxFinish ? '#dc2626' : 'var(--payi-mint)')), height: `${Math.max(2, (m.avgPerDay / capMax) * 88)}px`, borderRadius: barRadius, boxShadow: '0 4px 12px rgba(15,23,42,0.12)' }} />
+                  <div style={{ width: '68%', background: m.partial ? BAR.soft : (m.finish > cap.maxFinish ? BAR.alert : BAR.main), height: `${Math.max(2, (m.avgPerDay / capMax) * 88)}px`, borderRadius: barRadius }} />
                 </div>
               ))}
             </div>
@@ -271,7 +271,7 @@ export default function Fulfillment() {
             <div key={o.date} style={{ display: 'flex', gap: 12, fontSize: 12.5, marginBottom: 3 }}>
               <span style={{ width: 90 }}>{o.date}</span>
               <span style={{ width: 130 }}>{o.orders.toLocaleString()} ออเดอร์</span>
-              <span style={{ color: '#c2410c', fontWeight: 600 }}>{o.multiplier}× </span>
+              <span style={{ color: 'var(--payi-text-strong)', fontWeight: 700 }}>{o.multiplier}× </span>
               <span style={{ color: 'var(--payi-text-muted)' }}>(ปกติ ~{o.baseline.toLocaleString()})</span>
             </div>
           ))}
@@ -289,7 +289,7 @@ export default function Fulfillment() {
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 56 }}>
             {wd.series.map((s) => (
               <div key={s.day} style={{ flex: 1, textAlign: 'center' }} title={`${s.day}: ~${s.avgOrders}`}>
-                <div style={{ background: barGrad(s.day === wd.peakDay ? '#dc2626' : '#cbd5e1'), height: `${Math.max(2, (s.avgOrders / wdMax) * 42)}px`, borderRadius: barRadius }} />
+                <div style={{ background: s.day === wd.peakDay ? BAR.alert : BAR.main, height: `${Math.max(2, (s.avgOrders / wdMax) * 42)}px`, borderRadius: barRadius }} />
                 <div style={{ fontSize: 9, color: 'var(--payi-text-muted)', marginTop: 2 }}>{s.day.slice(0, 2)}</div>
                 <div style={{ fontSize: 9, fontWeight: 600 }}>{s.avgOrders.toLocaleString()}</div>
               </div>
@@ -313,7 +313,7 @@ export default function Fulfillment() {
               const inWin = pw.bestWindow && s.day >= pw.bestWindow.start && s.day <= pw.bestWindow.end
               return (
                 <div key={s.day} style={{ flex: 1, textAlign: 'center' }} title={`วันที่ ${s.day}: ~${s.avgOrders}`}>
-                  <div style={{ background: barGrad(inWin ? '#16a34a' : '#cbd5e1'), height: `${Math.max(2, (s.avgOrders / pwMax) * 46)}px`, borderRadius: '4px 4px 0 0' }} />
+                  <div style={{ background: inWin ? BAR.ok : BAR.soft, height: `${Math.max(2, (s.avgOrders / pwMax) * 46)}px`, borderRadius: '4px 4px 0 0' }} />
                   <div style={{ fontSize: 8, color: 'var(--payi-text-muted)', marginTop: 1 }}>{s.day}</div>
                 </div>
               )
@@ -367,7 +367,7 @@ export default function Fulfillment() {
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 50 }}>
             {fbs.trend.map((m) => (
               <div key={m.month} style={{ flex: 1, textAlign: 'center' }} title={`${mLabel(m.month)}: ${m.fbsPct}%`}>
-                <div style={{ background: barGrad('var(--payi-mint)'), height: `${Math.max(2, m.fbsPct * 0.6)}px`, borderRadius: barRadius }} />
+                <div style={{ background: BAR.main, height: `${Math.max(2, m.fbsPct * 0.6)}px`, borderRadius: barRadius }} />
                 <div style={{ fontSize: 9, color: 'var(--payi-text-muted)', marginTop: 2 }}>{mLabel(m.month)}</div>
               </div>
             ))}
@@ -409,8 +409,8 @@ export default function Fulfillment() {
                   title={`${mLabel(s.month)}: ${s.otHours} ชม. (${thb(s.otCost)})${ot.hasFeedData ? ` — ฟีด ${s.feedUnits.toLocaleString()}` : ''}`}>
                   <div style={{ fontSize: 9, fontWeight: 600 }}>{s.otHours}</div>
                   <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', width: '80%', height: '100%' }}>
-                    <div style={{ flex: 1, background: barGrad('#c2410c'), height: `${(s.otHours / otMax) * 72}px`, borderRadius: barRadius }} />
-                    {ot.hasFeedData && <div style={{ flex: 1, background: barGrad('var(--payi-mint)'), height: `${(s.feedUnits / feedMax) * 72}px`, borderRadius: barRadius }} title="ปริมาณฟีด" />}
+                    <div style={{ flex: 1, background: 'rgba(225,140,70,0.6)', height: `${(s.otHours / otMax) * 72}px`, borderRadius: barRadius }} />
+                    {ot.hasFeedData && <div style={{ flex: 1, background: BAR.main, height: `${(s.feedUnits / feedMax) * 72}px`, borderRadius: barRadius }} title="ปริมาณฟีด" />}
                   </div>
                 </div>
               ))}
@@ -419,7 +419,7 @@ export default function Fulfillment() {
               {ot.series.map((s) => <div key={s.month} style={{ flex: 1, textAlign: 'center', fontSize: 9, color: 'var(--payi-text-muted)' }}>{mLabel(s.month)}</div>)}
             </div>
             {ot.hasFeedData
-              ? <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}><span style={{ color: '#c2410c' }}>■</span> OT ชม. &nbsp; <span style={{ color: 'var(--payi-mint)' }}>■</span> ปริมาณฟีด (planner_daily) — เดือนที่ฟีดเยอะควรมี OT เยอะตาม</div>
+              ? <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}><span style={{ color: 'rgba(225,140,70,0.9)' }}>■</span> OT ชม. &nbsp; <span style={{ color: 'rgba(79,110,247,0.9)' }}>■</span> ปริมาณฟีด (planner_daily) — เดือนที่ฟีดเยอะควรมี OT เยอะตาม</div>
               : <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}>ยังไม่มีข้อมูลปริมาณฟีดรายวัน (planner_daily ว่าง) — กรอกในหน้า Planner Control แล้วจะเทียบ OT กับปริมาณฟีดได้</div>}
           </>
         ) : <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ยังไม่มีข้อมูล OT ในช่วงนี้</div>}
