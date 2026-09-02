@@ -18,8 +18,6 @@ const CONFIG_FIELDS = [
   ['ot_rate_per_hour', 'ค่า OT/ชม.'],
   ['fbs_fee_per_piece', 'ค่าธรรมเนียม FBS/ชิ้น'],
   ['fbs_storage_monthly', 'ค่าเก็บของ FBS/เดือน'],
-  ['workdays_per_month', 'วันทำงาน/เดือน'],
-  ['hire_ot_offset_pct', 'จ้างคนที่ 5 แล้ว OT ลด (%)'],
 ]
 const mLabel = (ym) => { const [y, m] = ym.split('-'); return `${['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][+m]} ${String(y).slice(2)}` }
 
@@ -130,49 +128,37 @@ export default function Fulfillment() {
         ) : <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ข้อมูลออเดอร์ยังไม่พอ</div>}
       </div>
 
-      {/* BREAK-EVEN */}
+      {/* BREAK-EVEN — แว็ปเดียว */}
       {be?.ready && (() => {
         const feeVal = feeSim !== '' ? parseFloat(feeSim) : be.fbsFeePerPiece
+        const self = Math.round((be.cheapestAlt || 0) * 100) / 100
         const fbsPO = feeVal > 0 ? Math.round(feeVal * be.piecesPerOrder * 100) / 100 : null
-        const alt = be.cheapestAlt
-        const bars = [
-          { label: 'OT ต่อไป', v: be.otCostPerOrder, c: '#94a3b8' },
-          { label: 'จ้างคนที่ 5', v: be.hireCostPerOrder, c: '#94a3b8' },
-          { label: 'FBS', v: fbsPO, c: fbsPO != null && alt != null ? (fbsPO <= alt ? '#16a34a' : '#dc2626') : '#cbd5e1' },
-        ]
-        const bmax = Math.max(0.1, ...bars.map((b) => b.v || 0))
+        const cheaper = fbsPO != null && self > 0 && fbsPO <= self
+        const ratio = fbsPO != null && self > 0 ? Math.round((fbsPO / self) * 10) / 10 : null
         return (
           <div style={card}>
-            <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>ต้นทุนส่วนเพิ่ม/ออเดอร์ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>เมื่อโตเกินทีม</span></h3>
-            <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 6 }}>
-              ค่าแรง 4 คน fixed อยู่แล้ว ไม่นับ. ที่นับคือส่วนที่เพิ่มเมื่อรับออเดอร์เกินกำลัง — ~{be.piecesPerOrder} ชิ้น/ออเดอร์ (ส่งธรรมดา Shopee)
-            </div>
-            <div style={{ color: 'var(--payi-text-muted)', fontSize: 11, marginBottom: 12, lineHeight: 1.5 }}>
-              <b>OT ต่อไป</b> = ค่า OT ÷ อัตราแพ็ค ({be.otCostPerOrder != null ? `฿${be.otCostPerOrder}` : '—'}). &nbsp;
-              <b>จ้างคนที่ 5</b> = (ค่าจ้าง {thb(be.hireGrossMonthly)}/เดือน − OT ที่ลดได้ {thb(be.otSavedMonthly)}) ÷ กำลังแพ็คที่เพิ่ม = {thb(be.hireNetMonthly)}/เดือน → ฿{be.hireCostPerOrder}/ออเดอร์
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 12.5 }}>
-              <span>ลองใส่ค่าธรรมเนียม FBS/ชิ้น:</span>
-              <input type="number" step="any" placeholder={be.fbsFeePerPiece || '0'} value={feeSim}
+            <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>FBS คุ้มเรื่องเงินไหม?</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontSize: 13, flexWrap: 'wrap' }}>
+              <span>ค่าธรรมเนียม FBS ต่อชิ้น</span>
+              <input type="number" step="any" placeholder="0" value={feeSim}
                 onChange={(e) => setFeeSim(e.target.value)}
-                style={{ width: 90, padding: '5px 8px', border: '1px solid var(--payi-border)', borderRadius: 8, fontSize: 13 }} />
-              <span style={{ color: 'var(--payi-text-muted)', fontSize: 11 }}>= ฿{fbsPO ?? '?'}/ออเดอร์</span>
+                style={{ width: 80, padding: '6px 8px', border: '1px solid var(--payi-border)', borderRadius: 8, fontSize: 13 }} />
+              <span style={{ color: 'var(--payi-text-muted)' }}>บาท</span>
             </div>
-            {bars.map((b) => (
-              <div key={b.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 12.5 }}>
-                <div style={{ width: 90, flexShrink: 0 }}>{b.label}</div>
-                <div style={{ flex: 1, background: '#eef2f7', borderRadius: 6, height: 16, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${((b.v || 0) / bmax) * 100}%`, background: b.c, borderRadius: 6 }} />
+            {fbsPO == null ? (
+              <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ใส่ค่าธรรมเนียมด้านบนเพื่อเทียบ</div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', gap: 24 }}>
+                  <div><div style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>แพ็คเอง</div><div style={{ fontSize: 24, fontWeight: 700 }}>฿{self}<span style={{ fontSize: 12, fontWeight: 400 }}> /ออเดอร์</span></div></div>
+                  <div><div style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>FBS</div><div style={{ fontSize: 24, fontWeight: 700, color: cheaper ? '#16a34a' : '#dc2626' }}>฿{fbsPO}<span style={{ fontSize: 12, fontWeight: 400 }}> /ออเดอร์</span></div></div>
                 </div>
-                <div style={{ width: 70, textAlign: 'right', fontWeight: 600 }}>{b.v != null ? `฿${b.v}` : '—'}</div>
-              </div>
-            ))}
-            {fbsPO != null && alt != null && (
-              <div style={{ fontSize: 12, marginTop: 8, color: fbsPO <= alt ? '#16a34a' : '#92400e', lineHeight: 1.5 }}>
-                {fbsPO <= alt
-                  ? `FBS ถูกกว่า — คุ้มตามต้นทุน ต่างกัน ~฿${Math.round((alt - fbsPO) * 100) / 100}/ออเดอร์`
-                  : `FBS แพงกว่า ~฿${Math.round((fbsPO - alt) * 100) / 100}/ออเดอร์ — ไม่คุ้มถ้าดูแค่ต้นทุน. เหตุผลที่ยังควรใช้ = ไม่ต้องจัดการคนเพิ่ม / รับพีควันแคมเปญ / OT มีเพดาน (คนล้า, กฎหมาย)`}
-              </div>
+                <div style={{ fontSize: 10.5, color: 'var(--payi-text-muted)', marginTop: 4 }}>FBS/ออเดอร์ = ฿{feeVal} × {be.piecesPerOrder} ชิ้น/ออเดอร์</div>
+                <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, fontSize: 13, fontWeight: 600, background: cheaper ? '#f0fdf4' : '#fef2f2', color: cheaper ? '#16a34a' : '#dc2626' }}>
+                  {cheaper ? `FBS ถูกกว่า — คุ้มเรื่องเงิน` : `FBS แพงกว่า ${ratio} เท่า — ไม่คุ้มเรื่องเงิน`}
+                </div>
+                {!cheaper && <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)', marginTop: 6 }}>เหตุผลเดียวที่จะใช้ FBS = ไม่ต้องจัดการคนเพิ่ม / รับพีควันแคมเปญ — ไม่ใช่ประหยัดเงิน</div>}
+              </>
             )}
           </div>
         )
