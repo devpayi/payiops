@@ -66,6 +66,48 @@ export default function Fulfillment() {
   const wdMax = wd?.ready ? Math.max(...wd.series.map((s) => s.avgOrders)) : 1
   const capMax = cap?.ready ? Math.max(cap.capacityPerDay, ...cap.series.map((s) => s.avgPerDay)) : 1
 
+  // ── แถวสรุป (ดึงประโยคสรุปจากแต่ละการ์ด) ──
+  // ใช้สีสถานะเดียวกับที่การ์ดในหน้านี้ใช้อยู่แล้ว (เขียว=ดี ส้ม=จับตา แดง=ต้องทำ)
+  const C = { ok: '#16a34a', warn: '#c2410c', bad: '#dc2626', mute: 'var(--payi-text-muted)' }
+  const tiles = []
+  tiles.push({
+    dot: VERDICT_COLOR[v.level], label: 'ย้ายเข้า FBS', big: VERDICT_LABEL[v.level],
+    sub: cap.ready ? `เดือนล่าสุดเลิก ~${cap.finishLastMonth} (เพดาน ${cap.maxFinish})` : '',
+  })
+  if (cap.ready) {
+    const m2c = cap.monthsToCap
+    tiles.push({
+      dot: m2c == null ? C.ok : m2c <= 3 ? C.bad : m2c <= 6 ? C.warn : C.ok,
+      label: 'เวลาเลิกงานทีมแพ็ค',
+      big: m2c == null ? 'ยังไม่ชนเพดาน' : `ชนเพดาน ${cap.maxFinish} ใน ~${m2c} เดือน`,
+      sub: `โตเดือนละ ~${cap.growthPerDay > 0 ? '+' : ''}${cap.growthPerDay} ออเดอร์/วัน (${cap.monthlyGrowthPct}%)`,
+    })
+  }
+  if (be?.ready) {
+    const fee = feeSim !== '' && parseFloat(feeSim) > 0 ? parseFloat(feeSim) : be.fbsFeePerPiece
+    const fbsPO = fee > 0 ? Math.round(fee * be.piecesPerOrder * 100) / 100 : null
+    const self = Math.round((be.cheapestAlt || 0) * 100) / 100
+    if (fbsPO == null) {
+      tiles.push({ dot: C.mute, label: 'FBS คุ้มเงินไหม', big: 'ยังไม่ได้กรอกค่าธรรมเนียม', sub: 'ใส่ในการ์ด "FBS คุ้มเรื่องเงินไหม" ด้านล่าง' })
+    } else {
+      const cheaper = fbsPO <= self
+      tiles.push({
+        dot: cheaper ? C.ok : C.bad, label: 'FBS คุ้มเงินไหม',
+        big: cheaper ? 'FBS ถูกกว่า — คุ้ม' : `แพงกว่าแพ็คเอง ${Math.round((fbsPO / self) * 10) / 10} เท่า`,
+        sub: `แพ็คเอง ฿${self} vs FBS ฿${fbsPO} /ออเดอร์`,
+      })
+    }
+  }
+  if (camp?.ready && camp.next?.predictedFinish) {
+    const over = camp.next.overCeiling
+    tiles.push({
+      dot: over && camp.next.daysUntil <= 14 ? C.bad : over ? C.warn : C.ok,
+      label: `วันแคมเปญ ${camp.next.date.slice(5).replace('-', '.')}`,
+      big: `ทีมเลิก ~${camp.next.predictedFinish}`,
+      sub: `อีก ${camp.next.daysUntil} วัน — ${over ? 'เตรียมส่ง FBS / จัด OT' : 'ยังไหว'}`,
+    })
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* RANGE */}
@@ -80,6 +122,26 @@ export default function Fulfillment() {
         </select>
         {loading && <span style={{ color: 'var(--payi-text-muted)', fontSize: 12 }}>กำลังโหลด...</span>}
         <span style={{ color: 'var(--payi-text-muted)', fontSize: 11 }}>(กราฟกำลังทีม / วันในเดือน / วันในสัปดาห์ ใช้ข้อมูลทุกเดือนเสมอ)</span>
+      </div>
+
+      {/* SUMMARY ROW */}
+      {tiles.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(160px, 1fr))`, gap: 10 }}>
+          {tiles.map((t, i) => (
+            <div key={i} style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderTop: `3px solid ${t.dot}`, borderRadius: 12, padding: '12px 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--payi-text-muted)', marginBottom: 6 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.dot, flexShrink: 0 }} />{t.label}
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--payi-text-strong)', lineHeight: 1.35 }}>{t.big}</div>
+              {t.sub && <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 4 }}>{t.sub}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 -4px' }}>
+        <span style={{ fontSize: 11, color: 'var(--payi-text-muted)', letterSpacing: '.03em' }}>รายละเอียด</span>
+        <div style={{ flex: 1, height: 1, background: 'var(--payi-border)' }} />
       </div>
 
       {/* VERDICT */}

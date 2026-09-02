@@ -811,8 +811,12 @@ a new one.
     can't do same-day), not move it; FBS stockout is safe (orders fall back to self-pack);
     FBS restock is monthly. **`?range=all|N|YYYY-MM`** (default `3` = last 3 complete
     months) scopes capacity/fbsUsage/byProduct/otAudit/fbsRetention; prepWindow + weekday
-    + campaign always pool all months. Cards: (a) verdict hold/watch/act — plain capacity
-    read, the campaign warning stays in its own card (owner asked); (b) **month-over-month
+    + campaign always pool all months. A **summary row** of 3–4 status tiles (green/orange/
+    red dot + label + one-line conclusion) sits under the range selector, above a
+    "รายละเอียด" divider — each tile just surfaces the verdict a detail card below already
+    computed (FBS move / finish-time ceiling / FBS-cost / next campaign day). Cards:
+    (a) verdict hold/watch/act — plain capacity read, the campaign warning stays in its
+    own card (owner asked); (b) **month-over-month
     capacity** — a bar per month of the team's projected finish time; `orders_per_person_hour`
     is calibrated = last complete month's avg orders/day ÷ headcount ÷ normal work hours,
     ceiling line at `max_finish`, growth = least-squares slope on complete months,
