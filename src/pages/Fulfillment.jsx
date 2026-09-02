@@ -9,34 +9,35 @@ const PVERDICT = {
   'keep-self': { t: 'เก็บแพ็คเอง', c: '#c2410c' },
   'review': { t: 'ดูเพิ่ม', c: '#94a3b8' },
 }
-
 const CONFIG_FIELDS = [
   ['pack_headcount', 'จำนวนคนแพ็ค'],
   ['pack_start', 'เข้างาน (ชม. เช่น 8)'],
-  ['normal_finish', 'เลิกปกติตอนนี้ (เช่น 14.5)'],
+  ['normal_finish', 'เลิกปกติเดือนล่าสุด (เช่น 14.5)'],
   ['max_finish', 'เลิกช้าสุดที่รับได้ (เช่น 17)'],
   ['daily_wage', 'ค่าแรง/คน/วัน'],
   ['ot_rate_per_hour', 'ค่า OT/ชม.'],
   ['fbs_fee_per_piece', 'ค่าธรรมเนียม FBS/ชิ้น'],
   ['fbs_storage_monthly', 'ค่าเก็บของ FBS/เดือน'],
 ]
+const mLabel = (ym) => { const [y, m] = ym.split('-'); return `${['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][+m]} ${String(y).slice(2)}` }
 
 export default function Fulfillment() {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [range, setRange] = useState('3')
   const [form, setForm] = useState(null)
   const [saving, setSaving] = useState(false)
 
-  const load = () => {
+  const load = (rng) => {
     setLoading(true)
-    fetch('/api/sheet-tools?op=fulfillment')
+    fetch(`/api/sheet-tools?op=fulfillment&range=${encodeURIComponent(rng)}`)
       .then((r) => r.json())
       .then((d) => { if (d.success) { setData(d); setForm(d.config); setError('') } else setError(d.error || 'โหลดไม่สำเร็จ') })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }
-  useEffect(load, [])
+  useEffect(() => { load(range) }, [range])
 
   const saveConfig = async (e) => {
     e.preventDefault()
@@ -47,22 +48,37 @@ export default function Fulfillment() {
       })
       const d = await res.json()
       if (!d.success) throw new Error(d.error)
-      load()
+      load(range)
     } catch (e) { setError(e.message) } finally { setSaving(false) }
   }
 
-  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: 'var(--payi-text-muted)' }}>กำลังโหลด...</div>
+  if (loading && !data) return <div style={{ padding: 60, textAlign: 'center', color: 'var(--payi-text-muted)' }}>กำลังโหลด...</div>
   if (error) return <div style={{ padding: 16, borderRadius: 12, background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)' }}>เกิดข้อผิดพลาด: {error}</div>
   if (!data) return null
 
-  const { fbsUsage: fbs, byProduct = [], capacity: cap, otAudit: ot, verdict: v, prepWindow: pw, weekday: wd, fbsRetention: fr, stockoutNote } = data
-  const wdMax = wd?.ready ? Math.max(...wd.series.map((s) => s.avgOrders)) : 1
+  const { capacity: cap, weekday: wd, prepWindow: pw, fbsUsage: fbs, byProduct = [], otAudit: ot, fbsRetention: fr, verdict: v, stockoutNote } = data
   const candidates = byProduct.filter((p) => p.verdict === 'fbs-candidate')
   const keepSelf = byProduct.filter((p) => p.verdict === 'keep-self')
   const pwMax = pw?.ready ? Math.max(...pw.series.map((s) => s.avgOrders)) : 1
+  const wdMax = wd?.ready ? Math.max(...wd.series.map((s) => s.avgOrders)) : 1
+  const capMax = cap?.ready ? Math.max(cap.capacityPerDay, ...cap.series.map((s) => s.avgPerDay)) : 1
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* RANGE */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+        <span style={{ color: 'var(--payi-text-muted)' }}>ช่วงข้อมูล:</span>
+        <select value={range} onChange={(e) => setRange(e.target.value)}
+          style={{ padding: '6px 10px', border: '1px solid var(--payi-border)', borderRadius: 8, fontSize: 13 }}>
+          <option value="3">3 เดือนล่าสุด</option>
+          <option value="6">6 เดือนล่าสุด</option>
+          <option value="all">ทั้งหมด</option>
+          {(data.availableMonths || []).slice().reverse().map((m) => <option key={m} value={m}>{mLabel(m)}</option>)}
+        </select>
+        {loading && <span style={{ color: 'var(--payi-text-muted)', fontSize: 12 }}>กำลังโหลด...</span>}
+        <span style={{ color: 'var(--payi-text-muted)', fontSize: 11 }}>(กราฟกำลังทีม / วันในเดือน / วันในสัปดาห์ ใช้ข้อมูลทุกเดือนเสมอ)</span>
+      </div>
+
       {/* VERDICT */}
       <div style={{ ...card, borderLeft: `4px solid ${VERDICT_COLOR[v.level]}` }}>
         <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginBottom: 4 }}>คำแนะนำ — ย้ายงานแพ็คเข้า Fulfillment?</div>
@@ -71,85 +87,84 @@ export default function Fulfillment() {
         {stockoutNote && <div style={{ fontSize: 12, color: '#16a34a', marginTop: 8 }}>✓ {stockoutNote}</div>}
       </div>
 
+      {/* CAPACITY — monthly */}
+      <div style={card}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>กำลังทีมแพ็ค — เวลาเลิกงานรายเดือน</h3>
+        {cap.ready && cap.series.length < 2 ? (
+          <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>เลือกเดือนเดียว — กราฟกำลังทีมต้องดูหลายเดือน เลือก "3 เดือนล่าสุด" หรือ "ทั้งหมด"</div>
+        ) : cap.ready ? (
+          <>
+            <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
+              อัตราแพ็ค ~{cap.ordersPerPersonHour} ออเดอร์/คน/ชม. (calibrate จากเดือน {mLabel(cap.calMonth)}{cap.calMonthPartial ? ' — ยังไม่จบเดือน' : ''} + เวลาเลิกที่กรอก).
+              เพดาน {cap.capacityPerDay.toLocaleString()} ออเดอร์/วัน = เลิกตรง {cap.maxFinish}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 110, borderBottom: '1px solid var(--payi-border)', position: 'relative' }}>
+              {/* เส้นเพดาน */}
+              <div style={{ position: 'absolute', left: 0, right: 0, bottom: `${(cap.capacityPerDay / capMax) * 100}%`, borderTop: '1px dashed #dc2626' }}>
+                <span style={{ fontSize: 9, color: '#dc2626', position: 'absolute', right: 0, top: -12 }}>เพดาน {cap.maxFinish}</span>
+              </div>
+              {cap.series.map((m) => (
+                <div key={m.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }} title={`${mLabel(m.month)}: ~${m.avgPerDay}/วัน เลิก ${m.finish}`}>
+                  <div style={{ fontSize: 9, fontWeight: 600, color: m.finish > cap.maxFinish ? '#dc2626' : 'var(--payi-text)' }}>{m.finish}</div>
+                  <div style={{ width: '70%', background: m.partial ? '#cbd5e1' : (m.finish > cap.maxFinish ? '#dc2626' : 'var(--payi-mint)'), height: `${Math.max(2, (m.avgPerDay / capMax) * 88)}px`, borderRadius: '3px 3px 0 0' }} />
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+              {cap.series.map((m) => (
+                <div key={m.month} style={{ flex: 1, textAlign: 'center', fontSize: 9, color: 'var(--payi-text-muted)' }}>{mLabel(m.month)}{m.partial ? '*' : ''}</div>
+              ))}
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12.5, display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+              <span>โต ~<b>{cap.growthPerDay > 0 ? '+' : ''}{cap.growthPerDay.toLocaleString()}</b> ออเดอร์/วัน ต่อเดือน ({cap.monthlyGrowthPct}%)</span>
+              <span>อีก 3 เดือนเลิก ~<b>{cap.finishIn3mo}</b></span>
+              <span>ชนเพดานใน <b>{cap.monthsToCap != null ? `~${cap.monthsToCap} เดือน` : 'ยังไม่ชน'}</b></span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}>* เดือนที่ยังไม่จบ (สีเทา) ไม่นับในการคิดอัตราโต</div>
+          </>
+        ) : <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ข้อมูลออเดอร์ยังไม่พอ</div>}
+      </div>
+
+      {/* WEEKDAY */}
+      {wd?.ready && (
+        <div style={card}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>โหลดตามวันในสัปดาห์ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>ทุกเดือน — วันพีคคือตัวจริง</span></h3>
+          <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
+            วัน{wd.peakDay} ~{wd.peakAvgOrders.toLocaleString()} ({wd.peakRatio}× ค่าเฉลี่ย {wd.overallAvg.toLocaleString()}) — เลิกวันนั้น ~
+            <b style={{ color: wd.peakOverCeiling ? '#dc2626' : 'inherit' }}>{wd.finishOnPeakDay}</b>{wd.peakOverCeiling ? ` (เกิน ${cap.maxFinish})` : ''}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 56 }}>
+            {wd.series.map((s) => (
+              <div key={s.day} style={{ flex: 1, textAlign: 'center' }} title={`${s.day}: ~${s.avgOrders}`}>
+                <div style={{ background: s.day === wd.peakDay ? '#dc2626' : '#cbd5e1', height: `${Math.max(2, (s.avgOrders / wdMax) * 42)}px`, borderRadius: 3 }} />
+                <div style={{ fontSize: 9, color: 'var(--payi-text-muted)', marginTop: 2 }}>{s.day.slice(0, 2)}</div>
+                <div style={{ fontSize: 9, fontWeight: 600 }}>{s.avgOrders.toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* PREP WINDOW */}
       {pw?.ready && (
         <div style={card}>
-          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>วันเตรียมของเข้า FBS <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>เติมเดือนละครั้ง</span></h3>
-          <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
-            ออเดอร์เฉลี่ยตามวันที่ของเดือน — ส่งของเข้า FBS ช่วงที่เบาสุด ทีมจะมีเวลาแพ็คของ outbound เพิ่ม
-          </div>
+          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>วันเตรียมของเข้า FBS <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>ทุกเดือน — เติมเดือนละครั้ง</span></h3>
           {pw.bestWindow && (
             <div style={{ fontSize: 14, fontWeight: 600, color: '#16a34a', marginBottom: 10 }}>
               แนะนำ: วันที่ {pw.bestWindow.start}–{pw.bestWindow.end} ของเดือน
               <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}> (~{pw.bestWindow.avgOrders.toLocaleString()} ออเดอร์/วัน เทียบเฉลี่ย {pw.overallAvg.toLocaleString()})</span>
             </div>
           )}
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 70 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 60 }}>
             {pw.series.map((s) => {
               const inWin = pw.bestWindow && s.day >= pw.bestWindow.start && s.day <= pw.bestWindow.end
               return (
-                <div key={s.day} style={{ flex: 1, textAlign: 'center' }} title={`วันที่ ${s.day}: ~${s.avgOrders} ออเดอร์`}>
-                  <div style={{ background: inWin ? '#16a34a' : '#cbd5e1', height: `${Math.max(2, (s.avgOrders / pwMax) * 56)}px`, borderRadius: 2 }} />
+                <div key={s.day} style={{ flex: 1, textAlign: 'center' }} title={`วันที่ ${s.day}: ~${s.avgOrders}`}>
+                  <div style={{ background: inWin ? '#16a34a' : '#cbd5e1', height: `${Math.max(2, (s.avgOrders / pwMax) * 46)}px`, borderRadius: 2 }} />
                   <div style={{ fontSize: 8, color: 'var(--payi-text-muted)', marginTop: 1 }}>{s.day}</div>
                 </div>
               )
             })}
-          </div>
-        </div>
-      )}
-
-      {/* CAPACITY */}
-      <div style={card}>
-        <h3 style={{ margin: '0 0 12px', fontSize: 14 }}>กำลังทีมแพ็ค</h3>
-        {cap.ready ? (
-          <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 12 }}>
-              {[
-                ['ออเดอร์/วัน (ล่าสุด)', cap.recentAvgPerDay.toLocaleString()],
-                ['เลิกงานตอนนี้ ~', cap.finishNow],
-                ['วันพีคเลิก ~', `${cap.finishAtPeak} (${cap.peakDay?.orders?.toLocaleString()} ออเดอร์)`],
-                ['อีก 3 เดือนเลิก ~', cap.finishIn3mo],
-                ['โต/เดือน', `${cap.monthlyGrowthPct > 0 ? '+' : ''}${cap.monthlyGrowthPct}%`],
-                ['ชนเพดาน (' + cap.maxFinish + ') ใน', cap.monthsToCap != null ? `~${cap.monthsToCap} เดือน` : 'ยังไม่ชน'],
-              ].map(([k, val]) => (
-                <div key={k} style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
-                  <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>{k}</div>
-                  <div style={{ fontSize: 16, fontWeight: 600 }}>{val}</div>
-                </div>
-              ))}
-            </div>
-            {(() => {
-              const util = Math.min(100, cap.utilizationPct)
-              return (
-                <div style={{ background: '#eef2f7', borderRadius: 8, height: 14, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${util}%`, background: cap.utilizationPct >= 100 ? '#dc2626' : cap.utilizationPct >= 85 ? '#c2410c' : 'var(--payi-mint)' }} />
-                </div>
-              )
-            })()}
-            <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 6 }}>
-              อัตราแพ็คคำนวณจากข้อมูลจริง = ~{cap.ordersPerPersonHour} ออเดอร์/คน/ชม. (จากปริมาณล่าสุด + เวลาเลิกปกติที่กรอก). เพดาน {cap.capacityPerDay.toLocaleString()} ออเดอร์/วัน = เลิกตรง {cap.maxFinish}
-            </div>
-          </>
-        ) : <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ข้อมูลออเดอร์ยังไม่พอ (ต้องมีอย่างน้อย 14 วัน)</div>}
-      </div>
-
-      {/* WEEKDAY */}
-      {wd?.ready && (
-        <div style={card}>
-          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>โหลดตามวันในสัปดาห์ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>วันพีคคือตัวจริงที่ชนเพดาน</span></h3>
-          <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
-            วัน{wd.peakDay}ออเดอร์เยอะสุด ~{wd.peakAvgOrders.toLocaleString()} ({wd.peakRatio}× ค่าเฉลี่ย {wd.overallAvg.toLocaleString()}) —
-            ทีมเลิกงานวันนั้น ~<b style={{ color: wd.peakOverCeiling ? '#dc2626' : 'inherit' }}>{wd.finishOnPeakDay}</b>
-            {wd.peakOverCeiling ? ` (เกินเพดาน ${cap.maxFinish})` : ''}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 60 }}>
-            {wd.series.map((s) => (
-              <div key={s.day} style={{ flex: 1, textAlign: 'center' }} title={`${s.day}: ~${s.avgOrders}`}>
-                <div style={{ background: s.day === wd.peakDay ? '#dc2626' : '#cbd5e1', height: `${Math.max(2, (s.avgOrders / wdMax) * 46)}px`, borderRadius: 3 }} />
-                <div style={{ fontSize: 9, color: 'var(--payi-text-muted)', marginTop: 2 }}>{s.day.slice(0, 2)}</div>
-                <div style={{ fontSize: 9, fontWeight: 600 }}>{s.avgOrders.toLocaleString()}</div>
-              </div>
-            ))}
           </div>
         </div>
       )}
@@ -162,25 +177,23 @@ export default function Fulfillment() {
             <>
               <div style={{ display: 'flex', gap: 24, marginTop: 8 }}>
                 <div>
-                  <div style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>ลูกค้าที่เคยได้ FBS</div>
+                  <div style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>เคยได้ FBS</div>
                   <div style={{ fontSize: 22, fontWeight: 700, color: '#16a34a' }}>{fr.fbsRepeatPct}%</div>
                   <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>ซื้อซ้ำ ({fr.fbsBuyers.toLocaleString()} คน)</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>ลูกค้าที่ได้แต่แพ็คเอง</div>
+                  <div style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>ได้แต่แพ็คเอง</div>
                   <div style={{ fontSize: 22, fontWeight: 700 }}>{fr.selfRepeatPct}%</div>
                   <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>ซื้อซ้ำ ({fr.selfBuyers.toLocaleString()} คน)</div>
                 </div>
               </div>
               <div style={{ fontSize: 11, color: '#92400e', marginTop: 10, lineHeight: 1.5 }}>
-                ⚠️ มี bias: ลูกค้าที่ซื้อหลายครั้งมีโอกาสเจอออเดอร์ FBS สักครั้งอยู่แล้ว (ยิ่งซื้อบ่อยยิ่งติดกลุ่ม FBS) —
-                ตัวเลขนี้จึงเอียงสูงเกินจริง. ดูเป็นสัญญาณคร่าวๆ ไม่ใช่ผลว่า FBS ทำให้คนกลับมาซื้อ
+                ⚠️ มี bias: ลูกค้าที่ซื้อหลายครั้งมีโอกาสเจอออเดอร์ FBS สักครั้งอยู่แล้ว → ตัวเลขเอียงสูงเกินจริง ดูเป็นสัญญาณคร่าวๆ
               </div>
             </>
           ) : (
             <div style={{ color: 'var(--payi-text-muted)', fontSize: 12.5, marginTop: 6 }}>
-              ข้อมูลยังไม่พอ (FBS {fr.fbsBuyers.toLocaleString()} คน / แพ็คเอง {fr.selfBuyers.toLocaleString()} คน — ต้องการฝั่งละ ≥100).
-              FBS เพิ่งเริ่มเก็บ ส.ค. + ต้องมีเวลาให้ลูกค้ากลับมา — ตัวเลขจะมีความหมายในอีก 2-3 เดือน
+              ข้อมูลยังไม่พอ (FBS {fr.fbsBuyers.toLocaleString()} / แพ็คเอง {fr.selfBuyers.toLocaleString()} คน — ต้องการฝั่งละ ≥100) — จะมีความหมายในอีก 2-3 เดือน
             </div>
           )}
         </div>
@@ -188,21 +201,21 @@ export default function Fulfillment() {
 
       {/* FBS USAGE */}
       <div style={card}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>Fulfilled By Shopee ตอนนี้ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>Shopee เท่านั้น — TikTok ไม่มีข้อมูล</span></h3>
+        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>Fulfilled By Shopee ตอนนี้ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>Shopee เท่านั้น</span></h3>
         <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
-          มีข้อมูลตัวเลือกจัดส่ง {fbs.coveragePct}% ของออเดอร์ Shopee ({fbs.coveredOrders?.toLocaleString()} / {fbs.shopeeOrders?.toLocaleString()})
+          มีข้อมูลตัวเลือกจัดส่ง {fbs.coveragePct}% ของออเดอร์ Shopee ในช่วงนี้ ({fbs.coveredOrders?.toLocaleString()} / {fbs.shopeeOrders?.toLocaleString()})
         </div>
         <div style={{ display: 'flex', gap: 20, fontSize: 13, marginBottom: 12 }}>
-          <span>ออเดอร์ผ่าน FBS <b style={{ color: '#c2410c' }}>{fbs.fbsOrderPct}%</b></span>
+          <span>ผ่าน FBS <b style={{ color: '#c2410c' }}>{fbs.fbsOrderPct}%</b></span>
           <span>ชิ้น <b>{fbs.fbsUnitPct}%</b></span>
           <span>ยอดขาย <b>{fbs.fbsRevenuePct}%</b></span>
         </div>
         {fbs.trend?.length > 1 && (
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 60 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 50 }}>
             {fbs.trend.map((m) => (
-              <div key={m.month} style={{ flex: 1, textAlign: 'center' }} title={`${m.month}: ${m.fbsPct}% (${m.orders})`}>
-                <div style={{ background: 'var(--payi-mint)', height: `${Math.max(2, m.fbsPct * 0.5)}px`, borderRadius: 3 }} />
-                <div style={{ fontSize: 9, color: 'var(--payi-text-muted)', marginTop: 2 }}>{m.month.slice(5)}</div>
+              <div key={m.month} style={{ flex: 1, textAlign: 'center' }} title={`${mLabel(m.month)}: ${m.fbsPct}%`}>
+                <div style={{ background: 'var(--payi-mint)', height: `${Math.max(2, m.fbsPct * 0.6)}px`, borderRadius: 3 }} />
+                <div style={{ fontSize: 9, color: 'var(--payi-text-muted)', marginTop: 2 }}>{mLabel(m.month)}</div>
               </div>
             ))}
           </div>
@@ -213,8 +226,8 @@ export default function Fulfillment() {
       <div style={card}>
         <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>ควร / ไม่ควร ย้ายเข้า FBS — รายกลุ่มสินค้า</h3>
         <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
-          ควร FBS = ส่งด่วนน้อย (&lt;20%) + ส่งธรรมดา/FBS อยู่แล้วรวมกัน ≥55%. เก็บแพ็คเอง = ส่งด่วนเยอะ (≥25% ความเร็วคือจุดขาย).
-          "ส่ง ~X/รอบ" = จำนวนชิ้นแนะนำส่งเข้า FBS ต่อรอบเติม (≈ demand ส่งธรรมดา 1 เดือน{data.byProductMeta?.dataMonths ? `, คิดจากข้อมูล ${data.byProductMeta.dataMonths} เดือน` : ''})
+          ควร FBS = ส่งด่วน &lt;20% + ส่งธรรมดา/FBS รวม ≥55%. เก็บแพ็คเอง = ส่งด่วน ≥25%.
+          "ส่ง ~X/รอบ" = ชิ้นแนะนำส่ง FBS ต่อรอบเติม (≈ demand ส่งธรรมดา 1 เดือน{data.byProductMeta?.dataMonths ? `, จากข้อมูล ${data.byProductMeta.dataMonths} เดือน` : ''})
         </div>
         {candidates.length > 0 && <div style={{ fontSize: 12, fontWeight: 600, color: '#16a34a', margin: '4px 0 6px' }}>ลอง FBS ได้ ({candidates.length})</div>}
         {candidates.map((p) => <ProductRow key={p.label} p={p} />)}
@@ -222,9 +235,10 @@ export default function Fulfillment() {
         {keepSelf.map((p) => <ProductRow key={p.label} p={p} />)}
         {byProduct.filter((p) => p.verdict === 'review').length > 0 && (
           <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 10 }}>
-            + อีก {byProduct.filter((p) => p.verdict === 'review').length} กลุ่มที่ต้องดูเพิ่ม (ส่งด่วน 20–25% หรือส่งธรรมดายังไม่ถึง 55%)
+            + อีก {byProduct.filter((p) => p.verdict === 'review').length} กลุ่มที่ต้องดูเพิ่ม
           </div>
         )}
+        {byProduct.length === 0 && <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ยังไม่มีข้อมูลตัวเลือกจัดส่งในช่วงนี้</div>}
       </div>
 
       {/* OT AUDIT */}
@@ -241,9 +255,7 @@ export default function Fulfillment() {
             </div>
             {ot.flaggedDays?.length > 0 ? (
               <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                <thead><tr style={{ color: 'var(--payi-text-muted)', textAlign: 'left' }}>
-                  <th style={{ padding: '4px 0' }}>วันที่</th><th>OT (ชม.)</th><th>ออเดอร์วันนั้น</th>
-                </tr></thead>
+                <thead><tr style={{ color: 'var(--payi-text-muted)', textAlign: 'left' }}><th style={{ padding: '4px 0' }}>วันที่</th><th>OT (ชม.)</th><th>ออเดอร์วันนั้น</th></tr></thead>
                 <tbody>
                   {ot.flaggedDays.map((d) => (
                     <tr key={d.date} style={{ borderTop: '1px solid var(--payi-border)' }}>
@@ -254,9 +266,9 @@ export default function Fulfillment() {
                   ))}
                 </tbody>
               </table>
-            ) : <div style={{ color: '#16a34a', fontSize: 13 }}>ไม่พบวัน OT ที่น่าสงสัย</div>}
+            ) : <div style={{ color: '#16a34a', fontSize: 13 }}>ไม่พบวัน OT ที่น่าสงสัยในช่วงนี้</div>}
           </>
-        ) : <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ยังไม่มีข้อมูล OT (`workforce_ot`)</div>}
+        ) : <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ยังไม่มีข้อมูล OT ในช่วงนี้</div>}
       </div>
 
       {/* CONFIG */}

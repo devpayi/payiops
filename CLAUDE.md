@@ -808,16 +808,25 @@ a new one.
     แพ็คเข้า Fulfillment (FBS)". Key framing (from owner): packing labour (4 staff × ฿400,
     OT ฿50/hr) is a **fixed cost** — moving to FBS saves nothing until volume outgrows the
     team; and high express/instant % is a reason to **keep** a product self-packed (FBS
-    can't do same-day), not move it. Cards: (a) verdict hold/watch/act; (b) capacity model
-    — self-calibrates `orders_per_person_hour` from recent daily order count ÷ (headcount ×
-    normal work hours), projects the team's finish time as volume grows, months-to-ceiling
-    at measured growth; (c) current FBS usage % + monthly trend (Shopee only — TikTok
-    `fulfillment_type` came back empty in the exports); (d) per-`deriveGroup` FBS
+    can't do same-day), not move it; FBS stockout is safe (orders fall back to self-pack);
+    FBS restock is monthly. **`?range=all|N|YYYY-MM`** (default `3` = last 3 complete
+    months) scopes capacity/fbsUsage/byProduct/otAudit/fbsRetention; prepWindow + weekday
+    always pool all months. Cards: (a) verdict hold/watch/act; (b) **month-over-month
+    capacity** — a bar per month of the team's projected finish time; `orders_per_person_hour`
+    is calibrated = last complete month's avg orders/day ÷ headcount ÷ normal work hours,
+    ceiling line at `max_finish`, growth = least-squares slope on complete months,
+    months-to-ceiling from that slope. Deliberately NOT a rolling-14-day window — that was
+    fragile to import timing and unverifiable by the owner. (c) weekday load (peak weekday
+    = the real constraint); (d) FBS restock-day recommender (lightest 4-day window of the
+    month) + per-candidate send units (~1 month of standard-delivery demand); (e)
+    FBS-vs-retention observation (repeat rate of buyers who ever got FBS vs self-only,
+    Shopee/`buyer_hash` — carries an explicit "frequent buyers land in the FBS group
+    mechanically" bias warning); (f) current FBS usage % + monthly trend (Shopee only —
+    TikTok `fulfillment_type` came back empty in the exports); (g) per-`deriveGroup` FBS
     candidate/keep-self scoring (fast <20% + standard/FBS ≥55% = candidate; fast ≥25% =
-    keep self); (e) OT audit — flags days with logged OT but below-median order volume
-    ("โอทีเฟ้อ"), ฿ estimate. FBS fee fields are 0 for now (owner: FBS free until ~next
-    month, rate unknown) — once entered the verdict text will add a break-even vs OT/hire.
-    No new `api/*.js` file (piggybacks `sheet-tools.js`, still 9/12).
+    keep self); (h) OT-padding audit — days with logged OT but below-median order volume,
+    ฿ estimate. FBS fee fields are 0 for now (owner: FBS free until ~Oct 2026, rate
+    unknown). No new `api/*.js` file (piggybacks `sheet-tools.js`, still 9/12).
 
 ## Gotchas
 
