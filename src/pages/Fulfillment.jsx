@@ -20,8 +20,14 @@ const glassInput = {
   outline: 'none',
 }
 const glowDot = (c) => ({ width: 8, height: 8, borderRadius: '50%', background: c, flexShrink: 0, boxShadow: c.startsWith('#') ? `0 0 6px ${c}66` : 'none' })
-// แท่งกราฟ — โทนโปร่ง นุ่ม เข้ากับ glass (ไม่ใช่สีทึบจัด)
-const BAR = { main: 'rgba(79,110,247,0.55)', soft: 'rgba(100,116,139,0.28)', alert: 'rgba(225,90,70,0.6)', ok: 'rgba(34,160,110,0.55)' }
+// แท่งกราฟ — สีทึบเข้ม มีน้ำหนัก + ไล่เข้มลงด้านล่างนิดเดียวให้มีมิติ (ไม่ใช่มันวาว)
+const bg = (c, d) => `linear-gradient(180deg, ${c}, ${d})`
+const BAR = {
+  main: bg('#5566e6', '#3f4fc7'),
+  soft: bg('#aab4c6', '#93a0b5'),
+  alert: bg('#e5624c', '#c94734'),
+  ok: bg('#1fa06e', '#16855b'),
+}
 const barRadius = '6px 6px 0 0'
 const VERDICT_COLOR = { act: '#dc2626', watch: '#c2410c', hold: '#16a34a', unknown: '#94a3b8' }
 const VERDICT_LABEL = { act: 'ถึงจังหวะแล้ว', watch: 'ใกล้ถึง', hold: 'ยังไม่ถึง', unknown: 'ข้อมูลไม่พอ' }
@@ -409,7 +415,7 @@ export default function Fulfillment() {
                   title={`${mLabel(s.month)}: ${s.otHours} ชม. (${thb(s.otCost)})${ot.hasFeedData ? ` — ฟีด ${s.feedUnits.toLocaleString()}` : ''}`}>
                   <div style={{ fontSize: 9, fontWeight: 600 }}>{s.otHours}</div>
                   <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', width: '80%', height: '100%' }}>
-                    <div style={{ flex: 1, background: 'rgba(225,140,70,0.6)', height: `${(s.otHours / otMax) * 72}px`, borderRadius: barRadius }} />
+                    <div style={{ flex: 1, background: 'linear-gradient(180deg, #ef9235, #d97a1c)', height: `${(s.otHours / otMax) * 72}px`, borderRadius: barRadius }} />
                     {ot.hasFeedData && <div style={{ flex: 1, background: BAR.main, height: `${(s.feedUnits / feedMax) * 72}px`, borderRadius: barRadius }} title="ปริมาณฟีด" />}
                   </div>
                 </div>
@@ -419,7 +425,7 @@ export default function Fulfillment() {
               {ot.series.map((s) => <div key={s.month} style={{ flex: 1, textAlign: 'center', fontSize: 9, color: 'var(--payi-text-muted)' }}>{mLabel(s.month)}</div>)}
             </div>
             {ot.hasFeedData
-              ? <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}><span style={{ color: 'rgba(225,140,70,0.9)' }}>■</span> OT ชม. &nbsp; <span style={{ color: 'rgba(79,110,247,0.9)' }}>■</span> ปริมาณฟีด (planner_daily) — เดือนที่ฟีดเยอะควรมี OT เยอะตาม</div>
+              ? <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}><span style={{ color: '#d97a1c' }}>■</span> OT ชม. &nbsp; <span style={{ color: '#4f5fd6' }}>■</span> ปริมาณฟีด (planner_daily) — เดือนที่ฟีดเยอะควรมี OT เยอะตาม</div>
               : <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}>ยังไม่มีข้อมูลปริมาณฟีดรายวัน (planner_daily ว่าง) — กรอกในหน้า Planner Control แล้วจะเทียบ OT กับปริมาณฟีดได้</div>}
           </>
         ) : <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ยังไม่มีข้อมูล OT ในช่วงนี้</div>}
