@@ -57,7 +57,9 @@ export default function Fulfillment() {
   if (error) return <div style={{ padding: 16, borderRadius: 12, background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)' }}>เกิดข้อผิดพลาด: {error}</div>
   if (!data) return null
 
-  const { capacity: cap, weekday: wd, prepWindow: pw, fbsUsage: fbs, byProduct = [], otAudit: ot, fbsRetention: fr, verdict: v, stockoutNote, breakeven: be, campaign: camp } = data
+  const { capacity: cap, weekday: wd, prepWindow: pw, fbsUsage: fbs, byProduct = [], otMonthly: ot, fbsRetention: fr, verdict: v, stockoutNote, breakeven: be, campaign: camp } = data
+  const otMax = ot?.ready ? Math.max(1, ...ot.series.map((s) => s.otHours)) : 1
+  const feedMax = ot?.hasFeedData ? Math.max(1, ...ot.series.map((s) => s.feedUnits)) : 1
   const candidates = byProduct.filter((p) => p.verdict === 'fbs-candidate')
   const keepSelf = byProduct.filter((p) => p.verdict === 'keep-self')
   const pwMax = pw?.ready ? Math.max(...pw.series.map((s) => s.avgOrders)) : 1
@@ -309,32 +311,33 @@ export default function Fulfillment() {
         {byProduct.length === 0 && <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ยังไม่มีข้อมูลตัวเลือกจัดส่งในช่วงนี้</div>}
       </div>
 
-      {/* OT AUDIT */}
+      {/* OT MONTHLY */}
       <div style={card}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>OT เฟ้อ?</h3>
+        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>OT รายเดือน <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>ชั่วโมง / บาท</span></h3>
         {ot.ready ? (
           <>
-            <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 10 }}>
-              วันที่มี OT แต่ออเดอร์น้อยกว่า 80% ของค่ากลาง ({ot.medianDailyOrders} ออเดอร์/วัน) = น่าสงสัย
+            <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
+              OT ส่วนใหญ่เป็นงานฟีด/รีแพ็คของ (ขึ้นกับ FG ที่ต้องเตรียม) ไม่ใช่การแพ็คออเดอร์ — แพ็คเสร็จ พัก 1 ชม. แล้วมาฟีดต่อจนเลิกงาน
             </div>
-            <div style={{ display: 'flex', gap: 20, fontSize: 13, marginBottom: 12 }}>
-              <span>OT รวม <b>{ot.totalOtHours} ชม.</b> ({thb(ot.totalOtCost)})</span>
-              <span style={{ color: '#dc2626' }}>น่าสงสัย <b>{ot.suspiciousOtHours} ชม.</b> ({thb(ot.suspiciousOtCost)})</span>
+            <div style={{ fontSize: 13, marginBottom: 12 }}>OT รวมช่วงนี้ <b>{ot.totalHours} ชม.</b> ({thb(ot.totalCost)})</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 90, borderBottom: '1px solid var(--payi-border)' }}>
+              {ot.series.map((s) => (
+                <div key={s.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}
+                  title={`${mLabel(s.month)}: ${s.otHours} ชม. (${thb(s.otCost)})${ot.hasFeedData ? ` — ฟีด ${s.feedUnits.toLocaleString()}` : ''}`}>
+                  <div style={{ fontSize: 9, fontWeight: 600 }}>{s.otHours}</div>
+                  <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', width: '80%', height: '100%' }}>
+                    <div style={{ flex: 1, background: '#c2410c', height: `${(s.otHours / otMax) * 72}px`, borderRadius: '3px 3px 0 0' }} />
+                    {ot.hasFeedData && <div style={{ flex: 1, background: 'var(--payi-mint)', height: `${(s.feedUnits / feedMax) * 72}px`, borderRadius: '3px 3px 0 0' }} title="ปริมาณฟีด" />}
+                  </div>
+                </div>
+              ))}
             </div>
-            {ot.flaggedDays?.length > 0 ? (
-              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                <thead><tr style={{ color: 'var(--payi-text-muted)', textAlign: 'left' }}><th style={{ padding: '4px 0' }}>วันที่</th><th>OT (ชม.)</th><th>ออเดอร์วันนั้น</th></tr></thead>
-                <tbody>
-                  {ot.flaggedDays.map((d) => (
-                    <tr key={d.date} style={{ borderTop: '1px solid var(--payi-border)' }}>
-                      <td style={{ padding: '5px 0' }}>{d.date}</td>
-                      <td style={{ color: '#dc2626', fontWeight: 600 }}>{d.otHours}</td>
-                      <td>{d.orders} <span style={{ color: 'var(--payi-text-muted)' }}>(กลาง {d.medianOrders})</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : <div style={{ color: '#16a34a', fontSize: 13 }}>ไม่พบวัน OT ที่น่าสงสัยในช่วงนี้</div>}
+            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+              {ot.series.map((s) => <div key={s.month} style={{ flex: 1, textAlign: 'center', fontSize: 9, color: 'var(--payi-text-muted)' }}>{mLabel(s.month)}</div>)}
+            </div>
+            {ot.hasFeedData
+              ? <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}><span style={{ color: '#c2410c' }}>■</span> OT ชม. &nbsp; <span style={{ color: 'var(--payi-mint)' }}>■</span> ปริมาณฟีด (planner_daily) — เดือนที่ฟีดเยอะควรมี OT เยอะตาม</div>
+              : <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}>ยังไม่มีข้อมูลปริมาณฟีดรายวัน (planner_daily ว่าง) — กรอกในหน้า Planner Control แล้วจะเทียบ OT กับปริมาณฟีดได้</div>}
           </>
         ) : <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ยังไม่มีข้อมูล OT ในช่วงนี้</div>}
       </div>

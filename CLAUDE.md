@@ -811,8 +811,8 @@ a new one.
     can't do same-day), not move it; FBS stockout is safe (orders fall back to self-pack);
     FBS restock is monthly. **`?range=all|N|YYYY-MM`** (default `3` = last 3 complete
     months) scopes capacity/fbsUsage/byProduct/otAudit/fbsRetention; prepWindow + weekday
-    + campaign always pool all months. Cards: (a) verdict hold/watch/act (a near campaign
-    day whose predicted finish blows the ceiling temporarily overrides it); (b) **month-over-month
+    + campaign always pool all months. Cards: (a) verdict hold/watch/act — plain capacity
+    read, the campaign warning stays in its own card (owner asked); (b) **month-over-month
     capacity** — a bar per month of the team's projected finish time; `orders_per_person_hour`
     is calibrated = last complete month's avg orders/day ÷ headcount ÷ normal work hours,
     ceiling line at `max_finish`, growth = least-squares slope on complete months,
@@ -828,8 +828,10 @@ a new one.
     mechanically" bias warning); (f) current FBS usage % + monthly trend (Shopee only —
     TikTok `fulfillment_type` came back empty in the exports); (g) per-`deriveGroup` FBS
     candidate/keep-self scoring (fast <20% + standard/FBS ≥55% = candidate; fast ≥25% =
-    keep self); (h) OT-padding audit — days with logged OT but below-median order volume,
-    ฿ estimate; (i) **marginal-cost break-even** — ฿/order for OT (`ot_rate_per_hour` ÷
+    keep self); (h) monthly OT hours/฿ — **not** tied to order volume: owner says OT is
+    mostly FG feeding / repackaging (pack orders → 1h break → feed goods till end of shift),
+    so it scales with FG prep not parcels; overlays `planner_daily.planned_feed` per month
+    when present; (i) **marginal-cost break-even** — ฿/order for OT (`ot_rate_per_hour` ÷
     calibrated oph) vs a 5th hire (`daily_wage` ÷ oph ÷ normal hours) vs FBS
     (`fbs_fee_per_piece` × avg pieces/order for Shopee standard orders), with a live
     "try a fee" input; the verdict text folds in the result. On real data OT is ~฿1.3/order

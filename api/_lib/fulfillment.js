@@ -5,8 +5,9 @@
 // (ต้อง OT เยอะ / จ้างคนที่ 5) หรือ FBS ถูกกว่าค่า OT ต่อออเดอร์. เครื่องมือนี้ = สัญญาณ ไม่ใช่ "ทำเลย"
 //
 // ?range=all | N (N เดือนล่าสุดที่จบแล้ว) | YYYY-MM (เดือนเดียว) — default 3
-//   scoped ตาม range: capacity, fbsUsage, byProduct, otAudit, fbsRetention
-//   pool ทุกเดือนเสมอ (ต้องการ volume): prepWindow, weekday
+//   scoped ตาม range: capacity, fbsUsage, byProduct, otMonthly, fbsRetention
+//   pool ทุกเดือนเสมอ (ต้องการ volume): prepWindow, weekday, campaign
+// OT = งานฟีด/รีแพ็คของ (ขึ้นกับ FG) ไม่ผูกกับจำนวนออเดอร์ — แสดงเป็น ชม./บาท รายเดือนเฉยๆ
 // capacity คิดแบบ month-over-month: เวลาเลิกงานรายเดือน + slope จริง (ไม่ใช่ rolling window ที่เปราะ)
 import { getSheet, ensureSheet, getMetaCached, batchGetValues, overwriteSheet } from './sheets.js'
 import { deriveGroup, buildOverrideMap } from './productGroup.js'
@@ -352,43 +353,47 @@ function campaignModel(allRows, cap, cfg) {
   }
 }
 
-async function otAudit(rows, cfg) {
+// OT รายเดือน — เป็นชั่วโมง/บาท ไม่ผูกกับจำนวนออเดอร์
+// (owner: OT ส่วนใหญ่เป็นงานฟีด/รีแพ็คของ ขึ้นกับ FG ไม่ใช่การแพ็คออเดอร์ — แพ็คเสร็จ พัก 1 ชม.
+//  แล้วมาฟีดของต่อจนเลิกงาน). ถ้ามี planner_daily แสดงปริมาณฟีดเทียบด้วย
+async function otMonthly(rows, cfg) {
   let ot
   try { ot = await getSheet('workforce_ot') } catch { return { ready: false } }
-  const byDay = ordersPerDay(rows)
-  if (!byDay.size) return { ready: false }
-  const dates = [...byDay.keys()].sort()
-  const from = dates[0], to = dates[dates.length - 1]
-  const orderVals = [...byDay.values()].sort((a, b) => a - b)
-  const median = orderVals[Math.floor(orderVals.length / 2)] || 0
+  const dates = [...ordersPerDay(rows).keys()].sort()
+  if (!dates.length) return { ready: false }
+  const from = dates[0].slice(0, 7), to = dates[dates.length - 1].slice(0, 7)
 
-  const otByDay = new Map()
+  const byMonth = new Map()
   for (const r of ot) {
-    const date = String(r.date || '').slice(0, 10)
-    if (!date || date < from || date > to) continue           // OT เฉพาะช่วงเดียวกับ range
+    const ym = String(r.date || '').slice(0, 7)
+    if (!ym || ym < from || ym > to) continue
     const mins = num(r.actual_minutes) || num(r.planned_minutes)
-    if (mins) otByDay.set(date, (otByDay.get(date) || 0) + mins)
+    if (mins) byMonth.set(ym, (byMonth.get(ym) || 0) + mins)
   }
-  let totalOtMinutes = 0, suspiciousMinutes = 0
-  const flagged = []
-  for (const [date, mins] of otByDay) {
-    totalOtMinutes += mins
-    const dayOrders = byDay.get(date) || 0
-    if (dayOrders > 0 && dayOrders < median * 0.8) {
-      suspiciousMinutes += mins
-      flagged.push({ date, otHours: Math.round((mins / 60) * 10) / 10, orders: dayOrders, medianOrders: median })
+  // ปริมาณฟีดต่อเดือน จาก planner_daily (planned_feed) — ถ้ามี
+  let feedByMonth = new Map()
+  try {
+    const pd = await getSheet('planner_daily')
+    for (const r of pd) {
+      const ym = String(r.date || '').slice(0, 7)
+      if (!ym || ym < from || ym > to) continue
+      feedByMonth.set(ym, (feedByMonth.get(ym) || 0) + num(r.planned_feed))
     }
-  }
-  flagged.sort((a, b) => b.otHours - a.otHours)
+  } catch { feedByMonth = new Map() }
+
   const rate = cfg.ot_rate_per_hour
+  const months = [...new Set([...byMonth.keys(), ...feedByMonth.keys()])].sort()
+  const series = months.map((m) => {
+    const hrs = Math.round(((byMonth.get(m) || 0) / 60) * 10) / 10
+    return { month: m, otHours: hrs, otCost: Math.round(hrs * rate), feedUnits: Math.round(feedByMonth.get(m) || 0) }
+  })
+  const totalHours = Math.round(series.reduce((s, x) => s + x.otHours, 0) * 10) / 10
   return {
-    ready: true,
-    medianDailyOrders: median,
-    totalOtHours: Math.round((totalOtMinutes / 60) * 10) / 10,
-    totalOtCost: Math.round((totalOtMinutes / 60) * rate),
-    suspiciousOtHours: Math.round((suspiciousMinutes / 60) * 10) / 10,
-    suspiciousOtCost: Math.round((suspiciousMinutes / 60) * rate),
-    flaggedDays: flagged.slice(0, 30),
+    ready: series.length > 0,
+    hasFeedData: [...feedByMonth.values()].some((v) => v > 0),
+    series,
+    totalHours,
+    totalCost: Math.round(totalHours * rate),
   }
 }
 
@@ -447,12 +452,8 @@ function breakeven(rows, cap, cfg) {
   }
 }
 
-function verdict(cap, cfg, wd, be, camp) {
+function verdict(cap, cfg, wd, be) {
   if (!cap.ready) return { level: 'unknown', text: 'ข้อมูลออเดอร์ยังไม่พอสร้างโมเดล capacity' }
-  // วันแคมเปญใกล้ + ทำนายทีมพัง = เตือนก่อน (ทับ verdict ปกติชั่วคราว)
-  if (camp?.ready && camp.next?.daysUntil != null && camp.next.daysUntil <= 10 && camp.next.overCeiling) {
-    return { level: 'watch', text: `อีก ${camp.next.daysUntil} วันคือ ${camp.next.date} (วันแคมเปญ) — จากประวัติออเดอร์พุ่ง ~${camp.avgMultiplier}× ทีมจะเลิกงาน ~${camp.next.predictedFinish} (เกิน ${cap.maxFinish}). เตรียมส่งของเข้า FBS ก่อน / จัด OT ล่วงหน้า` }
-  }
   let feeNote = ' รอค่าธรรมเนียม FBS มากรอก แล้วโมเดลจะเทียบ break-even กับค่า OT/จ้างเพิ่มให้'
   if (cfg.fbs_fee_per_piece > 0 && be?.ready) {
     const fbs = be.fbsCostPerOrder, alt = be.cheapestAlt
@@ -515,10 +516,10 @@ export default async function opFulfillment(req, res) {
       byProduct: bp.list,
       byProductMeta: { dataMonths: bp.dataMonths, dataFrom: bp.dataFrom, dataTo: bp.dataTo },
       fbsRetention: fbsRetention(rows),
-      otAudit: await otAudit(rows, cfg),
+      otMonthly: await otMonthly(rows, cfg),
       breakeven: be,
       campaign: camp,
-      verdict: verdict(cap, cfg, wd, be, camp),
+      verdict: verdict(cap, cfg, wd, be),
       stockoutNote: STOCKOUT_NOTE,
     })
   } catch (e) {
