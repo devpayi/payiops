@@ -2,31 +2,32 @@ import { useEffect, useState } from 'react'
 
 const thb = (n) => `฿${Math.round(n || 0).toLocaleString()}`
 
-// ── Liquid glass (light theme) ──
+// ── Glass surface (ขับเคลื่อนด้วย CSS var + fallback — เผื่อ theme อื่น) ──
 const card = {
-  background: 'rgba(255,255,255,0.62)',
-  backdropFilter: 'blur(16px) saturate(180%)',
-  WebkitBackdropFilter: 'blur(16px) saturate(180%)',
-  border: '1px solid rgba(255,255,255,0.75)',
+  background: 'var(--card-bg, rgba(255,255,255,0.7))',
+  backdropFilter: 'blur(12px)',
+  WebkitBackdropFilter: 'blur(12px)',
+  border: '1px solid var(--card-border, rgba(255,255,255,0.4))',
   borderRadius: 16,
   padding: 22,
-  boxShadow: '0 12px 32px rgba(15,23,42,0.10), inset 0 1px 0 rgba(255,255,255,0.65)',
+  boxShadow: '0 10px 30px -5px rgba(0,0,0,0.05), 0 4px 6px -2px rgba(0,0,0,0.02)',
 }
 const glassInput = {
-  background: 'rgba(255,255,255,0.55)',
-  border: '1px solid rgba(255,255,255,0.7)',
+  background: 'var(--input-bg, rgba(255,255,255,0.5))',
+  border: '1px solid var(--card-border, rgba(255,255,255,0.45))',
   borderRadius: 10,
-  boxShadow: 'inset 0 2px 5px rgba(15,23,42,0.07)',
+  boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)',
   outline: 'none',
 }
 const glowDot = (c) => ({ width: 8, height: 8, borderRadius: '50%', background: c, flexShrink: 0, boxShadow: c.startsWith('#') ? `0 0 6px ${c}66` : 'none' })
-// แท่งกราฟ — สีทึบเข้ม มีน้ำหนัก + ไล่เข้มลงด้านล่างนิดเดียวให้มีมิติ (ไม่ใช่มันวาว)
-const bg = (c, d) => `linear-gradient(180deg, ${c}, ${d})`
+// แท่งกราฟ — ไล่โปร่งแสง 0.88 -> 0.6 (เข้ากับทุกธีม ไม่ผูกสีพื้น)
+const bar = (r, g, b) => `linear-gradient(180deg, rgba(${r},${g},${b},0.9), rgba(${r},${g},${b},0.6))`
 const BAR = {
-  main: bg('#5566e6', '#3f4fc7'),
-  soft: bg('#aab4c6', '#93a0b5'),
-  alert: bg('#e5624c', '#c94734'),
-  ok: bg('#1fa06e', '#16855b'),
+  main: bar(85, 102, 230),
+  soft: bar(148, 163, 184),
+  alert: bar(229, 98, 76),
+  ok: bar(31, 160, 110),
+  amber: bar(230, 146, 53),
 }
 const barRadius = '6px 6px 0 0'
 const VERDICT_COLOR = { act: '#dc2626', watch: '#c2410c', hold: '#16a34a', unknown: '#94a3b8' }
@@ -53,6 +54,102 @@ const CONFIG_FIELDS = [
   ['fbs_storage_monthly', 'ค่าเก็บของ FBS/เดือน'],
 ]
 const mLabel = (ym) => { const [y, m] = ym.split('-'); return `${['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][+m]} ${String(y).slice(2)}` }
+
+// 🦸 สานฝันวัยเด็ก — chibi Ultraman ท่าตั้งการ์ดสู้ (fighting stance) + เอฟเฟกต์กระแทกแดง + ออร่าเหลือง
+function ChibiHero({ size = 168 }) {
+  const S = '#1c1c1c'
+  return (
+    <>
+      <style>{`
+@keyframes heroBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes heroImpact{0%,100%{opacity:.55;transform:scale(.92)}50%{opacity:1;transform:scale(1.08)}}
+@keyframes heroAura{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@keyframes heroTimer{0%,100%{fill:#7ec8ff}50%{fill:#f47c6b}}`}</style>
+      <svg width={size} height={size} viewBox="0 0 240 240" aria-hidden="true"
+        style={{ animation: 'heroBob 3s ease-in-out infinite', filter: 'drop-shadow(0 8px 12px rgba(15,23,42,0.18))', overflow: 'visible' }}>
+
+        {/* ── ออร่าเหลือง-ส้ม หมุนช้าๆ ใต้เท้า ── */}
+        <g style={{ transformOrigin: '95px 205px', animation: 'heroAura 9s linear infinite' }} opacity="0.9">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <line key={i} x1="95" y1="205" x2="95" y2={168 - (i % 2) * 12}
+              stroke={i % 2 ? '#f5a623' : '#ffd23e'} strokeWidth={i % 2 ? 3 : 5} strokeLinecap="round"
+              transform={`rotate(${i * 36} 95 205)`} />
+          ))}
+        </g>
+
+        {/* ── เส้นกระแทกแดง (comic impact) ข้างกำปั้นหน้า ── */}
+        <g style={{ transformOrigin: '176px 116px', animation: 'heroImpact 0.45s ease-in-out infinite' }}>
+          {[[-8, -34], [14, -28], [30, -6], [26, 20], [4, 30]].map(([dx, dy], i) => (
+            <path key={i} d={`M176 116 L${176 + dx * 1.9} ${116 + dy * 1.9} L${176 + dx * 1.1 + (dy > 0 ? 8 : -8)} ${116 + dy * 1.1 + 6} Z`}
+              fill="#e5231d" stroke="#a3140f" strokeWidth="2" strokeLinejoin="round" />
+          ))}
+        </g>
+
+        {/* ── ขา — ย่อกว้าง ── */}
+        <g stroke={S} strokeWidth="5" strokeLinejoin="round">
+          {/* ต้นขาซ้าย */}
+          <path d="M96 150 q-30 8 -34 40 q0 10 12 12 q14 -2 18 -18 q6 -22 4 -34 Z" fill="#eef1f4" />
+          {/* ต้นขาขวา */}
+          <path d="M120 150 q30 6 36 34 q0 12 -14 14 q-14 0 -18 -16 q-6 -20 -4 -30 Z" fill="#eef1f4" />
+          {/* หน้าแข้ง + แถบแดง + เท้า ซ้าย */}
+          <path d="M70 196 q-6 18 2 30 q4 6 14 4 q8 -4 8 -16 l-4 -20 Z" fill="#eef1f4" />
+          <path d="M86 226 q-16 4 -22 0 q-2 -8 6 -12 l14 2 Z" fill="#d8dde2" />
+          {/* หน้าแข้ง + เท้า ขวา */}
+          <path d="M154 190 q10 16 4 32 q-4 6 -14 4 q-8 -4 -6 -16 l4 -22 Z" fill="#eef1f4" />
+          <path d="M144 222 q16 6 24 2 q2 -8 -6 -12 l-16 0 Z" fill="#d8dde2" />
+        </g>
+        {/* แถบแดงหน้าแข้ง */}
+        <path d="M68 200 q12 5 24 0 l-2 10 q-10 4 -20 0 Z" fill="#e5231d" stroke={S} strokeWidth="3.5" strokeLinejoin="round" />
+        <path d="M148 196 q12 5 22 2 l0 10 q-10 4 -20 1 Z" fill="#e5231d" stroke={S} strokeWidth="3.5" strokeLinejoin="round" />
+
+        {/* ── กางเกงแดง ── */}
+        <path d="M86 138 q22 14 44 0 l4 20 q-26 16 -52 0 Z" fill="#e5231d" stroke={S} strokeWidth="5" strokeLinejoin="round" />
+
+        {/* ── ลำตัว เอนหน้า ── */}
+        <path d="M84 78 q24 -12 48 0 q6 4 4 30 q-2 22 -6 34 q-22 12 -44 0 q-6 -16 -8 -36 q-2 -22 6 -28 Z"
+          fill="#eef1f4" stroke={S} strokeWidth="5" strokeLinejoin="round" />
+        <path d="M126 76 q8 6 6 32 q-2 22 -8 36 l-6 -2 q6 -18 7 -38 q1 -20 -5 -26 Z" fill="#d3d9df" opacity="0.85" />
+        {/* ไหล่แดง */}
+        <path d="M78 84 q10 -14 26 -12 l-2 12 q-14 -1 -22 8 Z" fill="#e5231d" stroke={S} strokeWidth="4" strokeLinejoin="round" />
+        <path d="M138 84 q-10 -14 -26 -12 l2 12 q14 -1 22 8 Z" fill="#e5231d" stroke={S} strokeWidth="4" strokeLinejoin="round" />
+        {/* color timer */}
+        <ellipse cx="108" cy="104" rx="8" ry="9" fill="#7ec8ff" stroke={S} strokeWidth="3.5" style={{ animation: 'heroTimer 1.6s ease-in-out infinite' }} />
+        <ellipse cx="105" cy="100" rx="2.5" ry="3" fill="#eaf6ff" />
+
+        {/* ── แขนขวา (หลัง/ล่าง) กำปั้นที่สะโพก ── */}
+        <path d="M132 96 q26 6 32 34 q2 12 -10 16 q-14 2 -20 -12 q-6 -18 -10 -30 Z" fill="#eef1f4" stroke={S} strokeWidth="5" strokeLinejoin="round" />
+        <circle cx="150" cy="146" r="15" fill="#eef1f4" stroke={S} strokeWidth="5" />
+        <path d="M138 140 q12 8 24 0" fill="none" stroke={S} strokeWidth="3" opacity="0.5" />
+        <path d="M134 100 q10 -6 20 2 l-3 9 q-9 -6 -16 -2 Z" fill="#e5231d" stroke={S} strokeWidth="3" strokeLinejoin="round" />
+
+        {/* ── แขนซ้าย (การ์ดหน้า) กำปั้นชูข้างคาง ── */}
+        <path d="M92 92 q34 -4 56 8 q10 6 6 20 q-6 12 -22 8 q-24 -8 -46 -14 Z" fill="#eef1f4" stroke={S} strokeWidth="5" strokeLinejoin="round" />
+        <circle cx="150" cy="120" r="17" fill="#f4f6f8" stroke={S} strokeWidth="5" />
+        <path d="M137 112 q13 10 26 2" fill="none" stroke={S} strokeWidth="3.4" opacity="0.55" />
+        <path d="M143 128 q7 4 14 0" fill="none" stroke={S} strokeWidth="3" opacity="0.4" />
+        <path d="M96 96 q14 -6 26 2 l-4 10 q-12 -7 -20 -3 Z" fill="#e5231d" stroke={S} strokeWidth="3.5" strokeLinejoin="round" />
+
+        {/* ── หัว เอียงเล็กน้อย ── */}
+        <g transform="rotate(-6 112 52)">
+          {/* ครีบแดง */}
+          <path d="M112 2 q-9 20 -8 30 l16 0 q1 -10 -8 -30 Z" fill="#e5231d" stroke={S} strokeWidth="4" strokeLinejoin="round" />
+          {/* กะโหลกเงิน */}
+          <path d="M78 44 q0 -30 34 -32 q34 2 34 32 q0 22 -14 34 q-9 8 -20 8 q-11 0 -20 -8 q-14 -12 -14 -34 Z"
+            fill="#d7dde3" stroke={S} strokeWidth="5" strokeLinejoin="round" />
+          {/* หน้าขาว */}
+          <path d="M86 44 q0 -22 26 -24 q26 2 26 24 q0 18 -12 30 q-6 6 -14 6 q-8 0 -14 -6 q-12 -12 -12 -30 Z" fill="#f4f6f8" />
+          {/* ตาเหลือง — อัลมอนด์ เอียงออกนอก (ไม่เหล่) */}
+          <g stroke={S} strokeWidth="3">
+            <ellipse cx="99" cy="45" rx="10" ry="13.5" fill="#ffd23e" transform="rotate(-20 99 45)" />
+            <ellipse cx="125" cy="45" rx="10" ry="13.5" fill="#ffd23e" transform="rotate(20 125 45)" />
+          </g>
+          <ellipse cx="95" cy="40" rx="3" ry="4" fill="#fff6d5" transform="rotate(-20 95 40)" />
+          <ellipse cx="129" cy="40" rx="3" ry="4" fill="#fff6d5" transform="rotate(20 129 40)" />
+        </g>
+      </svg>
+    </>
+  )
+}
 
 export default function Fulfillment() {
   const [data, setData] = useState(null)
@@ -178,7 +275,10 @@ export default function Fulfillment() {
       </div>
 
       {/* VERDICT */}
-      <div style={{ ...card, background: VERDICT_TINT[v.level].bg, border: '1px solid rgba(255,255,255,0.6)', boxShadow: VERDICT_TINT[v.level].glow }}>
+      <div style={{ ...card, position: 'relative', background: VERDICT_TINT[v.level].bg, border: '1px solid rgba(255,255,255,0.6)', boxShadow: VERDICT_TINT[v.level].glow }}>
+        <div style={{ position: 'absolute', top: -84, right: -22, pointerEvents: 'none', zIndex: 2 }}>
+          <ChibiHero size={158} />
+        </div>
         <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginBottom: 4 }}>คำแนะนำ — ย้ายงานแพ็คเข้า Fulfillment?</div>
         <div style={{ fontSize: 19, fontWeight: 700, color: VERDICT_COLOR[v.level], marginBottom: 8, letterSpacing: '-0.01em' }}>{VERDICT_LABEL[v.level]}</div>
         <div style={{ fontSize: 13, color: 'var(--payi-text)', lineHeight: 1.65 }}>{v.text}</div>
@@ -196,10 +296,10 @@ export default function Fulfillment() {
               อัตราแพ็ค ~{cap.ordersPerPersonHour} ออเดอร์/คน/ชม. (calibrate จากเดือน {mLabel(cap.calMonth)}{cap.calMonthPartial ? ' — ยังไม่จบเดือน' : ''} + เวลาเลิกที่กรอก).
               เพดาน {cap.capacityPerDay.toLocaleString()} ออเดอร์/วัน = เลิกตรง {cap.maxFinish}
             </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 110, borderBottom: '1px solid var(--payi-border)', position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 110, borderBottom: '1px solid rgba(15,23,42,0.06)', position: 'relative' }}>
               {/* เส้นเพดาน */}
-              <div style={{ position: 'absolute', left: 0, right: 0, bottom: `${(cap.capacityPerDay / capMax) * 100}%`, borderTop: '1px dashed rgba(220,38,38,0.38)' }}>
-                <span style={{ fontSize: 9, color: 'rgba(220,38,38,0.75)', position: 'absolute', right: 0, top: -12 }}>เพดาน {cap.maxFinish}</span>
+              <div style={{ position: 'absolute', left: 0, right: 0, bottom: `${(cap.capacityPerDay / capMax) * 100}%`, borderTop: '1px dashed rgba(229,98,76,0.32)' }}>
+                <span style={{ fontSize: 9, color: 'rgba(229,98,76,0.7)', position: 'absolute', right: 0, top: -12 }}>เพดาน {cap.maxFinish}</span>
               </div>
               {cap.series.map((m) => (
                 <div key={m.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }} title={`${mLabel(m.month)}: ~${m.avgPerDay}/วัน เลิก ${m.finish}`}>
@@ -265,20 +365,27 @@ export default function Fulfillment() {
       {camp?.ready && (
         <div style={card}>
           <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>วันแคมเปญ (9.9 / 11.11 / 12.12) <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>วันที่ทีมเครียดสุด</span></h3>
-          {camp.next && camp.next.predictedOrders != null && (
-            <div style={{ fontSize: 13.5, marginBottom: 12, lineHeight: 1.6, padding: '10px 12px', borderRadius: 10, background: camp.next.overCeiling ? '#fef2f2' : '#f0fdf4' }}>
-              <b>{camp.next.date}</b> (อีก {camp.next.daysUntil} วัน) — คาดออเดอร์ ~<b>{camp.next.predictedOrders.toLocaleString()}</b> (พุ่ง {camp.avgMultiplier}× จากปกติ) →
-              ทีมเลิกงาน ~<b style={{ color: camp.next.overCeiling ? '#dc2626' : '#16a34a' }}>{camp.next.predictedFinish}</b>
-              {camp.next.overCeiling ? ` — เกินเพดาน ${cap.maxFinish}! เตรียมส่ง FBS ก่อน / จัด OT ล่วงหน้า` : ' — ยังไหว'}
-            </div>
-          )}
-          <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)', marginBottom: 6 }}>ประวัติวันแคมเปญ (เทียบวันปกติรอบๆ)</div>
+          {camp.next && camp.next.predictedOrders != null && (() => {
+            const c = camp.next.overCeiling ? [229, 98, 76] : [31, 160, 110]
+            return (
+              <div style={{
+                fontSize: 13.5, margin: '4px 0 14px', lineHeight: 1.65, padding: '12px 16px', borderRadius: 14,
+                background: `rgba(${c},0.1)`, border: `1px solid rgba(${c},0.28)`,
+                backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+              }}>
+                <b>{camp.next.date}</b> (อีก {camp.next.daysUntil} วัน) — คาดออเดอร์ ~<b>{camp.next.predictedOrders.toLocaleString()}</b> (พุ่ง {camp.avgMultiplier}× จากปกติ) →
+                ทีมเลิกงาน ~<b style={{ color: `rgb(${c})` }}>{camp.next.predictedFinish}</b>
+                {camp.next.overCeiling ? ` — เกินเพดาน ${cap.maxFinish}! เตรียมส่ง FBS ก่อน / จัด OT ล่วงหน้า` : ' — ยังไหว'}
+              </div>
+            )
+          })()}
+          <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)', marginBottom: 8 }}>ประวัติวันแคมเปญ (เทียบวันปกติรอบๆ)</div>
           {camp.observed.map((o) => (
-            <div key={o.date} style={{ display: 'flex', gap: 12, fontSize: 12.5, marginBottom: 3 }}>
-              <span style={{ width: 90 }}>{o.date}</span>
-              <span style={{ width: 130 }}>{o.orders.toLocaleString()} ออเดอร์</span>
-              <span style={{ color: 'var(--payi-text-strong)', fontWeight: 700 }}>{o.multiplier}× </span>
-              <span style={{ color: 'var(--payi-text-muted)' }}>(ปกติ ~{o.baseline.toLocaleString()})</span>
+            <div key={o.date} style={{ display: 'flex', gap: 14, fontSize: 12.5, padding: '6px 0', borderBottom: '1px solid var(--card-border, rgba(15,23,42,0.06))', letterSpacing: '0.01em' }}>
+              <span style={{ width: 90, color: 'var(--payi-text-muted)' }}>{o.date}</span>
+              <span style={{ width: 120 }}>{o.orders.toLocaleString()} ออเดอร์</span>
+              <span style={{ width: 52, color: 'var(--payi-text-muted)', fontWeight: 600 }}>{o.multiplier}×</span>
+              <span style={{ color: 'var(--payi-text-muted)' }}>ปกติ ~{o.baseline.toLocaleString()}</span>
             </div>
           ))}
         </div>
@@ -409,13 +516,13 @@ export default function Fulfillment() {
               OT ส่วนใหญ่เป็นงานฟีด/รีแพ็คของ (ขึ้นกับ FG ที่ต้องเตรียม) ไม่ใช่การแพ็คออเดอร์ — แพ็คเสร็จ พัก 1 ชม. แล้วมาฟีดต่อจนเลิกงาน
             </div>
             <div style={{ fontSize: 13, marginBottom: 12 }}>OT รวมช่วงนี้ <b>{ot.totalHours} ชม.</b> ({thb(ot.totalCost)})</div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 90, borderBottom: '1px solid var(--payi-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 90, borderBottom: '1px solid rgba(15,23,42,0.06)' }}>
               {ot.series.map((s) => (
                 <div key={s.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}
                   title={`${mLabel(s.month)}: ${s.otHours} ชม. (${thb(s.otCost)})${ot.hasFeedData ? ` — ฟีด ${s.feedUnits.toLocaleString()}` : ''}`}>
                   <div style={{ fontSize: 9, fontWeight: 600 }}>{s.otHours}</div>
                   <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', width: '80%', height: '100%' }}>
-                    <div style={{ flex: 1, background: 'linear-gradient(180deg, #ef9235, #d97a1c)', height: `${(s.otHours / otMax) * 72}px`, borderRadius: barRadius }} />
+                    <div style={{ flex: 1, background: BAR.amber, height: `${(s.otHours / otMax) * 72}px`, borderRadius: barRadius }} />
                     {ot.hasFeedData && <div style={{ flex: 1, background: BAR.main, height: `${(s.feedUnits / feedMax) * 72}px`, borderRadius: barRadius }} title="ปริมาณฟีด" />}
                   </div>
                 </div>
@@ -425,7 +532,7 @@ export default function Fulfillment() {
               {ot.series.map((s) => <div key={s.month} style={{ flex: 1, textAlign: 'center', fontSize: 9, color: 'var(--payi-text-muted)' }}>{mLabel(s.month)}</div>)}
             </div>
             {ot.hasFeedData
-              ? <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}><span style={{ color: '#d97a1c' }}>■</span> OT ชม. &nbsp; <span style={{ color: '#4f5fd6' }}>■</span> ปริมาณฟีด (planner_daily) — เดือนที่ฟีดเยอะควรมี OT เยอะตาม</div>
+              ? <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}><span style={{ color: 'rgb(230,146,53)' }}>■</span> OT ชม. &nbsp; <span style={{ color: 'rgb(85,102,230)' }}>■</span> ปริมาณฟีด (planner_daily) — เดือนที่ฟีดเยอะควรมี OT เยอะตาม</div>
               : <div style={{ fontSize: 10, color: 'var(--payi-text-muted)', marginTop: 4 }}>ยังไม่มีข้อมูลปริมาณฟีดรายวัน (planner_daily ว่าง) — กรอกในหน้า Planner Control แล้วจะเทียบ OT กับปริมาณฟีดได้</div>}
           </>
         ) : <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ยังไม่มีข้อมูล OT ในช่วงนี้</div>}
