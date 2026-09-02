@@ -116,15 +116,21 @@ async function byProduct(rows) {
   let overrideMap = new Map()
   try { overrideMap = buildOverrideMap(await getSheet('product_aliases')) } catch { /* ok */ }
   const shopee = rows.filter((r) => r.platform.toLowerCase().includes('shopee') && r.shipOption)
+  // ช่วงวันที่ที่มีข้อมูล shipping — ใช้แปลง "ยอดรวมช่วงนี้" เป็น "ต่อเดือน"
+  let minD = '9999', maxD = '0'
+  for (const r of shopee) { if (r.date < minD) minD = r.date; if (r.date > maxD) maxD = r.date }
+  const spanDays = (minD < maxD) ? Math.max(1, Math.round((new Date(maxD) - new Date(minD)) / 86400000) + 1) : 30
+  const months = Math.max(0.3, spanDays / 30)
+
   const byGroup = new Map()
   for (const r of shopee) {
     const { key, label } = deriveGroup(r.displayName, r.masterSku, overrideMap)
-    const g = byGroup.get(key) || { label, orders: 0, fast: 0, standard: 0, fbs: 0 }
+    const g = byGroup.get(key) || { label, orders: 0, fast: 0, standard: 0, fbs: 0, stdUnits: 0 }
     g.orders++
     const optLabel = shopeeShippingOption(r.shipOption, r.platform)
-    if (isFbsOption(r.shipOption)) g.fbs++
+    if (isFbsOption(r.shipOption)) { g.fbs++; g.stdUnits += r.qty }        // FBS + ส่งธรรมดา = demand ที่ FBS รับได้
     else if (isFastShopeeOption(optLabel)) g.fast++
-    else g.standard++
+    else { g.standard++; g.stdUnits += r.qty }
     byGroup.set(key, g)
   }
   const list = [...byGroup.values()]
@@ -140,10 +146,42 @@ async function byProduct(rows) {
       let verdict = 'review'
       if (fastPct >= 25) verdict = 'keep-self'
       else if (fastPct < 20 && (standardPct + fbsPct) >= 55) verdict = 'fbs-candidate'
-      return { label: g.label, orders: g.orders, fastPct, standardPct, fbsPct, verdict }
+      // แนะนำส่ง FBS/รอบเติม (เดือนละครั้ง) = demand ส่งธรรมดาต่อเดือน (พอให้ค่อยๆหมดในเดือน)
+      const fbsSendUnits = Math.round(g.stdUnits / months)
+      return { label: g.label, orders: g.orders, fastPct, standardPct, fbsPct, verdict, fbsSendUnits }
     })
     .sort((a, b) => b.orders - a.orders)
-  return list
+  return { list, dataMonths: Math.round(months * 10) / 10, dataFrom: minD < maxD ? minD : null, dataTo: minD < maxD ? maxD : null }
+}
+
+// โหลดออเดอร์ตามวันที่ของเดือน (1-31) — หาช่วง 4 วันที่เบาสุดสำหรับเตรียมส่งของเข้า FBS
+function dayOfMonthLoad(rows) {
+  const byDay = ordersPerDay(rows)
+  const bucket = Array.from({ length: 32 }, () => ({ sum: 0, n: 0 }))
+  for (const [date, orders] of byDay) {
+    const dom = parseInt(String(date).slice(8, 10), 10)
+    if (dom >= 1 && dom <= 31) { bucket[dom].sum += orders; bucket[dom].n++ }
+  }
+  const series = []
+  for (let d = 1; d <= 31; d++) {
+    if (bucket[d].n === 0) continue
+    series.push({ day: d, avgOrders: Math.round(bucket[d].sum / bucket[d].n) })
+  }
+  if (series.length < 10) return { ready: false }
+  // หน้าต่าง 4 วันติดกัน (ตามลำดับวันจริงใน series) ที่ค่าเฉลี่ยรวมต่ำสุด
+  let best = null
+  for (let i = 0; i + 3 < series.length; i++) {
+    const win = series.slice(i, i + 4)
+    const avg = win.reduce((s, x) => s + x.avgOrders, 0) / 4
+    if (!best || avg < best.avg) best = { avg, start: win[0].day, end: win[3].day }
+  }
+  const overallAvg = series.reduce((s, x) => s + x.avgOrders, 0) / series.length
+  return {
+    ready: true,
+    series,
+    bestWindow: best ? { start: best.start, end: best.end, avgOrders: Math.round(best.avg) } : null,
+    overallAvg: Math.round(overallAvg),
+  }
 }
 
 // ชม.ทศนิยม -> "HH:MM"
@@ -250,6 +288,8 @@ function verdict(cap, cfg) {
   return { level: 'hold', text: `ยังเบา — ทีมเลิกงาน ~${cap.finishNow} (เพดาน ${cap.maxFinish}). ยังไม่ถึงจังหวะ scale เข้า FBS.${feeNote}` }
 }
 
+const STOCKOUT_NOTE = 'ของใน FBS หมด = ออเดอร์เด้งกลับมาทีมแพ็คเอง ไม่เสียยอด — ลองส่งเข้าน้อยๆ ก่อนได้ ความเสี่ยงต่ำ'
+
 export default async function opFulfillment(req, res) {
   try {
     if (req.method === 'POST' && req.query.action === 'save-config') {
@@ -268,14 +308,18 @@ export default async function opFulfillment(req, res) {
     const cfg = await loadConfig()
     const rows = await readOrders()
     const cap = capacity(rows, cfg)
+    const bp = await byProduct(rows)
     return res.status(200).json({
       success: true,
       config: cfg,
       fbsUsage: fbsUsage(rows),
-      byProduct: await byProduct(rows),
+      byProduct: bp.list,
+      byProductMeta: { dataMonths: bp.dataMonths, dataFrom: bp.dataFrom, dataTo: bp.dataTo },
+      prepWindow: dayOfMonthLoad(rows),
       capacity: cap,
       otAudit: await otAudit(rows, cfg),
       verdict: verdict(cap, cfg),
+      stockoutNote: STOCKOUT_NOTE,
     })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })

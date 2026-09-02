@@ -55,9 +55,10 @@ export default function Fulfillment() {
   if (error) return <div style={{ padding: 16, borderRadius: 12, background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)' }}>เกิดข้อผิดพลาด: {error}</div>
   if (!data) return null
 
-  const { fbsUsage: fbs, byProduct = [], capacity: cap, otAudit: ot, verdict: v } = data
+  const { fbsUsage: fbs, byProduct = [], capacity: cap, otAudit: ot, verdict: v, prepWindow: pw, stockoutNote } = data
   const candidates = byProduct.filter((p) => p.verdict === 'fbs-candidate')
   const keepSelf = byProduct.filter((p) => p.verdict === 'keep-self')
+  const pwMax = pw?.ready ? Math.max(...pw.series.map((s) => s.avgOrders)) : 1
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -66,7 +67,35 @@ export default function Fulfillment() {
         <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginBottom: 4 }}>คำแนะนำ — ย้ายงานแพ็คเข้า Fulfillment?</div>
         <div style={{ fontSize: 18, fontWeight: 700, color: VERDICT_COLOR[v.level], marginBottom: 6 }}>{VERDICT_LABEL[v.level]}</div>
         <div style={{ fontSize: 13, color: 'var(--payi-text)', lineHeight: 1.6 }}>{v.text}</div>
+        {stockoutNote && <div style={{ fontSize: 12, color: '#16a34a', marginTop: 8 }}>✓ {stockoutNote}</div>}
       </div>
+
+      {/* PREP WINDOW */}
+      {pw?.ready && (
+        <div style={card}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>วันเตรียมของเข้า FBS <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>เติมเดือนละครั้ง</span></h3>
+          <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
+            ออเดอร์เฉลี่ยตามวันที่ของเดือน — ส่งของเข้า FBS ช่วงที่เบาสุด ทีมจะมีเวลาแพ็คของ outbound เพิ่ม
+          </div>
+          {pw.bestWindow && (
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#16a34a', marginBottom: 10 }}>
+              แนะนำ: วันที่ {pw.bestWindow.start}–{pw.bestWindow.end} ของเดือน
+              <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}> (~{pw.bestWindow.avgOrders.toLocaleString()} ออเดอร์/วัน เทียบเฉลี่ย {pw.overallAvg.toLocaleString()})</span>
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 70 }}>
+            {pw.series.map((s) => {
+              const inWin = pw.bestWindow && s.day >= pw.bestWindow.start && s.day <= pw.bestWindow.end
+              return (
+                <div key={s.day} style={{ flex: 1, textAlign: 'center' }} title={`วันที่ ${s.day}: ~${s.avgOrders} ออเดอร์`}>
+                  <div style={{ background: inWin ? '#16a34a' : '#cbd5e1', height: `${Math.max(2, (s.avgOrders / pwMax) * 56)}px`, borderRadius: 2 }} />
+                  <div style={{ fontSize: 8, color: 'var(--payi-text-muted)', marginTop: 1 }}>{s.day}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* CAPACITY */}
       <div style={card}>
@@ -130,7 +159,8 @@ export default function Fulfillment() {
       <div style={card}>
         <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>ควร / ไม่ควร ย้ายเข้า FBS — รายกลุ่มสินค้า</h3>
         <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
-          ควร FBS = ส่งด่วนน้อย (&lt;20%) + ส่งธรรมดา/FBS อยู่แล้วรวมกัน ≥55%. เก็บแพ็คเอง = ส่งด่วนเยอะ (≥25% ความเร็วคือจุดขาย)
+          ควร FBS = ส่งด่วนน้อย (&lt;20%) + ส่งธรรมดา/FBS อยู่แล้วรวมกัน ≥55%. เก็บแพ็คเอง = ส่งด่วนเยอะ (≥25% ความเร็วคือจุดขาย).
+          "ส่ง ~X/รอบ" = จำนวนชิ้นแนะนำส่งเข้า FBS ต่อรอบเติม (≈ demand ส่งธรรมดา 1 เดือน{data.byProductMeta?.dataMonths ? `, คิดจากข้อมูล ${data.byProductMeta.dataMonths} เดือน` : ''})
         </div>
         {candidates.length > 0 && <div style={{ fontSize: 12, fontWeight: 600, color: '#16a34a', margin: '4px 0 6px' }}>ลอง FBS ได้ ({candidates.length})</div>}
         {candidates.map((p) => <ProductRow key={p.label} p={p} />)}
@@ -207,8 +237,13 @@ function ProductRow({ p }) {
         <div style={{ width: `${p.standardPct}%`, background: 'var(--payi-mint)' }} title={`ธรรมดา ${p.standardPct}%`} />
         <div style={{ width: `${p.fastPct}%`, background: '#c2410c' }} title={`ด่วน ${p.fastPct}%`} />
       </div>
-      <div style={{ width: 74, textAlign: 'right', color: 'var(--payi-text-muted)', fontSize: 11 }}>{p.orders} ออเดอร์</div>
-      <div style={{ width: 84, textAlign: 'right', fontSize: 11, fontWeight: 600, color: pv.c }}>{pv.t}</div>
+      <div style={{ width: 70, textAlign: 'right', color: 'var(--payi-text-muted)', fontSize: 11 }}>{p.orders} ออเดอร์</div>
+      <div style={{ width: 100, textAlign: 'right', fontSize: 11 }}>
+        <div style={{ fontWeight: 600, color: pv.c }}>{pv.t}</div>
+        {p.verdict === 'fbs-candidate' && p.fbsSendUnits > 0 && (
+          <div style={{ color: 'var(--payi-text-muted)', fontSize: 10 }}>ส่ง ~{p.fbsSendUnits.toLocaleString()}/รอบ</div>
+        )}
+      </div>
     </div>
   )
 }
