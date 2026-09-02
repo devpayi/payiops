@@ -209,7 +209,7 @@ backing code. Lower priority (see TODO #9).
 - `import-orders.js` (`?view=log|mapping-options|map-product|validate-dates` + POST map→alias-match→dedup→route to `raw_orders_YYYY_MM` + log; DELETE by import batch) (`requireDev` — dev-only, this is the destructive one). Now also resolves `province` on import — direct column or postal-code fallback via `ZIP_TO_PROVINCE`, see TODO #12.
 - `planner-sales.js` — ABC classification + sales average over a `?days=N` window (default 90; Inventory/Stock Movement/Planner Control all call `?days=30` as of 2026-07-25), 6h in-memory cache per `days` value (`requireAuth`). Decomposes Set/bundle SKU sales into real component demand via `set_recipes` sheet, and resolves renamed SKUs via `sku_redirects` — both now Sheets-backed through `_lib/skuMapping.js`, see TODO #7 sub-note and Files section
 - `marketing.js` (`?kind=events|inputs|basket` — multiplexes `_lib/marketingEvents.js` / `_lib/marketingInputs.js` / `_lib/marketingBasket.js`, each with its own `requireManager`/`canManageMarketing`)
-- `sheet-tools.js` (`?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|cfo|demographic|line-webhook`) — the biggest file; HR, workforce/OT, planner CRUD, generic sheet tools, CFO, Demographic, and the LINE webhook all live here to stay under the function cap. `line-webhook` op is unauthenticated (verified via LINE signature instead, see `_lib/line.js`); it and a `&cron=low-stock`/`holiday-reminder` mode (Vercel Cron) both bypass `requireAuth` by design. `op=inventory` (added 2026-07-21) delegates to `_lib/inventory.js` — `stock` role has full access, `staff` also now sees Inventory/Stock Movement (in `STAFF_TABS`). `op=import-tracking` (added 2026-07-24) delegates to `_lib/importTracking.js` — **DEV-ONLY since 2026-09-01** (was dev+boss). `op=cfo` → `_lib/cfo.js`, `op=demographic` → `_lib/demographic.js` — both also **DEV-ONLY since 2026-09-01** (see the role note near the top of this doc + TODO #14)
+- `sheet-tools.js` (`?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|cfo|demographic|line-webhook`) — the biggest file; HR, workforce/OT, planner CRUD, generic sheet tools, CFO, Demographic, and the LINE webhook all live here to stay under the function cap. `line-webhook` op is unauthenticated (verified via LINE signature instead, see `_lib/line.js`); it and a `&cron=low-stock`/`holiday-reminder` mode (Vercel Cron) both bypass `requireAuth` by design. `op=inventory` (added 2026-07-21) delegates to `_lib/inventory.js` — `stock` role has full access, `staff` also now sees Inventory/Stock Movement (in `STAFF_TABS`). `op=import-tracking` (added 2026-07-24) delegates to `_lib/importTracking.js` — **DEV-ONLY since 2026-09-01** (was dev+boss). `op=cfo` → `_lib/cfo.js`, `op=demographic` → `_lib/demographic.js`, `op=fulfillment` → `_lib/fulfillment.js` (added 2026-09-02) — all three **DEV-ONLY** (see the role note near the top of this doc + TODO #14/#15)
 - `auth.js` — login/setup/create-user/list-users/delete-user (deliberately NOT behind `requireAuth` — it IS the auth entrypoint)
 - `_lib/`: `sheets.js` (Sheets client), `auth.js` (HMAC token issuing + guards), `productGroup.js` (see below), `inventory.js` (stock items + movements, see Files section above), `marketingEvents.js` + `marketingInputs.js` + `marketingBasket.js` (marketing impls), `cfo.js` (CFO Dashboard backing, see Files section), `demographic.js` (province-level sales summary), `skuMapping.js` (`sku_redirects` + `set_recipes` lookups, see Data section), `zipToProvince.js` (955-entry Thai postal-code→province table, sourced from `kongvut/thai-province-data`, used only as a fallback for Lazada rows whose export masks buyer address but leaves postal code readable), `provinceNormalize.js` (merges the 3 platforms' province spellings — prefix/suffix strip, bilingual cells, EN→TH aliases — used at read time by `demographic.js`), `shippingClass.js` (parses the Shopee `ตัวเลือกการจัดส่ง` label; `isFastShopeeOption` for the per-product view), `packagingOrderRules.js` (box-packaging rule engine used by Inventory's packaging/BOM logic), `dates.js` (date normalization), `line.js` (LINE Messaging API), `leaveCoverage.js` + `scheduleOverrides.js` (HR/workforce logic), `importTracking.js` (Import Tracking backing)
 - `shared/roles.js` — role constants + tab access rules, imported by both frontend (`App.jsx`) and backend (`sheet-tools.js`)
@@ -802,6 +802,22 @@ a new one.
     - Still open: `SPX Express`-style carrier-only values are folded to "ไม่ระบุประเภท"
       via a hardcoded `CARRIER_ONLY` set in `shippingClass.js` — extend it if new couriers
       show up. Coverage of the shipping/buyer columns climbs only as new months import.
+15. ✅ **DONE (2026-09-02) — Fulfillment analysis tab** (`Fulfillment.jsx` +
+    `sheet-tools.js?op=fulfillment` → `_lib/fulfillment.js`, `fulfillment_config` sheet,
+    DEV-ONLY, new sidebar item in the "การเงิน" group). Answers "เมื่อไหร่ถึงจังหวะย้ายงาน
+    แพ็คเข้า Fulfillment (FBS)". Key framing (from owner): packing labour (4 staff × ฿400,
+    OT ฿50/hr) is a **fixed cost** — moving to FBS saves nothing until volume outgrows the
+    team; and high express/instant % is a reason to **keep** a product self-packed (FBS
+    can't do same-day), not move it. Cards: (a) verdict hold/watch/act; (b) capacity model
+    — self-calibrates `orders_per_person_hour` from recent daily order count ÷ (headcount ×
+    normal work hours), projects the team's finish time as volume grows, months-to-ceiling
+    at measured growth; (c) current FBS usage % + monthly trend (Shopee only — TikTok
+    `fulfillment_type` came back empty in the exports); (d) per-`deriveGroup` FBS
+    candidate/keep-self scoring (fast <20% + standard/FBS ≥55% = candidate; fast ≥25% =
+    keep self); (e) OT audit — flags days with logged OT but below-median order volume
+    ("โอทีเฟ้อ"), ฿ estimate. FBS fee fields are 0 for now (owner: FBS free until ~next
+    month, rate unknown) — once entered the verdict text will add a break-even vs OT/hire.
+    No new `api/*.js` file (piggybacks `sheet-tools.js`, still 9/12).
 
 ## Gotchas
 

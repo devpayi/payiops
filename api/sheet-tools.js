@@ -15,6 +15,7 @@ import opInventory, { computeLowStockList, computeOverdueOrders, muteOrderRemind
 import opImportTracking from './_lib/importTracking.js'
 import opCfo from './_lib/cfo.js'
 import opDemographic from './_lib/demographic.js'
+import opFulfillment from './_lib/fulfillment.js'
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
 // req.body ยังใช้ได้ตามปกติในทุก op เดิม เพราะ readRawBody() ด้านล่าง parse JSON ให้เหมือน Vercel ทำเอง
@@ -3766,6 +3767,12 @@ export default async function handler(req, res) {
     }
     return opImportTracking(req, res)
   }
+  if (op === 'fulfillment') {
+    if (authEnabled() && normalizeRole(req.user?.role) !== 'dev') {
+      return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงส่วนนี้' })
+    }
+    return opFulfillment(req, res)
+  }
   // Staff only needs the data behind its operational areas (now includes
   // inventory, per owner request to open Inventory/Stock Movement to staff).
   // Raw sheet tools, HR and settings data remain restricted even if called directly.
@@ -3780,5 +3787,5 @@ export default async function handler(req, res) {
   if (op === 'planner') return opPlanner(req, res)
   if (op === 'hr') return opHr(req, res)
   if (op === 'inventory') return opInventory(req, res)
-  return res.status(400).json({ error: 'ต้องระบุ ?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|cfo|demographic|line-webhook' })
+  return res.status(400).json({ error: 'ต้องระบุ ?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|cfo|demographic|fulfillment|line-webhook' })
 }

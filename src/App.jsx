@@ -10,7 +10,7 @@ import {
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
   LayoutDashboard, UploadCloud, Radar, Megaphone, Boxes,
   ArrowLeftRight, BookOpen, Link2,
-  Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet, MapPin,
+  Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet, MapPin, Warehouse,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -32,6 +32,7 @@ const StockMovement = lazy(() => import('./pages/StockMovement'))
 const ImportTracking = lazy(() => import('./pages/ImportTracking'))
 const CfoDashboard = lazy(() => import('./pages/CfoDashboard'))
 const DemographicDashboard = lazy(() => import('./pages/DemographicDashboard'))
+const Fulfillment = lazy(() => import('./pages/Fulfillment'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 const API_BASE = '/api'
@@ -90,6 +91,7 @@ const Icons = {
   ImportTracking: Ship,
   CFO: Wallet,
   Demographic: MapPin,
+  Fulfillment: Warehouse,
   HR: CalendarCheck,
   SOPs: BookOpen,
   LinksHub: Link2,
@@ -100,7 +102,7 @@ const Icons = {
 const KNOWN_TABS = new Set([
   'Home', 'Executive', 'Monthly', 'Products', 'ProductTrends',
   'AdsChannels', 'ContentOS', 'MarketingRadar', 'Inventory',
-  'Import Tracking', 'Stock Movement', 'HR', 'CFO', 'Demographic',
+  'Import Tracking', 'Stock Movement', 'HR', 'CFO', 'Demographic', 'Fulfillment',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings',
 ])
 
@@ -134,7 +136,8 @@ const menuGroups = [
   {
     title: 'การเงิน',
     items: [
-      { id: 'CFO', label: 'CFO Dashboard', renderIcon: Icons.CFO, dotColor: '#16a34a' }
+      { id: 'CFO', label: 'CFO Dashboard', renderIcon: Icons.CFO, dotColor: '#16a34a' },
+      { id: 'Fulfillment', label: 'Fulfillment', renderIcon: Icons.Fulfillment, dotColor: '#16a34a' }
     ]
   },
   {
@@ -1420,6 +1423,7 @@ export default function App() {
           ['Import Tracking', isDev ? <ImportTracking /> : <DevOnlyLock label="ติดตามนำเข้า" />],
           ['CFO', isDev ? <CfoDashboard /> : <DevOnlyLock label="CFO Dashboard" />],
           ['Demographic', isDev ? <DemographicDashboard /> : <DevOnlyLock label="เดโมกราฟฟิกลูกค้า" />],
+          ['Fulfillment', isDev ? <Fulfillment /> : <DevOnlyLock label="Fulfillment" />],
           ['Stock Movement', <StockMovement />],
           ['HR', <HR />],
           ['Import Orders', <Upload onNavigate={handleNavigate} />],
