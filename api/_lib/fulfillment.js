@@ -14,7 +14,8 @@ import { deriveGroup, buildOverrideMap } from './productGroup.js'
 import { shopeeShippingOption, isFastShopeeOption } from './shippingClass.js'
 
 const num = (v) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0
-const isCancelled = (s = '') => String(s).includes('ยกเลิก') || String(s).toLowerCase().includes('cancel')
+// หมายเหตุ: ที่นี่ **ไม่ตัด** ออเดอร์ยกเลิก/ตีคืน — ทุกออเดอร์ = พัสดุที่ทีมแพ็คไปแล้ว = ภาระงานจริง
+// (ตรงกับ logic "จำนวนออเดอร์" ของ Dashboard/Products) ต่างจาก revenue ที่ตัดออก
 const isFbsOption = (opt) => /fulfilled by shopee| full?filled by shopee|ffm by shopee/i.test(String(opt || ''))
 const isShopee = (r) => r.platform.toLowerCase().includes('shopee')
 const currentYm = () => new Date().toISOString().slice(0, 7)
@@ -74,7 +75,7 @@ async function readOrders() {
     const rows = vr[i * 2 + 1].values || []
     for (let j = 1; j < rows.length; j++) {
       const r = rows[j] || []
-      if (!r[0] || isCancelled(r[10])) continue
+      if (!r[0]) continue
       out.push({
         orderId: String((idRows[j] || [])[0] || '').replace(/^'/, '').trim(),
         date: String(r[0]).slice(0, 10),
