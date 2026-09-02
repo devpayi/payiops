@@ -844,7 +844,7 @@ a new one.
     data the 5th hire lands ~฿0.9/order (cheaper than OT), and FBS at any realistic fee
     loses to both — the card says so and points to the operational reasons for FBS. FBS
     fee fields are 0 for now (owner: FBS free until ~Oct 2026, rate unknown). No new
-    `api/*.js` file (piggybacks `sheet-tools.js`, still 9/12).
+    `api/*.js` file (piggybacks , still 9/12). Open to dev+boss+finance (2026-09-02).
 
 ## Gotchas
 

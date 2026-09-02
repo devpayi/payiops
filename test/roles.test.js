@@ -42,8 +42,9 @@ test('Marketing role sees dashboards plus Marketing Radar and Demographic', () =
   assert.equal(canManageMarketing('staff'), false)
 })
 
-test('Finance role sees only CFO', () => {
+test('Finance role sees CFO + Fulfillment only', () => {
   assert.equal(canAccessTab('finance', 'CFO'), true)
+  assert.equal(canAccessTab('finance', 'Fulfillment'), true)
   assert.equal(canAccessTab('finance', 'Executive'), false)
   assert.equal(canManageFinance('finance'), true)
   assert.equal(canManageFinance('staff'), false)

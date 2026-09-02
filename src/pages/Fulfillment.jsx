@@ -55,6 +55,33 @@ const CONFIG_FIELDS = [
 ]
 const mLabel = (ym) => { const [y, m] = ym.split('-'); return `${['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][+m]} ${String(y).slice(2)}` }
 
+// ⓘ กดแล้วอธิบายวิธีคิด/คำนวณ ของการ์ดนั้น
+function InfoTip({ note }) {
+  const [open, setOpen] = useState(false)
+  if (!note) return null
+  return (
+    <span style={{ position: 'relative', display: 'inline-block', marginLeft: 6, verticalAlign: 'middle' }}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-label="วิธีคิด"
+        style={{ width: 16, height: 16, borderRadius: '50%', border: '1px solid var(--payi-border)', background: open ? 'var(--payi-mint)' : '#fff', color: open ? '#fff' : 'var(--payi-text-muted)', fontSize: 10, fontWeight: 700, cursor: 'pointer', lineHeight: '13px', padding: 0 }}>i</button>
+      {open && (
+        <span style={{ display: 'block', position: 'absolute', top: 22, left: 0, zIndex: 30, width: 300, maxWidth: '76vw', padding: '11px 13px', borderRadius: 12, background: '#fff', border: '1px solid var(--payi-border)', boxShadow: '0 14px 32px rgba(15,23,42,0.18)', fontSize: 11.5, lineHeight: 1.75, color: 'var(--payi-text)', whiteSpace: 'pre-line', fontWeight: 400 }}>{note}</span>
+      )}
+    </span>
+  )
+}
+const NOTE = {
+  verdict: 'รวมผลจากการ์ดล่างเป็นคำเดียว:\n• "ยังไม่ถึง" — เดือนล่าสุดทีมเลิกก่อนเพดาน + ยังไม่ชนใน 4 เดือน\n• "ใกล้ถึง" — จะชนเพดานใน ≤4 เดือน หรือวันพีคเกินเพดานแล้ว\n• "ถึงจังหวะ" — เดือนล่าสุดเลิกงานเกินเพดานแล้ว',
+  capacity: 'อัตราแพ็ค = ออเดอร์เฉลี่ย/วัน เดือนล่าสุดที่จบ ÷ จำนวนคน ÷ ชม.ทำงานปกติ (เข้างาน→เลิกปกติ)\nเวลาเลิกแต่ละเดือน = เข้างาน + (ออเดอร์/วันเดือนนั้น ÷ (คน × อัตราแพ็ค))\nอัตราโต = ความชันเส้นตรง (least-squares) ของออเดอร์/วัน เฉพาะเดือนที่จบแล้ว\nชนเพดานใน = (เพดาน − ออเดอร์ล่าสุด) ÷ อัตราโต',
+  breakeven: 'แพ็คเอง = ถูกสุดของ 2 ทาง —\n• OT ต่อไป = ค่า OT/ชม. ÷ อัตราแพ็ค\n• จ้างคนที่ 5 = (ค่าจ้าง/เดือน − OT ที่ลดได้) ÷ กำลังแพ็คที่เพิ่ม/เดือน\nFBS = ค่าธรรมเนียม/ชิ้น × ชิ้นเฉลี่ย/ออเดอร์ (ส่งธรรมดา Shopee)',
+  campaign: 'ตัวคูณ = median ของ 4 วันแคมเปญ (วันที่=เดือน) ล่าสุด เทียบค่ากลางของวันปกติรอบๆ (±3–12 วัน ตัดวันแคมเปญออก) — ตัด 1.1 ที่ยอดตก\nออเดอร์คาด = ออเดอร์/วัน เดือนล่าสุด × ตัวคูณ\nเวลาเลิก = เข้างาน + (ออเดอร์คาด ÷ (คน × อัตราแพ็ค))',
+  weekday: 'ออเดอร์เฉลี่ยต่อวันในสัปดาห์ จากทุกเดือน\nวันพีค = วันที่เฉลี่ยสูงสุด → คำนวณเวลาเลิกของวันนั้นด้วยอัตราแพ็คเดียวกัน\nถ้าวันพีคเกินเพดาน = วันนั้นคือคอขวดจริง แม้ค่าเฉลี่ยทั้งเดือนยังไหว',
+  prep: 'ออเดอร์เฉลี่ยตามวันที่ของเดือน (1–31) จากทุกเดือน\nแนะนำ = ช่วง 4 วันติดกันที่ค่าเฉลี่ยรวมต่ำสุด — ส่งของเข้า FBS ช่วงนั้น ทีมมีเวลาแพ็ค outbound เพิ่ม',
+  retention: 'ลูกค้า Shopee ที่มี buyer_hash แบ่งเป็น เคยได้ FBS ≥1 ครั้ง vs ได้แต่แพ็คเอง\n% ซื้อซ้ำ = คนที่มี ≥2 ออเดอร์ ÷ คนทั้งหมดในกลุ่ม\n⚠️ bias: คนซื้อบ่อยมีโอกาสเจอ FBS อยู่แล้ว → ตัวเลขเอียงสูง ดูเป็นสัญญาณ ไม่ใช่ข้อพิสูจน์',
+  fbsUsage: 'เฉพาะ Shopee ที่ export มีคอลัมน์ "ตัวเลือกการจัดส่ง" (เก็บตั้งแต่ ก.ย. 2026)\n% = ออเดอร์/ชิ้น/ยอดขาย ที่ตัวเลือกขึ้นต้น "Fulfilled By Shopee" ÷ ทั้งหมดในกลุ่มนั้น\nTikTok ไม่มีข้อมูลในไฟล์ export',
+  byProduct: 'จัดกลุ่มสินค้าด้วย deriveGroup (รวมสี/ไซส์) — ต่อกลุ่มดู % ส่งด่วน / ธรรมดา / FBS\n• ควร FBS: ส่งด่วน <20% และ (ธรรมดา+FBS) ≥55%\n• เก็บแพ็คเอง: ส่งด่วน ≥25%\nส่ง ~X/รอบ = ชิ้นส่งธรรมดา ÷ จำนวนเดือนของข้อมูล',
+  ot: 'ชม. OT รวมต่อเดือน จาก workforce_ot (ใช้ actual ก่อน planned) × ค่า OT/ชม.\nทับด้วยปริมาณฟีดต่อเดือนจาก planner_daily (planned_feed)\nOT ส่วนใหญ่เป็นงานฟีด/รีแพ็คของ ขึ้นกับ FG ไม่ผูกกับจำนวนออเดอร์',
+}
+
 // 🦸 สานฝันวัยเด็ก — chibi Ultraman ท่าตั้งการ์ดสู้ (fighting stance) + เอฟเฟกต์กระแทกแดง + ออร่าเหลือง
 function ChibiHero({ size = 168 }) {
   const S = '#1c1c1c'
@@ -279,7 +306,7 @@ export default function Fulfillment() {
         <div style={{ position: 'absolute', top: -84, right: -22, pointerEvents: 'none', zIndex: 2 }}>
           <ChibiHero size={158} />
         </div>
-        <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginBottom: 4 }}>คำแนะนำ — ย้ายงานแพ็คเข้า Fulfillment?</div>
+        <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginBottom: 4 }}>คำแนะนำ — ย้ายงานแพ็คเข้า Fulfillment?<InfoTip note={NOTE.verdict} /></div>
         <div style={{ fontSize: 19, fontWeight: 700, color: VERDICT_COLOR[v.level], marginBottom: 8, letterSpacing: '-0.01em' }}>{VERDICT_LABEL[v.level]}</div>
         <div style={{ fontSize: 13, color: 'var(--payi-text)', lineHeight: 1.65 }}>{v.text}</div>
         {stockoutNote && <div style={{ fontSize: 12, color: '#15803d', marginTop: 10 }}>✓ {stockoutNote}</div>}
@@ -287,7 +314,7 @@ export default function Fulfillment() {
 
       {/* CAPACITY — monthly */}
       <div style={card}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>กำลังทีมแพ็ค — เวลาเลิกงานรายเดือน</h3>
+        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>กำลังทีมแพ็ค — เวลาเลิกงานรายเดือน<InfoTip note={NOTE.capacity} /></h3>
         {cap.ready && cap.series.length < 2 ? (
           <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>เลือกเดือนเดียว — กราฟกำลังทีมต้องดูหลายเดือน เลือก "3 เดือนล่าสุด" หรือ "ทั้งหมด"</div>
         ) : cap.ready ? (
@@ -332,7 +359,7 @@ export default function Fulfillment() {
         const ratio = fbsPO != null && self > 0 ? Math.round((fbsPO / self) * 10) / 10 : null
         return (
           <div style={card}>
-            <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>FBS คุ้มเรื่องเงินไหม?</h3>
+            <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>FBS คุ้มเรื่องเงินไหม?<InfoTip note={NOTE.breakeven} /></h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontSize: 13, flexWrap: 'wrap' }}>
               <span>ค่าธรรมเนียม FBS ต่อชิ้น</span>
               <input type="number" step="any" placeholder="0" value={feeSim}
@@ -364,7 +391,7 @@ export default function Fulfillment() {
       {/* CAMPAIGN */}
       {camp?.ready && (
         <div style={card}>
-          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>วันแคมเปญ (9.9 / 11.11 / 12.12) <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>วันที่ทีมเครียดสุด</span></h3>
+          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>วันแคมเปญ (9.9 / 11.11 / 12.12) <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>วันที่ทีมเครียดสุด</span><InfoTip note={NOTE.campaign} /></h3>
           {camp.next && camp.next.predictedOrders != null && (() => {
             const c = camp.next.overCeiling ? [229, 98, 76] : [31, 160, 110]
             return (
@@ -394,7 +421,7 @@ export default function Fulfillment() {
       {/* WEEKDAY */}
       {wd?.ready && (
         <div style={card}>
-          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>โหลดตามวันในสัปดาห์ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>ทุกเดือน — วันพีคคือตัวจริง</span></h3>
+          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>โหลดตามวันในสัปดาห์ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>ทุกเดือน — วันพีคคือตัวจริง</span><InfoTip note={NOTE.weekday} /></h3>
           <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
             วัน{wd.peakDay} ~{wd.peakAvgOrders.toLocaleString()} ({wd.peakRatio}× ค่าเฉลี่ย {wd.overallAvg.toLocaleString()}) — เลิกวันนั้น ~
             <b style={{ color: wd.peakOverCeiling ? '#dc2626' : 'inherit' }}>{wd.finishOnPeakDay}</b>{wd.peakOverCeiling ? ` (เกิน ${cap.maxFinish})` : ''}
@@ -414,7 +441,7 @@ export default function Fulfillment() {
       {/* PREP WINDOW */}
       {pw?.ready && (
         <div style={card}>
-          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>วันเตรียมของเข้า FBS <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>ทุกเดือน — เติมเดือนละครั้ง</span></h3>
+          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>วันเตรียมของเข้า FBS <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>ทุกเดือน — เติมเดือนละครั้ง</span><InfoTip note={NOTE.prep} /></h3>
           {pw.bestWindow && (
             <div style={{ fontSize: 14, fontWeight: 600, color: '#16a34a', marginBottom: 10 }}>
               แนะนำ: วันที่ {pw.bestWindow.start}–{pw.bestWindow.end} ของเดือน
@@ -438,7 +465,7 @@ export default function Fulfillment() {
       {/* FBS RETENTION */}
       {fr?.ready && (
         <div style={card}>
-          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>FBS ช่วยให้ลูกค้ากลับมาซื้อซ้ำไหม <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>Shopee — สังเกต ไม่ใช่ข้อพิสูจน์</span></h3>
+          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>FBS ช่วยให้ลูกค้ากลับมาซื้อซ้ำไหม <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>Shopee — สังเกต ไม่ใช่ข้อพิสูจน์</span><InfoTip note={NOTE.retention} /></h3>
           {fr.enoughSample ? (
             <>
               <div style={{ display: 'flex', gap: 24, marginTop: 8 }}>
@@ -467,7 +494,7 @@ export default function Fulfillment() {
 
       {/* FBS USAGE */}
       <div style={card}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>Fulfilled By Shopee ตอนนี้ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>Shopee เท่านั้น</span></h3>
+        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>Fulfilled By Shopee ตอนนี้ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>Shopee เท่านั้น</span><InfoTip note={NOTE.fbsUsage} /></h3>
         <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
           มีข้อมูลตัวเลือกจัดส่ง {fbs.coveragePct}% ของออเดอร์ Shopee ในช่วงนี้ ({fbs.coveredOrders?.toLocaleString()} / {fbs.shopeeOrders?.toLocaleString()})
         </div>
@@ -490,7 +517,7 @@ export default function Fulfillment() {
 
       {/* BY PRODUCT */}
       <div style={card}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>ควร / ไม่ควร ย้ายเข้า FBS — รายกลุ่มสินค้า</h3>
+        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>ควร / ไม่ควร ย้ายเข้า FBS — รายกลุ่มสินค้า<InfoTip note={NOTE.byProduct} /></h3>
         <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
           ควร FBS = ส่งด่วน &lt;20% + ส่งธรรมดา/FBS รวม ≥55%. เก็บแพ็คเอง = ส่งด่วน ≥25%.
           "ส่ง ~X/รอบ" = ชิ้นแนะนำส่ง FBS ต่อรอบเติม (≈ demand ส่งธรรมดา 1 เดือน{data.byProductMeta?.dataMonths ? `, จากข้อมูล ${data.byProductMeta.dataMonths} เดือน` : ''})
@@ -509,7 +536,7 @@ export default function Fulfillment() {
 
       {/* OT MONTHLY */}
       <div style={card}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>OT รายเดือน <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>ชั่วโมง / บาท</span></h3>
+        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>OT รายเดือน <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>ชั่วโมง / บาท</span><InfoTip note={NOTE.ot} /></h3>
         {ot.ready ? (
           <>
             <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
