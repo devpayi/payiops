@@ -46,6 +46,8 @@ const CONFIG_DEFAULTS = {
   ot_rate_per_hour: 50,        // ค่า OT/ชม.
   fbs_fee_per_piece: 0,        // ค่าธรรมเนียม FBS/ชิ้น (เดือนหน้าเริ่มคิด)
   fbs_storage_monthly: 0,      // ค่าเก็บของ FBS/เดือน
+  workdays_per_month: 26,      // วันทำงาน/เดือน (คิดค่าจ้างคนที่ 5)
+  hire_ot_offset_pct: 100,     // จ้างคนที่ 5 แล้ว OT ลดกี่ % (100 = หมด) — หักออกจากค่าจ้าง
 }
 
 async function loadConfig() {
@@ -423,32 +425,40 @@ function fbsRetention(rows) {
 }
 
 // ต้นทุนส่วนเพิ่มต่อออเดอร์ เมื่อปริมาณโตเกินทีม — เทียบ 3 ทาง
-// ค่าแรง 4 คน fixed อยู่แล้ว ไม่นับ. ที่นับคือ marginal: OT / จ้างคนที่ 5 / FBS
-function breakeven(rows, cap, cfg) {
+// ค่าแรง 4 คน fixed อยู่แล้ว ไม่นับ. ที่นับคือ marginal: OT ต่อไป / จ้างคนที่ 5 / FBS
+// จ้างคนที่ 5: ค่าจ้าง หัก OT ที่ลดได้ (คนใหม่มาทำงานฟีดในเวลาปกติ OT เลยลด)
+function breakeven(rows, cap, cfg, lastMonthOtCost) {
   if (!cap.ready) return { ready: false }
   const oph = cap.ordersPerPersonHour
-  const hc = cfg.pack_headcount || 4
   const normalHours = Math.max(0.5, cfg.normal_finish - cfg.pack_start)
-  // ชิ้น/ออเดอร์ เฉลี่ย (Shopee ส่งธรรมดา — คือของที่จะเข้า FBS)
   const shopeeStd = rows.filter((r) => isShopee(r) && r.shipOption && !isFastShopeeOption(shopeeShippingOption(r.shipOption, r.platform)))
   const stdOrderIds = new Set(shopeeStd.map((r) => `${r.platform}:${r.orderId}`))
   const stdUnits = shopeeStd.reduce((s, r) => s + r.qty, 0)
   const piecesPerOrder = stdOrderIds.size ? Math.round((stdUnits / stdOrderIds.size) * 100) / 100 : 1.5
 
-  const otCostPerOrder = oph > 0 ? Math.round((cfg.ot_rate_per_hour / oph) * 100) / 100 : null      // 4 คน OT 1 ชม. = 4×เรต, ได้ oph×4 ออเดอร์ -> เรต/oph
-  const hireCostPerOrder = (oph > 0 && normalHours > 0) ? Math.round((cfg.daily_wage / (oph * normalHours)) * 100) / 100 : null
+  // OT ต่อไป: 4 คนอยู่ทำ OT 1 ชม. = 4×เรต, ได้ oph×4 ออเดอร์ -> เรต/oph
+  const otCostPerOrder = oph > 0 ? Math.round((cfg.ot_rate_per_hour / oph) * 100) / 100 : null
+  // จ้างคนที่ 5: (ค่าจ้าง/เดือน − OT ที่ลดได้) ÷ กำลังแพ็คที่เพิ่ม/เดือน
+  const workdays = cfg.workdays_per_month || 26
+  const hireGrossMonthly = cfg.daily_wage * workdays
+  const otSavedMonthly = Math.round((lastMonthOtCost || 0) * (cfg.hire_ot_offset_pct / 100))
+  const hireNetMonthly = hireGrossMonthly - otSavedMonthly
+  const hireCapacityMonthly = oph * normalHours * workdays
+  const hireCostPerOrder = hireCapacityMonthly > 0 ? Math.round((hireNetMonthly / hireCapacityMonthly) * 100) / 100 : null
+
   const feeKnown = cfg.fbs_fee_per_piece > 0
   const fbsCostPerOrder = feeKnown ? Math.round((cfg.fbs_fee_per_piece * piecesPerOrder) * 100) / 100 : null
 
+  const alts = [otCostPerOrder, hireCostPerOrder].filter((x) => x != null)
   return {
     ready: true,
     piecesPerOrder,
     otCostPerOrder,
     hireCostPerOrder,
+    hireGrossMonthly, otSavedMonthly, hireNetMonthly,
     fbsCostPerOrder,
     fbsFeePerPiece: cfg.fbs_fee_per_piece,
-    // ให้ frontend คำนวณ "ลองใส่ค่าธรรมเนียม" ได้เอง
-    cheapestAlt: hireCostPerOrder != null && otCostPerOrder != null ? Math.min(otCostPerOrder, hireCostPerOrder) : (otCostPerOrder ?? hireCostPerOrder),
+    cheapestAlt: alts.length ? Math.min(...alts) : null,
   }
 }
 
@@ -500,7 +510,9 @@ export default async function opFulfillment(req, res) {
 
     const cap = capacity(rows, cfg)
     const wd = weekdayLoad(all, cap, cfg)
-    const be = breakeven(rows, cap, cfg)
+    const ot = await otMonthly(rows, cfg)
+    const lastMonthOtCost = ot?.ready && ot.series.length ? ot.series[ot.series.length - 1].otCost : 0
+    const be = breakeven(rows, cap, cfg, lastMonthOtCost)
     const camp = campaignModel(all, cap, cfg)
     const bp = await byProduct(rows)
     return res.status(200).json({
@@ -516,7 +528,7 @@ export default async function opFulfillment(req, res) {
       byProduct: bp.list,
       byProductMeta: { dataMonths: bp.dataMonths, dataFrom: bp.dataFrom, dataTo: bp.dataTo },
       fbsRetention: fbsRetention(rows),
-      otMonthly: await otMonthly(rows, cfg),
+      otMonthly: ot,
       breakeven: be,
       campaign: camp,
       verdict: verdict(cap, cfg, wd, be),

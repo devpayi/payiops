@@ -831,13 +831,16 @@ a new one.
     keep self); (h) monthly OT hours/฿ — **not** tied to order volume: owner says OT is
     mostly FG feeding / repackaging (pack orders → 1h break → feed goods till end of shift),
     so it scales with FG prep not parcels; overlays `planner_daily.planned_feed` per month
-    when present; (i) **marginal-cost break-even** — ฿/order for OT (`ot_rate_per_hour` ÷
-    calibrated oph) vs a 5th hire (`daily_wage` ÷ oph ÷ normal hours) vs FBS
-    (`fbs_fee_per_piece` × avg pieces/order for Shopee standard orders), with a live
-    "try a fee" input; the verdict text folds in the result. On real data OT is ~฿1.3/order
-    so FBS almost never wins on pure cost — the card says so and points to the operational
-    reasons instead. FBS fee fields are 0 for now (owner: FBS free until ~Oct 2026, rate
-    unknown). No new `api/*.js` file (piggybacks `sheet-tools.js`, still 9/12).
+    when present; (i) **marginal-cost break-even** — ฿/order for "OT ต่อไป"
+    (`ot_rate_per_hour` ÷ calibrated oph), a 5th hire, and FBS (`fbs_fee_per_piece` × avg
+    pieces/order for Shopee standard orders), live "try a fee" input, folded into the
+    verdict. The 5th-hire figure credits the OT it removes (owner's point — a new hire
+    does the FG feeding in normal hours so OT drops): `(daily_wage × workdays_per_month −
+    last month's OT cost × hire_ot_offset_pct) ÷ added monthly packing capacity`. On real
+    data the 5th hire lands ~฿0.9/order (cheaper than OT), and FBS at any realistic fee
+    loses to both — the card says so and points to the operational reasons for FBS. FBS
+    fee fields are 0 for now (owner: FBS free until ~Oct 2026, rate unknown). No new
+    `api/*.js` file (piggybacks `sheet-tools.js`, still 9/12).
 
 ## Gotchas
 

@@ -18,6 +18,8 @@ const CONFIG_FIELDS = [
   ['ot_rate_per_hour', 'ค่า OT/ชม.'],
   ['fbs_fee_per_piece', 'ค่าธรรมเนียม FBS/ชิ้น'],
   ['fbs_storage_monthly', 'ค่าเก็บของ FBS/เดือน'],
+  ['workdays_per_month', 'วันทำงาน/เดือน'],
+  ['hire_ot_offset_pct', 'จ้างคนที่ 5 แล้ว OT ลด (%)'],
 ]
 const mLabel = (ym) => { const [y, m] = ym.split('-'); return `${['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][+m]} ${String(y).slice(2)}` }
 
@@ -134,7 +136,7 @@ export default function Fulfillment() {
         const fbsPO = feeVal > 0 ? Math.round(feeVal * be.piecesPerOrder * 100) / 100 : null
         const alt = be.cheapestAlt
         const bars = [
-          { label: 'OT (4 คน)', v: be.otCostPerOrder, c: '#94a3b8' },
+          { label: 'OT ต่อไป', v: be.otCostPerOrder, c: '#94a3b8' },
           { label: 'จ้างคนที่ 5', v: be.hireCostPerOrder, c: '#94a3b8' },
           { label: 'FBS', v: fbsPO, c: fbsPO != null && alt != null ? (fbsPO <= alt ? '#16a34a' : '#dc2626') : '#cbd5e1' },
         ]
@@ -142,8 +144,12 @@ export default function Fulfillment() {
         return (
           <div style={card}>
             <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>ต้นทุนส่วนเพิ่ม/ออเดอร์ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>เมื่อโตเกินทีม</span></h3>
-            <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
+            <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 6 }}>
               ค่าแรง 4 คน fixed อยู่แล้ว ไม่นับ. ที่นับคือส่วนที่เพิ่มเมื่อรับออเดอร์เกินกำลัง — ~{be.piecesPerOrder} ชิ้น/ออเดอร์ (ส่งธรรมดา Shopee)
+            </div>
+            <div style={{ color: 'var(--payi-text-muted)', fontSize: 11, marginBottom: 12, lineHeight: 1.5 }}>
+              <b>OT ต่อไป</b> = ค่า OT ÷ อัตราแพ็ค ({be.otCostPerOrder != null ? `฿${be.otCostPerOrder}` : '—'}). &nbsp;
+              <b>จ้างคนที่ 5</b> = (ค่าจ้าง {thb(be.hireGrossMonthly)}/เดือน − OT ที่ลดได้ {thb(be.otSavedMonthly)}) ÷ กำลังแพ็คที่เพิ่ม = {thb(be.hireNetMonthly)}/เดือน → ฿{be.hireCostPerOrder}/ออเดอร์
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 12.5 }}>
               <span>ลองใส่ค่าธรรมเนียม FBS/ชิ้น:</span>
