@@ -515,10 +515,14 @@ function ProductRow({ p }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7, fontSize: 12.5 }}>
       <div style={{ width: 170, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={p.label}>{p.label}</div>
-      <div style={{ flex: 1, background: '#eef2f7', borderRadius: 6, height: 14, overflow: 'hidden', display: 'flex' }}
-        title={`ธรรมดา/FBS ${p.standardPct}%  ·  ด่วน ${p.fastPct}%`}>
+      <div style={{ flex: 1, background: '#eef2f7', borderRadius: 6, height: 14, overflow: 'hidden', display: 'flex' }}>
         <div style={{ width: `${p.standardPct}%`, background: 'var(--payi-mint)' }} />
         <div style={{ width: `${p.fastPct}%`, background: '#c2410c' }} />
+      </div>
+      <div style={{ width: 96, textAlign: 'right', fontSize: 10.5, lineHeight: 1.3, whiteSpace: 'nowrap' }}>
+        <span style={{ color: 'var(--payi-mint)' }}>ปกติ {p.standardPct}%</span>
+        <span style={{ color: '#c2410c' }}> · ด่วน {p.fastPct}%</span>
+        {p.fbsPct > 0 && <><br /><span style={{ color: 'var(--payi-text-muted)' }}>FBS {p.fbsPct}%</span></>}
       </div>
       <div style={{ width: 70, textAlign: 'right', color: 'var(--payi-text-muted)', fontSize: 11 }}>{p.orders} ออเดอร์</div>
       <div style={{ width: 100, textAlign: 'right', fontSize: 11 }}>
