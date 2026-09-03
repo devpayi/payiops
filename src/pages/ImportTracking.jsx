@@ -1,36 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Package, FileWarning, Send, Plus, Pencil, Trash2, X, Ship } from 'lucide-react'
+import { Package, FileWarning, Send, Plus, Pencil, Trash2, X } from 'lucide-react'
 import KpiCard from '../components/KpiCard'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
-
-const STAGES = [
-  ['ordered', 'สั่งแล้ว'],
-  ['producing', 'กำลังผลิต'],
-  ['shipped', 'ออกจากโรงงาน'],
-  ['port', 'ถึงท่า/นำเข้า'],
-  ['customs', 'ผ่านศุลกากร'],
-  ['arrived', 'ถึงคลังแล้ว'],
-]
-
-function ShipmentTrack({ status, stages, compact }) {
-  const idx = status?.index ?? -1
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: compact ? 3 : 4 }}>
-      {STAGES.map(([key, label], i) => {
-        const on = i <= idx
-        const done = idx === STAGES.length - 1
-        return (
-          <div key={key} title={`${label}${stages?.[key] ? ` · ${stages[key]}` : ''}`} style={{ display: 'flex', alignItems: 'center', gap: compact ? 3 : 4 }}>
-            <span style={{ width: compact ? 8 : 10, height: compact ? 8 : 10, borderRadius: '50%', flexShrink: 0, background: on ? (done ? 'var(--payi-success)' : '#2563eb') : 'var(--payi-border)' }} />
-            {i < STAGES.length - 1 && <span style={{ width: compact ? 10 : 16, height: 2, background: i < idx ? '#2563eb' : 'var(--payi-border)' }} />}
-          </div>
-        )
-      })}
-      {!compact && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 800, color: idx < 0 ? 'var(--payi-text-faint)' : idx === STAGES.length - 1 ? 'var(--payi-success)' : '#2563eb' }}>{status?.label || 'ยังไม่เริ่ม'}</span>}
-    </div>
-  )
-}
 
 const DOC_STYLE = {
   'ครบ': { bg: 'var(--payi-success-bg)', color: 'var(--payi-success)' },
@@ -92,7 +64,6 @@ export default function ImportTracking() {
   const [saving, setSaving] = useState(false)
   const [query, setQuery] = useState('')
   const [onlyPendingDocs, setOnlyPendingDocs] = useState(false)
-  const [onlyInTransit, setOnlyInTransit] = useState(false)
   const [modal, setModal] = useState(null) // null | 'new' | order object
 
   const load = useCallback(() => {
@@ -114,16 +85,15 @@ export default function ImportTracking() {
   }, [load])
 
   const items = data?.items || []
-  const totals = data?.totals || { totalOrders: 0, pendingDocs: 0, pendingHandover: 0, inTransit: 0 }
+  const totals = data?.totals || { totalOrders: 0, pendingDocs: 0, pendingHandover: 0 }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     let rows = items
     if (q) rows = rows.filter((it) => it.item_name.toLowerCase().includes(q) || it.sku.toLowerCase().includes(q) || it.bill_no.toLowerCase().includes(q) || it.customs_no.toLowerCase().includes(q))
     if (onlyPendingDocs) rows = rows.filter((it) => it.docStatus !== 'ครบ')
-    if (onlyInTransit) rows = rows.filter((it) => it.shipmentStatus.index >= 0 && !it.shipmentStatus.done)
     return rows
-  }, [items, query, onlyPendingDocs, onlyInTransit])
+  }, [items, query, onlyPendingDocs])
 
   const save = async (payload) => {
     setSaving(true)
@@ -175,7 +145,6 @@ export default function ImportTracking() {
 
       <div className="app-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
         <KpiCard title="รายการนำเข้า" value={fmt(totals.totalOrders)} subtitle="ทั้งหมด" icon={Package} trend={null} />
-        <KpiCard title="ระหว่างทาง" value={fmt(totals.inTransit)} subtitle="ยังไม่ถึงคลัง" icon={Ship} trend={null} />
         <KpiCard title="เอกสารค้าง" value={fmt(totals.pendingDocs)} subtitle="ยังไม่ครบ" icon={FileWarning} trend={null} />
         <KpiCard title="ยังไม่ส่งต่อ" value={fmt(totals.pendingHandover)} subtitle="บัญชี/คุณจอย" icon={Send} trend={null} />
       </div>
@@ -184,10 +153,6 @@ export default function ImportTracking() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>รายการนำเข้า ({filtered.length})</div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={onlyInTransit} onChange={(e) => setOnlyInTransit(e.target.checked)} />
-              เฉพาะระหว่างทาง
-            </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', cursor: 'pointer' }}>
               <input type="checkbox" checked={onlyPendingDocs} onChange={(e) => setOnlyPendingDocs(e.target.checked)} />
               เฉพาะเอกสารค้าง
@@ -208,22 +173,20 @@ export default function ImportTracking() {
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>ยังไม่มีรายการนำเข้า — กด "เพิ่มรายการนำเข้า" เพื่อเริ่มต้น</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', minWidth: 1120, borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
+            <table style={{ width: '100%', minWidth: 980, borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
               <colgroup>
-                <col style={{ width: '9%' }} />
-                <col style={{ width: '22%' }} />
-                <col style={{ width: '7%' }} />
-                <col style={{ width: '22%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '15%' }} />
-                <col style={{ width: '13%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '28%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '20%' }} />
               </colgroup>
               <thead>
                 <tr style={{ textAlign: 'left', color: 'var(--payi-text-muted)', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <th style={{ padding: '8px 10px' }}>วันที่</th>
                   <th style={{ padding: '8px 10px' }}>สินค้า</th>
                   <th style={{ padding: '8px 10px', textAlign: 'right' }}>จำนวน</th>
-                  <th style={{ padding: '8px 10px' }}>สถานะนำเข้า</th>
                   <th style={{ padding: '8px 10px' }}>เอกสาร</th>
                   <th style={{ padding: '8px 10px' }}>ส่งต่อ</th>
                   <th style={{ padding: '8px 10px', textAlign: 'right' }}>จัดการ</th>
@@ -240,11 +203,6 @@ export default function ImportTracking() {
                       </div>
                     </td>
                     <td style={{ padding: '10px', textAlign: 'right' }}>{fmt(it.qty)}</td>
-                    <td style={{ padding: '10px' }}>
-                      <button onClick={() => setModal(it)} title="แก้ไขสถานะ" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
-                        <ShipmentTrack status={it.shipmentStatus} stages={it.stages} />
-                      </button>
-                    </td>
                     <td style={{ padding: '10px' }}>
                       <button onClick={() => setModal(it)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
                         <DocBadge status={it.docStatus} />
@@ -307,9 +265,6 @@ function OrderModal({ initial, saving, onClose, onSave }) {
   const [flags, setFlags] = useState(() => Object.fromEntries(
     [...DOC_FIELDS, ...HANDOVER_FIELDS].map(([f]) => [f, initial?.[f] || false])
   ))
-  const [stages, setStages] = useState(() => Object.fromEntries(
-    STAGES.map(([k]) => [k, initial?.stages?.[k] || ''])
-  ))
 
   const submit = (e) => {
     e.preventDefault()
@@ -319,7 +274,6 @@ function OrderModal({ initial, saving, onClose, onSave }) {
       date, item_name: itemName.trim(), sku: sku.trim(), qty,
       bill_no: billNo, customs_no: customsNo, tracking_no: trackingNo, note,
       ...flags,
-      ...Object.fromEntries(STAGES.map(([k]) => [`stage_${k}`, stages[k]])),
     })
   }
 
@@ -358,22 +312,6 @@ function OrderModal({ initial, saving, onClose, onSave }) {
             <label style={labelStyle}>เลขพัสดุ</label>
             <input value={trackingNo} onChange={(e) => setTrackingNo(e.target.value)} style={inputStyle} />
           </div>
-        </div>
-
-        <div style={{ background: 'var(--payi-surface-muted)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>สถานะนำเข้า — กรอกวันที่เมื่อถึงแต่ละขั้น</div>
-          {STAGES.map(([key, label], i) => (
-            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ width: 9, height: 9, borderRadius: '50%', flexShrink: 0, background: stages[key] ? (i === STAGES.length - 1 ? 'var(--payi-success)' : '#2563eb') : 'var(--payi-border)' }} />
-              <span style={{ flex: 1, fontSize: 12.5, color: stages[key] ? 'var(--payi-text-strong)' : 'var(--payi-text-muted)', fontWeight: stages[key] ? 700 : 400 }}>{label}</span>
-              <input type="date" value={stages[key]} onChange={(e) => setStages((d) => ({ ...d, [key]: e.target.value }))}
-                style={{ ...inputStyle, width: 160, padding: '6px 10px' }} />
-              {stages[key] && (
-                <button type="button" onClick={() => setStages((d) => ({ ...d, [key]: '' }))} title="ล้าง"
-                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--payi-text-faint)', padding: 2 }}><X size={13} /></button>
-              )}
-            </div>
-          ))}
         </div>
 
         <div style={{ background: 'var(--payi-surface-muted)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
