@@ -13,7 +13,19 @@ const HEADERS = [
   'sent_accounting', 'sent_joy', 'printed',
   'note',
   'created_by', 'created_at', 'updated_at',
+  // สถานะนำเข้า — เก็บวันที่ของแต่ละขั้น (ต่อท้าย 2026-09-02)
+  'stage_ordered', 'stage_producing', 'stage_shipped', 'stage_port', 'stage_customs', 'stage_arrived',
 ]
+// ขั้นตอนตามลำดับ — key ต้องตรงกับคอลัมน์ stage_*
+const STAGES = [
+  { key: 'ordered', label: 'สั่งแล้ว' },
+  { key: 'producing', label: 'กำลังผลิต' },
+  { key: 'shipped', label: 'ออกจากโรงงาน' },
+  { key: 'port', label: 'ถึงท่า/นำเข้า' },
+  { key: 'customs', label: 'ผ่านศุลกากร' },
+  { key: 'arrived', label: 'ถึงคลังแล้ว' },
+]
+const STAGE_FIELDS = STAGES.map((s) => `stage_${s.key}`)
 const CHECKBOX_FIELDS = [
   'draft_doc', 'customs_draft', 'customs_actual', 'tax_invoice', 'withholding_tax', 'accounting_notice',
   'sent_accounting', 'sent_joy', 'printed',
@@ -38,6 +50,14 @@ function docStatus(row) {
   return 'ค้าง'
 }
 
+// สถานะนำเข้า = ขั้นล่าสุดที่มีวันที่ (ไม่ต้องเรียงวันที่ — ถือว่าขั้นหลังกรอกทีหลัง)
+function shipmentStatus(stages) {
+  let last = -1
+  for (let i = 0; i < STAGES.length; i++) if (stages[STAGES[i].key]) last = i
+  if (last === -1) return { key: '', label: 'ยังไม่เริ่ม', index: -1, done: false }
+  return { ...STAGES[last], index: last, done: last === STAGES.length - 1 }
+}
+
 async function loadOrders() {
   await ensureImportTrackingSheet()
   const rows = await getSheet(SHEET)
@@ -46,6 +66,10 @@ async function loadOrders() {
     for (const f of TEXT_FIELDS) out[f] = r[f] || ''
     for (const f of NUM_FIELDS) out[f] = num(r[f])
     for (const f of CHECKBOX_FIELDS) out[f] = bool(r[f])
+    const stages = {}
+    for (const s of STAGES) stages[s.key] = isoDate(r[`stage_${s.key}`]) || ''
+    out.stages = stages
+    out.shipmentStatus = shipmentStatus(stages)
     out.created_by = r.created_by || ''
     out.created_at = r.created_at || ''
     out.updated_at = r.updated_at || ''
@@ -58,8 +82,9 @@ async function loadOrders() {
     totalOrders: items.length,
     pendingDocs: items.filter((r) => r.docStatus !== 'ครบ').length,
     pendingHandover: items.filter((r) => !r.sent_accounting || !r.sent_joy).length,
+    inTransit: items.filter((r) => r.shipmentStatus.index >= 0 && !r.shipmentStatus.done).length,
   }
-  return { items, totals }
+  return { items, totals, stages: STAGES }
 }
 
 async function upsertOrder(body, actorName) {
@@ -78,6 +103,9 @@ async function upsertOrder(body, actorName) {
     for (const f of CHECKBOX_FIELDS) {
       if (body[f] !== undefined) row[f] = body[f] ? '1' : '0'
     }
+    for (const f of STAGE_FIELDS) {
+      if (body[f] !== undefined) row[f] = body[f] ? (isoDate(body[f]) || '') : ''
+    }
     if (body.date !== undefined) row.date = isoDate(body.date) || todayBKK()
     return row
   }
@@ -88,6 +116,7 @@ async function upsertOrder(body, actorName) {
     for (const f of NUM_FIELDS) if (row[f] === undefined) row[f] = 0
     for (const f of CHECKBOX_FIELDS) if (row[f] === undefined) row[f] = '0'
     for (const f of TEXT_FIELDS) if (row[f] === undefined) row[f] = ''
+    for (const f of STAGE_FIELDS) if (row[f] === undefined) row[f] = ''
     row.created_by = actorName || ''
     row.created_at = now
     row.updated_at = now

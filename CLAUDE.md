@@ -165,9 +165,13 @@ was removed from the sidebar (commit `a6685a9`); treat it as dead code, same as
   document checklist (ใบดราฟ, ใบขนดราฟ + ใบขนใช้จริง as two separate checks, ใบกำกับภาษี,
   หัก ณ ที่จ่าย, ใบทักบัญชี → `docStatus` ครบ/ค้าง/ยังไม่เริ่ม), and a 3-item handover
   checklist (ส่งบัญชีแล้ว/ส่งคุณจอยแล้ว/พิมพ์แล้ว=PRNT, toggleable inline from the table).
-  **Dev + boss only** (not in `STAFF_TABS`, same `canManageOperations` gating as
-  Inventory/HR). No new `api/*.js` file — piggybacked onto `sheet-tools.js` per the 12/12
-  function-cap rule. Deleting a row is a real delete (discrete purchase-order records, not
+  **Shipment status (added 2026-09-02):** 6 `stage_*` date columns (append-only) —
+  สั่งแล้ว / กำลังผลิต / ออกจากโรงงาน / ถึงท่า / ผ่านศุลกากร / ถึงคลังแล้ว. `shipmentStatus`
+  = last stage with a date (no date-order enforced); a KPI + "เฉพาะระหว่างทาง" filter +
+  dot-timeline in the table + a date-per-stage section in the edit modal. Old rows (no
+  stage cols) read as "ยังไม่เริ่ม" until first edited.
+  **DEV-only since 2026-09-01** (was dev+boss; non-dev gets `DevOnlyLock`). No new
+  `api/*.js` file — piggybacked onto `sheet-tools.js` per the 12/12 function-cap rule. Deleting a row is a real delete (discrete purchase-order records, not
   a catalog, same as the cost version had). The old `import_cost_orders` Sheet tab from the
   scrapped cost version may still exist (empty, harmless) — nothing reads/writes it.
   **Bigger idea discussed but not built:** a LINE-based arrival **status confirmation**
