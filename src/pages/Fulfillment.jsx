@@ -81,6 +81,7 @@ const NOTE = {
   fbsUsage: 'เฉพาะ Shopee ที่ export มีคอลัมน์ "ตัวเลือกการจัดส่ง" (เก็บตั้งแต่ ก.ย. 2026)\n% = ออเดอร์/ชิ้น/ยอดขาย ที่ตัวเลือกขึ้นต้น "Fulfilled By Shopee" ÷ ทั้งหมดในกลุ่มนั้น\nTikTok ไม่มีข้อมูลในไฟล์ export',
   byProduct: 'จัดกลุ่มสินค้าด้วย deriveGroup (รวมสี/ไซส์) — ต่อกลุ่มดู % ส่งด่วน / ธรรมดา / FBS\n• ควร FBS: ส่งด่วน <20% และ (ธรรมดา+FBS) ≥55%\n• เก็บแพ็คเอง: ส่งด่วน ≥25%\nส่ง ~X/รอบ = ชิ้นส่งธรรมดา ÷ จำนวนเดือนของข้อมูล',
   ot: 'ชม. OT รวมต่อเดือน จาก workforce_ot (ใช้ actual ก่อน planned) × ค่า OT/ชม.\nทับด้วยปริมาณฟีดต่อเดือนจาก planner_daily (planned_feed)\nOT ส่วนใหญ่เป็นงานฟีด/รีแพ็คของ ขึ้นกับ FG ไม่ผูกกับจำนวนออเดอร์',
+  doNothing: 'สมมติปล่อยให้โตตามอัตราปัจจุบัน (slope) ไม่ย้ายอะไรเข้า FBS\nกำลังปกติ = อัตราแพ็ค × คน × ชม.ปกติ (เลิกตรง normal_finish)\nออเดอร์/วัน ที่เกินกำลังปกติ = ทีมต้องอยู่ OT เคลียร์ทุกวัน → OT ชม./วัน = ส่วนเกิน ÷ (คน × อัตราแพ็ค)\nOT บาท/เดือน = OT ชม./วัน × คน × ค่า OT/ชม. × วันทำงาน/เดือน\nเกินเพดาน max_finish = OT ไม่พอ ต้อง FBS / จ้างคนที่ 5',
 }
 
 // 🦸 สานฝันวัยเด็ก — chibi Ultraman ท่าตั้งการ์ดสู้ (fighting stance) + เอฟเฟกต์กระแทกแดง + ออร่าเหลือง
@@ -239,6 +240,21 @@ export default function Fulfillment() {
       sub: `โตเดือนละ ~${cap.growthPerDay > 0 ? '+' : ''}${cap.growthPerDay} ออเดอร์/วัน (${cap.monthlyGrowthPct}%)`,
     })
   }
+  if (cap.ready && cap.doNothing?.length > 0) {
+    const firstCost = cap.doNothing.find((d) => d.otCostMonthly > 0 || d.cappedOut)
+    const at6 = cap.doNothing[cap.doNothing.length - 1]
+    if (!firstCost) {
+      tiles.push({ dot: C.ok, label: 'ต้นทุนถ้าไม่ทำอะไร', big: 'อีก 6 เดือนยังไม่ต้อง OT ประจำ', sub: `กำลังปกติ ~${cap.normalCapPerDay?.toLocaleString()} ออเดอร์/วัน` })
+    } else if (firstCost.cappedOut) {
+      tiles.push({ dot: C.bad, label: 'ต้นทุนถ้าไม่ทำอะไร', big: `อีก ${firstCost.monthsAhead} เดือน OT ไม่พอ`, sub: 'ต้อง FBS / จ้างคนที่ 5' })
+    } else {
+      tiles.push({
+        dot: firstCost.monthsAhead <= 2 ? C.bad : C.warn, label: 'ต้นทุนถ้าไม่ทำอะไร',
+        big: `อีก ${firstCost.monthsAhead} เดือน OT ~${thb(firstCost.otCostMonthly)}/เดือน`,
+        sub: at6.cappedOut ? 'อีก 6 เดือน OT เอาไม่อยู่' : `อีก 6 เดือน ~${thb(at6.otCostMonthly)}/เดือน`,
+      })
+    }
+  }
   if (be?.ready) {
     const fee = feeSim !== '' && parseFloat(feeSim) > 0 ? parseFloat(feeSim) : be.fbsFeePerPiece
     const fbsPO = fee > 0 ? Math.round(fee * be.piecesPerOrder * 100) / 100 : null
@@ -348,6 +364,36 @@ export default function Fulfillment() {
           </>
         ) : <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ข้อมูลออเดอร์ยังไม่พอ</div>}
       </div>
+
+      {/* DO NOTHING — ต้นทุน OT ถ้าปล่อยให้โต */}
+      {cap.ready && cap.doNothing?.length > 0 && (() => {
+        const rowsDN = cap.doNothing.filter((d) => d.otCostMonthly > 0 || d.cappedOut)
+        return (
+          <div style={card}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>ต้นทุนถ้าไม่ทำอะไร <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>ปล่อยให้โตตามอัตราปัจจุบัน</span><InfoTip note={NOTE.doNothing} /></h3>
+            <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
+              กำลังปกติ (เลิกตรงเวลา) ~{cap.normalCapPerDay?.toLocaleString()} ออเดอร์/วัน. เกินกว่านั้น = ทีมอยู่ OT ทุกวัน
+            </div>
+            {rowsDN.length === 0 ? (
+              <div style={{ color: '#16a34a', fontSize: 13 }}>อีก 6 เดือน ยังไม่ต้อง OT ประจำ — กำลังทีมปกติรับไหว</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {rowsDN.map((d) => (
+                  <div key={d.monthsAhead} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5 }}>
+                    <span style={{ width: 70, color: 'var(--payi-text-muted)' }}>อีก {d.monthsAhead} ด.</span>
+                    <span style={{ width: 130 }}>~{d.projAvgPerDay.toLocaleString()} ออเดอร์/วัน</span>
+                    {d.cappedOut ? (
+                      <span style={{ color: '#dc2626', fontWeight: 600 }}>OT ไม่พอ — ต้อง FBS / จ้างคนที่ 5</span>
+                    ) : (
+                      <span>OT ~{d.otHoursPerDay} ชม./วัน → <b style={{ color: '#c2410c' }}>{thb(d.otCostMonthly)}/เดือน</b></span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* BREAK-EVEN — แว็ปเดียว */}
       {be?.ready && (() => {

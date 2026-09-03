@@ -155,6 +155,29 @@ function capacity(rows, cfg) {
   let monthsToCap = null
   if (growthPerDay > 0 && lastAvg < capacityPerDay) monthsToCap = Math.ceil((capacityPerDay - lastAvg) / growthPerDay)
 
+  // ต้นทุนถ้าไม่ทำอะไร — พอออเดอร์โตเกินกำลังปกติ (เลิกตรงเวลา) ทีมต้องอยู่ OT เคลียร์งานทุกวัน
+  // OT ชม./วัน = (ออเดอร์เกินกำลังปกติ) ÷ (คน × oph), เพดานที่ max_finish; เกินนั้น OT ไม่พอ ต้อง FBS/จ้างเพิ่ม
+  const normalCapPerDay = Math.round(oph * hc * normalHours)
+  const ceilingOtHoursPerDay = Math.max(0, maxHours - normalHours)
+  const wdpm = cfg.workdays_per_month || 26
+  const doNothing = []
+  if (growthPerDay > 0) {
+    for (let m = 1; m <= 6; m++) {
+      const projAvgPerDay = Math.round(lastAvg + growthPerDay * m)
+      const overNormal = Math.max(0, projAvgPerDay - normalCapPerDay)
+      let otHoursPerDay = oph > 0 ? overNormal / (hc * oph) : 0
+      const cappedOut = otHoursPerDay > ceilingOtHoursPerDay + 1e-9
+      otHoursPerDay = Math.min(otHoursPerDay, ceilingOtHoursPerDay)
+      doNothing.push({
+        monthsAhead: m,
+        projAvgPerDay,
+        otHoursPerDay: Math.round(otHoursPerDay * 10) / 10,
+        otCostMonthly: Math.round(otHoursPerDay * hc * cfg.ot_rate_per_hour * wdpm),
+        cappedOut,
+      })
+    }
+  }
+
   return {
     ready: true,
     series,
@@ -170,6 +193,8 @@ function capacity(rows, cfg) {
     monthsToCap,
     finishIn3mo: hhmm(finishAt(lastAvg + growthPerDay * 3)),
     overCeiling: lastAvg >= capacityPerDay,
+    normalCapPerDay,
+    doNothing,
   }
 }
 
