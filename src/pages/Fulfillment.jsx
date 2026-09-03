@@ -517,6 +517,7 @@ function ProductRow({ p }) {
       <div style={{ width: 170, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={p.label}>{p.label}</div>
       <div style={{ flex: 1, background: '#eef2f7', borderRadius: 6, height: 14, overflow: 'hidden', display: 'flex' }}>
         <div style={{ width: `${p.standardPct}%`, background: 'var(--payi-mint)' }} />
+        <div style={{ width: `${p.fbsPct}%`, background: '#93c5fd' }} />
         <div style={{ width: `${p.fastPct}%`, background: '#c2410c' }} />
       </div>
       <div style={{ width: 96, textAlign: 'right', fontSize: 10.5, lineHeight: 1.3, whiteSpace: 'nowrap' }}>
