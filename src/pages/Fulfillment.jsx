@@ -215,7 +215,7 @@ export default function Fulfillment() {
   if (error) return <div style={{ padding: 16, borderRadius: 12, background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)' }}>เกิดข้อผิดพลาด: {error}</div>
   if (!data) return null
 
-  const { capacity: cap, weekday: wd, prepWindow: pw, fbsUsage: fbs, byProduct = [], otMonthly: ot, fbsRetention: fr, verdict: v, stockoutNote, breakeven: be, campaign: camp } = data
+  const { capacity: cap, weekday: wd, prepWindow: pw, byProduct = [], otMonthly: ot, verdict: v, stockoutNote, breakeven: be, campaign: camp } = data
   const candidates = byProduct.filter((p) => p.verdict === 'fbs-candidate')
   const keepSelf = byProduct.filter((p) => p.verdict === 'keep-self')
   const pwMax = pw?.ready ? Math.max(...pw.series.map((s) => s.avgOrders)) : 1
@@ -461,59 +461,6 @@ export default function Fulfillment() {
         </div>
       )}
 
-      {/* FBS RETENTION */}
-      {fr?.ready && (
-        <div style={card}>
-          <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>FBS ช่วยให้ลูกค้ากลับมาซื้อซ้ำไหม <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>Shopee — สังเกต ไม่ใช่ข้อพิสูจน์</span><InfoTip note={NOTE.retention} /></h3>
-          {fr.enoughSample ? (
-            <>
-              <div style={{ display: 'flex', gap: 24, marginTop: 8 }}>
-                <div>
-                  <div style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>เคยได้ FBS</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: '#16a34a' }}>{fr.fbsRepeatPct}%</div>
-                  <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>ซื้อซ้ำ ({fr.fbsBuyers.toLocaleString()} คน)</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>ได้แต่แพ็คเอง</div>
-                  <div style={{ fontSize: 22, fontWeight: 700 }}>{fr.selfRepeatPct}%</div>
-                  <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>ซื้อซ้ำ ({fr.selfBuyers.toLocaleString()} คน)</div>
-                </div>
-              </div>
-              <div style={{ fontSize: 11, color: '#92400e', marginTop: 10, lineHeight: 1.5 }}>
-                ⚠️ มี bias: ลูกค้าที่ซื้อหลายครั้งมีโอกาสเจอออเดอร์ FBS สักครั้งอยู่แล้ว → ตัวเลขเอียงสูงเกินจริง ดูเป็นสัญญาณคร่าวๆ
-              </div>
-            </>
-          ) : (
-            <div style={{ color: 'var(--payi-text-muted)', fontSize: 12.5, marginTop: 6 }}>
-              ข้อมูลยังไม่พอ (FBS {fr.fbsBuyers.toLocaleString()} / แพ็คเอง {fr.selfBuyers.toLocaleString()} คน — ต้องการฝั่งละ ≥100) — จะมีความหมายในอีก 2-3 เดือน
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* FBS USAGE */}
-      <div style={card}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>Fulfilled By Shopee ตอนนี้ <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>Shopee เท่านั้น</span><InfoTip note={NOTE.fbsUsage} /></h3>
-        <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
-          มีข้อมูลตัวเลือกจัดส่ง {fbs.coveragePct}% ของออเดอร์ Shopee ในช่วงนี้ ({fbs.coveredOrders?.toLocaleString()} / {fbs.shopeeOrders?.toLocaleString()})
-        </div>
-        <div style={{ display: 'flex', gap: 20, fontSize: 13, marginBottom: 12 }}>
-          <span>ผ่าน FBS <b style={{ color: '#c2410c' }}>{fbs.fbsOrderPct}%</b></span>
-          <span>ชิ้น <b>{fbs.fbsUnitPct}%</b></span>
-          <span>ยอดขาย <b>{fbs.fbsRevenuePct}%</b></span>
-        </div>
-        {fbs.trend?.length > 1 && (
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 50 }}>
-            {fbs.trend.map((m) => (
-              <div key={m.month} style={{ flex: 1, textAlign: 'center' }} title={`${mLabel(m.month)}: ${m.fbsPct}%`}>
-                <div style={{ background: BAR.main, height: `${Math.max(2, m.fbsPct * 0.6)}px`, borderRadius: barRadius }} />
-                <div style={{ fontSize: 9, color: 'var(--payi-text-muted)', marginTop: 2 }}>{mLabel(m.month)}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* BY PRODUCT */}
       <div style={card}>
         <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>ควร / ไม่ควร ย้ายเข้า FBS — รายกลุ่มสินค้า<InfoTip note={NOTE.byProduct} /></h3>
@@ -568,9 +515,10 @@ function ProductRow({ p }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7, fontSize: 12.5 }}>
       <div style={{ width: 170, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={p.label}>{p.label}</div>
-      <div style={{ flex: 1, background: '#eef2f7', borderRadius: 6, height: 14, overflow: 'hidden', display: 'flex' }}>
-        <div style={{ width: `${p.standardPct}%`, background: 'var(--payi-mint)' }} title={`ธรรมดา ${p.standardPct}%`} />
-        <div style={{ width: `${p.fastPct}%`, background: '#c2410c' }} title={`ด่วน ${p.fastPct}%`} />
+      <div style={{ flex: 1, background: '#eef2f7', borderRadius: 6, height: 14, overflow: 'hidden', display: 'flex' }}
+        title={`ธรรมดา/FBS ${p.standardPct}%  ·  ด่วน ${p.fastPct}%`}>
+        <div style={{ width: `${p.standardPct}%`, background: 'var(--payi-mint)' }} />
+        <div style={{ width: `${p.fastPct}%`, background: '#c2410c' }} />
       </div>
       <div style={{ width: 70, textAlign: 'right', color: 'var(--payi-text-muted)', fontSize: 11 }}>{p.orders} ออเดอร์</div>
       <div style={{ width: 100, textAlign: 'right', fontSize: 11 }}>
