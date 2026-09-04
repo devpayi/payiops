@@ -438,7 +438,7 @@ function DevOnlyLock({ label }) {
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 16, color: 'var(--payi-line)' }}>
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
       </svg>
-      <div style={{ fontSize: '15px', fontWeight: '500', color: 'var(--payi-text)' }}>โมดูล {label} กำลังจัดเตรียมโครงสร้างคลังข้อมูล</div>
+      <div style={{ fontSize: '15px', fontWeight: '500', color: 'var(--payi-text)' }}>โมดูล {label} กำลังจัดทำ</div>
     </div>
   )
 }
@@ -1433,8 +1433,8 @@ export default function App() {
           ['ContentOS', <ContentOSPrototype />],
           ['MarketingRadar', <MarketingRadar />],
           ['Inventory', <Inventory />],
-          ['Import Tracking', ['dev', 'boss'].includes(currentRole) ? <ImportTracking /> : <DevOnlyLock label="ติดตามนำเข้า" />],
-          ['WHT Cert', ['dev', 'boss'].includes(currentRole) ? <WhtCert /> : <DevOnlyLock label="ใบหัก ณ ที่จ่าย" />],
+          ['Import Tracking', isDev ? <ImportTracking /> : <DevOnlyLock label="ติดตามนำเข้า" />],
+          ['WHT Cert', isDev ? <WhtCert /> : <DevOnlyLock label="ใบหัก ณ ที่จ่าย" />],
           ['CFO', isDev ? <CfoDashboard /> : <DevOnlyLock label="CFO Dashboard" />],
           ['Demographic', isDev ? <DemographicDashboard /> : <DevOnlyLock label="เดโมกราฟฟิกลูกค้า" />],
           ['Fulfillment', ['dev', 'boss', 'finance', 'tang'].includes(currentRole) ? <Fulfillment /> : <DevOnlyLock label="Fulfillment" />],

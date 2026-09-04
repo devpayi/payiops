@@ -30,7 +30,8 @@ export const FINANCE_TABS = Object.freeze(['CFO', 'Fulfillment'])
 // เห็น Fulfillment (มีข้อมูลค่าแรง/OT/ต้นทุน) โดยอัตโนมัติ
 export const TANG_TABS = Object.freeze([...STAFF_TABS, 'Fulfillment'])
 
-const BOSS_HIDDEN_TABS = new Set(['Import Orders', 'Dev Hub', 'Settings'])
+// Import Tracking + WHT Cert = ยังทำไม่เสร็จ เปิดให้ dev คนเดียวก่อน (owner ขอ 2026-09-04)
+const BOSS_HIDDEN_TABS = new Set(['Import Orders', 'Dev Hub', 'Settings', 'Import Tracking', 'WHT Cert'])
 const STAFF_TAB_SET = new Set(STAFF_TABS)
 const STOCK_TAB_SET = new Set(STOCK_TABS)
 const MARKETING_TAB_SET = new Set(MARKETING_TABS)

@@ -14,6 +14,9 @@ test('Boss sees the app except Dev-only pages', () => {
   assert.equal(canAccessTab('boss', 'Import Orders'), false)
   assert.equal(canAccessTab('boss', 'Dev Hub'), false)
   assert.equal(canAccessTab('boss', 'Settings'), false)
+  assert.equal(canAccessTab('boss', 'Import Tracking'), false)
+  assert.equal(canAccessTab('boss', 'WHT Cert'), false)
+  assert.equal(canAccessTab('dev', 'Import Tracking'), true)
   assert.equal(canManageOperations('boss'), true)
 })
 
