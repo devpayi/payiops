@@ -598,11 +598,68 @@ function groupCartons(cartons) {
   return [...m.values()]
 }
 
+// เลือกสินค้าจากรูป — grid ทั้ง product_master + ช่องค้นหา
+function ProductImagePicker({ images, current, onPick, onClose }) {
+  const [q, setQ] = useState('')
+  const list = useMemo(() => {
+    const t = q.trim().toLowerCase()
+    if (!t) return PRODUCT_MASTER
+    return PRODUCT_MASTER.filter((p) => `${p.sku} ${p.name_en} ${p.name_th} ${p.name_zh} ${p.description_zh} ${p.color} ${p.size}`.toLowerCase().includes(t))
+  }, [q])
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+    >
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--payi-surface)', borderRadius: 14, width: 'min(680px,100%)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--payi-border)', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาสินค้า (ชื่อ / สี / ไซส์ / รหัส)" style={{ ...inputStyle, flex: 1 }} />
+          <button onClick={onClose} style={{ ...primaryBtn, background: 'var(--payi-surface-muted)', color: 'var(--payi-text-strong)', border: '1px solid var(--payi-border)', padding: '8px 12px' }}>ปิด</button>
+        </div>
+        <div style={{ padding: 12, overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 10 }}>
+          {list.map((p) => (
+            <button
+              key={p.sku}
+              type="button"
+              onClick={() => onPick(p.sku)}
+              style={{
+                border: p.sku === current ? '2px solid var(--payi-mint-strong)' : '1px solid var(--payi-border)',
+                borderRadius: 10, padding: 8, cursor: 'pointer', background: 'var(--payi-surface)', textAlign: 'left',
+                display: 'flex', flexDirection: 'column', gap: 6,
+              }}
+            >
+              <div style={{ width: '100%', aspectRatio: '1', borderRadius: 6, overflow: 'hidden', background: 'var(--payi-surface-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {images[p.sku]
+                  ? <img src={images[p.sku]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <span style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>ไม่มีรูป</span>}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>{p.name_en}</div>
+              <div style={{ fontSize: 10.5, color: 'var(--payi-text-muted)', lineHeight: 1.35 }}>
+                {p.name_th}{[p.color, p.size].filter(Boolean).length ? ` · ${[p.color, p.size].filter(Boolean).join(' ')}` : ''}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{p.sku}</div>
+            </button>
+          ))}
+          {!list.length && <div style={{ color: 'var(--payi-text-muted)', gridColumn: '1/-1', padding: 20, textAlign: 'center' }}>ไม่เจอ — ถ้าเป็นสินค้าใหม่ ต้องเพิ่มใน product_master ก่อน</div>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ProformaModal({ lot, busy, onClose, onMarkDone }) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
   const [rows, setRows] = useState(null) // null | [{ id, item_name, qty, sku, sku0, cartons, carton_src }]
   const [info, setInfo] = useState({ invoice_date: today, shipping_mark: lot.lot_ref ? `LK/${lot.lot_ref}` : '', consignee_to: PROFORMA_CONSIGNEE })
   const [gen, setGen] = useState('') // '' | 'working' | 'done' | error string
+  const [images, setImages] = useState({}) // { sku: dataURL }
+  const [picking, setPicking] = useState(null) // arrival id ที่กำลังเลือกสินค้าจากรูป
+
+  useEffect(() => {
+    let alive = true
+    import('../data/productImages.json').then((m) => { if (alive) setImages(m.default || m) }).catch(() => {})
+    return () => { alive = false }
+  }, [])
 
   // ── ดึงกล่องจากชีท LK ต่อ arrival (ครั้งเดียวตอนเปิด) ──
   const load = useCallback(async () => {
@@ -681,11 +738,7 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
         await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set-arrival-skus', items: changed }) })
       }
       // 2) สร้างไฟล์
-      const [{ generateProforma }, imagesMod] = await Promise.all([
-        import('../lib/proformaXlsx'),
-        import('../data/productImages.json'),
-      ])
-      const images = imagesMod.default || imagesMod
+      const { generateProforma } = await import('../lib/proformaXlsx')
       const groups = view.groups.map((g, i) => ({
         no: i + 1, name_en: g.name_en, name_th: g.rows[0].name_th,
         image: images[g.rows[0].sku] || null,
@@ -725,34 +778,52 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
               {PRODUCT_MASTER.map((p) => <option key={p.sku} value={p.sku}>{pmLabel(p)}</option>)}
             </datalist>
 
-            {/* รายการในลอต — จับคู่ SKU ตรงนี้ได้เลย */}
+            {/* รายการในลอต — จับคู่สินค้าจากรูปตรงนี้ได้เลย */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {view.groups.map((g, gi) => g.rows.map((r, ri) => (
-                <div key={r.id} style={{ border: '1px solid var(--payi-border)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 6, background: r.sku ? 'transparent' : 'var(--payi-warning-bg)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <div key={r.id} style={{ border: '1px solid var(--payi-border)', borderRadius: 10, padding: 10, display: 'flex', gap: 10, background: r.sku ? 'transparent' : 'var(--payi-warning-bg)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setPicking(r.id)}
+                    title="เลือกสินค้าจากรูป"
+                    style={{ flex: '0 0 56px', width: 56, height: 56, borderRadius: 8, border: '1px solid var(--payi-border)', padding: 0, cursor: 'pointer', overflow: 'hidden', background: 'var(--payi-surface-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    {images[r.sku]
+                      ? <img src={images[r.sku]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <span style={{ fontSize: 10, color: 'var(--payi-text-faint)' }}>เลือก<br />รูป</span>}
+                  </button>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                     <div style={{ fontWeight: 600 }}>
-                      {ri === 0 ? `${gi + 1}. ` : ''}{r.name_en || <span style={{ color: 'var(--payi-danger)' }}>—</span>}
-                      <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)' }}> · {fmt(r.qty)} ชิ้น · {r.boxes} กล่อง · {r.wt.toFixed(1)} กก. · {r.cbm.toFixed(2)} CBM</span>
+                      {ri === 0 ? `${gi + 1}. ` : ''}{r.pm?.name_en || <span style={{ color: 'var(--payi-danger)' }}>ยังไม่จับคู่</span>}
                     </div>
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>
-                    ของเข้า: {r.item_name || '(ไม่มีชื่อ)'}{r.cartonNote ? ` · ${r.cartonNote}` : ''}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input
-                      value={r.sku}
-                      onChange={(e) => setSku(r.id, e.target.value.trim())}
-                      list="proforma-skus"
-                      placeholder="จับคู่ SKU (พิมพ์ชื่อ/รหัส)"
-                      style={{ ...inputStyle, flex: '0 0 190px', fontFamily: 'monospace' }}
-                    />
-                    <div style={{ fontSize: 11, color: r.pm ? 'var(--payi-success)' : 'var(--payi-text-faint)' }}>
-                      {r.pm ? `${r.pm.name_en} · ${r.description.slice(0, 44)}` : r.sku ? 'ไม่พบใน product_master' : 'เลือกครั้งเดียว ครั้งหน้าจำให้'}
+                    <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>
+                      {fmt(r.qty)} ชิ้น · {r.boxes} กล่อง · {r.wt.toFixed(1)} กก. · {r.cbm.toFixed(2)} CBM{r.cartonNote ? ` · ${r.cartonNote}` : ''}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>ของเข้า (ชีท LK): {r.item_name || '(ไม่มีชื่อ)'}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                      <input
+                        value={r.sku}
+                        onChange={(e) => setSku(r.id, e.target.value.trim())}
+                        list="proforma-skus"
+                        placeholder="พิมพ์ชื่อ/รหัส หรือกดรูปซ้าย"
+                        style={{ ...inputStyle, flex: '0 0 200px', fontFamily: 'monospace', padding: '6px 10px' }}
+                      />
+                      {r.pm && <span style={{ fontSize: 11, color: 'var(--payi-success)' }}>✓ {r.description.slice(0, 40)}</span>}
+                      {!r.pm && r.sku && <span style={{ fontSize: 11, color: 'var(--payi-danger)' }}>ไม่พบใน product_master</span>}
                     </div>
                   </div>
                 </div>
               )))}
             </div>
+
+            {picking && (
+              <ProductImagePicker
+                images={images}
+                current={rows.find((r) => r.id === picking)?.sku || ''}
+                onPick={(sku) => { setSku(picking, sku); setPicking(null) }}
+                onClose={() => setPicking(null)}
+              />
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, padding: '4px 2px' }}>
               <span>รวม {view.groups.length} รายการ</span>
