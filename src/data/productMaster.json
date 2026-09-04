@@ -1,0 +1,258 @@
+[
+ {
+  "sku": "PM-01-A",
+  "name_en": "Arch support pads",
+  "name_th": "แผ่นรองฝ่าเท้า",
+  "name_zh": "足弓垫",
+  "color": "สีเทา",
+  "size": ""
+ },
+ {
+  "sku": "PM-01-B",
+  "name_en": "Arch support pads",
+  "name_th": "แผ่นรองฝ่าเท้า",
+  "name_zh": "足弓护脚垫",
+  "color": "สีดำ",
+  "size": ""
+ },
+ {
+  "sku": "PM-02",
+  "name_en": "Beechwood Foot File",
+  "name_th": "ตะไบเท้าไม้บีช",
+  "name_zh": "榉木脚锉",
+  "color": "",
+  "size": ""
+ },
+ {
+  "sku": "PM-03",
+  "name_en": "Calf stretching equipment",
+  "name_th": "อุปกรณ์ยืด น่อง",
+  "name_zh": "小腿伸展设备",
+  "color": "",
+  "size": ""
+ },
+ {
+  "sku": "PM-04-A",
+  "name_en": "Foot Care Sticker",
+  "name_th": "แผ่นแปะเท้ากันเสียดสีแบบใส",
+  "name_zh": "透明防磨贴",
+  "color": "",
+  "size": ""
+ },
+ {
+  "sku": "PM-04-B",
+  "name_en": "Foot Care Sticker",
+  "name_th": "แผ่นแปะเท้ากันเสียดสีแบบใส",
+  "name_zh": "透明防磨贴",
+  "color": "",
+  "size": ""
+ },
+ {
+  "sku": "PM-04-C",
+  "name_en": "Foot Care Sticker",
+  "name_th": "แผ่นแปะเท้ากันเสียดสีแบบใส",
+  "name_zh": "透明防磨贴",
+  "color": "",
+  "size": ""
+ },
+ {
+  "sku": "PM-04-D",
+  "name_en": "Foot Care Sticker",
+  "name_th": "แผ่นแปะเท้ากันเสียดสีแบบใส",
+  "name_zh": "透明防磨贴",
+  "color": "",
+  "size": ""
+ },
+ {
+  "sku": "PM-04-E",
+  "name_en": "Foot Care Sticker",
+  "name_th": "แผ่นแปะเท้ากันเสียดสีแบบใส",
+  "name_zh": "透明防磨贴",
+  "color": "",
+  "size": ""
+ },
+ {
+  "sku": "PM-05",
+  "name_en": "Foot Insole",
+  "name_th": "แผ่นรองเท้า",
+  "name_zh": "鞋垫",
+  "color": "",
+  "size": ""
+ },
+ {
+  "sku": "PM-06",
+  "name_en": "Foot Massage Roller",
+  "name_th": "ลูกกลิ้งนวดฝ่าเท้า",
+  "name_zh": "足底按摩滚轮",
+  "color": "สีเทา",
+  "size": ""
+ },
+ {
+  "sku": "PM-07",
+  "name_en": "Foot arch trainer",
+  "name_th": "อุปกรณ์ฝึกรูปทรงเท้า",
+  "name_zh": "足弓训练器",
+  "color": "สีฟ้า",
+  "size": ""
+ },
+ {
+  "sku": "PM-08-A",
+  "name_en": "Heel protector",
+  "name_th": "อุปกรณ์ป้องกันส้นเท้า",
+  "name_zh": "硅胶后跟保护垫",
+  "color": "สีฟ้า",
+  "size": "33-39"
+ },
+ {
+  "sku": "PM-08-B",
+  "name_en": "Heel protector",
+  "name_th": "อุปกรณ์ป้องกันส้นเท้า",
+  "name_zh": "硅胶后跟保护垫",
+  "color": "สีเนื้อ",
+  "size": "36-40"
+ },
+ {
+  "sku": "PM-08-C",
+  "name_en": "Heel protector",
+  "name_th": "อุปกรณ์ป้องกันส้นเท้า",
+  "name_zh": "硅胶后跟保护垫",
+  "color": "สีฟ้า",
+  "size": "40-46"
+ },
+ {
+  "sku": "PM-08-D",
+  "name_en": "Heel protector",
+  "name_th": "อุปกรณ์ป้องกันส้นเท้า",
+  "name_zh": "硅胶后跟保护垫",
+  "color": "สีเนื้อ",
+  "size": "41-45"
+ },
+ {
+  "sku": "PM-08-E",
+  "name_en": "Heel protector",
+  "name_th": "อุปกรณ์ป้องกันส้นเท้า",
+  "name_zh": "硅胶后跟保护套(带绑带)",
+  "color": "สีเนื้อ",
+  "size": "L (40-45)"
+ },
+ {
+  "sku": "PM-08-F",
+  "name_en": "Heel protector",
+  "name_th": "อุปกรณ์ป้องกันส้นเท้า",
+  "name_zh": "硅胶后跟保护套(带绑带)",
+  "color": "สีเนื้อ",
+  "size": "S (35-39)"
+ },
+ {
+  "sku": "PM-09",
+  "name_en": "Knee brace",
+  "name_th": "อุปกรณ์พยุงข้อเข่า",
+  "name_zh": "护膝带",
+  "color": "สีดำ",
+  "size": ""
+ },
+ {
+  "sku": "PM-10",
+  "name_en": "Silicone heel pads",
+  "name_th": "แผ่นรองส้นเท้าซิลิโคน",
+  "name_zh": "后跟保护套",
+  "color": "",
+  "size": ""
+ },
+ {
+  "sku": "PM-11",
+  "name_en": "Silicone pinky finger separator",
+  "name_th": "ซิลิโคนคั่นนิ้วก้อย",
+  "name_zh": "硅胶小指分离器",
+  "color": "",
+  "size": ""
+ },
+ {
+  "sku": "PM-12-A",
+  "name_en": "Silicone socks",
+  "name_th": "ถุงเท้าซิลิโคน",
+  "name_zh": "硅胶足膜袜",
+  "color": "สีเขียว",
+  "size": ""
+ },
+ {
+  "sku": "PM-12-B",
+  "name_en": "Silicone socks",
+  "name_th": "ถุงเท้าซิลิโคน",
+  "name_zh": "硅胶足膜袜",
+  "color": "สีชมพู",
+  "size": ""
+ },
+ {
+  "sku": "PM-13",
+  "name_en": "Silicone toe separator 5 compartment",
+  "name_th": "ซิลิโคนแยกนิ้วเท้า5ช่อง",
+  "name_zh": "硅胶脚趾分离器(5隔间)",
+  "color": "",
+  "size": ""
+ },
+ {
+  "sku": "PM-14",
+  "name_en": "Silicone toe separator with 3 compartments",
+  "name_th": "ซิลิโคนแยกนิ้วเท้า3ช่อง",
+  "name_zh": "硅胶脚趾分离器(3隔间)",
+  "color": "",
+  "size": ""
+ },
+ {
+  "sku": "PM-15",
+  "name_en": "Stainless steel massage ball",
+  "name_th": "ลูกบอลสแตนเลสสำหรับนวด",
+  "name_zh": "不锈钢按摩球",
+  "color": "สีดำ",
+  "size": ""
+ },
+ {
+  "sku": "PM-16",
+  "name_en": "Thumb Separator",
+  "name_th": "อุปกรณ์แยกนิ้วหัวแม่เท้า",
+  "name_zh": "硅胶拇指分离器",
+  "color": "สีขาว",
+  "size": ""
+ },
+ {
+  "sku": "PM-17-A",
+  "name_en": "Toe pads",
+  "name_th": "แผ่นรองปลายเท้า",
+  "name_zh": "前掌垫硅胶",
+  "color": "สีเนื้อ",
+  "size": "L"
+ },
+ {
+  "sku": "PM-17-B",
+  "name_en": "Toe pads",
+  "name_th": "แผ่นรองปลายเท้า",
+  "name_zh": "前掌垫硅胶",
+  "color": "สีเนื้อ",
+  "size": "S"
+ },
+ {
+  "sku": "PM-17-C",
+  "name_en": "Toe pads",
+  "name_th": "แผ่นรองปลายเท้า",
+  "name_zh": "前掌垫硅胶",
+  "color": "สีเนื้อ",
+  "size": "XL"
+ },
+ {
+  "sku": "PM-18",
+  "name_en": "Yoga stretching band",
+  "name_th": "สายรัดยืดกล้ามเนื้อโยคะ",
+  "name_zh": "瑜伽伸展带",
+  "color": "สีดำ",
+  "size": ""
+ },
+ {
+  "sku": "PM-19",
+  "name_en": "toe separator",
+  "name_th": "ปลอกคั่นนิ้วโป้งเท้า",
+  "name_zh": "脚趾分离器",
+  "color": "",
+  "size": ""
+ }
+]

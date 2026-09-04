@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Package, PackageCheck, FileWarning, Layers, Plus, Pencil, Trash2, X, Check, FileSpreadsheet, SearchX } from 'lucide-react'
 import KpiCard from '../components/KpiCard'
+import PRODUCT_MASTER from '../data/productMaster.json'
+
+// snapshot จาก product_master.xlsx (LK repo) — อัพเดตแล้ว redeploy. ใช้เป็น datalist ตอนแจ้งของเข้า
+const PM_BY_SKU = Object.fromEntries(PRODUCT_MASTER.map((p) => [p.sku, p]))
+const pmLabel = (p) => [p.name_en, p.name_zh, [p.color, p.size].filter(Boolean).join(' ')].filter(Boolean).join(' · ')
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
 const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('th-TH', { maximumFractionDigits: 2 }))
@@ -452,6 +457,11 @@ function ArrivalModal({ initial, busy, onClose, onSave }) {
   }))
   const [lk, setLk] = useState(null) // null | 'loading' | {found,...}
   const set = (k) => (e) => setF((d) => ({ ...d, [k]: e.target.value }))
+  const setSku = (e) => setF((d) => {
+    const sku = e.target.value
+    const p = PM_BY_SKU[sku]
+    return { ...d, sku, item_name: (!d.item_name.trim() && p) ? (p.name_th || p.name_en) : d.item_name }
+  })
   const submit = (e) => { e.preventDefault(); if (!f.item_name.trim()) return; onSave(f) }
   const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
 
@@ -471,6 +481,7 @@ function ArrivalModal({ initial, busy, onClose, onSave }) {
           qty: r.qty || d.qty,
           weight_kg: r.weight_kg || d.weight_kg,
           cbm: r.cbm || d.cbm,
+          item_name: d.item_name || r.goods_zh || '',
           note: d.note || (r.goods_zh ? `LK: ${r.goods_zh}` : ''),
         }))
       }
@@ -501,10 +512,17 @@ function ArrivalModal({ initial, busy, onClose, onSave }) {
         </div>
 
         <div style={grid}>
-          <div><label style={labelStyle}>SKU (product_master)</label><input value={f.sku} onChange={set('sku')} style={inputStyle} placeholder="LK-09" /></div>
+          <div>
+            <label style={labelStyle}>SKU (product_master)</label>
+            <input value={f.sku} onChange={setSku} list="pm-skus" style={inputStyle} placeholder="PM-15" />
+            <datalist id="pm-skus">
+              {PRODUCT_MASTER.map((p) => <option key={p.sku} value={p.sku}>{pmLabel(p)}</option>)}
+            </datalist>
+            {PM_BY_SKU[f.sku] && <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 4 }}>{pmLabel(PM_BY_SKU[f.sku])}</div>}
+          </div>
           <div><label style={labelStyle}>ชื่อลับ</label><input value={f.codename} onChange={set('codename')} style={inputStyle} placeholder="กุ้งดำ" /></div>
         </div>
-        <div><label style={labelStyle}>ชื่อสินค้า</label><input value={f.item_name} onChange={set('item_name')} required style={inputStyle} /></div>
+        <div><label style={labelStyle}>ชื่อสินค้า</label><input value={f.item_name} onChange={set('item_name')} required style={inputStyle} placeholder="เลือก SKU แล้วเติมให้ หรือพิมพ์เอง" /></div>
         <div><label style={labelStyle}>CTN number</label><input value={f.ctn_no} onChange={set('ctn_no')} style={inputStyle} placeholder="SPK2026...." /></div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
           <div><label style={labelStyle}>กล่อง</label><input type="number" value={f.box_count} onChange={set('box_count')} style={inputStyle} /></div>
