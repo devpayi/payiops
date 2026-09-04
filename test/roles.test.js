@@ -50,10 +50,15 @@ test('Finance role sees CFO + Fulfillment only', () => {
   assert.equal(canManageFinance('staff'), false)
 })
 
-test('Tang role sees Fulfillment only', () => {
-  assert.equal(canAccessTab('tang', 'Fulfillment'), true)
+test('Tang role sees staff pages plus Fulfillment', () => {
+  for (const tab of ['Executive', 'Monthly', 'Products', 'Inventory', 'Stock Movement', 'Fulfillment']) {
+    assert.equal(canAccessTab('tang', tab), true, tab)
+  }
   assert.equal(canAccessTab('tang', 'CFO'), false)
-  assert.equal(canAccessTab('tang', 'Executive'), false)
-  assert.equal(canAccessTab('tang', 'Inventory'), false)
+  assert.equal(canAccessTab('tang', 'Import Orders'), false)
   assert.equal(canManageOperations('tang'), false)
+})
+
+test('plain staff does not get Fulfillment', () => {
+  assert.equal(canAccessTab('staff', 'Fulfillment'), false)
 })

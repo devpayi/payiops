@@ -26,8 +26,9 @@ export const MARKETING_TABS = Object.freeze(['Executive', 'Monthly', 'Products',
 // เพราะนั่นจะให้สิทธิ์ Inventory/HR/OT ไปด้วยซึ่งเกินขอบเขต (ตาม pattern เดียวกับ marketing ด้านบน)
 export const FINANCE_TABS = Object.freeze(['CFO', 'Fulfillment'])
 
-// role แคบสำหรับ tang — เห็นแค่ Fulfillment อย่างเดียว (ไม่ใช่ staff, ไม่ปนกับ canManageOperations)
-export const TANG_TABS = Object.freeze(['Fulfillment'])
+// tang (แตง) — เหมือน staff + เห็นหน้า Fulfillment ด้วย. แยก role ไว้เพื่อไม่ให้ staff คนอื่น
+// เห็น Fulfillment (มีข้อมูลค่าแรง/OT/ต้นทุน) โดยอัตโนมัติ
+export const TANG_TABS = Object.freeze([...STAFF_TABS, 'Fulfillment'])
 
 const BOSS_HIDDEN_TABS = new Set(['Import Orders', 'Dev Hub', 'Settings'])
 const STAFF_TAB_SET = new Set(STAFF_TABS)
