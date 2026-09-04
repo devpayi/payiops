@@ -600,71 +600,95 @@ function groupCartons(cartons) {
 
 function ProformaModal({ lot, busy, onClose, onMarkDone }) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
-  const [draft, setDraft] = useState('loading') // 'loading' | { groups, warnings }
+  const [rows, setRows] = useState(null) // null | [{ id, item_name, qty, sku, sku0, cartons, carton_src }]
   const [info, setInfo] = useState({ invoice_date: today, shipping_mark: lot.lot_ref ? `LK/${lot.lot_ref}` : '', consignee_to: PROFORMA_CONSIGNEE })
   const [gen, setGen] = useState('') // '' | 'working' | 'done' | error string
 
-  // ── ดึงรายละเอียด: LK carton ต่อ arrival + จับคู่ product_master + จัดกลุ่ม ──
-  const buildDraft = useCallback(async () => {
-    const warnings = []
-    const perArrival = []
+  // ── ดึงกล่องจากชีท LK ต่อ arrival (ครั้งเดียวตอนเปิด) ──
+  const load = useCallback(async () => {
+    const out = []
     for (const a of lot.arrivals) {
-      const pm = a.sku ? PM_BY_SKU[a.sku] : null
-      if (!a.sku) warnings.push(`${a.item_name || '(ไม่มีชื่อ)'} — ยังไม่ใส่ SKU`)
-      else if (!pm) warnings.push(`${a.sku} — ไม่มีใน product_master (เพิ่มแถวก่อน)`)
       let cartons = []
+      let carton_src = ''
       if (a.shipping_no) {
         try {
           const q = new URLSearchParams({ view: 'lk-lookup', shipping_no: a.shipping_no, date: a.arrive_date || '' })
           const r = await fetch(`${API}&${q}`).then((x) => x.json())
-          if (r.found && r.cartons?.length) cartons = groupCartons(r.cartons)
+          if (r.found && r.cartons?.length) { cartons = groupCartons(r.cartons); carton_src = 'LK' }
         } catch { /* noop */ }
       }
-      if (!cartons.length) {
-        if (pm && (pm.box_l_cm || pm.carton_weight_kg)) {
-          cartons = [{ count: 1, wt: +pm.carton_weight_kg || 0, l: +pm.box_l_cm || 0, w: +pm.box_w_cm || 0, h: +pm.box_h_cm || 0 }]
-          warnings.push(`${a.sku || a.item_name} — ไม่เจอกล่องในชีท LK ใช้ขนาดกล่องจาก product_master (1 กล่อง)`)
-        } else {
-          warnings.push(`${a.sku || a.item_name} — ไม่มีข้อมูลกล่อง (LK + product_master ว่าง)`)
-        }
-      }
-      perArrival.push({
-        sku: a.sku || '', qty: a.qty || 0,
-        name_en: pm?.name_en || a.item_name || a.sku || '',
-        name_th: pm?.name_th || '',
-        description: pm?.description_zh || pm?.description_th || a.item_name || '',
-        cartons,
-      })
+      out.push({ id: a.id, item_name: a.item_name || '', qty: a.qty || 0, sku: a.sku || '', sku0: a.sku || '', cartons, carton_src })
     }
-    // จัดกลุ่ม: arrival ติดกันที่ name_en เดียวกัน = 1 No.
-    const groups = []
-    for (const it of perArrival) {
-      const last = groups[groups.length - 1]
-      if (last && last.name_en === it.name_en) last.rows.push(it)
-      else groups.push({ no: groups.length + 1, name_en: it.name_en, name_th: it.name_th, sku0: it.sku, rows: [it] })
-    }
-    groups.forEach((g, i) => { g.no = i + 1 })
-    return { groups, warnings }
+    return out
   }, [lot])
 
   useEffect(() => {
     let alive = true
-    buildDraft().then((d) => { if (alive) setDraft(d) })
+    load().then((d) => { if (alive) setRows(d) })
     return () => { alive = false }
-  }, [buildDraft])
+  }, [load])
+
+  const setSku = (id, sku) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, sku } : r)))
+
+  // ── derive: ผูก product_master + กล่อง fallback + จัดกลุ่ม ──
+  const view = useMemo(() => {
+    if (!rows) return null
+    const enriched = rows.map((r) => {
+      const pm = r.sku ? PM_BY_SKU[r.sku] : null
+      let cartons = r.cartons
+      let cartonNote = r.carton_src === 'LK' ? '' : 'ไม่เจอกล่องในชีท LK'
+      if (!cartons.length && pm && (pm.box_l_cm || pm.carton_weight_kg)) {
+        cartons = [{ count: 1, wt: +pm.carton_weight_kg || 0, l: +pm.box_l_cm || 0, w: +pm.box_w_cm || 0, h: +pm.box_h_cm || 0 }]
+        cartonNote = 'ใช้ขนาดกล่องจาก product_master (1 กล่อง)'
+      }
+      return {
+        ...r, pm, cartons, cartonNote,
+        name_en: pm?.name_en || r.item_name || r.sku || '',
+        name_th: pm?.name_th || '',
+        description: pm?.description_zh || pm?.description_th || r.item_name || '',
+        boxes: cartons.reduce((s, c) => s + c.count, 0),
+        wt: cartons.reduce((s, c) => s + c.count * c.wt, 0),
+        cbm: cartons.reduce((s, c) => s + c.count * c.l * c.w * c.h / 1e6, 0),
+      }
+    })
+    const groups = []
+    for (const it of enriched) {
+      const last = groups[groups.length - 1]
+      if (last && it.name_en && last.name_en === it.name_en) last.rows.push(it)
+      else groups.push({ name_en: it.name_en, rows: [it] })
+    }
+    groups.forEach((g, i) => { g.no = i + 1 })
+    const warnings = []
+    for (const it of enriched) {
+      if (!it.sku) warnings.push(`"${it.item_name || 'ไม่มีชื่อ'}" — ยังไม่จับคู่ SKU`)
+      else if (!it.pm) warnings.push(`${it.sku} — ไม่มีใน product_master (เพิ่มแถว + redeploy)`)
+      else if (!it.cartons.length) warnings.push(`${it.name_en} — ไม่มีข้อมูลกล่องเลย`)
+    }
+    const totals = enriched.reduce((t, r) => ({
+      qty: t.qty + Number(r.qty || 0), boxes: t.boxes + r.boxes, wt: t.wt + r.wt, cbm: t.cbm + r.cbm,
+    }), { qty: 0, boxes: 0, wt: 0, cbm: 0 })
+    const missingSku = enriched.filter((r) => !r.sku).length
+    return { groups, enriched, warnings, totals, missingSku }
+  }, [rows])
 
   const makeFile = async () => {
-    if (!draft || draft === 'loading') return
+    if (!view) return
     setGen('working')
     try {
+      // 1) จำ sku ที่เพิ่งจับคู่ (arrival + ชื่อ->sku ครั้งหน้าไม่ต้องเลือกซ้ำ)
+      const changed = rows.filter((r) => r.sku && r.sku !== r.sku0).map((r) => ({ id: r.id, sku: r.sku }))
+      if (changed.length) {
+        await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set-arrival-skus', items: changed }) })
+      }
+      // 2) สร้างไฟล์
       const [{ generateProforma }, imagesMod] = await Promise.all([
         import('../lib/proformaXlsx'),
         import('../data/productImages.json'),
       ])
       const images = imagesMod.default || imagesMod
-      const groups = draft.groups.map((g) => ({
-        no: g.no, name_en: g.name_en, name_th: g.name_th,
-        image: images[g.sku0] || null,
+      const groups = view.groups.map((g, i) => ({
+        no: i + 1, name_en: g.name_en, name_th: g.rows[0].name_th,
+        image: images[g.rows[0].sku] || null,
         rows: g.rows.map((r) => ({ sku: r.sku, qty: r.qty, description: r.description, cartons: r.cartons })),
       }))
       const { blob } = await generateProforma(
@@ -684,17 +708,8 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
     }
   }
 
-  const totals = draft && draft !== 'loading'
-    ? draft.groups.flatMap((g) => g.rows).reduce((t, r) => {
-      const boxes = r.cartons.reduce((s, c) => s + c.count, 0)
-      const wt = r.cartons.reduce((s, c) => s + c.count * c.wt, 0)
-      const cbm = r.cartons.reduce((s, c) => s + c.count * c.l * c.w * c.h / 1e6, 0)
-      return { qty: t.qty + Number(r.qty || 0), boxes: t.boxes + boxes, wt: t.wt + wt, cbm: t.cbm + cbm }
-    }, { qty: 0, boxes: 0, wt: 0, cbm: 0 })
-    : null
-
   return (
-    <Modal title="ออกไฟล์ Proforma Invoice + Packing List" onClose={onClose} width={620}>
+    <Modal title="ออกไฟล์ Proforma Invoice + Packing List" onClose={onClose} width={640}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: 13, color: 'var(--payi-text)' }}>
         {!lot.all_pink_slip && (
           <div style={{ background: 'var(--payi-warning-bg)', color: 'var(--payi-warning)', borderRadius: 10, padding: '10px 12px', fontWeight: 700 }}>
@@ -702,61 +717,54 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
           </div>
         )}
 
-        {draft === 'loading' && <div style={{ color: 'var(--payi-text-muted)' }}>กำลังดึงรายละเอียด (product_master + กล่องจากชีท LK)...</div>}
+        {!view && <div style={{ color: 'var(--payi-text-muted)' }}>กำลังดึงกล่องจากชีท LK...</div>}
 
-        {draft && draft !== 'loading' && (
+        {view && (
           <>
-            {/* ดราฟรายการ */}
-            <div style={{ border: '1px solid var(--payi-border)', borderRadius: 10, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: 'var(--payi-surface-muted)', textAlign: 'left' }}>
-                    <th style={{ padding: '6px 8px' }}>No.</th><th style={{ padding: '6px 8px' }}>สินค้า</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>จำนวน</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>กล่อง</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>กก.รวม</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>CBM</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {draft.groups.flatMap((g) => g.rows.map((r, ri) => {
-                    const boxes = r.cartons.reduce((s, c) => s + c.count, 0)
-                    const wt = r.cartons.reduce((s, c) => s + c.count * c.wt, 0)
-                    const cbm = r.cartons.reduce((s, c) => s + c.count * c.l * c.w * c.h / 1e6, 0)
-                    return (
-                      <tr key={g.no + '-' + ri} style={{ borderTop: '1px solid var(--payi-border)' }}>
-                        <td style={{ padding: '6px 8px', color: 'var(--payi-text-faint)' }}>{ri === 0 ? g.no : ''}</td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <div>{r.name_en || <span style={{ color: 'var(--payi-danger)' }}>ไม่มีชื่อ</span>}{r.sku ? <span style={{ color: 'var(--payi-text-faint)' }}> · {r.sku}</span> : <span style={{ color: 'var(--payi-danger)' }}> · ไม่มี SKU</span>}</div>
-                          <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>{r.name_th}{r.description ? ` — ${String(r.description).slice(0, 60)}` : ''}</div>
-                        </td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>{fmt(r.qty)}</td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>{boxes}</td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>{wt.toFixed(1)}</td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>{cbm.toFixed(2)}</td>
-                      </tr>
-                    )
-                  }))}
-                  {totals && (
-                    <tr style={{ borderTop: '2px solid var(--payi-border)', fontWeight: 700 }}>
-                      <td colSpan={2} style={{ padding: '6px 8px' }}>รวม</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{fmt(totals.qty)}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{totals.boxes}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{totals.wt.toFixed(1)}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{totals.cbm.toFixed(2)}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+            <datalist id="proforma-skus">
+              {PRODUCT_MASTER.map((p) => <option key={p.sku} value={p.sku}>{pmLabel(p)}</option>)}
+            </datalist>
+
+            {/* รายการในลอต — จับคู่ SKU ตรงนี้ได้เลย */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {view.groups.map((g, gi) => g.rows.map((r, ri) => (
+                <div key={r.id} style={{ border: '1px solid var(--payi-border)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 6, background: r.sku ? 'transparent' : 'var(--payi-warning-bg)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontWeight: 600 }}>
+                      {ri === 0 ? `${gi + 1}. ` : ''}{r.name_en || <span style={{ color: 'var(--payi-danger)' }}>—</span>}
+                      <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)' }}> · {fmt(r.qty)} ชิ้น · {r.boxes} กล่อง · {r.wt.toFixed(1)} กก. · {r.cbm.toFixed(2)} CBM</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>
+                    ของเข้า: {r.item_name || '(ไม่มีชื่อ)'}{r.cartonNote ? ` · ${r.cartonNote}` : ''}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      value={r.sku}
+                      onChange={(e) => setSku(r.id, e.target.value.trim())}
+                      list="proforma-skus"
+                      placeholder="จับคู่ SKU (พิมพ์ชื่อ/รหัส)"
+                      style={{ ...inputStyle, flex: '0 0 190px', fontFamily: 'monospace' }}
+                    />
+                    <div style={{ fontSize: 11, color: r.pm ? 'var(--payi-success)' : 'var(--payi-text-faint)' }}>
+                      {r.pm ? `${r.pm.name_en} · ${r.description.slice(0, 44)}` : r.sku ? 'ไม่พบใน product_master' : 'เลือกครั้งเดียว ครั้งหน้าจำให้'}
+                    </div>
+                  </div>
+                </div>
+              )))}
             </div>
 
-            {draft.warnings.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, padding: '4px 2px' }}>
+              <span>รวม {view.groups.length} รายการ</span>
+              <span>{fmt(view.totals.qty)} ชิ้น · {view.totals.boxes} กล่อง · {view.totals.wt.toFixed(1)} กก. · {view.totals.cbm.toFixed(2)} CBM</span>
+            </div>
+
+            {view.warnings.length > 0 && (
               <div style={{ background: 'var(--payi-warning-bg)', color: 'var(--payi-warning)', borderRadius: 10, padding: '10px 12px', fontSize: 12, lineHeight: 1.6 }}>
-                {draft.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
+                {view.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
               </div>
             )}
 
-            {/* หัวเอกสาร */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div><label style={labelStyle}>วันที่ออก (DATE)</label><input type="date" value={info.invoice_date} onChange={(e) => setInfo((d) => ({ ...d, invoice_date: e.target.value }))} style={inputStyle} /></div>
               <div><label style={labelStyle}>Shipping mark</label><input value={info.shipping_mark} onChange={(e) => setInfo((d) => ({ ...d, shipping_mark: e.target.value }))} style={inputStyle} placeholder="LK/A24xxx-1(EK)" /></div>
@@ -766,8 +774,8 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
             {gen && gen !== 'working' && gen !== 'done' && <div style={{ color: 'var(--payi-danger)', fontSize: 12 }}>{gen}</div>}
             {gen === 'done' && <div style={{ color: 'var(--payi-success)', fontSize: 12, fontWeight: 700 }}>✓ ดาวน์โหลดไฟล์แล้ว — เปิดไฟล์ใส่ Unit Price ให้พี่หยก แล้วส่ง LK</div>}
 
-            <button onClick={makeFile} disabled={busy || gen === 'working'} style={{ ...primaryBtn, justifyContent: 'center', padding: '12px 16px', fontSize: 14, opacity: (busy || gen === 'working') ? 0.6 : 1 }}>
-              {gen === 'working' ? 'กำลังสร้างไฟล์...' : 'คอนเฟิร์ม — สร้างไฟล์ Proforma'}
+            <button onClick={makeFile} disabled={busy || gen === 'working' || view.missingSku > 0} style={{ ...primaryBtn, justifyContent: 'center', padding: '12px 16px', fontSize: 14, opacity: (busy || gen === 'working' || view.missingSku > 0) ? 0.5 : 1 }}>
+              {gen === 'working' ? 'กำลังสร้างไฟล์...' : view.missingSku > 0 ? `จับคู่ SKU ให้ครบก่อน (เหลือ ${view.missingSku})` : 'คอนเฟิร์ม — สร้างไฟล์ Proforma'}
             </button>
             <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', textAlign: 'center' }}>ไฟล์ที่ได้เหลือแค่ช่อง Unit Price ที่รอกรอก</div>
           </>

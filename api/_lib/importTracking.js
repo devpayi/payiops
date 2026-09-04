@@ -68,6 +68,9 @@ async function lkLookup(shippingNo, dateHint) {
 
 const ARRIVALS = 'import_arrivals'
 const LOTS = 'import_lots'
+const ALIAS = 'import_sku_alias' // จำ: ชื่อสินค้า (จากชีท LK / ที่พิมพ์) -> sku ใน product_master
+const ALIAS_HEADERS = ['key', 'sku', 'updated_at']
+const aliasKey = (s) => String(s || '').trim().toLowerCase()
 
 // ต่อท้ายเท่านั้น (ห้ามแทรกกลาง)
 const ARRIVAL_HEADERS = [
@@ -119,7 +122,37 @@ let ensurePromise
 const ensureAll = () => (ensurePromise ||= Promise.all([
   ensureSheet(ARRIVALS, ARRIVAL_HEADERS),
   ensureSheet(LOTS, LOT_HEADERS),
+  ensureSheet(ALIAS, ALIAS_HEADERS),
 ]))
+
+async function loadAliasMap() {
+  try {
+    const rows = await getSheet(ALIAS)
+    const m = {}
+    for (const r of rows) if (r.key && r.sku) m[aliasKey(r.key)] = String(r.sku).trim()
+    return m
+  } catch { return {} }
+}
+
+// จำคู่ ชื่อ->sku (ทับของเดิม). keys/skus = อาเรย์ยาวเท่ากัน
+async function learnAliases(pairs) {
+  if (!pairs?.length) return { learned: 0 }
+  await ensureAll()
+  const rows = await getSheet(ALIAS)
+  const idx = new Map(rows.map((r, i) => [aliasKey(r.key), i]))
+  const now = new Date().toISOString()
+  let n = 0
+  for (const { key, sku } of pairs) {
+    const k = aliasKey(key)
+    if (!k || !String(sku || '').trim()) continue
+    const rec = { key: String(key).trim(), sku: String(sku).trim(), updated_at: now }
+    if (idx.has(k)) rows[idx.get(k)] = rec
+    else { rows.push(rec); idx.set(k, rows.length - 1) }
+    n++
+  }
+  if (n) await overwriteSheet(ALIAS, ALIAS_HEADERS, rows.map((r) => ALIAS_HEADERS.map((h) => r[h] ?? '')))
+  return { learned: n }
+}
 
 function shapeArrival(r) {
   const out = { id: r.id }
@@ -171,8 +204,14 @@ function shapeLot(r, arrivals) {
 
 async function loadAll() {
   await ensureAll()
-  const [arrRows, lotRows] = await Promise.all([getSheet(ARRIVALS), getSheet(LOTS)])
+  const [arrRows, lotRows, aliasMap] = await Promise.all([getSheet(ARRIVALS), getSheet(LOTS), loadAliasMap()])
   const arrivals = arrRows.filter((r) => r.id).map(shapeArrival)
+  // เติม sku จากที่จำไว้ (ชื่อสินค้า -> sku) ถ้ายังไม่มี
+  for (const a of arrivals) {
+    if (a.sku) continue
+    const hit = aliasMap[aliasKey(a.item_name)]
+    if (hit) { a.sku = hit; a.sku_auto = true; a.needs_review = a.lk_missing || a.qty == null }
+  }
   const byLot = new Map()
   for (const a of arrivals) {
     if (!a.lot_id) continue
@@ -194,6 +233,7 @@ async function loadAll() {
     lots: lots.length,
     pendingDocs: lots.filter((l) => l.stage !== 'closed' && l.docs_done < l.docs_total).length,
     lkMissing: unassigned.filter((a) => a.lk_missing).length,
+    needSku: unassigned.filter((a) => !a.sku).length,
   }
   return { arrivals, unassigned, lots, totals, stages: STAGES }
 }
@@ -246,7 +286,7 @@ async function upsertArrival(body) {
 // กันซ้ำด้วย shipping_no (มีอยู่แล้ว = ข้าม). ไม่ throw ทั้งฟังก์ชัน — ให้ webhook เงียบเสมอ
 export async function createArrivalsFromShipping(shippingNos, dateHint) {
   await ensureAll()
-  const rows = await getSheet(ARRIVALS)
+  const [rows, aliasMap] = await Promise.all([getSheet(ARRIVALS), loadAliasMap()])
   const existing = new Set(rows.filter((r) => r.id).map((r) => String(r.shipping_no || '').trim()).filter(Boolean))
   const now = new Date().toISOString()
   const today = todayBKK()
@@ -272,6 +312,8 @@ export async function createArrivalsFromShipping(shippingNos, dateHint) {
       row.weight_kg = lk.weight_kg || ''
       row.cbm = lk.cbm || ''
       row.note = `LK ${lk.tab}: ${lk.goods_zh || ''}`.trim()
+      const alias = aliasMap[aliasKey(row.item_name)]
+      if (alias) row.sku = alias
     } else {
       row.item_name = `SHIPPING ${s}`
       row.note = `⚠ ไม่เจอในชีท LK (จากไลน์ ${today}) — เช็คเลขในกลุ่มไลน์อีกที / กรอกมือ`
@@ -283,6 +325,31 @@ export async function createArrivalsFromShipping(shippingNos, dateHint) {
     await overwriteSheet(ARRIVALS, ARRIVAL_HEADERS, rows.map((r) => ARRIVAL_HEADERS.map((h) => r[h] ?? '')))
   }
   return { added, total: (shippingNos || []).length }
+}
+
+// กำหนด sku ให้ของเข้าหลายแถวรวดเดียว + จำ ชื่อ->sku ไว้ใช้ครั้งหน้า
+// items = [{ id, sku }]
+async function setArrivalSkus(items) {
+  const list = (items || []).filter((x) => x && x.id && String(x.sku || '').trim())
+  if (!list.length) throw new Error('ต้องระบุ items')
+  await ensureAll()
+  const rows = await getSheet(ARRIVALS)
+  const byId = new Map(rows.map((r) => [String(r.id), r]))
+  const now = new Date().toISOString()
+  const pairs = []
+  let hit = 0
+  for (const { id, sku } of list) {
+    const r = byId.get(String(id))
+    if (!r) continue
+    r.sku = String(sku).trim()
+    r.updated_at = now
+    hit++
+    if (r.item_name) pairs.push({ key: r.item_name, sku: r.sku })
+  }
+  if (!hit) throw new Error('ไม่พบรายการของเข้า')
+  await overwriteSheet(ARRIVALS, ARRIVAL_HEADERS, rows.map((r) => ARRIVAL_HEADERS.map((h) => r[h] ?? '')))
+  const { learned } = await learnAliases(pairs)
+  return { updated: hit, learned }
 }
 
 async function deleteArrival(id) {
@@ -392,6 +459,7 @@ export default async function opImportTracking(req, res) {
         'upsert-arrival': () => upsertArrival(req.body),
         'delete-arrival': () => deleteArrival(req.body?.id),
         'assign-arrivals': () => assignArrivals(req.body?.arrival_ids, req.body?.lot_id),
+        'set-arrival-skus': () => setArrivalSkus(req.body?.items),
         'upsert-lot': () => upsertLot(req.body),
         'delete-lot': () => deleteLot(req.body?.id),
       }
