@@ -511,7 +511,7 @@ export default function Fulfillment() {
       <div style={card}>
         <h3 style={{ margin: '0 0 4px', fontSize: 14 }}>ควร / ไม่ควร ย้ายเข้า FBS — รายกลุ่มสินค้า <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)', fontSize: 12 }}>Shopee เท่านั้น</span><InfoTip note={NOTE.byProduct} /></h3>
         <div style={{ color: 'var(--payi-text-muted)', fontSize: 11.5, marginBottom: 12 }}>
-          เฉพาะออเดอร์ Shopee ที่มีคอลัมน์ "ตัวเลือกการจัดส่ง" (เก็บตั้งแต่ ก.ย. 2026). TikTok / Lazada ไม่มีข้อมูลในไฟล์ export — เข้าดูที่แพลตฟอร์มโดยตรง.<br />
+          <b style={{ color: 'var(--payi-text)' }}>ตัวเลขนี้เฉพาะ Shopee เท่านั้น</b> — TikTok / Lazada ดูที่แพลตฟอร์มโดยตรง.<br />
           ควร FBS = ส่งด่วน &lt;20% + ส่งธรรมดา/FBS รวม ≥55%. เก็บแพ็คเอง = ส่งด่วน ≥25%.
           "ส่ง ~X/รอบ" = ชิ้นแนะนำส่ง FBS ต่อรอบเติม (≈ demand ส่งธรรมดา 1 เดือน{data.byProductMeta?.dataMonths ? `, จากข้อมูล ${data.byProductMeta.dataMonths} เดือน` : ''})
         </div>
