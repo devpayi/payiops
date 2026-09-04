@@ -578,78 +578,193 @@ function LotModal({ initial, busy, onClose, onSave }) {
   )
 }
 
-function ProformaModal({ lot, busy, onClose, onMarkDone }) {
-  const itemsList = lot.arrivals.map((a) => `${a.sku || '(ไม่มี sku)'}\t${a.qty ?? ''}`).join('\n')
-  const [cartons, setCartons] = useState(null) // null | 'loading' | { rows:[[sku,n,wt,l,w,h]], missing:[shipping_no] }
+// ค่าคงที่หัวเอกสาร proforma (แก้ที่เดียว)
+const PROFORMA_SUPPLIER = '晋江熠晓贸易有限公司'
+const PROFORMA_CONSIGNEE = 'บริษัท ปลาใหญ่ มาร์เก็ตติ้ง จำกัด (สำนักงานใหญ่)\n79 ซอยงามวงศ์วาน 23 ตำบลบางเขน อำเภอเมืองนนทบุรี จังหวัดนนทบุรี 11000'
 
-  const pullCartons = async () => {
-    setCartons('loading')
-    const rows = []
-    const missing = []
+// จับกลุ่มกล่องเหมือนกัน (wt|l|w|h) จาก lk-lookup.cartons
+function groupCartons(cartons) {
+  const m = new Map()
+  for (const c of cartons || []) {
+    const key = `${c.wt}|${c.l}|${c.w}|${c.h}`
+    const g = m.get(key) || { count: 0, wt: +c.wt || 0, l: +c.l || 0, w: +c.w || 0, h: +c.h || 0 }
+    g.count += c.box || 1
+    m.set(key, g)
+  }
+  return [...m.values()]
+}
+
+function ProformaModal({ lot, busy, onClose, onMarkDone }) {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+  const [draft, setDraft] = useState('loading') // 'loading' | { groups, warnings }
+  const [info, setInfo] = useState({ invoice_date: today, shipping_mark: lot.lot_ref ? `LK/${lot.lot_ref}` : '', consignee_to: PROFORMA_CONSIGNEE })
+  const [gen, setGen] = useState('') // '' | 'working' | 'done' | error string
+
+  // ── ดึงรายละเอียด: LK carton ต่อ arrival + จับคู่ product_master + จัดกลุ่ม ──
+  const buildDraft = useCallback(async () => {
+    const warnings = []
+    const perArrival = []
     for (const a of lot.arrivals) {
-      if (!a.shipping_no) { missing.push(a.sku || a.item_name); continue }
-      try {
-        const q = new URLSearchParams({ view: 'lk-lookup', shipping_no: a.shipping_no, date: a.arrive_date || '' })
-        const r = await fetch(`${API}&${q}`).then((x) => x.json())
-        if (!r.found || !r.cartons?.length) { missing.push(a.shipping_no); continue }
-        // จับกลุ่มกล่องที่เหมือนกัน (wt+L+W+H)
-        const grp = new Map()
-        for (const c of r.cartons) {
-          const key = `${c.wt}|${c.l}|${c.w}|${c.h}`
-          grp.set(key, (grp.get(key) || 0) + (c.box || 1))
+      const pm = a.sku ? PM_BY_SKU[a.sku] : null
+      if (!a.sku) warnings.push(`${a.item_name || '(ไม่มีชื่อ)'} — ยังไม่ใส่ SKU`)
+      else if (!pm) warnings.push(`${a.sku} — ไม่มีใน product_master (เพิ่มแถวก่อน)`)
+      let cartons = []
+      if (a.shipping_no) {
+        try {
+          const q = new URLSearchParams({ view: 'lk-lookup', shipping_no: a.shipping_no, date: a.arrive_date || '' })
+          const r = await fetch(`${API}&${q}`).then((x) => x.json())
+          if (r.found && r.cartons?.length) cartons = groupCartons(r.cartons)
+        } catch { /* noop */ }
+      }
+      if (!cartons.length) {
+        if (pm && (pm.box_l_cm || pm.carton_weight_kg)) {
+          cartons = [{ count: 1, wt: +pm.carton_weight_kg || 0, l: +pm.box_l_cm || 0, w: +pm.box_w_cm || 0, h: +pm.box_h_cm || 0 }]
+          warnings.push(`${a.sku || a.item_name} — ไม่เจอกล่องในชีท LK ใช้ขนาดกล่องจาก product_master (1 กล่อง)`)
+        } else {
+          warnings.push(`${a.sku || a.item_name} — ไม่มีข้อมูลกล่อง (LK + product_master ว่าง)`)
         }
-        for (const [key, n] of grp) {
-          const [wt, l, w, h] = key.split('|')
-          rows.push([a.sku || '', n, wt, l, w, h])
-        }
-      } catch { missing.push(a.shipping_no) }
+      }
+      perArrival.push({
+        sku: a.sku || '', qty: a.qty || 0,
+        name_en: pm?.name_en || a.item_name || a.sku || '',
+        name_th: pm?.name_th || '',
+        description: pm?.description_zh || pm?.description_th || a.item_name || '',
+        cartons,
+      })
     }
-    setCartons({ rows, missing })
+    // จัดกลุ่ม: arrival ติดกันที่ name_en เดียวกัน = 1 No.
+    const groups = []
+    for (const it of perArrival) {
+      const last = groups[groups.length - 1]
+      if (last && last.name_en === it.name_en) last.rows.push(it)
+      else groups.push({ no: groups.length + 1, name_en: it.name_en, name_th: it.name_th, sku0: it.sku, rows: [it] })
+    }
+    groups.forEach((g, i) => { g.no = i + 1 })
+    return { groups, warnings }
+  }, [lot])
+
+  useEffect(() => {
+    let alive = true
+    buildDraft().then((d) => { if (alive) setDraft(d) })
+    return () => { alive = false }
+  }, [buildDraft])
+
+  const makeFile = async () => {
+    if (!draft || draft === 'loading') return
+    setGen('working')
+    try {
+      const [{ generateProforma }, imagesMod] = await Promise.all([
+        import('../lib/proformaXlsx'),
+        import('../data/productImages.json'),
+      ])
+      const images = imagesMod.default || imagesMod
+      const groups = draft.groups.map((g) => ({
+        no: g.no, name_en: g.name_en, name_th: g.name_th,
+        image: images[g.sku0] || null,
+        rows: g.rows.map((r) => ({ sku: r.sku, qty: r.qty, description: r.description, cartons: r.cartons })),
+      }))
+      const { blob } = await generateProforma(
+        { supplier_name_zh: PROFORMA_SUPPLIER, invoice_date: info.invoice_date, consignee_to: info.consignee_to },
+        groups,
+      )
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `PROFORMA ${lot.lot_ref || lot.id} (${info.invoice_date}).xlsx`
+      link.click()
+      URL.revokeObjectURL(url)
+      setGen('done')
+      onMarkDone()
+    } catch (e) {
+      setGen('สร้างไฟล์ไม่สำเร็จ: ' + e.message)
+    }
   }
 
-  const cartonText = cartons && cartons !== 'loading'
-    ? cartons.rows.map((r) => r.join('\t')).join('\n')
-    : ''
+  const totals = draft && draft !== 'loading'
+    ? draft.groups.flatMap((g) => g.rows).reduce((t, r) => {
+      const boxes = r.cartons.reduce((s, c) => s + c.count, 0)
+      const wt = r.cartons.reduce((s, c) => s + c.count * c.wt, 0)
+      const cbm = r.cartons.reduce((s, c) => s + c.count * c.l * c.w * c.h / 1e6, 0)
+      return { qty: t.qty + Number(r.qty || 0), boxes: t.boxes + boxes, wt: t.wt + wt, cbm: t.cbm + cbm }
+    }, { qty: 0, boxes: 0, wt: 0, cbm: 0 })
+    : null
 
   return (
-    <Modal title="สร้าง Proforma Invoice + Packing List" onClose={onClose} width={580}>
+    <Modal title="ออกไฟล์ Proforma Invoice + Packing List" onClose={onClose} width={620}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: 13, color: 'var(--payi-text)' }}>
         {!lot.all_pink_slip && (
           <div style={{ background: 'var(--payi-warning-bg)', color: 'var(--payi-warning)', borderRadius: 10, padding: '10px 12px', fontWeight: 700 }}>
-            ⚠ ลอตนี้ยังมีของที่ยังไม่ได้ใบชมพู — ทำ proforma ได้ แต่ของอาจยังมาไม่ครบ
+            ⚠ ลอตนี้ยังมีของที่ยังไม่ได้ใบชมพู — ออกไฟล์ได้ แต่ของอาจยังมาไม่ครบ
           </div>
         )}
 
-        <div>
-          <b>1. order_items</b> — วางลงชีท <code>order_items</code> ของ <code>product_master.xlsx</code>:
-        </div>
-        <pre style={{ background: 'var(--payi-surface-muted)', border: '1px solid var(--payi-border)', borderRadius: 10, padding: 12, fontSize: 12, fontFamily: 'monospace', overflowX: 'auto', margin: 0 }}>
-sku{'\t'}qty_pcs{'\n'}{itemsList}
-        </pre>
-        <button onClick={() => navigator.clipboard?.writeText(itemsList)} style={{ ...primaryBtn, justifyContent: 'center', background: 'var(--payi-surface-muted)', color: 'var(--payi-text-strong)', border: '1px solid var(--payi-border)' }}>คัดลอก order_items</button>
+        {draft === 'loading' && <div style={{ color: 'var(--payi-text-muted)' }}>กำลังดึงรายละเอียด (product_master + กล่องจากชีท LK)...</div>}
 
-        <div style={{ borderTop: '1px solid var(--payi-border)', paddingTop: 12 }}>
-          <b>2. order_cartons</b> — กล่อง/น้ำหนัก/ขนาด ดึงจากชีท LK ตามเลข SHIPPING:
-        </div>
-        {!cartons && <button onClick={pullCartons} style={{ ...primaryBtn, justifyContent: 'center' }}>ดึง carton จากชีท LK</button>}
-        {cartons === 'loading' && <div style={{ color: 'var(--payi-text-muted)' }}>กำลังดึง...</div>}
-        {cartons && cartons !== 'loading' && (
+        {draft && draft !== 'loading' && (
           <>
-            <pre style={{ background: 'var(--payi-surface-muted)', border: '1px solid var(--payi-border)', borderRadius: 10, padding: 12, fontSize: 12, fontFamily: 'monospace', overflowX: 'auto', margin: 0 }}>
-sku{'\t'}num_cartons{'\t'}weight_per_carton_kg{'\t'}box_l_cm{'\t'}box_w_cm{'\t'}box_h_cm{'\n'}{cartonText || '(ไม่พบข้อมูล)'}
-            </pre>
-            {cartons.missing.length > 0 && (
-              <div style={{ fontSize: 12, color: 'var(--payi-warning)' }}>
-                ⚠ ไม่เจอในชีท LK: {cartons.missing.join(', ')} — เช็คเลข SHIPPING (บางทีพิมพ์เลข 5/3 สลับ) หรือกรอกกล่องเอง
+            {/* ดราฟรายการ */}
+            <div style={{ border: '1px solid var(--payi-border)', borderRadius: 10, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: 'var(--payi-surface-muted)', textAlign: 'left' }}>
+                    <th style={{ padding: '6px 8px' }}>No.</th><th style={{ padding: '6px 8px' }}>สินค้า</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>จำนวน</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>กล่อง</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>กก.รวม</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>CBM</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {draft.groups.flatMap((g) => g.rows.map((r, ri) => {
+                    const boxes = r.cartons.reduce((s, c) => s + c.count, 0)
+                    const wt = r.cartons.reduce((s, c) => s + c.count * c.wt, 0)
+                    const cbm = r.cartons.reduce((s, c) => s + c.count * c.l * c.w * c.h / 1e6, 0)
+                    return (
+                      <tr key={g.no + '-' + ri} style={{ borderTop: '1px solid var(--payi-border)' }}>
+                        <td style={{ padding: '6px 8px', color: 'var(--payi-text-faint)' }}>{ri === 0 ? g.no : ''}</td>
+                        <td style={{ padding: '6px 8px' }}>{r.name_en || <span style={{ color: 'var(--payi-danger)' }}>ไม่มีชื่อ</span>}{r.sku ? '' : <span style={{ color: 'var(--payi-danger)' }}> · ไม่มี SKU</span>}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>{fmt(r.qty)}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>{boxes}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>{wt.toFixed(1)}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>{cbm.toFixed(2)}</td>
+                      </tr>
+                    )
+                  }))}
+                  {totals && (
+                    <tr style={{ borderTop: '2px solid var(--payi-border)', fontWeight: 700 }}>
+                      <td colSpan={2} style={{ padding: '6px 8px' }}>รวม</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{fmt(totals.qty)}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{totals.boxes}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{totals.wt.toFixed(1)}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{totals.cbm.toFixed(2)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {draft.warnings.length > 0 && (
+              <div style={{ background: 'var(--payi-warning-bg)', color: 'var(--payi-warning)', borderRadius: 10, padding: '10px 12px', fontSize: 12, lineHeight: 1.6 }}>
+                {draft.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
               </div>
             )}
-            <button onClick={() => navigator.clipboard?.writeText(cartonText)} style={{ ...primaryBtn, justifyContent: 'center', background: 'var(--payi-surface-muted)', color: 'var(--payi-text-strong)', border: '1px solid var(--payi-border)' }}>คัดลอก order_cartons</button>
+
+            {/* หัวเอกสาร */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div><label style={labelStyle}>วันที่ออก (DATE)</label><input type="date" value={info.invoice_date} onChange={(e) => setInfo((d) => ({ ...d, invoice_date: e.target.value }))} style={inputStyle} /></div>
+              <div><label style={labelStyle}>Shipping mark</label><input value={info.shipping_mark} onChange={(e) => setInfo((d) => ({ ...d, shipping_mark: e.target.value }))} style={inputStyle} placeholder="LK/A24xxx-1(EK)" /></div>
+            </div>
+            <div><label style={labelStyle}>ผู้รับ (To:)</label><textarea value={info.consignee_to} onChange={(e) => setInfo((d) => ({ ...d, consignee_to: e.target.value }))} style={{ ...inputStyle, minHeight: 54, resize: 'vertical' }} /></div>
+
+            {gen && gen !== 'working' && gen !== 'done' && <div style={{ color: 'var(--payi-danger)', fontSize: 12 }}>{gen}</div>}
+            {gen === 'done' && <div style={{ color: 'var(--payi-success)', fontSize: 12, fontWeight: 700 }}>✓ ดาวน์โหลดไฟล์แล้ว — เปิดไฟล์ใส่ Unit Price ให้พี่หยก แล้วส่ง LK</div>}
+
+            <button onClick={makeFile} disabled={busy || gen === 'working'} style={{ ...primaryBtn, justifyContent: 'center', padding: '12px 16px', fontSize: 14, opacity: (busy || gen === 'working') ? 0.6 : 1 }}>
+              {gen === 'working' ? 'กำลังสร้างไฟล์...' : 'คอนเฟิร์ม — สร้างไฟล์ Proforma'}
+            </button>
+            <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', textAlign: 'center' }}>ไฟล์ที่ได้เหลือแค่ช่อง Unit Price ที่รอกรอก</div>
           </>
         )}
-
-        <button onClick={onMarkDone} disabled={busy} style={{ ...primaryBtn, justifyContent: 'center', padding: '11px 16px', fontSize: 14, opacity: busy ? 0.6 : 1, marginTop: 4 }}>
-          {busy ? 'กำลังบันทึก...' : lot.proforma_done ? 'ทำ proforma แล้ว ✓ (กดยืนยันอีกครั้ง)' : 'ทำ proforma แล้ว — เลื่อนสถานะลอต'}
-        </button>
       </div>
     </Modal>
   )
