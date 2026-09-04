@@ -49,3 +49,11 @@ test('Finance role sees CFO + Fulfillment only', () => {
   assert.equal(canManageFinance('finance'), true)
   assert.equal(canManageFinance('staff'), false)
 })
+
+test('Tang role sees Fulfillment only', () => {
+  assert.equal(canAccessTab('tang', 'Fulfillment'), true)
+  assert.equal(canAccessTab('tang', 'CFO'), false)
+  assert.equal(canAccessTab('tang', 'Executive'), false)
+  assert.equal(canAccessTab('tang', 'Inventory'), false)
+  assert.equal(canManageOperations('tang'), false)
+})

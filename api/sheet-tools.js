@@ -3768,8 +3768,8 @@ export default async function handler(req, res) {
     return opImportTracking(req, res)
   }
   if (op === 'fulfillment') {
-    // Fulfillment เปิดให้ dev + boss + finance (พี่หยก/พี่แต้ว) — owner ขอ 2026-09-02
-    if (authEnabled() && !['dev', 'boss', 'finance'].includes(normalizeRole(req.user?.role))) {
+    // Fulfillment เปิดให้ dev + boss + finance (พี่หยก/พี่แต้ว) + tang — owner ขอ 2026-09-02, tang เพิ่ม 2026-09-04
+    if (authEnabled() && !['dev', 'boss', 'finance', 'tang'].includes(normalizeRole(req.user?.role))) {
       return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงส่วนนี้' })
     }
     return opFulfillment(req, res)

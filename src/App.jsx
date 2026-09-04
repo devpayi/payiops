@@ -1423,7 +1423,7 @@ export default function App() {
           ['Import Tracking', isDev ? <ImportTracking /> : <DevOnlyLock label="ติดตามนำเข้า" />],
           ['CFO', isDev ? <CfoDashboard /> : <DevOnlyLock label="CFO Dashboard" />],
           ['Demographic', isDev ? <DemographicDashboard /> : <DevOnlyLock label="เดโมกราฟฟิกลูกค้า" />],
-          ['Fulfillment', ['dev', 'boss', 'finance'].includes(currentRole) ? <Fulfillment /> : <DevOnlyLock label="Fulfillment" />],
+          ['Fulfillment', ['dev', 'boss', 'finance', 'tang'].includes(currentRole) ? <Fulfillment /> : <DevOnlyLock label="Fulfillment" />],
           ['Stock Movement', <StockMovement />],
           ['HR', <HR />],
           ['Import Orders', <Upload onNavigate={handleNavigate} />],

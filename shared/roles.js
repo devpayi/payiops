@@ -1,4 +1,4 @@
-export const ROLES = Object.freeze({ DEV: 'dev', BOSS: 'boss', STAFF: 'staff', STOCK: 'stock', MARKETING: 'marketing', FINANCE: 'finance' })
+export const ROLES = Object.freeze({ DEV: 'dev', BOSS: 'boss', STAFF: 'staff', STOCK: 'stock', MARKETING: 'marketing', FINANCE: 'finance', TANG: 'tang' })
 
 // `admin` was the owner role before roles were split. Treat it as `dev` so the
 // existing owner account keeps full access without a manual data migration.
@@ -26,11 +26,15 @@ export const MARKETING_TABS = Object.freeze(['Executive', 'Monthly', 'Products',
 // เพราะนั่นจะให้สิทธิ์ Inventory/HR/OT ไปด้วยซึ่งเกินขอบเขต (ตาม pattern เดียวกับ marketing ด้านบน)
 export const FINANCE_TABS = Object.freeze(['CFO', 'Fulfillment'])
 
+// role แคบสำหรับ tang — เห็นแค่ Fulfillment อย่างเดียว (ไม่ใช่ staff, ไม่ปนกับ canManageOperations)
+export const TANG_TABS = Object.freeze(['Fulfillment'])
+
 const BOSS_HIDDEN_TABS = new Set(['Import Orders', 'Dev Hub', 'Settings'])
 const STAFF_TAB_SET = new Set(STAFF_TABS)
 const STOCK_TAB_SET = new Set(STOCK_TABS)
 const MARKETING_TAB_SET = new Set(MARKETING_TABS)
 const FINANCE_TAB_SET = new Set(FINANCE_TABS)
+const TANG_TAB_SET = new Set(TANG_TABS)
 
 export function canAccessTab(role, tab) {
   const normalized = normalizeRole(role)
@@ -39,6 +43,7 @@ export function canAccessTab(role, tab) {
   if (normalized === ROLES.STOCK) return STOCK_TAB_SET.has(tab)
   if (normalized === ROLES.MARKETING) return MARKETING_TAB_SET.has(tab)
   if (normalized === ROLES.FINANCE) return FINANCE_TAB_SET.has(tab)
+  if (normalized === ROLES.TANG) return TANG_TAB_SET.has(tab)
   return STAFF_TAB_SET.has(tab)
 }
 
