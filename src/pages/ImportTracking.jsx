@@ -5,7 +5,11 @@ import PRODUCT_MASTER from '../data/productMaster.json'
 
 // snapshot จาก product_master.xlsx (LK repo) — อัพเดตแล้ว redeploy. ใช้เป็น datalist ตอนแจ้งของเข้า
 const PM_BY_SKU = Object.fromEntries(PRODUCT_MASTER.map((p) => [p.sku, p]))
-const pmLabel = (p) => [p.name_en, p.name_zh, [p.color, p.size].filter(Boolean).join(' ')].filter(Boolean).join(' · ')
+// label ต้องแยกรุ่นออกจากกันได้ — ใช้ description_zh (มี รูปทรง/สี/ไซส์ อยู่แล้ว) เป็นตัวแยก
+const pmLabel = (p) => {
+  const tag = [p.color, p.size].filter(Boolean).join(' ') || (p.description_zh || '').slice(0, 46)
+  return [p.name_en, tag].filter(Boolean).join(' · ')
+}
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
 const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('th-TH', { maximumFractionDigits: 2 }))
@@ -722,7 +726,10 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
                     return (
                       <tr key={g.no + '-' + ri} style={{ borderTop: '1px solid var(--payi-border)' }}>
                         <td style={{ padding: '6px 8px', color: 'var(--payi-text-faint)' }}>{ri === 0 ? g.no : ''}</td>
-                        <td style={{ padding: '6px 8px' }}>{r.name_en || <span style={{ color: 'var(--payi-danger)' }}>ไม่มีชื่อ</span>}{r.sku ? '' : <span style={{ color: 'var(--payi-danger)' }}> · ไม่มี SKU</span>}</td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <div>{r.name_en || <span style={{ color: 'var(--payi-danger)' }}>ไม่มีชื่อ</span>}{r.sku ? <span style={{ color: 'var(--payi-text-faint)' }}> · {r.sku}</span> : <span style={{ color: 'var(--payi-danger)' }}> · ไม่มี SKU</span>}</div>
+                          <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>{r.name_th}{r.description ? ` — ${String(r.description).slice(0, 60)}` : ''}</div>
+                        </td>
                         <td style={{ padding: '6px 8px', textAlign: 'right' }}>{fmt(r.qty)}</td>
                         <td style={{ padding: '6px 8px', textAlign: 'right' }}>{boxes}</td>
                         <td style={{ padding: '6px 8px', textAlign: 'right' }}>{wt.toFixed(1)}</td>
