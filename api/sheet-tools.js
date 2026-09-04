@@ -12,7 +12,7 @@ import {
 import { applyScheduleOverrides, LEGACY_OVERRIDE_EXEMPT_CODES } from './_lib/scheduleOverrides.js'
 import { isoDate } from './_lib/dates.js'
 import opInventory, { computeLowStockList, computeOverdueOrders, muteOrderReminder, snoozeOrderReminder, cancelOrderRequest, undoOverdueOrderAction, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
-import opImportTracking from './_lib/importTracking.js'
+import opImportTracking, { createArrivalsFromShipping } from './_lib/importTracking.js'
 import opCfo from './_lib/cfo.js'
 import opDemographic from './_lib/demographic.js'
 import opFulfillment from './_lib/fulfillment.js'
@@ -3412,6 +3412,20 @@ async function opLineWebhook(req, res) {
       // ลงทะเบียน groupId ของกลุ่มไลน์ทีมงานอัตโนมัติ ถ้า event นี้มาจากกลุ่ม (ดู comment บน LINE_GROUP_LINK_SHEET)
       if (event.source?.type === 'group' && event.source.groupId) await registerLineGroup(event.source.groupId)
 
+      // ── "ชมพู <เลข SHIPPING> ..." — จับเลขจากใบชมพูในกลุ่ม สร้าง import_arrival ให้เอง (ติดตามนำเข้า) ──
+      // เป็นข้อยกเว้นเดียวที่รับคำสั่งจากกลุ่มได้ (owner ขอ): stateless ล้วน ไม่มี session ไม่ตอบกลับเลย
+      // ไม่ match pattern นี้ = ตกไปทาง continue เดิมด้านล่างทุกอย่างเหมือนเดิม
+      if (event.type === 'message' && event.message?.type === 'text') {
+        const t = String(event.message.text || '')
+        if (/ชมพู/.test(t)) {
+          const nums = (t.match(/\d{6,9}/g) || [])
+          if (nums.length) {
+            try { await createArrivalsFromShipping(nums) } catch (e) { console.error('pink-slip:', e.message) }
+            continue
+          }
+        }
+      }
+
       // กลุ่มไลน์ใช้แค่ "แสดงผล" (การ์ดแจ้งเตือน/สรุปหลัง match) ไม่รับคำสั่งใดๆ ทั้งพิมพ์ข้อความและกดปุ่ม —
       // ทุก flow (สั่งของ/แจ้งของเข้า/อนุมัติลา/ฯลฯ) ต้องทำใน 1:1 เท่านั้น (owner ขอ 2026-08-04 หลังเจอปัญหา
       // session ค้างทำให้บอทตอบข้อความคุยเล่นในกลุ่มด้วย — 1:1 ก็ยังมีปัญหาเดิมได้เหมือนกัน แต่ตัด attack
@@ -3762,7 +3776,8 @@ export default async function handler(req, res) {
     return opDemographic(req, res)
   }
   if (op === 'import-tracking') {
-    if (authEnabled() && normalizeRole(req.user?.role) !== 'dev') {
+    // ติดตามนำเข้าแบบล็อต — เปิดให้ dev + boss (พี่หยก = boss). ฟ้า/staff ไม่เห็นหน้านี้
+    if (authEnabled() && !canManageOperations(req.user?.role)) {
       return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงส่วนนี้' })
     }
     return opImportTracking(req, res)

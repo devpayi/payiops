@@ -1,33 +1,49 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Package, FileWarning, Send, Plus, Pencil, Trash2, X } from 'lucide-react'
+import { Package, PackageCheck, FileWarning, Layers, Plus, Pencil, Trash2, X, Check, FileSpreadsheet, SearchX } from 'lucide-react'
 import KpiCard from '../components/KpiCard'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
+const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('th-TH', { maximumFractionDigits: 2 }))
+const API = '/api/sheet-tools?op=import-tracking'
 
-const DOC_STYLE = {
-  'ครบ': { bg: 'var(--payi-success-bg)', color: 'var(--payi-success)' },
-  'ค้าง': { bg: '#fff7ed', color: '#c2410c' },
-  'ยังไม่เริ่ม': { bg: 'var(--payi-danger-bg)', color: 'var(--payi-danger)' },
+const STAGE_LABELS = {
+  draft: 'รวมของ', proforma: 'ทำ Proforma', customs_filed: 'ยื่นใบขน', paid: 'จ่ายเงิน',
+  customs_done: 'ใบขนใช้จริง', docs_done: 'เอกสารครบ', handed_over: 'ส่งต่อ', closed: 'ปิดลอต',
 }
+const DOC_FIELDS = [
+  ['draft_doc', 'ใบดราฟ (PROFORMA+packing)', 'ทำ Proforma'],
+  ['customs_draft', 'ใบขนดราฟ', 'ยื่นใบขน'],
+  ['customs_actual', 'ใบขนใช้จริง', 'ใบขนใช้จริง'],
+  ['tax_invoice', 'ใบกำกับภาษี LK', 'ยื่นใบขน'],
+  ['withholding_tax', 'หัก ณ ที่จ่าย (ภ.ง.ด.53)', 'จ่ายเงิน'],
+  ['advance_payment_doc', 'ใบทดรองจ่าย (ตัวจริง)', 'หลังปล่อยของ'],
+]
+const HANDOVER_FIELDS = [
+  ['sent_accounting', 'ส่งบัญชีเรา'],
+  ['sent_lk', 'ส่ง LK (คุณจอย)'],
+  ['printed', 'เก็บแฟ้ม'],
+]
+const FEE_FIELDS = [
+  ['service_fee', 'ค่าบริการ LK (ตายตัว)'],
+  ['advance_vat', 'เงินทดรองจ่าย (แปรตามลอต)'],
+  ['other_fee', 'ค่าใช้จ่ายอื่น'],
+]
 
-function DocBadge({ status }) {
-  const style = DOC_STYLE[status] || DOC_STYLE['ยังไม่เริ่ม']
-  return (
-    <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 999, background: style.bg, color: style.color }}>
-      {status}
-    </span>
-  )
-}
+const EMPTY = []
+const DEFAULT_TOTALS = { arrivalsWaitingPink: 0, readyToLot: 0, lotTarget: 5, canSuggestLot: false, lots: 0, pendingDocs: 0, lkMissing: 0 }
 
-function Modal({ title, onClose, children }) {
+const inputStyle = { width: '100%', border: '1px solid var(--payi-border)', borderRadius: 10, padding: '9px 12px', fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'var(--payi-surface)', color: 'var(--payi-text-strong)' }
+const labelStyle = { fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 5, display: 'block' }
+const iconBtn = (color) => ({ border: '1px solid var(--payi-border)', background: 'var(--payi-surface-muted)', color, width: 28, height: 28, borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', lineHeight: 1 })
+const primaryBtn = { background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }
+
+function Modal({ title, onClose, children, width = 560 }) {
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.28)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', zIndex: 999, padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--payi-surface)', borderRadius: 16, padding: 24, width: 540, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(15,23,42,0.2)' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.32)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', zIndex: 999, padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--payi-surface)', borderRadius: 16, padding: 24, width, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(15,23,42,0.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--payi-text-strong)' }}>{title}</div>
-          <button onClick={onClose} style={{ border: 'none', background: 'var(--payi-border)', borderRadius: '50%', width: 28, height: 28, display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--payi-text-muted)' }}>
-            <X size={14} />
-          </button>
+          <button onClick={onClose} style={{ border: 'none', background: 'var(--payi-border)', borderRadius: '50%', width: 28, height: 28, display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--payi-text-muted)' }}><X size={14} /></button>
         </div>
         {children}
       </div>
@@ -35,48 +51,43 @@ function Modal({ title, onClose, children }) {
   )
 }
 
-const inputStyle = { width: '100%', border: '1px solid var(--payi-border)', borderRadius: 10, padding: '9px 12px', fontSize: 13, outline: 'none', boxSizing: 'border-box' }
-const labelStyle = { fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 5, display: 'block' }
-const iconBtnStyle = (color) => ({
-  border: '1px solid var(--payi-border)', background: 'var(--payi-surface-muted)', color,
-  width: 28, height: 28, borderRadius: 8, display: 'grid', placeItems: 'center',
-  cursor: 'pointer', lineHeight: 1,
-})
+function stageTone(stage, stages) {
+  const i = stages.indexOf(stage)
+  if (stage === 'closed') return { bg: 'var(--payi-success-bg)', color: 'var(--payi-success)' }
+  if (i <= 0) return { bg: 'var(--payi-surface-muted)', color: 'var(--payi-text-muted)' }
+  if (i >= stages.indexOf('customs_done')) return { bg: 'var(--payi-success-bg)', color: 'var(--payi-success)' }
+  return { bg: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)' }
+}
+function StageChip({ stage, stages }) {
+  const t = stageTone(stage, stages)
+  return <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: t.bg, color: t.color, whiteSpace: 'nowrap' }}>{STAGE_LABELS[stage] || stage}</span>
+}
 
-const DOC_FIELDS = [
-  ['draft_doc', 'ใบดราฟ'],
-  ['customs_draft', 'ใบขน (ดราฟ)'],
-  ['customs_actual', 'ใบขน (ใช้จริง)'],
-  ['tax_invoice', 'ใบกำกับภาษี'],
-  ['withholding_tax', 'หัก ณ ที่จ่าย'],
-  ['accounting_notice', 'ใบทักบัญชี'],
-]
-const HANDOVER_FIELDS = [
-  ['sent_accounting', 'ส่งบัญชีแล้ว'],
-  ['sent_joy', 'ส่งคุณจอยแล้ว'],
-  ['printed', 'พิมพ์แล้ว (PRNT)'],
-]
+function PinkChip({ on }) {
+  return (
+    <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999, ...(on
+      ? { background: '#fce7f3', color: '#be185d' }
+      : { background: 'var(--payi-surface-muted)', color: 'var(--payi-text-muted)' }) }}>
+      {on ? 'ใบชมพูแล้ว' : 'รอใบชมพู'}
+    </span>
+  )
+}
 
 export default function ImportTracking() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [query, setQuery] = useState('')
-  const [onlyPendingDocs, setOnlyPendingDocs] = useState(false)
-  const [modal, setModal] = useState(null) // null | 'new' | order object
+  const [busy, setBusy] = useState(false)
+  const [sel, setSel] = useState(() => new Set())       // arrival ids selected in queue
+  const [selectedLotId, setSelectedLotId] = useState(null)
+  const [modal, setModal] = useState(null)
 
   const load = useCallback(() => {
-    setLoading(true)
-    setError('')
-    fetch('/api/sheet-tools?op=import-tracking')
-      .then((r) => r.json())
-      .then((d) => {
-        if (!d.success) throw new Error(d.error || 'โหลดข้อมูลไม่สำเร็จ')
-        setData(d)
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
+    setLoading(true); setError('')
+    fetch(API).then((r) => r.json()).then((d) => {
+      if (!d.success) throw new Error(d.error || 'โหลดข้อมูลไม่สำเร็จ')
+      setData(d)
+    }).catch((e) => setError(e.message)).finally(() => setLoading(false))
   }, [])
 
   useEffect(() => {
@@ -84,264 +95,544 @@ export default function ImportTracking() {
     load()
   }, [load])
 
-  const items = data?.items || []
-  const totals = data?.totals || { totalOrders: 0, pendingDocs: 0, pendingHandover: 0 }
+  const stages = data?.stages || EMPTY
+  const arrivals = data?.arrivals || EMPTY
+  const lots = data?.lots || EMPTY
+  const totals = data?.totals || DEFAULT_TOTALS
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    let rows = items
-    if (q) rows = rows.filter((it) => it.item_name.toLowerCase().includes(q) || it.sku.toLowerCase().includes(q) || it.bill_no.toLowerCase().includes(q) || it.customs_no.toLowerCase().includes(q))
-    if (onlyPendingDocs) rows = rows.filter((it) => it.docStatus !== 'ครบ')
-    return rows
-  }, [items, query, onlyPendingDocs])
+  const selectedLot = useMemo(
+    () => lots.find((l) => l.id === selectedLotId) || lots[0] || null,
+    [lots, selectedLotId])
 
-  const save = async (payload) => {
-    setSaving(true)
-    setError('')
+  const post = useCallback(async (body) => {
+    setBusy(true); setError('')
     try {
-      const res = await fetch('/api/sheet-tools?op=import-tracking', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'upsert', ...payload }),
-      })
+      const res = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const json = await res.json()
       if (!json.success) throw new Error(json.error || 'บันทึกไม่สำเร็จ')
-      setModal(null)
-      load()
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setSaving(false)
-    }
-  }
+      setModal(null); setSel(new Set()); load()
+      return json
+    } catch (e) { setError(e.message); throw e } finally { setBusy(false) }
+  }, [load])
 
-  const toggleField = (order, field) => save({ id: order.id, [field]: !order[field] })
+  const toggleSel = (id) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
 
-  const remove = async (order) => {
-    if (!window.confirm(`ลบรายการ "${order.item_name}" ?`)) return
-    setSaving(true)
-    setError('')
-    try {
-      const res = await fetch('/api/sheet-tools?op=import-tracking', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', id: order.id }),
-      })
-      const json = await res.json()
-      if (!json.success) throw new Error(json.error || 'ลบไม่สำเร็จ')
-      load()
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setSaving(false)
-    }
+  const createLotFromSel = () => {
+    if (!sel.size) return
+    post({ action: 'upsert-lot', arrival_ids: [...sel] }).then((r) => r?.id && setSelectedLotId(r.id))
   }
+  const addSelToLot = (lotId) => sel.size && post({ action: 'assign-arrivals', arrival_ids: [...sel], lot_id: lotId })
+  const removeArrivalFromLot = (a) => post({ action: 'assign-arrivals', arrival_ids: [a.id], lot_id: '' })
+  const togglePink = (a) => post({ action: 'upsert-arrival', id: a.id, pink_slip: !a.pink_slip })
+  const setStage = (lot, stage) => post({ action: 'upsert-lot', id: lot.id, stage })
+  const toggleDoc = (lot, field) => post({ action: 'upsert-lot', id: lot.id, [field]: !lot[field] })
+  const removeArrival = (a) => window.confirm(`ลบของเข้า "${a.item_name}"?`) && post({ action: 'delete-arrival', id: a.id })
+  const removeLot = (lot) => window.confirm(`ลบลอต "${lot.lot_ref || lot.id}"? (ของเข้ากลับไปคิวรอจัดลอต ไม่ถูกลบ)`) && post({ action: 'delete-lot', id: lot.id })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%' }}>
-      {error && (
-        <div style={{ background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', borderRadius: 12, padding: '10px 14px', fontSize: 13 }}>{error}</div>
-      )}
+      {error && <div style={{ background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', borderRadius: 12, padding: '10px 14px', fontSize: 13 }}>{error}</div>}
 
-      <div className="app-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-        <KpiCard title="รายการนำเข้า" value={fmt(totals.totalOrders)} subtitle="ทั้งหมด" icon={Package} trend={null} />
-        <KpiCard title="เอกสารค้าง" value={fmt(totals.pendingDocs)} subtitle="ยังไม่ครบ" icon={FileWarning} trend={null} />
-        <KpiCard title="ยังไม่ส่งต่อ" value={fmt(totals.pendingHandover)} subtitle="บัญชี/คุณจอย" icon={Send} trend={null} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 16 }}>
+        <KpiCard title="รอใบชมพู" value={fmt(totals.arrivalsWaitingPink)} subtitle="ของเข้ายังไม่ครบ" icon={Package} trend={null} />
+        <KpiCard title="พร้อมจัดลอต" value={fmt(totals.readyToLot)} subtitle={totals.canSuggestLot ? `≥ ${totals.lotTarget} — จัดลอตได้แล้ว` : `แนะนำที่ ~${totals.lotTarget}`} icon={PackageCheck} trend={null} />
+        <KpiCard title="ลอตทั้งหมด" value={fmt(totals.lots)} subtitle="กำลังติดตาม" icon={Layers} trend={null} />
+        {totals.lkMissing > 0
+          ? <KpiCard title="ไม่เจอในชีท LK" value={fmt(totals.lkMissing)} subtitle="เช็คเลขในกลุ่มไลน์" icon={SearchX} trend={null} />
+          : <KpiCard title="เอกสารค้าง" value={fmt(totals.pendingDocs)} subtitle="ลอตที่ยังไม่ปิด" icon={FileWarning} trend={null} />}
       </div>
 
-      <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 20, padding: 20, boxShadow: '0 14px 36px rgba(15,23,42,0.05)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>รายการนำเข้า ({filtered.length})</div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={onlyPendingDocs} onChange={(e) => setOnlyPendingDocs(e.target.checked)} />
-              เฉพาะเอกสารค้าง
-            </label>
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาสินค้า/เลขบิล/เลขใบขน..." style={{ ...inputStyle, width: 240 }} />
-            <button
-              onClick={() => setModal('new')}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 18px rgba(37,99,235,0.22)' }}
-            >
-              <Plus size={14} /> เพิ่มรายการนำเข้า
-            </button>
-          </div>
-        </div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>เห็นเฉพาะ dev · boss</div>
 
-        {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>กำลังโหลด...</div>
-        ) : filtered.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>ยังไม่มีรายการนำเข้า — กด "เพิ่มรายการนำเข้า" เพื่อเริ่มต้น</div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', minWidth: 980, borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
-              <colgroup>
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '28%' }} />
-                <col style={{ width: '8%' }} />
-                <col style={{ width: '14%' }} />
-                <col style={{ width: '20%' }} />
-                <col style={{ width: '20%' }} />
-              </colgroup>
-              <thead>
-                <tr style={{ textAlign: 'left', color: 'var(--payi-text-muted)', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <th style={{ padding: '8px 10px' }}>วันที่</th>
-                  <th style={{ padding: '8px 10px' }}>สินค้า</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'right' }}>จำนวน</th>
-                  <th style={{ padding: '8px 10px' }}>เอกสาร</th>
-                  <th style={{ padding: '8px 10px' }}>ส่งต่อ</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'right' }}>จัดการ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((it) => (
-                  <tr key={it.id} style={{ borderTop: '1px solid var(--payi-border)' }}>
-                    <td style={{ padding: '10px', color: 'var(--payi-text-muted)' }}>{it.date}</td>
-                    <td style={{ padding: '10px', overflow: 'hidden' }}>
-                      <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.item_name}>{it.item_name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>
-                        {it.sku || '—'}{it.bill_no ? ` · บิล ${it.bill_no}` : ''}{it.customs_no ? ` · ใบขน ${it.customs_no}` : ''}
-                      </div>
-                    </td>
-                    <td style={{ padding: '10px', textAlign: 'right' }}>{fmt(it.qty)}</td>
-                    <td style={{ padding: '10px' }}>
-                      <button onClick={() => setModal(it)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
-                        <DocBadge status={it.docStatus} />
-                      </button>
-                    </td>
-                    <td style={{ padding: '10px' }}>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {HANDOVER_FIELDS.map(([field, label]) => (
-                          <button
-                            key={field}
-                            onClick={() => toggleField(it, field)}
-                            title={label}
-                            style={{
-                              fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 999, border: 'none', cursor: 'pointer',
-                              background: it[field] ? 'var(--payi-success-bg)' : 'var(--payi-surface-muted)',
-                              color: it[field] ? 'var(--payi-success)' : 'var(--payi-text-faint)',
-                            }}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </td>
-                    <td style={{ padding: '10px' }}>
-                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <button onClick={() => setModal(it)} title="แก้ไข" style={iconBtnStyle('var(--payi-text-muted)')}><Pencil size={13} /></button>
-                        <button onClick={() => remove(it)} title="ลบ" style={iconBtnStyle('var(--payi-danger)')}><Trash2 size={13} /></button>
-                      </div>
-                    </td>
-                  </tr>
+      {loading ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>กำลังโหลด...</div>
+      ) : (
+        <>
+          <ArrivalsPanel
+            arrivals={arrivals} sel={sel} lots={lots}
+            onToggleSel={toggleSel} onTogglePink={togglePink}
+            onAdd={() => setModal({ type: 'new-arrival' })}
+            onEdit={(a) => setModal({ type: 'edit-arrival', arrival: a })}
+            onDelete={removeArrival}
+            onCreateLot={createLotFromSel} onAddToLot={addSelToLot}
+            target={totals.lotTarget} readyCount={totals.readyToLot}
+          />
+
+          {lots.length === 0 ? null : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 320px) 1fr', gap: 18, alignItems: 'start' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--payi-text-muted)' }}>ลอต ({lots.length})</div>
+                {lots.map((l) => (
+                  <button key={l.id} onClick={() => setSelectedLotId(l.id)} style={{
+                    textAlign: 'left', width: '100%', background: 'var(--payi-surface)', cursor: 'pointer',
+                    border: `1px solid ${selectedLot?.id === l.id ? 'var(--payi-mint)' : 'var(--payi-border)'}`,
+                    boxShadow: selectedLot?.id === l.id ? '0 0 0 3px var(--payi-mint-soft)' : 'none',
+                    borderRadius: 13, padding: '12px 14px',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--payi-text-strong)', fontFamily: 'monospace' }}>{l.lot_ref || '(ยังไม่ตั้ง ref)'}</span>
+                      <StageChip stage={l.stage} stages={stages} />
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginTop: 5 }}>
+                      {l.arrival_count} อย่าง · {fmt(l.qty_total)} ชิ้น · {l.box_count} กล่อง
+                    </div>
+                    <div style={{ display: 'flex', gap: 3, marginTop: 8 }}>
+                      {stages.map((s, i) => (
+                        <i key={s} style={{ height: 4, flex: 1, borderRadius: 2, background: i < l.stage_index ? 'var(--payi-mint)' : i === l.stage_index ? 'var(--payi-warning)' : 'var(--payi-border)' }} />
+                      ))}
+                    </div>
+                  </button>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {modal && (
-        <OrderModal
-          initial={modal === 'new' ? null : modal}
-          saving={saving}
-          onClose={() => setModal(null)}
-          onSave={save}
-        />
+              </div>
+              {selectedLot && (
+                <LotDetail
+                  lot={selectedLot} stages={stages} busy={busy}
+                  onSetStage={setStage} onToggle={toggleDoc}
+                  onEditLot={() => setModal({ type: 'edit-lot', lot: selectedLot })}
+                  onDeleteLot={() => removeLot(selectedLot)}
+                  onRemoveArrival={removeArrivalFromLot}
+                  onProforma={() => setModal({ type: 'proforma', lot: selectedLot })}
+                />
+              )}
+            </div>
+          )}
+        </>
       )}
+
+      {modal?.type === 'new-arrival' && <ArrivalModal busy={busy} onClose={() => setModal(null)} onSave={(b) => post({ action: 'upsert-arrival', ...b })} />}
+      {modal?.type === 'edit-arrival' && <ArrivalModal busy={busy} initial={modal.arrival} onClose={() => setModal(null)} onSave={(b) => post({ action: 'upsert-arrival', id: modal.arrival.id, ...b })} />}
+      {modal?.type === 'edit-lot' && <LotModal busy={busy} initial={modal.lot} onClose={() => setModal(null)} onSave={(b) => post({ action: 'upsert-lot', id: modal.lot.id, ...b })} />}
+      {modal?.type === 'proforma' && <ProformaModal lot={modal.lot} busy={busy} onClose={() => setModal(null)} onMarkDone={() => post({ action: 'upsert-lot', id: modal.lot.id, proforma_done: true, stage: modal.lot.stage_index < 1 ? 'proforma' : modal.lot.stage })} />}
     </div>
   )
 }
 
-function OrderModal({ initial, saving, onClose, onSave }) {
-  const isEdit = Boolean(initial)
-  const [date, setDate] = useState(initial?.date || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }))
-  const [itemName, setItemName] = useState(initial?.item_name || '')
-  const [sku, setSku] = useState(initial?.sku || '')
-  const [qty, setQty] = useState(initial?.qty ?? '')
-  const [billNo, setBillNo] = useState(initial?.bill_no || '')
-  const [customsNo, setCustomsNo] = useState(initial?.customs_no || '')
-  const [trackingNo, setTrackingNo] = useState(initial?.tracking_no || '')
-  const [note, setNote] = useState(initial?.note || '')
-  const [flags, setFlags] = useState(() => Object.fromEntries(
-    [...DOC_FIELDS, ...HANDOVER_FIELDS].map(([f]) => [f, initial?.[f] || false])
-  ))
+function ArrivalsPanel({ arrivals, sel, lots, onToggleSel, onTogglePink, onAdd, onEdit, onDelete, onCreateLot, onAddToLot, target, readyCount }) {
+  const [tab, setTab] = useState('queue') // queue | all
+  const rows = tab === 'queue' ? arrivals.filter((a) => !a.lot_id) : arrivals
+  const selCount = sel.size
+  return (
+    <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 16, boxShadow: '0 14px 36px rgba(15,23,42,0.05)' }}>
+      <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 4, background: 'var(--payi-surface-muted)', borderRadius: 10, padding: 3 }}>
+          {[['queue', 'รอจัดลอต'], ['all', 'ทั้งหมด']].map(([k, lbl]) => (
+            <button key={k} onClick={() => setTab(k)} style={{
+              border: 'none', borderRadius: 7, padding: '6px 13px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              background: tab === k ? 'var(--payi-surface)' : 'transparent', color: tab === k ? 'var(--payi-text-strong)' : 'var(--payi-text-muted)',
+              boxShadow: tab === k ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+            }}>{lbl}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: readyCount >= target ? 'var(--payi-success)' : 'var(--payi-text-muted)', fontWeight: 700 }}>
+            พร้อมจัดลอต {readyCount}/{target}
+          </span>
+          <button onClick={onAdd} style={primaryBtn}><Plus size={14} /> เพิ่มของเข้า</button>
+        </div>
+      </div>
 
-  const submit = (e) => {
-    e.preventDefault()
-    if (!itemName.trim()) return
-    onSave({
-      id: initial?.id,
-      date, item_name: itemName.trim(), sku: sku.trim(), qty,
-      bill_no: billNo, customs_no: customsNo, tracking_no: trackingNo, note,
-      ...flags,
-    })
+      {selCount > 0 && (
+        <div style={{ padding: '10px 20px', background: 'var(--payi-mint-soft)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--payi-mint-strong)' }}>เลือก {selCount} รายการ</span>
+          <button onClick={onCreateLot} style={{ ...primaryBtn, padding: '7px 13px' }}><Layers size={13} /> สร้างลอตใหม่</button>
+          {lots.filter((l) => l.stage !== 'closed').map((l) => (
+            <button key={l.id} onClick={() => onAddToLot(l.id)} style={{ border: '1px solid var(--payi-mint)', background: 'var(--payi-surface)', color: 'var(--payi-mint-strong)', borderRadius: 8, padding: '6px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              + เข้าลอต {l.lot_ref || l.id.slice(-4)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ overflowX: 'auto', padding: '0 8px 8px' }}>
+        {rows.length === 0 ? (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--payi-text-faint)', fontSize: 13 }}>
+            {tab === 'queue' ? 'ไม่มีของเข้ารอจัดลอต — กด "เพิ่มของเข้า"' : 'ยังไม่มีของเข้า'}
+          </div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr style={{ color: 'var(--payi-text-faint)', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', textAlign: 'left' }}>
+              <th style={{ padding: '8px' }} />
+              <th style={{ padding: '8px' }}>สินค้า</th>
+              <th style={{ padding: '8px' }}>CTN</th>
+              <th style={{ padding: '8px', textAlign: 'right' }}>กล่อง</th>
+              <th style={{ padding: '8px', textAlign: 'right' }}>จำนวน</th>
+              <th style={{ padding: '8px', textAlign: 'right' }}>KG</th>
+              <th style={{ padding: '8px' }}>วันถึง</th>
+              <th style={{ padding: '8px' }}>ใบชมพู</th>
+              <th style={{ padding: '8px' }}>ลอต</th>
+              <th style={{ padding: '8px' }} />
+            </tr></thead>
+            <tbody>
+              {rows.map((a) => {
+                const inLot = lots.find((l) => l.id === a.lot_id)
+                return (
+                  <tr key={a.id} style={{ borderTop: '1px solid var(--payi-border)' }}>
+                    <td style={{ padding: '8px' }}>
+                      {!a.lot_id && <input type="checkbox" checked={sel.has(a.id)} onChange={() => onToggleSel(a.id)} />}
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--payi-text-strong)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        {a.item_name}
+                        {a.lk_missing
+                          ? <span style={{ fontSize: 10, fontWeight: 800, background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', padding: '1px 6px', borderRadius: 999 }}>✗ ไม่เจอ LK</span>
+                          : !a.sku && <span style={{ fontSize: 10, fontWeight: 800, background: 'var(--payi-warning-bg)', color: 'var(--payi-warning)', padding: '1px 6px', borderRadius: 999 }}>รอใส่ SKU</span>}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)', fontFamily: 'monospace' }}>
+                        {a.sku || '—'} · SHIPPING {a.shipping_no || '—'}
+                        {a.codename ? <span style={{ marginLeft: 6, fontWeight: 800, background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)', padding: '1px 6px', borderRadius: 999 }}>{a.codename}</span> : null}
+                      </div>
+                      {a.lk_missing && <div style={{ fontSize: 11, color: 'var(--payi-danger)', marginTop: 3 }}>{a.note}</div>}
+                    </td>
+                    <td style={{ padding: '8px', fontFamily: 'monospace', fontSize: 12 }}>{a.ctn_no || '—'}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', fontFamily: 'monospace' }}>{a.box_count ?? '—'}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', fontFamily: 'monospace' }}>{a.qty == null ? '—' : fmt(a.qty)}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', fontFamily: 'monospace' }}>{a.weight_kg ?? '—'}</td>
+                    <td style={{ padding: '8px', fontFamily: 'monospace', fontSize: 12 }}>{a.arrive_date || '—'}</td>
+                    <td style={{ padding: '8px' }}>
+                      <button onClick={() => onTogglePink(a)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}><PinkChip on={a.pink_slip} /></button>
+                    </td>
+                    <td style={{ padding: '8px', fontSize: 12 }}>
+                      {inLot ? <span style={{ fontFamily: 'monospace', color: 'var(--payi-mint-strong)', fontWeight: 700 }}>{inLot.lot_ref || inLot.id.slice(-4)}</span> : <span style={{ color: 'var(--payi-text-faint)' }}>—</span>}
+                    </td>
+                    <td style={{ padding: '8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button onClick={() => onEdit(a)} title="แก้ไข" style={iconBtn('var(--payi-text-muted)')}><Pencil size={12} /></button>
+                      <button onClick={() => onDelete(a)} title="ลบ" style={{ ...iconBtn('var(--payi-danger)'), marginLeft: 6 }}><Trash2 size={12} /></button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function LotDetail({ lot, stages, busy, onSetStage, onToggle, onEditLot, onDeleteLot, onRemoveArrival, onProforma }) {
+  const card = { background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 16, boxShadow: '0 14px 36px rgba(15,23,42,0.05)', overflow: 'hidden' }
+  const section = { padding: '18px 20px', borderTop: '1px solid var(--payi-border)' }
+  const h3 = { fontSize: 12, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--payi-text-muted)', marginBottom: 13 }
+
+  return (
+    <div style={card}>
+      <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--payi-text-strong)', display: 'flex', alignItems: 'center', gap: 9 }}>
+            {lot.lot_ref || '(ยังไม่ตั้ง ref)'} <StageChip stage={lot.stage} stages={stages} />
+          </div>
+          <div style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--payi-text-muted)', marginTop: 5 }}>
+            ใบขนดราฟ {lot.customs_no_draft || '—'} · ใบขนจริง {lot.customs_no || '—'} · สั่ง {lot.order_date || '—'}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={onProforma} style={{ ...primaryBtn, padding: '7px 13px' }}><FileSpreadsheet size={13} /> สร้าง Proforma</button>
+          <button onClick={onEditLot} title="แก้ไขลอต" style={iconBtn('var(--payi-text-muted)')}><Pencil size={13} /></button>
+          <button onClick={onDeleteLot} title="ลบลอต" style={iconBtn('var(--payi-danger)')}><Trash2 size={13} /></button>
+        </div>
+      </div>
+
+      <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: '2px 18px', padding: '14px 20px', background: 'var(--payi-surface-muted)', margin: 0 }}>
+        {[
+          ['จำนวนอย่าง', lot.arrival_count], ['รวมชิ้น', fmt(lot.qty_total)], ['กล่อง', lot.box_count],
+          ['น้ำหนัก', `${lot.weight_kg} kg`], ['CBM', lot.cbm],
+        ].map(([k, v]) => (
+          <div key={k}>
+            <dt style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--payi-text-faint)', marginTop: 8 }}>{k}</dt>
+            <dd style={{ margin: '1px 0 0', fontFamily: 'monospace', fontSize: 13, color: 'var(--payi-text-strong)' }}>{v}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <div style={section}>
+        <div style={h3}>สถานะ ({lot.stage_index + 1}/{stages.length}) · กดขั้นเพื่อเลื่อน</div>
+        <div style={{ display: 'flex', overflowX: 'auto', paddingBottom: 4 }}>
+          {stages.map((s, i) => {
+            const done = i < lot.stage_index, now = i === lot.stage_index
+            return (
+              <button key={s} onClick={() => onSetStage(lot, s)} disabled={busy} style={{ flex: 1, minWidth: 88, textAlign: 'center', position: 'relative', paddingTop: 22, border: 'none', background: 'none', cursor: 'pointer' }}>
+                <span style={{ position: 'absolute', top: 7, left: i === 0 ? '50%' : 0, right: i === stages.length - 1 ? '50%' : 0, height: 2, background: (done || now) ? 'var(--payi-mint)' : 'var(--payi-border)' }} />
+                <span style={{ position: 'absolute', top: 1, left: '50%', transform: 'translateX(-50%)', width: 15, height: 15, borderRadius: '50%', background: done ? 'var(--payi-mint)' : now ? 'var(--payi-warning)' : 'var(--payi-surface)', border: `2px solid ${done ? 'var(--payi-mint)' : now ? 'var(--payi-warning)' : 'var(--payi-border)'}`, boxShadow: now ? '0 0 0 4px var(--payi-warning-bg)' : 'none' }} />
+                <span style={{ fontSize: 10.5, lineHeight: 1.25, display: 'block', color: (done || now) ? 'var(--payi-text)' : 'var(--payi-text-faint)', fontWeight: (done || now) ? 700 : 400 }}>{STAGE_LABELS[s]}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <div style={section}>
+        <div style={h3}>ของในลอต ({lot.arrival_count}){!lot.all_pink_slip && <span style={{ color: 'var(--payi-warning)', marginLeft: 8, textTransform: 'none', letterSpacing: 0 }}>⚠ ยังมีของที่ยังไม่ได้ใบชมพู</span>}</div>
+        {lot.arrivals.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: 'var(--payi-text-faint)' }}>ยังไม่มีของในลอตนี้ — เลือกจากตาราง "ของเข้า" ด้านบน</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {lot.arrivals.map((a) => (
+              <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--payi-surface-muted)', borderRadius: 9 }}>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 600, color: 'var(--payi-text-strong)' }}>{a.item_name}</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--payi-text-muted)', marginLeft: 8 }}>{a.sku} · {fmt(a.qty)} ชิ้น · {a.box_count} กล่อง</span>
+                  {a.codename ? <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 800, background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)', padding: '1px 6px', borderRadius: 999 }}>{a.codename}</span> : null}
+                </div>
+                <PinkChip on={a.pink_slip} />
+                <button onClick={() => onRemoveArrival(a)} title="เอาออกจากลอต" style={iconBtn('var(--payi-danger)')}><X size={12} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={section}>
+        <div style={h3}>เอกสาร (6) · {lot.docs_done}/{lot.docs_total}</div>
+        <CheckRow fields={DOC_FIELDS} lot={lot} onToggle={onToggle} />
+      </div>
+      <div style={section}>
+        <div style={h3}>ส่งต่อเอกสาร — ทุกใบไป 3 ที่</div>
+        <CheckRow fields={HANDOVER_FIELDS} lot={lot} onToggle={onToggle} />
+      </div>
+
+      <div style={section}>
+        <div style={{ ...h3, color: 'var(--payi-mint-strong)' }}>ค่าใบขน / ภาษี (THB)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
+          {FEE_FIELDS.map(([f, lbl]) => (
+            <div key={f}>
+              <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', fontWeight: 600 }}>{lbl}</div>
+              <div style={{ fontFamily: 'monospace', fontSize: 16, fontWeight: 700, color: 'var(--payi-text-strong)', marginTop: 2 }}>{baht(lot[f])}</div>
+            </div>
+          ))}
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', fontWeight: 600 }}>หัก ณ ที่จ่าย 3%</div>
+            <div style={{ fontFamily: 'monospace', fontSize: 16, fontWeight: 700, color: 'var(--payi-text-strong)', marginTop: 2 }}>{baht(lot.wht_amount)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', fontWeight: 600 }}>รวมต้นทุนนำเข้า</div>
+            <div style={{ fontFamily: 'monospace', fontSize: 16, fontWeight: 700, color: 'var(--payi-mint-strong)', marginTop: 2 }}>{baht(lot.import_cost_total)}</div>
+          </div>
+        </div>
+        <div style={{ marginTop: 11, paddingTop: 11, borderTop: '1px dashed var(--payi-border)', fontSize: 12.5, color: 'var(--payi-text)' }}>
+          {lot.cost_per_pc
+            ? <>ถัวเฉลี่ยต่อชิ้น = {baht(lot.import_cost_total)} ÷ {fmt(lot.qty_total)} ชิ้น = <b style={{ fontFamily: 'monospace', color: 'var(--payi-mint-strong)', fontSize: 14 }}>฿{lot.cost_per_pc.toFixed(2)}</b></>
+            : 'ยังกรอกค่าใบขน / ยังไม่มีของในลอต — ถัวเฉลี่ยยังคำนวณไม่ได้'}
+          <button onClick={onEditLot} style={{ marginLeft: 12, fontSize: 12, fontWeight: 700, color: 'var(--payi-mint-strong)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>แก้ไขค่าใช้จ่าย</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CheckRow({ fields, lot, onToggle }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {fields.map(([f, lbl, tag]) => {
+        const on = !!lot[f]
+        return (
+          <button key={f} onClick={() => onToggle(lot, f)} style={{
+            border: '1px solid var(--payi-border)', borderRadius: 9, padding: '7px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 7,
+            background: on ? 'var(--payi-success-bg)' : 'var(--payi-surface-muted)',
+            color: on ? 'var(--payi-success)' : 'var(--payi-text-muted)',
+          }}>
+            <span style={{ width: 15, height: 15, borderRadius: 5, display: 'grid', placeItems: 'center', background: on ? 'var(--payi-success)' : 'transparent', border: `1.5px solid ${on ? 'var(--payi-success)' : 'var(--payi-border)'}`, color: '#fff' }}>{on ? <Check size={11} /> : null}</span>
+            {lbl}
+            {tag ? <span style={{ fontFamily: 'monospace', fontSize: 10, color: 'var(--payi-text-faint)', fontWeight: 500 }}>{tag}</span> : null}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function ArrivalModal({ initial, busy, onClose, onSave }) {
+  const isEdit = Boolean(initial)
+  const [f, setF] = useState(() => ({
+    sku: initial?.sku || '', item_name: initial?.item_name || '', codename: initial?.codename || '',
+    ctn_no: initial?.ctn_no || '', shipping_no: initial?.shipping_no || '', invoice_no: initial?.invoice_no || '',
+    box_count: initial?.box_count ?? '', qty: initial?.qty ?? '', weight_kg: initial?.weight_kg ?? '', cbm: initial?.cbm ?? '',
+    arrive_date: initial?.arrive_date || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }),
+    pink_slip: initial?.pink_slip || false, note: initial?.note || '',
+  }))
+  const [lk, setLk] = useState(null) // null | 'loading' | {found,...}
+  const set = (k) => (e) => setF((d) => ({ ...d, [k]: e.target.value }))
+  const submit = (e) => { e.preventDefault(); if (!f.item_name.trim()) return; onSave(f) }
+  const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
+
+  const pullLk = async () => {
+    const s = f.shipping_no.trim()
+    if (!s) return
+    setLk('loading')
+    try {
+      const q = new URLSearchParams({ view: 'lk-lookup', shipping_no: s, date: f.arrive_date || '' })
+      const r = await fetch(`${API}&${q}`).then((x) => x.json())
+      setLk(r)
+      if (r.found) {
+        setF((d) => ({
+          ...d,
+          ctn_no: r.ctn_no || d.ctn_no,
+          box_count: r.box_count || d.box_count,
+          qty: r.qty || d.qty,
+          weight_kg: r.weight_kg || d.weight_kg,
+          cbm: r.cbm || d.cbm,
+          note: d.note || (r.goods_zh ? `LK: ${r.goods_zh}` : ''),
+        }))
+      }
+    } catch (e) { setLk({ found: false, error: e.message }) }
   }
 
   return (
-    <Modal title={isEdit ? 'แก้ไขรายการนำเข้า' : 'เพิ่มรายการนำเข้า'} onClose={onClose}>
+    <Modal title={isEdit ? 'แก้ไขของเข้า' : 'แจ้งของเข้า (1 รายการสินค้า = 1 ของเข้า)'} onClose={onClose}>
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div>
-            <label style={labelStyle}>วันที่</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
+        {/* เลข SHIPPING บนใบชมพู — key แมชเข้าชีท LK */}
+        <div style={{ background: 'var(--payi-mint-soft)', borderRadius: 12, padding: 14 }}>
+          <label style={labelStyle}>เลข SHIPPING (บนใบชมพู) *</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input value={f.shipping_no} onChange={set('shipping_no')} style={{ ...inputStyle, fontFamily: 'monospace' }} placeholder="เช่น 5445476" />
+            <button type="button" onClick={pullLk} disabled={!f.shipping_no.trim() || lk === 'loading'} style={{ ...primaryBtn, padding: '9px 14px', whiteSpace: 'nowrap' }}>
+              {lk === 'loading' ? 'กำลังหา...' : 'ดึงจาก LK'}
+            </button>
           </div>
-          <div>
-            <label style={labelStyle}>รหัสสินค้า (SKU) — ไม่บังคับ</label>
-            <input value={sku} onChange={(e) => setSku(e.target.value)} style={inputStyle} placeholder="เช่น PY006" />
-          </div>
-        </div>
-        <div>
-          <label style={labelStyle}>ชื่อสินค้า</label>
-          <input value={itemName} onChange={(e) => setItemName(e.target.value)} required style={inputStyle} />
-        </div>
-        <div>
-          <label style={labelStyle}>จำนวน</label>
-          <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} style={inputStyle} placeholder="0" />
+          {lk && lk !== 'loading' && (
+            lk.found
+              ? <div style={{ fontSize: 12, color: 'var(--payi-success)', marginTop: 8, fontWeight: 600 }}>
+                  ✓ เจอในชีท LK ({lk.tab}) — {lk.goods_zh} · {lk.box_count} กล่อง · {fmt(lk.qty)} ชิ้น · {lk.weight_kg} kg · {lk.cbm} cbm{lk.est_arrival ? ` · เข้าไทย ~${lk.est_arrival}` : ''}
+                </div>
+              : <div style={{ fontSize: 12, color: 'var(--payi-warning)', marginTop: 8 }}>
+                  ไม่เจอในชีท LK{lk.error ? ` (${lk.error})` : ' — อาจยังไม่ขึ้นชีท กรอกมือได้'}
+                </div>
+          )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-          <div>
-            <label style={labelStyle}>เลขบิล</label>
-            <input value={billNo} onChange={(e) => setBillNo(e.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>เลขที่ใบขน — ไม่บังคับ</label>
-            <input value={customsNo} onChange={(e) => setCustomsNo(e.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>เลขพัสดุ</label>
-            <input value={trackingNo} onChange={(e) => setTrackingNo(e.target.value)} style={inputStyle} />
-          </div>
+        <div style={grid}>
+          <div><label style={labelStyle}>SKU (product_master)</label><input value={f.sku} onChange={set('sku')} style={inputStyle} placeholder="LK-09" /></div>
+          <div><label style={labelStyle}>ชื่อลับ</label><input value={f.codename} onChange={set('codename')} style={inputStyle} placeholder="กุ้งดำ" /></div>
         </div>
-
-        <div style={{ background: 'var(--payi-surface-muted)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>เอกสาร/ภาษี</div>
-          {DOC_FIELDS.map(([field, label]) => (
-            <label key={field} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={flags[field]} onChange={(e) => setFlags((d) => ({ ...d, [field]: e.target.checked }))} />
-              {label}
-            </label>
-          ))}
+        <div><label style={labelStyle}>ชื่อสินค้า</label><input value={f.item_name} onChange={set('item_name')} required style={inputStyle} /></div>
+        <div><label style={labelStyle}>CTN number</label><input value={f.ctn_no} onChange={set('ctn_no')} style={inputStyle} placeholder="SPK2026...." /></div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+          <div><label style={labelStyle}>กล่อง</label><input type="number" value={f.box_count} onChange={set('box_count')} style={inputStyle} /></div>
+          <div><label style={labelStyle}>จำนวน</label><input type="number" value={f.qty} onChange={set('qty')} style={inputStyle} /></div>
+          <div><label style={labelStyle}>KG</label><input type="number" step="any" value={f.weight_kg} onChange={set('weight_kg')} style={inputStyle} /></div>
+          <div><label style={labelStyle}>CBM</label><input type="number" step="any" value={f.cbm} onChange={set('cbm')} style={inputStyle} /></div>
         </div>
-
-        <div style={{ background: 'var(--payi-surface-muted)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>ส่งต่องาน</div>
-          {HANDOVER_FIELDS.map(([field, label]) => (
-            <label key={field} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={flags[field]} onChange={(e) => setFlags((d) => ({ ...d, [field]: e.target.checked }))} />
-              {label}
-            </label>
-          ))}
+        <div style={grid}>
+          <div><label style={labelStyle}>วันของถึง</label><input type="date" value={f.arrive_date} onChange={set('arrive_date')} style={inputStyle} /></div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 24, cursor: 'pointer' }}>
+            <input type="checkbox" checked={f.pink_slip} onChange={(e) => setF((d) => ({ ...d, pink_slip: e.target.checked }))} /> ได้ใบชมพูแล้ว (ของครบ)
+          </label>
         </div>
-
-        <div>
-          <label style={labelStyle}>หมายเหตุ</label>
-          <input value={note} onChange={(e) => setNote(e.target.value)} style={inputStyle} placeholder="ไม่บังคับ" />
-        </div>
-        <button type="submit" disabled={saving} style={{ marginTop: 6, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 16px', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: saving ? 0.6 : 1, boxShadow: '0 8px 18px rgba(37,99,235,0.22)' }}>
-          {saving ? 'กำลังบันทึก...' : 'บันทึก'}
-        </button>
+        <div><label style={labelStyle}>หมายเหตุ</label><input value={f.note} onChange={set('note')} style={inputStyle} placeholder="ไม่บังคับ" /></div>
+        <button type="submit" disabled={busy} style={{ ...primaryBtn, justifyContent: 'center', padding: '11px 16px', fontSize: 14, opacity: busy ? 0.6 : 1 }}>{busy ? 'กำลังบันทึก...' : 'บันทึก'}</button>
       </form>
+    </Modal>
+  )
+}
+
+const LOT_TEXT_FIELDS = [['lot_ref', 'Ref ลอต'], ['customs_no_draft', 'เลขใบขนดราฟ'], ['customs_no', 'เลขใบขนใช้จริง']]
+function LotModal({ initial, busy, onClose, onSave }) {
+  const [f, setF] = useState(() => ({
+    lot_ref: initial?.lot_ref || '', customs_no_draft: initial?.customs_no_draft || '', customs_no: initial?.customs_no || '',
+    order_date: initial?.order_date || '', service_fee: initial?.service_fee ?? 3900, advance_vat: initial?.advance_vat ?? '',
+    other_fee: initial?.other_fee ?? '', note: initial?.note || '',
+  }))
+  const set = (k) => (e) => setF((d) => ({ ...d, [k]: e.target.value }))
+  const submit = (e) => { e.preventDefault(); onSave(f) }
+  const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
+  return (
+    <Modal title="แก้ไขลอต" onClose={onClose}>
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={grid}>
+          {LOT_TEXT_FIELDS.map(([k, lbl]) => (
+            <div key={k}><label style={labelStyle}>{lbl}</label><input value={f[k]} onChange={set(k)} style={inputStyle} /></div>
+          ))}
+          <div><label style={labelStyle}>วันสั่ง</label><input type="date" value={f.order_date} onChange={set('order_date')} style={inputStyle} /></div>
+        </div>
+        <div style={{ background: 'var(--payi-mint-soft)', borderRadius: 12, padding: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-mint-strong)', marginBottom: 10 }}>ค่าใบขน / ภาษี (THB)</div>
+          <div style={grid}>
+            {FEE_FIELDS.map(([k, lbl]) => (
+              <div key={k}><label style={labelStyle}>{lbl}</label><input type="number" step="any" value={f[k]} onChange={set(k)} style={inputStyle} /></div>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 8 }}>หัก ณ ที่จ่าย 3% ของค่าบริการ = คำนวณอัตโนมัติ</div>
+        </div>
+        <div><label style={labelStyle}>หมายเหตุ</label><input value={f.note} onChange={set('note')} style={inputStyle} /></div>
+        <button type="submit" disabled={busy} style={{ ...primaryBtn, justifyContent: 'center', padding: '11px 16px', fontSize: 14, opacity: busy ? 0.6 : 1 }}>{busy ? 'กำลังบันทึก...' : 'บันทึก'}</button>
+      </form>
+    </Modal>
+  )
+}
+
+function ProformaModal({ lot, busy, onClose, onMarkDone }) {
+  const itemsList = lot.arrivals.map((a) => `${a.sku || '(ไม่มี sku)'}\t${a.qty ?? ''}`).join('\n')
+  const [cartons, setCartons] = useState(null) // null | 'loading' | { rows:[[sku,n,wt,l,w,h]], missing:[shipping_no] }
+
+  const pullCartons = async () => {
+    setCartons('loading')
+    const rows = []
+    const missing = []
+    for (const a of lot.arrivals) {
+      if (!a.shipping_no) { missing.push(a.sku || a.item_name); continue }
+      try {
+        const q = new URLSearchParams({ view: 'lk-lookup', shipping_no: a.shipping_no, date: a.arrive_date || '' })
+        const r = await fetch(`${API}&${q}`).then((x) => x.json())
+        if (!r.found || !r.cartons?.length) { missing.push(a.shipping_no); continue }
+        // จับกลุ่มกล่องที่เหมือนกัน (wt+L+W+H)
+        const grp = new Map()
+        for (const c of r.cartons) {
+          const key = `${c.wt}|${c.l}|${c.w}|${c.h}`
+          grp.set(key, (grp.get(key) || 0) + (c.box || 1))
+        }
+        for (const [key, n] of grp) {
+          const [wt, l, w, h] = key.split('|')
+          rows.push([a.sku || '', n, wt, l, w, h])
+        }
+      } catch { missing.push(a.shipping_no) }
+    }
+    setCartons({ rows, missing })
+  }
+
+  const cartonText = cartons && cartons !== 'loading'
+    ? cartons.rows.map((r) => r.join('\t')).join('\n')
+    : ''
+
+  return (
+    <Modal title="สร้าง Proforma Invoice + Packing List" onClose={onClose} width={580}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: 13, color: 'var(--payi-text)' }}>
+        {!lot.all_pink_slip && (
+          <div style={{ background: 'var(--payi-warning-bg)', color: 'var(--payi-warning)', borderRadius: 10, padding: '10px 12px', fontWeight: 700 }}>
+            ⚠ ลอตนี้ยังมีของที่ยังไม่ได้ใบชมพู — ทำ proforma ได้ แต่ของอาจยังมาไม่ครบ
+          </div>
+        )}
+
+        <div>
+          <b>1. order_items</b> — วางลงชีท <code>order_items</code> ของ <code>product_master.xlsx</code>:
+        </div>
+        <pre style={{ background: 'var(--payi-surface-muted)', border: '1px solid var(--payi-border)', borderRadius: 10, padding: 12, fontSize: 12, fontFamily: 'monospace', overflowX: 'auto', margin: 0 }}>
+sku{'\t'}qty_pcs{'\n'}{itemsList}
+        </pre>
+        <button onClick={() => navigator.clipboard?.writeText(itemsList)} style={{ ...primaryBtn, justifyContent: 'center', background: 'var(--payi-surface-muted)', color: 'var(--payi-text-strong)', border: '1px solid var(--payi-border)' }}>คัดลอก order_items</button>
+
+        <div style={{ borderTop: '1px solid var(--payi-border)', paddingTop: 12 }}>
+          <b>2. order_cartons</b> — กล่อง/น้ำหนัก/ขนาด ดึงจากชีท LK ตามเลข SHIPPING:
+        </div>
+        {!cartons && <button onClick={pullCartons} style={{ ...primaryBtn, justifyContent: 'center' }}>ดึง carton จากชีท LK</button>}
+        {cartons === 'loading' && <div style={{ color: 'var(--payi-text-muted)' }}>กำลังดึง...</div>}
+        {cartons && cartons !== 'loading' && (
+          <>
+            <pre style={{ background: 'var(--payi-surface-muted)', border: '1px solid var(--payi-border)', borderRadius: 10, padding: 12, fontSize: 12, fontFamily: 'monospace', overflowX: 'auto', margin: 0 }}>
+sku{'\t'}num_cartons{'\t'}weight_per_carton_kg{'\t'}box_l_cm{'\t'}box_w_cm{'\t'}box_h_cm{'\n'}{cartonText || '(ไม่พบข้อมูล)'}
+            </pre>
+            {cartons.missing.length > 0 && (
+              <div style={{ fontSize: 12, color: 'var(--payi-warning)' }}>
+                ⚠ ไม่เจอในชีท LK: {cartons.missing.join(', ')} — เช็คเลข SHIPPING (บางทีพิมพ์เลข 5/3 สลับ) หรือกรอกกล่องเอง
+              </div>
+            )}
+            <button onClick={() => navigator.clipboard?.writeText(cartonText)} style={{ ...primaryBtn, justifyContent: 'center', background: 'var(--payi-surface-muted)', color: 'var(--payi-text-strong)', border: '1px solid var(--payi-border)' }}>คัดลอก order_cartons</button>
+          </>
+        )}
+
+        <button onClick={onMarkDone} disabled={busy} style={{ ...primaryBtn, justifyContent: 'center', padding: '11px 16px', fontSize: 14, opacity: busy ? 0.6 : 1, marginTop: 4 }}>
+          {busy ? 'กำลังบันทึก...' : lot.proforma_done ? 'ทำ proforma แล้ว ✓ (กดยืนยันอีกครั้ง)' : 'ทำ proforma แล้ว — เลื่อนสถานะลอต'}
+        </button>
+      </div>
     </Modal>
   )
 }

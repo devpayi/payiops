@@ -10,7 +10,7 @@ import {
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
   LayoutDashboard, UploadCloud, Radar, Megaphone, Boxes,
   ArrowLeftRight, BookOpen, Link2,
-  Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet, MapPin, Warehouse,
+  Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet, MapPin, Warehouse, FileSignature,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -30,6 +30,7 @@ const ContentOSPrototype = lazy(() => import('./pages/ContentOSPrototype'))
 const Inventory = lazy(() => import('./pages/Inventory'))
 const StockMovement = lazy(() => import('./pages/StockMovement'))
 const ImportTracking = lazy(() => import('./pages/ImportTracking'))
+const WhtCert = lazy(() => import('./pages/WhtCert'))
 const CfoDashboard = lazy(() => import('./pages/CfoDashboard'))
 const DemographicDashboard = lazy(() => import('./pages/DemographicDashboard'))
 const Fulfillment = lazy(() => import('./pages/Fulfillment'))
@@ -89,6 +90,7 @@ const Icons = {
   Inventory: Boxes,
   StockMovement: ArrowLeftRight,
   ImportTracking: Ship,
+  WhtCert: FileSignature,
   CFO: Wallet,
   Demographic: MapPin,
   Fulfillment: Warehouse,
@@ -102,7 +104,7 @@ const Icons = {
 const KNOWN_TABS = new Set([
   'Home', 'Executive', 'Monthly', 'Products', 'ProductTrends',
   'AdsChannels', 'ContentOS', 'MarketingRadar', 'Inventory',
-  'Import Tracking', 'Stock Movement', 'HR', 'CFO', 'Demographic', 'Fulfillment',
+  'Import Tracking', 'WHT Cert', 'Stock Movement', 'HR', 'CFO', 'Demographic', 'Fulfillment',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings',
 ])
 
@@ -130,6 +132,7 @@ const menuGroups = [
       { id: 'Inventory', label: 'Inventory', renderIcon: Icons.Inventory, dotColor: 'var(--payi-danger)' },
       { id: 'Stock Movement', label: 'Stock Movement', renderIcon: Icons.StockMovement },
       { id: 'Import Tracking', label: 'ติดตามนำเข้า', renderIcon: Icons.ImportTracking, dotColor: '#0ea5e9' },
+      { id: 'WHT Cert', label: 'ใบหัก ณ ที่จ่าย', renderIcon: Icons.WhtCert, dotColor: '#0ea5e9' },
       { id: 'HR', label: 'พนักงาน (ลา)', renderIcon: Icons.HR }
     ]
   },
@@ -739,6 +742,16 @@ export default function App() {
       title: 'Import Orders',
       eyebrow: 'Sales',
       subtitle: 'Upload marketplace orders and prepare them for reconciliation.'
+    },
+    'Import Tracking': {
+      title: 'ติดตามนำเข้า',
+      eyebrow: 'Operations Planning',
+      subtitle: 'ของเข้ารายอย่าง → จัดลอต ~5 อย่าง → ทำใบขน + proforma · ตามสถานะจนปิดลอต'
+    },
+    'WHT Cert': {
+      title: 'ใบหัก ณ ที่จ่าย',
+      eyebrow: 'Operations Planning',
+      subtitle: 'กรอกเลขที่ + วันที่ → PDF ฟอร์มกรมสรรพากร (50 ทวิ) พร้อมพิมพ์'
     },
     Products: {
       title: 'Dashboard สินค้า',
@@ -1420,7 +1433,8 @@ export default function App() {
           ['ContentOS', <ContentOSPrototype />],
           ['MarketingRadar', <MarketingRadar />],
           ['Inventory', <Inventory />],
-          ['Import Tracking', isDev ? <ImportTracking /> : <DevOnlyLock label="ติดตามนำเข้า" />],
+          ['Import Tracking', ['dev', 'boss'].includes(currentRole) ? <ImportTracking /> : <DevOnlyLock label="ติดตามนำเข้า" />],
+          ['WHT Cert', ['dev', 'boss'].includes(currentRole) ? <WhtCert /> : <DevOnlyLock label="ใบหัก ณ ที่จ่าย" />],
           ['CFO', isDev ? <CfoDashboard /> : <DevOnlyLock label="CFO Dashboard" />],
           ['Demographic', isDev ? <DemographicDashboard /> : <DevOnlyLock label="เดโมกราฟฟิกลูกค้า" />],
           ['Fulfillment', ['dev', 'boss', 'finance', 'tang'].includes(currentRole) ? <Fulfillment /> : <DevOnlyLock label="Fulfillment" />],
