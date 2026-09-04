@@ -5,10 +5,10 @@ import PRODUCT_MASTER from '../data/productMaster.json'
 
 // snapshot จาก product_master.xlsx (LK repo) — อัพเดตแล้ว redeploy. ใช้เป็น datalist ตอนแจ้งของเข้า
 const PM_BY_SKU = Object.fromEntries(PRODUCT_MASTER.map((p) => [p.sku, p]))
-// label ต้องแยกรุ่นออกจากกันได้ — ใช้ description_zh (มี รูปทรง/สี/ไซส์ อยู่แล้ว) เป็นตัวแยก
+// label แยกรุ่นได้ด้วย ชื่อไทย + สี/ไซส์
 const pmLabel = (p) => {
-  const tag = [p.color, p.size].filter(Boolean).join(' ') || (p.description_zh || '').slice(0, 46)
-  return [p.name_en, tag].filter(Boolean).join(' · ')
+  const tag = [p.color, p.size].filter(Boolean).join(' ')
+  return [p.sku, p.name_th || p.name_en, tag].filter(Boolean).join(' · ')
 }
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
@@ -604,7 +604,7 @@ function ProductImagePicker({ images, current, onPick, onClose }) {
   const list = useMemo(() => {
     const t = q.trim().toLowerCase()
     if (!t) return PRODUCT_MASTER
-    return PRODUCT_MASTER.filter((p) => `${p.sku} ${p.name_en} ${p.name_th} ${p.name_zh} ${p.description_zh} ${p.color} ${p.size}`.toLowerCase().includes(t))
+    return PRODUCT_MASTER.filter((p) => `${p.sku} ${p.name_en} ${p.name_th} ${p.name_zh} ${p.color} ${p.size}`.toLowerCase().includes(t))
   }, [q])
   return (
     <div
@@ -702,7 +702,8 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
         ...r, pm, cartons, cartonNote,
         name_en: pm?.name_en || r.item_name || r.sku || '',
         name_th: pm?.name_th || '',
-        description: pm?.description_zh || pm?.description_th || r.item_name || '',
+        name_zh: pm?.name_zh || '',
+        desc_preview: [pm?.name_zh, pm?.name_th].filter(Boolean).join(' - ') || r.item_name || '',
         boxes: cartons.reduce((s, c) => s + c.count, 0),
         wt: cartons.reduce((s, c) => s + c.count * c.wt, 0),
         cbm: cartons.reduce((s, c) => s + c.count * c.l * c.w * c.h / 1e6, 0),
@@ -742,7 +743,7 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
       const groups = view.groups.map((g, i) => ({
         no: i + 1, name_en: g.name_en, name_th: g.rows[0].name_th,
         image: images[g.rows[0].sku] || null,
-        rows: g.rows.map((r) => ({ sku: r.sku, qty: r.qty, description: r.description, cartons: r.cartons })),
+        rows: g.rows.map((r) => ({ sku: r.sku, qty: r.qty, name_zh: r.name_zh, name_th: r.name_th, cartons: r.cartons })),
       }))
       const { blob } = await generateProforma(
         { supplier_name_zh: PROFORMA_SUPPLIER, invoice_date: info.invoice_date, consignee_to: info.consignee_to },
@@ -808,7 +809,7 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
                         placeholder="พิมพ์ชื่อ/รหัส หรือกดรูปซ้าย"
                         style={{ ...inputStyle, flex: '0 0 200px', fontFamily: 'monospace', padding: '6px 10px' }}
                       />
-                      {r.pm && <span style={{ fontSize: 11, color: 'var(--payi-success)' }}>✓ {r.description.slice(0, 40)}</span>}
+                      {r.pm && <span style={{ fontSize: 11, color: 'var(--payi-success)' }}>✓ {r.desc_preview.slice(0, 40)}</span>}
                       {!r.pm && r.sku && <span style={{ fontSize: 11, color: 'var(--payi-danger)' }}>ไม่พบใน product_master</span>}
                     </div>
                   </div>

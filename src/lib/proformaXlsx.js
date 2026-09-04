@@ -20,6 +20,13 @@ const num = (v, d = 0) => {
   const n = parseFloat(String(v ?? '').replace(/,/g, ''))
   return Number.isFinite(n) ? n : d
 }
+// ISO (2026-09-04) -> DD-MM-YY (04-09-26) ตามไฟล์จริง
+const fmtDate = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''))
+  return m ? `${m[3]}-${m[2]}-${m[1].slice(2)}` : String(iso || '')
+}
+// Description = ชื่อจีน - ชื่อไทย (เหมือนไฟล์ทำมือ)
+const descOf = (row) => [row.name_zh, row.name_th].map((s) => String(s || '').trim()).filter(Boolean).join(' - ')
 const r1 = (n) => Math.round(n * 10) / 10
 const r2 = (n) => Math.round(n * 100) / 100
 
@@ -49,7 +56,7 @@ const colIdx = (L) => [...L].reduce((a, ch) => a * 26 + (ch.charCodeAt(0) - 64),
 /**
  * @param {{supplier_name_zh?:string, supplier_ref?:string, contract_label?:string, invoice_date?:string, consignee_to?:string}} info
  * @param {Array<{no:number, name_en:string, name_th:string, image?:string|null,
- *   rows:Array<{sku:string, qty:number, description:string, cartons:Array<{count:number,wt:number,l:number,w:number,h:number}>}>}>} groups
+ *   rows:Array<{sku:string, qty:number, name_zh:string, name_th:string, cartons:Array<{count:number,wt:number,l:number,w:number,h:number}>}>}>} groups
  * @returns {Promise<Blob>}
  */
 export async function generateProforma(info, groups) {
@@ -81,7 +88,7 @@ export async function generateProforma(info, groups) {
   for (let r = 3; r <= 5; r++) for (const L of 'BCDEFGH') inv.getCell(`${L}${r}`).border = BOX
   inv.mergeCells('B6:H6'); set(inv, 'B6', info.contract_label || '合同', { font: F_MID })
   inv.mergeCells('B7:H7'); set(inv, 'B7', 'PROFORMA INVOICE', { font: F_MID })
-  inv.mergeCells('G9:H9'); set(inv, 'G9', `DATE：${info.invoice_date || ''}`, { font: F_MID, align: { horizontal: 'right', vertical: 'middle' } })
+  inv.mergeCells('G9:H9'); set(inv, 'G9', `DATE：${fmtDate(info.invoice_date)}`, { font: F_MID, align: { horizontal: 'right', vertical: 'middle' } })
   inv.mergeCells('B10:B13'); set(inv, 'B10', 'To:', { font: F_MID, align: { horizontal: 'left', vertical: 'top' } })
   inv.mergeCells('C10:F13'); set(inv, 'C10', info.consignee_to || '', { font: F_MID, align: TOPL })
 
@@ -106,7 +113,7 @@ export async function generateProforma(info, groups) {
       const qty = Math.round(num(row.qty))
       totQty += qty
       set(inv, `C${r}`, qty, { border: BOX })
-      set(inv, `F${r}`, row.description || '', { align: LFT, border: BOX })
+      set(inv, `F${r}`, descOf(row), { align: LFT, border: BOX })
       set(inv, `G${r}`, null, { border: BOX })
       set(inv, `H${r}`, { formula: `C${r}*G${r}` }, { fill: WHITE, border: BOX, numFmt: '#,##0.00' })
       for (const L of 'BDE') inv.getCell(`${L}${r}`).border = BOX
