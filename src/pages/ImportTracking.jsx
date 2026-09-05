@@ -11,19 +11,78 @@ const pmLabel = (p) => {
   return [p.sku, p.name_th || p.name_en, tag].filter(Boolean).join(' · ')
 }
 
-// ตอน "แจ้งของเข้า" ยังไม่รู้ไซส์/สีแน่ชัด (รอนับ) — โชว์ dropdown แค่รายสินค้า (ตัวแทน 1 sku ต่อกลุ่ม name_en)
-// ไซส์/สีจริงค่อยเจาะจงตอนทำ Proforma (ที่นั่นเลือกได้ครบทุก sku)
+// ตอน "แจ้งของเข้า" ยังไม่รู้ไซส์/สีแน่ชัด (รอนับ) — โชว์แค่ "รายสินค้า" ภาษาไทย ไม่โชว์ SKU/โค้ด
+// (เหมือนหน้า Dashboard สินค้า) ไซส์/สีจริงค่อยเจาะจงตอนทำ Proforma (ที่นั่นเลือกได้ครบทุก sku)
+// ตัดไซส์/หมายเหตุในวงเล็บออกจากชื่อไทย เพื่อจัดกลุ่มเป็นชื่อสินค้าเดียว
+const FAMILY_SIZE_WORDS = new Set(['XXL', 'XL', 'L', 'M', 'S', 'XS'])
+const FAMILY_COLOR_WORDS = new Set([
+  'ดำ', 'ขาว', 'ฟ้า', 'เขียว', 'ชมพู', 'เนื้อ', 'เทา', 'แดง', 'เหลือง', 'ม่วง', 'น้ำเงิน',
+  'สีดำ', 'สีขาว', 'สีฟ้า', 'สีเขียว', 'สีชมพู', 'สีเนื้อ', 'สีเทา', 'สีแดง', 'เบบี้บลู',
+])
+// รุ่น/แบรนด์ย่อยที่จริงคือ variant ของสินค้าเดียวกัน (เจอในชื่อจริง เพิ่มได้เรื่อยๆ)
+const FAMILY_VARIANT_WORDS = new Set(['Sky', 'Ocean'])
+
+function cleanFamilyName(nameTh, nameEn) {
+  let s = String(nameTh || '').trim()
+  s = s.replace(/\([^)]*\)/g, ' ') // (35-38), (อุ้งเทา) ...
+  s = s.replace(/\d+\s*-\s*\d+/g, ' ') // ช่วงไซส์ตัวเลข 35-38 (ตัดก่อนเปลี่ยน "-" เป็นช่องว่าง)
+  s = s.replace(/[-_/]/g, ' ')
+  // ตัดคำท้ายที่เป็นไซส์/สี/รุ่นย่อยออกทีละคำ จนกว่าจะไม่เจอแล้ว
+  for (let i = 0; i < 6; i++) {
+    const words = s.trim().split(/\s+/)
+    const last = words[words.length - 1] || ''
+    const isColor = FAMILY_COLOR_WORDS.has(last) || last.startsWith('สี')
+    if (words.length > 1 && (FAMILY_SIZE_WORDS.has(last.toUpperCase()) || isColor || FAMILY_VARIANT_WORDS.has(last))) {
+      words.pop()
+      s = words.join(' ')
+    } else break
+  }
+  s = s.replace(/\s{2,}/g, ' ').trim()
+  return s || nameEn || ''
+}
 const PRODUCT_FAMILIES = (() => {
   const seen = new Map()
   for (const p of PRODUCT_MASTER) {
-    const key = p.name_en || p.sku
+    const key = cleanFamilyName(p.name_th, p.name_en) || p.sku
     const g = seen.get(key)
     if (g) g.count += 1
-    else seen.set(key, { ...p, count: 1 })
+    else seen.set(key, { ...p, label: key, count: 1 })
   }
-  return [...seen.values()]
+  return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label, 'th'))
 })()
-const pmFamilyLabel = (p) => `${p.sku} · ${p.name_en}${p.count > 1 ? ` (${p.count} ไซส์/สี — เจาะจงตอนทำ Proforma)` : ''}`
+
+// รายชื่อสินค้าภาษาไทยล้วน คลิกเลือก — ไม่โชว์ SKU (เหมือนหน้า Dashboard สินค้า)
+function FamilyListPicker({ onPick, onClose }) {
+  const [q, setQ] = useState('')
+  const list = useMemo(() => {
+    const t = q.trim().toLowerCase()
+    if (!t) return PRODUCT_FAMILIES
+    return PRODUCT_FAMILIES.filter((p) => `${p.label} ${p.name_en}`.toLowerCase().includes(t))
+  }, [q])
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--payi-surface)', borderRadius: 14, width: 'min(420px,100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--payi-border)', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาสินค้า" style={{ ...inputStyle, flex: 1 }} />
+          <button onClick={onClose} style={{ ...primaryBtn, background: 'var(--payi-surface-muted)', color: 'var(--payi-text-strong)', border: '1px solid var(--payi-border)', padding: '8px 12px' }}>ปิด</button>
+        </div>
+        <div style={{ overflowY: 'auto' }}>
+          {list.map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => onPick(p)}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', borderBottom: '1px solid var(--payi-border)', background: 'var(--payi-surface)', cursor: 'pointer', fontSize: 14, color: 'var(--payi-text-strong)' }}
+            >
+              {p.label}
+            </button>
+          ))}
+          {!list.length && <div style={{ padding: 20, textAlign: 'center', color: 'var(--payi-text-muted)' }}>ไม่เจอ</div>}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
 const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('th-TH', { maximumFractionDigits: 2 }))
@@ -474,13 +533,12 @@ function ArrivalModal({ initial, busy, onClose, onSave }) {
     pink_slip: initial?.pink_slip || false, note: initial?.note || '',
   }))
   const [lk, setLk] = useState(null) // null | 'loading' | {found,...}
+  const [pickingProduct, setPickingProduct] = useState(false)
   const set = (k) => (e) => setF((d) => ({ ...d, [k]: e.target.value }))
-  const setSku = (e) => setF((d) => {
-    const sku = e.target.value
-    const p = PM_BY_SKU[sku]
-    // ตอนนี้ยังไม่รู้ไซส์/สีแน่ชัด (รอนับ) — เติมชื่อสินค้าแบบกลาง (name_en) ไม่ใช้ name_th ที่อาจมีไซส์ติดมา
-    return { ...d, sku, item_name: (!d.item_name.trim() && p) ? p.name_en : d.item_name }
-  })
+  const pickFamily = (fam) => {
+    setF((d) => ({ ...d, sku: fam.sku, item_name: d.item_name.trim() ? d.item_name : fam.label }))
+    setPickingProduct(false)
+  }
   const submit = (e) => { e.preventDefault(); if (!f.item_name.trim()) return; onSave(f) }
   const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
 
@@ -532,12 +590,15 @@ function ArrivalModal({ initial, busy, onClose, onSave }) {
 
         <div style={grid}>
           <div>
-            <label style={labelStyle}>สินค้า (product_master)</label>
-            <input value={f.sku} onChange={setSku} list="pm-families" style={inputStyle} placeholder="พิมพ์ชื่อสินค้า" />
-            <datalist id="pm-families">
-              {PRODUCT_FAMILIES.map((p) => <option key={p.sku} value={p.sku}>{pmFamilyLabel(p)}</option>)}
-            </datalist>
-            {PM_BY_SKU[f.sku] && <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 4 }}>{pmLabel(PM_BY_SKU[f.sku])} — เลือกไซส์/สีให้ตรงตอนทำ Proforma</div>}
+            <label style={labelStyle}>สินค้า</label>
+            <button
+              type="button"
+              onClick={() => setPickingProduct(true)}
+              style={{ ...inputStyle, textAlign: 'left', cursor: 'pointer', color: f.sku ? 'var(--payi-text-strong)' : 'var(--payi-text-faint)', display: 'block' }}
+            >
+              {f.sku ? (PM_BY_SKU[f.sku] ? cleanFamilyName(PM_BY_SKU[f.sku].name_th, PM_BY_SKU[f.sku].name_en) : f.sku) : 'เลือกสินค้า'}
+            </button>
+            {pickingProduct && <FamilyListPicker onPick={pickFamily} onClose={() => setPickingProduct(false)} />}
           </div>
           <div><label style={labelStyle}>ชื่อลับ</label><input value={f.codename} onChange={set('codename')} style={inputStyle} placeholder="กุ้งดำ" /></div>
         </div>
