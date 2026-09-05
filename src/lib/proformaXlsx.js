@@ -112,6 +112,16 @@ export async function generateProforma(info, groups) {
   let totQty = 0
   for (const g of groups) {
     const gStart = r
+    // No. รวมทั้งกลุ่ม (ชื่ออังกฤษเดียวกัน) แต่ Product Name (D/E) merge แค่ช่วงที่ชื่อไทยเหมือนกันติดกัน —
+    // Toe pads L/S/XL ชื่อไทยเหมือนกันหมด = merge รวด; กันกัด 3 ทรงชื่อไทยต่างกัน = โชว์ชื่อตัวเองทุกแถว
+    let subStart = r
+    let subName = null
+    const closeSub = (subEnd) => {
+      if (subEnd < subStart) return
+      if (subEnd > subStart) for (const L of 'DE') inv.mergeCells(`${L}${subStart}:${L}${subEnd}`)
+      set(inv, `D${subStart}`, g.name_en || '', { align: LFT, border: BOX })
+      set(inv, `E${subStart}`, subName || '', { align: LFT, border: BOX })
+    }
     for (const row of g.rows) {
       const qty = Math.round(num(row.qty))
       totQty += qty
@@ -121,13 +131,14 @@ export async function generateProforma(info, groups) {
       set(inv, `H${r}`, { formula: `C${r}*G${r}` }, { fill: WHITE, border: BOX, numFmt: '#,##0.00' })
       for (const L of 'BDE') inv.getCell(`${L}${r}`).border = BOX
       inv.getRow(r).height = g.rows.length === 1 ? 60 : 22
+      if (subName === null) subName = row.name_th
+      else if (row.name_th !== subName) { closeSub(r - 1); subStart = r; subName = row.name_th }
       r++
     }
+    closeSub(r - 1)
     const gEnd = r - 1
-    if (gEnd > gStart) for (const L of 'BDE') inv.mergeCells(`${L}${gStart}:${L}${gEnd}`)
+    if (gEnd > gStart) inv.mergeCells(`B${gStart}:B${gEnd}`)
     set(inv, `B${gStart}`, g.no, { border: BOX })
-    set(inv, `D${gStart}`, g.name_en || '', { align: LFT, border: BOX })
-    set(inv, `E${gStart}`, g.name_th || '', { align: LFT, border: BOX })
     await addImg(inv, g.image, colIdx('F') - 1, gStart - 1, 95)
   }
   for (const L of 'BCDEFGH') inv.getCell(`${L}${r}`).border = BOX
