@@ -11,6 +11,20 @@ const pmLabel = (p) => {
   return [p.sku, p.name_th || p.name_en, tag].filter(Boolean).join(' · ')
 }
 
+// ตอน "แจ้งของเข้า" ยังไม่รู้ไซส์/สีแน่ชัด (รอนับ) — โชว์ dropdown แค่รายสินค้า (ตัวแทน 1 sku ต่อกลุ่ม name_en)
+// ไซส์/สีจริงค่อยเจาะจงตอนทำ Proforma (ที่นั่นเลือกได้ครบทุก sku)
+const PRODUCT_FAMILIES = (() => {
+  const seen = new Map()
+  for (const p of PRODUCT_MASTER) {
+    const key = p.name_en || p.sku
+    const g = seen.get(key)
+    if (g) g.count += 1
+    else seen.set(key, { ...p, count: 1 })
+  }
+  return [...seen.values()]
+})()
+const pmFamilyLabel = (p) => `${p.sku} · ${p.name_en}${p.count > 1 ? ` (${p.count} ไซส์/สี — เจาะจงตอนทำ Proforma)` : ''}`
+
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
 const baht = (n) => (n === null || n === undefined || n === '' ? '—' : '฿' + Number(n).toLocaleString('th-TH', { maximumFractionDigits: 2 }))
 const API = '/api/sheet-tools?op=import-tracking'
@@ -464,7 +478,8 @@ function ArrivalModal({ initial, busy, onClose, onSave }) {
   const setSku = (e) => setF((d) => {
     const sku = e.target.value
     const p = PM_BY_SKU[sku]
-    return { ...d, sku, item_name: (!d.item_name.trim() && p) ? (p.name_th || p.name_en) : d.item_name }
+    // ตอนนี้ยังไม่รู้ไซส์/สีแน่ชัด (รอนับ) — เติมชื่อสินค้าแบบกลาง (name_en) ไม่ใช้ name_th ที่อาจมีไซส์ติดมา
+    return { ...d, sku, item_name: (!d.item_name.trim() && p) ? p.name_en : d.item_name }
   })
   const submit = (e) => { e.preventDefault(); if (!f.item_name.trim()) return; onSave(f) }
   const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
@@ -517,12 +532,12 @@ function ArrivalModal({ initial, busy, onClose, onSave }) {
 
         <div style={grid}>
           <div>
-            <label style={labelStyle}>SKU (product_master)</label>
-            <input value={f.sku} onChange={setSku} list="pm-skus" style={inputStyle} placeholder="PM-15" />
-            <datalist id="pm-skus">
-              {PRODUCT_MASTER.map((p) => <option key={p.sku} value={p.sku}>{pmLabel(p)}</option>)}
+            <label style={labelStyle}>สินค้า (product_master)</label>
+            <input value={f.sku} onChange={setSku} list="pm-families" style={inputStyle} placeholder="พิมพ์ชื่อสินค้า" />
+            <datalist id="pm-families">
+              {PRODUCT_FAMILIES.map((p) => <option key={p.sku} value={p.sku}>{pmFamilyLabel(p)}</option>)}
             </datalist>
-            {PM_BY_SKU[f.sku] && <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 4 }}>{pmLabel(PM_BY_SKU[f.sku])}</div>}
+            {PM_BY_SKU[f.sku] && <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 4 }}>{pmLabel(PM_BY_SKU[f.sku])} — เลือกไซส์/สีให้ตรงตอนทำ Proforma</div>}
           </div>
           <div><label style={labelStyle}>ชื่อลับ</label><input value={f.codename} onChange={set('codename')} style={inputStyle} placeholder="กุ้งดำ" /></div>
         </div>
