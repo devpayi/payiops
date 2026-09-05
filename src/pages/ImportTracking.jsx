@@ -660,7 +660,9 @@ function LotModal({ initial, busy, onClose, onSave }) {
 
 // ค่าคงที่หัวเอกสาร proforma (แก้ที่เดียว)
 const PROFORMA_SUPPLIER = '晋江熠晓贸易有限公司'
-const PROFORMA_CONSIGNEE = 'บริษัท ปลาใหญ่ มาร์เก็ตติ้ง จำกัด (สำนักงานใหญ่)\n79 ซอยงามวงศ์วาน 23 ตำบลบางเขน อำเภอเมืองนนทบุรี จังหวัดนนทบุรี 11000'
+// "To:" ปลายทางคือคลัง LK ที่กว่างโจว (ไม่ใช่ที่อยู่ PAYI ในไทย!) — เช็คแล้วตรงกันทุกไฟล์จริง 21/21 ไฟล์
+// (A24133...A24344 + PROFORMA INVOICE-packing list) เปลี่ยนแค่ shipping mark (LK/Axxxxx-1(EK)) 2 จุด
+const buildConsignee = (mark) => `收件人： 李乙庚${mark}\n收货地址：广东省广州市白云区人和镇人和大街68号万宝集团内61号仓国际物流，进大门右拐直走到底。\n(入仓唛头：${mark}唛头麻烦一定要写在外包装上）\n邮编：510470\n手机改为：15817097990`
 
 // จับกลุ่มกล่องเหมือนกัน (wt|l|w|h) จาก lk-lookup.cartons
 function groupCartons(cartons) {
@@ -675,7 +677,34 @@ function groupCartons(cartons) {
 }
 
 // เลือกสินค้าจากรูป — grid ทั้ง product_master + ช่องค้นหา
-function ProductImagePicker({ images, current, onPick, onClose }) {
+// ย่อรูปฝั่ง client ก่อนอัพ (canvas) — เก็บใน Google Sheet cell เดียว ต้องเล็ก
+function resizeImageFile(file, maxSize = 320, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = reject
+    reader.onload = () => {
+      const img = new Image()
+      img.onerror = reject
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
+        const w = Math.round(img.width * scale) || 1
+        const h = Math.round(img.height * scale) || 1
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        ctx.fillStyle = '#fff'
+        ctx.fillRect(0, 0, w, h)
+        ctx.drawImage(img, 0, 0, w, h)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.src = reader.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+function ProductImagePicker({ images, current, onPick, onClose, onUpload, uploadingSku }) {
   const [q, setQ] = useState('')
   const list = useMemo(() => {
     const t = q.trim().toLowerCase()
@@ -694,27 +723,38 @@ function ProductImagePicker({ images, current, onPick, onClose }) {
         </div>
         <div style={{ padding: 12, overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 10 }}>
           {list.map((p) => (
-            <button
+            <div
               key={p.sku}
-              type="button"
-              onClick={() => onPick(p.sku)}
               style={{
+                position: 'relative',
                 border: p.sku === current ? '2px solid var(--payi-mint-strong)' : '1px solid var(--payi-border)',
-                borderRadius: 10, padding: 8, cursor: 'pointer', background: 'var(--payi-surface)', textAlign: 'left',
+                borderRadius: 10, padding: 8, background: 'var(--payi-surface)',
                 display: 'flex', flexDirection: 'column', gap: 6,
               }}
             >
-              <div style={{ width: '100%', aspectRatio: '1', borderRadius: 6, overflow: 'hidden', background: 'var(--payi-surface-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div onClick={() => onPick(p.sku)} style={{ cursor: 'pointer', position: 'relative', width: '100%', aspectRatio: '1', borderRadius: 6, overflow: 'hidden', background: 'var(--payi-surface-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {images[p.sku]
                   ? <img src={images[p.sku]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   : <span style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>ไม่มีรูป</span>}
               </div>
-              <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>{p.name_en}</div>
-              <div style={{ fontSize: 10.5, color: 'var(--payi-text-muted)', lineHeight: 1.35 }}>
-                {p.name_th}{[p.color, p.size].filter(Boolean).length ? ` · ${[p.color, p.size].filter(Boolean).join(' ')}` : ''}
+              <div onClick={() => onPick(p.sku)} style={{ cursor: 'pointer' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>{p.name_en}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--payi-text-muted)', lineHeight: 1.35 }}>
+                  {p.name_th}{[p.color, p.size].filter(Boolean).length ? ` · ${[p.color, p.size].filter(Boolean).join(' ')}` : ''}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{p.sku}</div>
               </div>
-              <div style={{ fontSize: 10, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{p.sku}</div>
-            </button>
+              <label
+                onClick={(e) => e.stopPropagation()}
+                style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--payi-mint-strong)', cursor: uploadingSku === p.sku ? 'default' : 'pointer', textAlign: 'center', padding: '4px 0', borderRadius: 6, background: 'var(--payi-mint-soft)' }}
+              >
+                {uploadingSku === p.sku ? 'กำลังอัพโหลด...' : images[p.sku] ? 'เปลี่ยนรูป' : '+ อัพโหลดรูป'}
+                <input
+                  type="file" accept="image/*" hidden disabled={uploadingSku === p.sku}
+                  onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) onUpload(p.sku, file) }}
+                />
+              </label>
+            </div>
           ))}
           {!list.length && <div style={{ color: 'var(--payi-text-muted)', gridColumn: '1/-1', padding: 20, textAlign: 'center' }}>ไม่เจอ — ถ้าเป็นสินค้าใหม่ ต้องเพิ่มใน product_master ก่อน</div>}
         </div>
@@ -726,16 +766,34 @@ function ProductImagePicker({ images, current, onPick, onClose }) {
 function ProformaModal({ lot, busy, onClose, onMarkDone }) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
   const [rows, setRows] = useState(null) // null | [{ id, item_name, qty, sku, sku0, cartons, carton_src }]
-  const [info, setInfo] = useState({ invoice_date: today, shipping_mark: lot.lot_ref ? `LK/${lot.lot_ref}` : '', consignee_to: PROFORMA_CONSIGNEE })
+  const [info, setInfo] = useState({ invoice_date: today, shipping_mark: lot.lot_ref ? `LK/${lot.lot_ref}` : '' })
   const [gen, setGen] = useState('') // '' | 'working' | 'done' | error string
-  const [images, setImages] = useState({}) // { sku: dataURL }
+  const [images, setImages] = useState({}) // { sku: dataURL } — bundled (build-time) + dynamic (อัพโหลดจากเว็บ) รวมกัน
   const [picking, setPicking] = useState(null) // arrival id ที่กำลังเลือกสินค้าจากรูป
+  const [uploadingSku, setUploadingSku] = useState(null)
 
   useEffect(() => {
     let alive = true
-    import('../data/productImages.json').then((m) => { if (alive) setImages(m.default || m) }).catch(() => {})
+    Promise.all([
+      import('../data/productImages.json').then((m) => m.default || m).catch(() => ({})),
+      fetch(`${API}&view=product-images`).then((r) => r.json()).then((r) => r.images || {}).catch(() => ({})),
+    ]).then(([bundled, dynamic]) => { if (alive) setImages({ ...bundled, ...dynamic }) })
     return () => { alive = false }
   }, [])
+
+  const uploadImage = async (sku, file) => {
+    setUploadingSku(sku)
+    try {
+      const dataUrl = await resizeImageFile(file)
+      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set-product-image', sku, image: dataUrl }) }).then((x) => x.json())
+      if (r.success) setImages((m) => ({ ...m, [sku]: dataUrl }))
+      else alert('อัพโหลดไม่สำเร็จ: ' + (r.error || ''))
+    } catch (e) {
+      alert('อัพโหลดไม่สำเร็จ: ' + e.message)
+    } finally {
+      setUploadingSku(null)
+    }
+  }
 
   // ── ดึงกล่องจากชีท LK ต่อ arrival (ครั้งเดียวตอนเปิด) ──
   const load = useCallback(async () => {
@@ -834,7 +892,7 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
         rows: g.rows.map((r) => ({ sku: r.sku, qty: r.qty, name_zh: r.name_zh, name_th: r.name_th, cartons: r.cartons })),
       }))
       const { blob } = await generateProforma(
-        { supplier_name_zh: PROFORMA_SUPPLIER, invoice_date: info.invoice_date, consignee_to: info.consignee_to },
+        { supplier_name_zh: PROFORMA_SUPPLIER, invoice_date: info.invoice_date, consignee_to: buildConsignee(info.shipping_mark) },
         groups,
       )
       const url = URL.createObjectURL(blob)
@@ -931,6 +989,8 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
                 current={rows.find((r) => r.id === picking)?.sku || ''}
                 onPick={(sku) => { setSku(picking, sku); setPicking(null) }}
                 onClose={() => setPicking(null)}
+                onUpload={uploadImage}
+                uploadingSku={uploadingSku}
               />
             )}
 
@@ -947,9 +1007,12 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div><label style={labelStyle}>วันที่ออก (DATE)</label><input type="date" value={info.invoice_date} onChange={(e) => setInfo((d) => ({ ...d, invoice_date: e.target.value }))} style={inputStyle} /></div>
-              <div><label style={labelStyle}>Shipping mark</label><input value={info.shipping_mark} onChange={(e) => setInfo((d) => ({ ...d, shipping_mark: e.target.value }))} style={inputStyle} placeholder="LK/A24xxx-1(EK)" /></div>
+              <div><label style={labelStyle}>Shipping mark (入仓唛头)</label><input value={info.shipping_mark} onChange={(e) => setInfo((d) => ({ ...d, shipping_mark: e.target.value }))} style={inputStyle} placeholder="LK/A24xxx-1(EK)" /></div>
             </div>
-            <div><label style={labelStyle}>ผู้รับ (To:)</label><textarea value={info.consignee_to} onChange={(e) => setInfo((d) => ({ ...d, consignee_to: e.target.value }))} style={{ ...inputStyle, minHeight: 54, resize: 'vertical' }} /></div>
+            <div>
+              <label style={labelStyle}>ผู้รับ (To:) — คลัง LK กว่างโจว ที่อยู่คงที่ทุกลอต</label>
+              <pre style={{ ...inputStyle, minHeight: 54, whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 12, margin: 0, color: 'var(--payi-text-muted)' }}>{buildConsignee(info.shipping_mark || 'LK/…')}</pre>
+            </div>
 
             {gen && gen !== 'working' && gen !== 'done' && <div style={{ color: 'var(--payi-danger)', fontSize: 12 }}>{gen}</div>}
             {gen === 'done' && <div style={{ color: 'var(--payi-success)', fontSize: 12, fontWeight: 700 }}>✓ ดาวน์โหลดไฟล์แล้ว — เปิดไฟล์ใส่ Unit Price ให้พี่หยก แล้วส่ง LK</div>}

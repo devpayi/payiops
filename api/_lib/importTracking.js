@@ -72,6 +72,12 @@ const ALIAS = 'import_sku_alias' // จำ: ชื่อสินค้า (จ�
 const ALIAS_HEADERS = ['key', 'sku', 'updated_at']
 const aliasKey = (s) => String(s || '').trim().toLowerCase()
 
+// รูปสินค้าที่อัพโหลดจากเว็บ (เติมของที่ product_master.xlsx ยังไม่มีรูป) — เก็บเป็น data URL
+// บีบเล็กแล้วฝั่ง client ก่อนส่ง (เผื่อ cell limit ของ Google Sheets ~50,000 ตัวอักษร)
+const IMAGES = 'product_images'
+const IMAGE_HEADERS = ['sku', 'image', 'updated_at']
+const MAX_IMAGE_CHARS = 45000
+
 // ต่อท้ายเท่านั้น (ห้ามแทรกกลาง)
 const ARRIVAL_HEADERS = [
   'id', 'sku', 'item_name', 'codename',
@@ -123,7 +129,31 @@ const ensureAll = () => (ensurePromise ||= Promise.all([
   ensureSheet(ARRIVALS, ARRIVAL_HEADERS),
   ensureSheet(LOTS, LOT_HEADERS),
   ensureSheet(ALIAS, ALIAS_HEADERS),
+  ensureSheet(IMAGES, IMAGE_HEADERS),
 ]))
+
+async function loadProductImages() {
+  await ensureAll()
+  const rows = await getSheet(IMAGES)
+  const out = {}
+  for (const r of rows) if (r.sku && r.image) out[String(r.sku).trim()] = r.image
+  return out
+}
+
+async function setProductImage(sku, image) {
+  const s = String(sku || '').trim()
+  if (!s) throw new Error('ต้องระบุ sku')
+  if (!/^data:image\//.test(String(image || ''))) throw new Error('รูปไม่ถูกต้อง')
+  if (image.length > MAX_IMAGE_CHARS) throw new Error('รูปใหญ่เกินไป (บีบให้เล็กลงก่อน)')
+  await ensureAll()
+  const rows = await getSheet(IMAGES)
+  const now = new Date().toISOString()
+  const idx = rows.findIndex((r) => String(r.sku).trim() === s)
+  if (idx === -1) rows.push({ sku: s, image, updated_at: now })
+  else rows[idx] = { sku: s, image, updated_at: now }
+  await overwriteSheet(IMAGES, IMAGE_HEADERS, rows.map((r) => IMAGE_HEADERS.map((h) => r[h] ?? '')))
+  return { sku: s }
+}
 
 async function loadAliasMap() {
   try {
@@ -451,6 +481,9 @@ export default async function opImportTracking(req, res) {
       if (req.query?.view === 'lk-lookup') {
         return res.status(200).json({ success: true, ...(await lkLookup(req.query.shipping_no, req.query.date)) })
       }
+      if (req.query?.view === 'product-images') {
+        return res.status(200).json({ success: true, images: await loadProductImages() })
+      }
       return res.status(200).json({ success: true, ...(await loadAll()) })
     }
     if (req.method === 'POST') {
@@ -460,6 +493,7 @@ export default async function opImportTracking(req, res) {
         'delete-arrival': () => deleteArrival(req.body?.id),
         'assign-arrivals': () => assignArrivals(req.body?.arrival_ids, req.body?.lot_id),
         'set-arrival-skus': () => setArrivalSkus(req.body?.items),
+        'set-product-image': () => setProductImage(req.body?.sku, req.body?.image),
         'upsert-lot': () => upsertLot(req.body),
         'delete-lot': () => deleteLot(req.body?.id),
       }
