@@ -62,6 +62,9 @@ const colIdx = (L) => [...L].reduce((a, ch) => a * 26 + (ch.charCodeAt(0) - 64),
 export async function generateProforma(info, groups) {
   const ExcelJS = (await import('exceljs')).default || (await import('exceljs'))
   const wb = new ExcelJS.Workbook()
+  // exceljs เขียนสูตร (=C*G, =SUM(...)) โดยไม่มี cached result — ถ้าไม่บังคับ recalc ตอนเปิด
+  // Excel/viewer บางตัวโชว์ช่องว่างจนกว่าจะกด F9 (เจอจริง: คอลัมน์ H รวมราคา + แถวรวมท้ายตาราง ว่างเปล่า)
+  wb.calcProperties.fullCalcOnLoad = true
 
   const imgById = new Map()
   const addImg = async (ws, dataUrl, anchorCol0, anchorRow0, maxW) => {
