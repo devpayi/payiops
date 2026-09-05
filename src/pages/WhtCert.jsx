@@ -124,6 +124,28 @@ async function buildPdf({ runNo, dateISO, bookNo }) {
   T(String(be), 432, 75, 9)
 
   try { form.flatten() } catch (e) { void e }
+  // แก้เงาซ้อน: pdf-lib flatten() วาดกรอบ checkbox ตาม widget rect เป๊ะ แต่กรอบสี่เหลี่ยมที่พิมพ์ไว้ใน
+  // ฟอร์ม RD ต้นฉบับเยื้องจาก widget rect เล็กน้อย (ไม่เท่ากันทุกช่อง วัดจริงทีละช่องด้วย pymupdf) —
+  // เห็นเป็นเส้นจางซ้อนที่ช่อง (1)-(6) ที่ไม่ได้ติ๊ก (chk7 ติ๊กแล้วไม่ต้องแก้) ลบเฉพาะส่วนที่ widget
+  // โผล่เกินกรอบพิมพ์จริง ไม่แตะกรอบที่พิมพ์ไว้เลย (พิกัด topdown, flip เป็น bottom-up ตอนวาด)
+  const pageH = page.getHeight()
+  const patchGhost = (bold, ghost) => {
+    const [bx0, by0, bx1, by1] = bold
+    const [gx0, gy0, gx1, gy1] = ghost
+    const eps = 0.01, pad = 0.25, bite = 0.15 // bite = กัดเข้าไปในกรอบพิมพ์เล็กน้อยกันเส้นจางตกค้างที่รอยต่อ
+    const wh = (x0, y0t, x1, y1t) => page.drawRectangle({ x: x0, y: pageH - y1t, width: x1 - x0, height: y1t - y0t, color: rgb(1, 1, 1) })
+    if (gx1 > bx1 + eps) wh(bx1 - bite, gy0 - pad, gx1 + pad, gy1 + pad) // เกินขวา
+    if (gx0 < bx0 - eps) wh(gx0 - pad, gy0 - pad, bx0 + bite, gy1 + pad) // เกินซ้าย
+    if (gy0 < by0 - eps) wh(gx0 - pad, gy0 - pad, gx1 + pad, by0 + bite) // เกินบน (topdown เล็ก=สูงกว่า)
+    if (gy1 > by1 + eps) wh(gx0 - pad, by1 - bite, gx1 + pad, gy1 + pad) // เกินล่าง
+  }
+  // [bold, ghost] วัดจริงจาก template ทีละช่อง (chk1..chk6)
+  patchGhost([209.3, 228.2, 221.2, 240.1], [209.3, 226.77, 222.0, 240.13])
+  patchGhost([287.27, 228.2, 299.17, 240.1], [287.23, 226.77, 300.67, 240.13])
+  patchGhost([395.0, 228.2, 406.9, 240.1], [394.67, 227.43, 407.33, 240.13])
+  patchGhost([472.1, 228.2, 484.0, 240.1], [471.33, 227.43, 484.03, 240.13])
+  patchGhost([209.3, 246.67, 221.2, 258.57], [209.3, 245.43, 222.0, 258.57])
+  patchGhost([287.27, 246.63, 299.17, 258.57], [287.23, 245.43, 300.0, 258.57])
   // ทับปุ่ม "Clear Data" ที่มุมขวาบน (อยู่นอกกรอบเอกสาร)
   page.drawRectangle({ x: 480, y: 812, width: 105, height: 30, color: rgb(1, 1, 1) })
 
