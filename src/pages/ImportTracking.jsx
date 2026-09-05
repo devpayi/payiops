@@ -20,7 +20,7 @@ const FAMILY_COLOR_WORDS = new Set([
   'สีดำ', 'สีขาว', 'สีฟ้า', 'สีเขียว', 'สีชมพู', 'สีเนื้อ', 'สีเทา', 'สีแดง', 'เบบี้บลู',
 ])
 // รุ่น/แบรนด์ย่อยที่จริงคือ variant ของสินค้าเดียวกัน (เจอในชื่อจริง เพิ่มได้เรื่อยๆ)
-const FAMILY_VARIANT_WORDS = new Set(['Sky', 'Ocean'])
+const FAMILY_VARIANT_WORDS = new Set(['Sky', 'Ocean', 'พระจันทร์', 'มาตรฐาน', 'วงรี', 'เรียวยาว', 'สี่เหลี่ยม'])
 
 function cleanFamilyName(nameTh, nameEn) {
   let s = String(nameTh || '').trim()
@@ -920,7 +920,8 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
       // 2) สร้างไฟล์
       const { generateProforma } = await import('../lib/proformaXlsx')
       const groups = view.groups.map((g, i) => ({
-        no: i + 1, name_en: g.name_en, name_th: g.rows[0].name_th,
+        // ชื่อไทยที่โชว์บน packing list = ชื่อสินค้าเฉยๆ (ตัดไซส์/สี/ทรงออก) ไม่ใช่ชื่อเฉพาะของ sku แรก
+        no: i + 1, name_en: g.name_en, name_th: cleanFamilyName(g.rows[0].name_th, g.rows[0].name_en),
         image: images[g.rows[0].sku] || null,
         rows: g.rows.map((r) => ({ sku: r.sku, qty: r.qty, name_zh: r.name_zh, name_th: r.name_th, cartons: r.cartons, packingQty: r.packingQty ?? r.qty })),
       }))
