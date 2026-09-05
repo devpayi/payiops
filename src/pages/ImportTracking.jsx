@@ -808,7 +808,7 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
           if (r.found && r.cartons?.length) { cartons = groupCartons(r.cartons); carton_src = 'LK' }
         } catch { /* noop */ }
       }
-      out.push({ id: a.id, item_name: a.item_name || '', qty: a.qty || 0, sku: a.sku || '', sku0: a.sku || '', shipping_no: a.shipping_no || '', arrive_date: a.arrive_date || '', cartons, carton_src, manualCarton: null })
+      out.push({ id: a.id, item_name: a.item_name || '', qty: a.qty || 0, sku: a.sku || '', sku0: a.sku || '', shipping_no: a.shipping_no || '', arrive_date: a.arrive_date || '', cartons, carton_src, manualCarton: null, splits: null })
     }
     return out
   }, [lot])
@@ -821,6 +821,26 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
 
   const setSku = (id, sku) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, sku } : r)))
   const setManual = (id, patch) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, manualCarton: { count: 1, wt: 0, l: 0, w: 0, h: 0, ...r.manualCarton, ...patch } } : r)))
+
+  // ── ของ 1 ชิ้นที่เข้ามาจริงๆ มีหลายไซส์/สี (ต้องแยกบรรทัดในใบจริงแบบ Toe pads L/S/XL) ──
+  const toggleSplit = (id) => setRows((rs) => rs.map((r) => {
+    if (r.id !== id) return r
+    if (r.splits) return { ...r, splits: null }
+    return { ...r, splits: [{ sku: r.sku, qty: r.qty, manualCarton: null }, { sku: '', qty: 0, manualCarton: null }] }
+  }))
+  const addSplit = (id) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, splits: [...r.splits, { sku: '', qty: 0, manualCarton: null }] } : r)))
+  const removeSplit = (id, idx) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, splits: r.splits.filter((_, i) => i !== idx) } : r)))
+  const setSplitField = (id, idx, patch) => setRows((rs) => rs.map((r) => {
+    if (r.id !== id) return r
+    const splits = r.splits.map((s, i) => (i === idx ? { ...s, ...patch } : s))
+    return { ...r, splits }
+  }))
+  const setSplitManual = (id, idx, patch) => setRows((rs) => rs.map((r) => {
+    if (r.id !== id) return r
+    const splits = r.splits.map((s, i) => (i === idx ? { ...s, manualCarton: { count: 1, wt: 0, l: 0, w: 0, h: 0, ...s.manualCarton, ...patch } } : s))
+    return { ...r, splits }
+  }))
+
   const retryLk = async (id) => {
     const r = rows.find((x) => x.id === id)
     if (!r?.shipping_no) return
@@ -838,21 +858,33 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
   // ไม่ fallback ไปใช้เลขเก่าจาก product_master (คนละลอต ขนาดกล่องไม่เท่ากัน) ต้องเปิดชีท LK เช็คเองแล้วกรอกมือ
   const view = useMemo(() => {
     if (!rows) return null
-    const enriched = rows.map((r) => {
-      const pm = r.sku ? PM_BY_SKU[r.sku] : null
-      const hasManual = r.manualCarton && (r.manualCarton.wt || r.manualCarton.l)
-      const cartons = r.cartons.length ? r.cartons : (hasManual ? [r.manualCarton] : [])
-      const cartonNote = r.carton_src === 'LK' ? '' : hasManual ? 'กรอกมือ (เช็คจากชีท LK แล้ว)' : 'บอทหาไม่เจอ — เปิดชีท LK เช็คเอง แล้วกรอกด้านล่าง'
+    const enrichOne = (sku, qty, cartons, cartonNote, manualCarton, itemName, extraId) => {
+      const pm = sku ? PM_BY_SKU[sku] : null
       return {
-        ...r, pm, cartons, cartonNote, needsManual: !r.cartons.length,
-        name_en: pm?.name_en || r.item_name || r.sku || '',
+        id: extraId, sku, qty, item_name: itemName, pm, cartons, cartonNote, manualCarton, needsManual: !cartons.length,
+        name_en: pm?.name_en || itemName || sku || '',
         name_th: pm?.name_th || '',
         name_zh: pm?.name_zh || '',
-        desc_preview: [pm?.name_zh, pm?.name_th].filter(Boolean).join(' - ') || r.item_name || '',
+        desc_preview: [pm?.name_zh, pm?.name_th].filter(Boolean).join(' - ') || itemName || '',
         boxes: cartons.reduce((s, c) => s + c.count, 0),
         wt: cartons.reduce((s, c) => s + c.count * c.wt, 0),
         cbm: cartons.reduce((s, c) => s + c.count * c.l * c.w * c.h / 1e6, 0),
       }
+    }
+    const enriched = rows.flatMap((r) => {
+      if (r.splits) {
+        // ของเข้าเดียวกัน แต่มีหลายไซส์/สี — แยกเป็นหลายบรรทัดในใบจริง แต่ละบรรทัดกรอกกล่องเองเพราะ
+        // ชีท LK ให้ยอดรวมของทั้ง shipping_no มาก้อนเดียว แยกตามไซส์ให้ไม่ได้
+        return r.splits.map((s, i) => {
+          const hasManual = s.manualCarton && (s.manualCarton.wt || s.manualCarton.l)
+          const cartons = hasManual ? [s.manualCarton] : []
+          return { ...enrichOne(s.sku, s.qty, cartons, hasManual ? 'กรอกมือ (แยกไซส์/สี)' : 'แยกไซส์/สี — กรอกกล่องเอง', s.manualCarton, r.item_name, `${r.id}-s${i}`), parentId: r.id, splitIdx: i, shipping_no: r.shipping_no, splitCount: r.splits.length }
+        })
+      }
+      const hasManual = r.manualCarton && (r.manualCarton.wt || r.manualCarton.l)
+      const cartons = r.cartons.length ? r.cartons : (hasManual ? [r.manualCarton] : [])
+      const cartonNote = r.carton_src === 'LK' ? '' : hasManual ? 'กรอกมือ (เช็คจากชีท LK แล้ว)' : 'บอทหาไม่เจอ — เปิดชีท LK เช็คเอง แล้วกรอกด้านล่าง'
+      return [{ ...enrichOne(r.sku, r.qty, cartons, cartonNote, r.manualCarton, r.item_name, r.id), parentId: r.id, splitIdx: null, shipping_no: r.shipping_no, splitCount: 0 }]
     })
     const groups = []
     for (const it of enriched) {
@@ -880,7 +912,11 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
     setGen('working')
     try {
       // 1) จำ sku ที่เพิ่งจับคู่ (arrival + ชื่อ->sku ครั้งหน้าไม่ต้องเลือกซ้ำ)
-      const changed = rows.filter((r) => r.sku && r.sku !== r.sku0).map((r) => ({ id: r.id, sku: r.sku }))
+      // ถ้าแยกไซส์/สีไว้ จำแค่ตัวแรกไว้กับของเข้านี้ (ตัวอื่นเป็นแค่บรรทัดในไฟล์ ไม่ใช่ของเข้าจริง)
+      const changed = rows
+        .map((r) => ({ id: r.id, sku0: r.sku0, sku: r.splits ? r.splits[0]?.sku : r.sku }))
+        .filter((r) => r.sku && r.sku !== r.sku0)
+        .map((r) => ({ id: r.id, sku: r.sku }))
       if (changed.length) {
         await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set-arrival-skus', items: changed }) })
       }
@@ -927,67 +963,111 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
 
             {/* รายการในลอต — จับคู่สินค้าจากรูปตรงนี้ได้เลย */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {view.groups.map((g, gi) => g.rows.map((r, ri) => (
-                <div key={r.id} style={{ border: '1px solid var(--payi-border)', borderRadius: 10, padding: 10, display: 'flex', gap: 10, background: r.sku ? 'transparent' : 'var(--payi-warning-bg)' }}>
-                  <button
-                    type="button"
-                    onClick={() => setPicking(r.id)}
-                    title="เลือกสินค้าจากรูป"
-                    style={{ flex: '0 0 56px', width: 56, height: 56, borderRadius: 8, border: '1px solid var(--payi-border)', padding: 0, cursor: 'pointer', overflow: 'hidden', background: 'var(--payi-surface-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    {images[r.sku]
-                      ? <img src={images[r.sku]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      : <span style={{ fontSize: 10, color: 'var(--payi-text-faint)' }}>เลือก<br />รูป</span>}
-                  </button>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600 }}>
-                      {ri === 0 ? `${gi + 1}. ` : ''}{r.pm?.name_en || <span style={{ color: 'var(--payi-danger)' }}>ยังไม่จับคู่</span>}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>
-                      {fmt(r.qty)} ชิ้น · {r.boxes} กล่อง · {r.wt.toFixed(1)} กก. · {r.cbm.toFixed(2)} CBM{r.cartonNote ? ` · ${r.cartonNote}` : ''}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>ของเข้า (ชีท LK): {r.item_name || '(ไม่มีชื่อ)'}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                      <input
-                        value={r.sku}
-                        onChange={(e) => setSku(r.id, e.target.value.trim())}
-                        list="proforma-skus"
-                        placeholder="พิมพ์ชื่อ/รหัส หรือกดรูปซ้าย"
-                        style={{ ...inputStyle, flex: '0 0 200px', fontFamily: 'monospace', padding: '6px 10px' }}
-                      />
-                      {r.pm && <span style={{ fontSize: 11, color: 'var(--payi-success)' }}>✓ {r.desc_preview.slice(0, 40)}</span>}
-                      {!r.pm && r.sku && <span style={{ fontSize: 11, color: 'var(--payi-danger)' }}>ไม่พบใน product_master</span>}
-                    </div>
-
-                    {r.needsManual && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 4, background: 'var(--payi-surface)', border: '1px dashed var(--payi-danger)', borderRadius: 8, padding: 8 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--payi-danger)', flexBasis: '100%' }}>
-                          บอทหาไม่เจอในชีท LK — เปิดชีท LK เช็ค (เลข SHIPPING {r.shipping_no || '—'}) แล้วกรอกกล่องเอง:
-                        </span>
-                        <button type="button" onClick={() => retryLk(r.id)} style={{ ...primaryBtn, padding: '5px 10px', fontSize: 11 }}>ลองดึงจาก LK อีกครั้ง</button>
-                        {[['จำนวนกล่อง', 'count'], ['กก./กล่อง', 'wt'], ['ยาว cm', 'l'], ['กว้าง cm', 'w'], ['สูง cm', 'h']].map(([lbl, k]) => (
-                          <label key={k} style={{ fontSize: 10, color: 'var(--payi-text-muted)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            {lbl}
-                            <input
-                              type="number" step="any" min="0"
-                              value={r.manualCarton?.[k] ?? ''}
-                              onChange={(e) => setManual(r.id, { [k]: e.target.value === '' ? 0 : Number(e.target.value) })}
-                              style={{ ...inputStyle, width: 64, padding: '4px 6px', fontSize: 12 }}
-                            />
-                          </label>
-                        ))}
+              {view.groups.map((g, gi) => g.rows.map((r, ri) => {
+                const isSplit = r.splitIdx !== null
+                const doSetSku = (sku) => (isSplit ? setSplitField(r.parentId, r.splitIdx, { sku }) : setSku(r.parentId, sku))
+                const doSetManual = (patch) => (isSplit ? setSplitManual(r.parentId, r.splitIdx, patch) : setManual(r.parentId, patch))
+                const splitQtySum = isSplit ? rows.find((x) => x.id === r.parentId)?.splits.reduce((s, sp) => s + Number(sp.qty || 0), 0) : null
+                const splitQtyTarget = isSplit ? rows.find((x) => x.id === r.parentId)?.qty : null
+                return (
+                  <div key={r.id} style={{ border: '1px solid var(--payi-border)', borderRadius: 10, padding: 10, display: 'flex', gap: 10, background: r.sku ? 'transparent' : 'var(--payi-warning-bg)' }}>
+                    <button
+                      type="button"
+                      onClick={() => setPicking(r.id)}
+                      title="เลือกสินค้าจากรูป"
+                      style={{ flex: '0 0 56px', width: 56, height: 56, borderRadius: 8, border: '1px solid var(--payi-border)', padding: 0, cursor: 'pointer', overflow: 'hidden', background: 'var(--payi-surface-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      {images[r.sku]
+                        ? <img src={images[r.sku]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <span style={{ fontSize: 10, color: 'var(--payi-text-faint)' }}>เลือก<br />รูป</span>}
+                    </button>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <div style={{ fontWeight: 600 }}>
+                          {ri === 0 && !isSplit ? `${gi + 1}. ` : isSplit ? `${gi + 1}.${r.splitIdx + 1} ` : ''}
+                          {r.pm?.name_en || <span style={{ color: 'var(--payi-danger)' }}>ยังไม่จับคู่</span>}
+                        </div>
+                        {!isSplit && (
+                          <button type="button" onClick={() => toggleSplit(r.id)} style={{ fontSize: 11, fontWeight: 700, color: 'var(--payi-mint-strong)', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            แยกเป็นหลายไซส์/สี
+                          </button>
+                        )}
+                        {isSplit && r.splitIdx === 0 && (
+                          <button type="button" onClick={() => toggleSplit(r.parentId)} style={{ fontSize: 11, color: 'var(--payi-text-faint)', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            ยกเลิกแยก
+                          </button>
+                        )}
                       </div>
-                    )}
+                      <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>
+                        {fmt(r.qty)} ชิ้น · {r.boxes} กล่อง · {r.wt.toFixed(1)} กก. · {r.cbm.toFixed(2)} CBM{r.cartonNote ? ` · ${r.cartonNote}` : ''}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>ของเข้า (ชีท LK): {r.item_name || '(ไม่มีชื่อ)'}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                        {isSplit && (
+                          <input
+                            type="number" min="0" value={r.qty}
+                            onChange={(e) => setSplitField(r.parentId, r.splitIdx, { qty: e.target.value === '' ? 0 : Number(e.target.value) })}
+                            placeholder="จำนวน" style={{ ...inputStyle, flex: '0 0 80px', padding: '6px 10px' }}
+                          />
+                        )}
+                        <input
+                          value={r.sku}
+                          onChange={(e) => doSetSku(e.target.value.trim())}
+                          list="proforma-skus"
+                          placeholder="พิมพ์ชื่อ/รหัส หรือกดรูปซ้าย"
+                          style={{ ...inputStyle, flex: '0 0 200px', fontFamily: 'monospace', padding: '6px 10px' }}
+                        />
+                        {r.pm && <span style={{ fontSize: 11, color: 'var(--payi-success)' }}>✓ {r.desc_preview.slice(0, 40)}</span>}
+                        {!r.pm && r.sku && <span style={{ fontSize: 11, color: 'var(--payi-danger)' }}>ไม่พบใน product_master</span>}
+                        {isSplit && (
+                          <button type="button" onClick={() => removeSplit(r.parentId, r.splitIdx)} style={{ fontSize: 11, color: 'var(--payi-danger)', background: 'none', border: 'none', cursor: 'pointer' }}>ลบ</button>
+                        )}
+                      </div>
+                      {isSplit && r.splitIdx === r.splitCount - 1 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+                          <button type="button" onClick={() => addSplit(r.parentId)} style={{ fontSize: 11, fontWeight: 700, color: 'var(--payi-mint-strong)', background: 'none', border: 'none', cursor: 'pointer' }}>+ เพิ่มไซส์/สี</button>
+                          <span style={{ fontSize: 11, color: splitQtySum === splitQtyTarget ? 'var(--payi-text-faint)' : 'var(--payi-warning)' }}>
+                            รวม {fmt(splitQtySum)} / {fmt(splitQtyTarget)} ชิ้น{splitQtySum !== splitQtyTarget ? ' ⚠ ไม่เท่ากับของเข้าจริง' : ''}
+                          </span>
+                        </div>
+                      )}
+
+                      {r.needsManual && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 4, background: 'var(--payi-surface)', border: '1px dashed var(--payi-danger)', borderRadius: 8, padding: 8 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--payi-danger)', flexBasis: '100%' }}>
+                            {isSplit
+                              ? 'แยกไซส์/สีแล้ว — ชีท LK ให้ยอดกล่องรวมมาก้อนเดียว แยกให้ไม่ได้ กรอกกล่องของบรรทัดนี้เอง:'
+                              : <>บอทหาไม่เจอในชีท LK — เปิดชีท LK เช็ค (เลข SHIPPING {r.shipping_no || '—'}) แล้วกรอกกล่องเอง:</>}
+                          </span>
+                          {!isSplit && <button type="button" onClick={() => retryLk(r.id)} style={{ ...primaryBtn, padding: '5px 10px', fontSize: 11 }}>ลองดึงจาก LK อีกครั้ง</button>}
+                          {[['จำนวนกล่อง', 'count'], ['กก./กล่อง', 'wt'], ['ยาว cm', 'l'], ['กว้าง cm', 'w'], ['สูง cm', 'h']].map(([lbl, k]) => (
+                            <label key={k} style={{ fontSize: 10, color: 'var(--payi-text-muted)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              {lbl}
+                              <input
+                                type="number" step="any" min="0"
+                                value={r.manualCarton?.[k] ?? ''}
+                                onChange={(e) => doSetManual({ [k]: e.target.value === '' ? 0 : Number(e.target.value) })}
+                                style={{ ...inputStyle, width: 64, padding: '4px 6px', fontSize: 12 }}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )))}
+                )
+              }))}
             </div>
 
             {picking && (
               <ProductImagePicker
                 images={images}
-                current={rows.find((r) => r.id === picking)?.sku || ''}
-                onPick={(sku) => { setSku(picking, sku); setPicking(null) }}
+                current={view.enriched.find((r) => r.id === picking)?.sku || ''}
+                onPick={(sku) => {
+                  const target = view.enriched.find((r) => r.id === picking)
+                  if (target) (target.splitIdx !== null ? setSplitField(target.parentId, target.splitIdx, { sku }) : setSku(target.parentId, sku))
+                  setPicking(null)
+                }}
                 onClose={() => setPicking(null)}
                 onUpload={uploadImage}
                 uploadingSku={uploadingSku}
