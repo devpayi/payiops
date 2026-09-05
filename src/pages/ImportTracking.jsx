@@ -660,6 +660,8 @@ function LotModal({ initial, busy, onClose, onSave }) {
 
 // ค่าคงที่หัวเอกสาร proforma (แก้ที่เดียว)
 const PROFORMA_SUPPLIER = '晋江熠晓贸易有限公司'
+// owner เช็คกับ LK แล้ว (2026-09-05): เลขนี้คงที่ ไม่ได้เปลี่ยนตามลอต — ตั้งเป็น default แก้ได้ถ้า LK เปลี่ยน
+const PROFORMA_SHIPPING_MARK = 'LK/A24324-1(EK)'
 // "To:" ปลายทางคือคลัง LK ที่กว่างโจว (ไม่ใช่ที่อยู่ PAYI ในไทย!) — เช็คแล้วตรงกันทุกไฟล์จริง 21/21 ไฟล์
 // (A24133...A24344 + PROFORMA INVOICE-packing list) เปลี่ยนแค่ shipping mark (LK/Axxxxx-1(EK)) 2 จุด
 const buildConsignee = (mark) => `收件人： 李乙庚${mark}\n收货地址：广东省广州市白云区人和镇人和大街68号万宝集团内61号仓国际物流，进大门右拐直走到底。\n(入仓唛头：${mark}唛头麻烦一定要写在外包装上）\n邮编：510470\n手机改为：15817097990`
@@ -766,7 +768,7 @@ function ProductImagePicker({ images, current, onPick, onClose, onUpload, upload
 function ProformaModal({ lot, busy, onClose, onMarkDone }) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
   const [rows, setRows] = useState(null) // null | [{ id, item_name, qty, sku, sku0, cartons, carton_src }]
-  const [info, setInfo] = useState({ invoice_date: today, shipping_mark: lot.lot_ref ? `LK/${lot.lot_ref}` : '' })
+  const [info, setInfo] = useState({ invoice_date: today, shipping_mark: PROFORMA_SHIPPING_MARK })
   const [gen, setGen] = useState('') // '' | 'working' | 'done' | error string
   const [images, setImages] = useState({}) // { sku: dataURL } — bundled (build-time) + dynamic (อัพโหลดจากเว็บ) รวมกัน
   const [picking, setPicking] = useState(null) // arrival id ที่กำลังเลือกสินค้าจากรูป
