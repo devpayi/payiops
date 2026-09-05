@@ -881,11 +881,14 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
       }
       return [{ ...enrichOne(r.sku, r.qty, cartons, cartonNote, r.manualCarton, r.item_name, r.id, !cartons.length, r.qty), parentId: r.id, splitIdx: null, shipping_no: r.shipping_no, splitCount: 0 }]
     })
+    // รวมเป็น "No." เดียวกัน เฉพาะที่ชื่อไทยเหมือนกันเป๊ะด้วย (แค่ชื่ออังกฤษเหมือนไม่พอ) —
+    // เช่น Toe pads L/S/XL ชื่อไทย "แผ่นรองปลายเท้า" เหมือนกันทั้ง 3 ไซส์ = รวมได้ (ไซส์อยู่แค่ในคำอธิบาย)
+    // แต่ "แผ่นกันรองเท้ากัด พระจันทร์" กับ "...วงรี" ชื่อไทยต่างกัน = คนละสินค้า ต้องแยก No. คนละอัน
     const groups = []
     for (const it of enriched) {
       const last = groups[groups.length - 1]
-      if (last && it.name_en && last.name_en === it.name_en) last.rows.push(it)
-      else groups.push({ name_en: it.name_en, rows: [it] })
+      if (last && it.name_en && it.name_en === last.name_en && it.name_th === last.name_th) last.rows.push(it)
+      else groups.push({ name_en: it.name_en, name_th: it.name_th, rows: [it] })
     }
     groups.forEach((g, i) => { g.no = i + 1 })
     const warnings = []
