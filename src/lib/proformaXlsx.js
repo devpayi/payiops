@@ -66,8 +66,13 @@ export async function generateProforma(info, groups) {
   // Excel/viewer บางตัวโชว์ช่องว่างจนกว่าจะกด F9 (เจอจริง: คอลัมน์ H รวมราคา + แถวรวมท้ายตาราง ว่างเปล่า)
   wb.calcProperties.fullCalcOnLoad = true
 
+  // ความกว้างคอลัมน์ (หน่วย "จำนวนตัวอักษร" ของ Excel) -> พิกเซล โดยประมาณ (สูตรมาตรฐานของ Excel)
+  const colWidthPx = (charWidth) => Math.round(charWidth * 7 + 5)
+
   const imgById = new Map()
-  const addImg = async (ws, dataUrl, anchorCol0, anchorRow0, maxW) => {
+  // colCharWidth: ความกว้างคอลัมน์ปลายทาง (หน่วยเดียวกับที่ตั้งใน getColumn().width) — ใช้ดันรูปชิดขวา
+  // ในคอลัมน์ ไม่ให้ทับตัวหนังสือฝั่งซ้าย (คอลัมน์ Description/Product Name กว้างกว่ารูปมาก)
+  const addImg = async (ws, dataUrl, anchorCol0, anchorRow0, maxW, colCharWidth) => {
     if (!dataUrl) return
     const sz = await imgSize(dataUrl)
     if (!sz) return
@@ -77,7 +82,12 @@ export async function generateProforma(info, groups) {
       imgById.set(dataUrl, id)
     }
     const ratio = sz.h / sz.w
-    ws.addImage(id, { tl: { col: anchorCol0, row: anchorRow0 }, ext: { width: maxW, height: Math.round(maxW * ratio) } })
+    const margin = 4
+    const colPx = colWidthPx(colCharWidth)
+    // เศษของ tl.col ใน exceljs ไม่ได้ map ตรงกับความกว้างคอลัมน์จริงที่ตั้งไว้ (มันคำนวณจากหน่วยคอลัมน์
+    // มาตรฐาน ~64px ไม่ใช่ 427px ของคอลัมน์นี้) กันไม่ให้กระโดดข้ามคอลัมน์จริงไปเกินจำเป็น จำกัดเศษไว้ไม่เกิน 0.6
+    const frac = Math.max(0, Math.min(0.6, 1 - (maxW + margin) / colPx))
+    ws.addImage(id, { tl: { col: anchorCol0 + frac, row: anchorRow0 }, ext: { width: maxW, height: Math.round(maxW * ratio) } })
   }
 
   // ================= SHEET 1 : INVOICE =================
@@ -139,7 +149,7 @@ export async function generateProforma(info, groups) {
     const gEnd = r - 1
     if (gEnd > gStart) inv.mergeCells(`B${gStart}:B${gEnd}`)
     set(inv, `B${gStart}`, g.no, { border: BOX })
-    await addImg(inv, g.image, colIdx('F') - 1, gStart - 1, 95)
+    await addImg(inv, g.image, colIdx('F') - 1, gStart - 1, 95, 60.3)
   }
   for (const L of 'BCDEFGH') inv.getCell(`${L}${r}`).border = BOX
   set(inv, `C${r}`, { formula: `SUM(C${firstData}:C${r - 1})`, result: totQty }, { font: F_HD, border: BOX })
@@ -217,7 +227,7 @@ export async function generateProforma(info, groups) {
     pset(`C${gStart}`, g.name_en || '', { align: LFT })
     pset(`D${gStart}`, g.name_th || '', { align: LFT })
     set(pk, `O${gStart}`, { formula: `SUM(L${gStart}:L${gEnd})`, result: r2(groupCbm) }, { align: CTRW })
-    await addImg(pk, g.image, colIdx('D') - 1, gStart - 1, 90)
+    await addImg(pk, g.image, colIdx('D') - 1, gStart - 1, 90, 43.3)
   }
   for (const L of 'ABCDEFGHIJKL') pk.getCell(`${L}${pr}`).border = BOX
   pset(`B${pr}`, { formula: `SUM(B${firstPk}:B${pr - 1})`, result: grandQty }, { font: F_HD, align: CTR })
