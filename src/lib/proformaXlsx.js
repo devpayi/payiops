@@ -128,7 +128,7 @@ export async function generateProforma(info, groups) {
       set(inv, `C${r}`, qty, { border: BOX })
       set(inv, `F${r}`, descOf(row), { align: LFT, border: BOX })
       set(inv, `G${r}`, null, { border: BOX })
-      set(inv, `H${r}`, { formula: `C${r}*G${r}` }, { fill: WHITE, border: BOX, numFmt: '#,##0.00' })
+      set(inv, `H${r}`, { formula: `C${r}*G${r}`, result: 0 }, { fill: WHITE, border: BOX, numFmt: '#,##0.00' })
       for (const L of 'BDE') inv.getCell(`${L}${r}`).border = BOX
       inv.getRow(r).height = g.rows.length === 1 ? 60 : 22
       if (subName === null) subName = row.name_th
@@ -142,8 +142,8 @@ export async function generateProforma(info, groups) {
     await addImg(inv, g.image, colIdx('F') - 1, gStart - 1, 95)
   }
   for (const L of 'BCDEFGH') inv.getCell(`${L}${r}`).border = BOX
-  set(inv, `C${r}`, { formula: `SUM(C${firstData}:C${r - 1})` }, { font: F_HD, border: BOX })
-  set(inv, `H${r}`, { formula: `SUM(H${firstData}:H${r - 1})` }, { font: F_HD, border: BOX, numFmt: '#,##0.00' })
+  set(inv, `C${r}`, { formula: `SUM(C${firstData}:C${r - 1})`, result: totQty }, { font: F_HD, border: BOX })
+  set(inv, `H${r}`, { formula: `SUM(H${firstData}:H${r - 1})`, result: 0 }, { font: F_HD, border: BOX, numFmt: '#,##0.00' })
   for (let rr = 3; rr <= r; rr++) if (!inv.getRow(rr).height) inv.getRow(rr).height = 18.6
 
   // ================= SHEET 2 : packing list =================
@@ -171,8 +171,10 @@ export async function generateProforma(info, groups) {
 
   let pr = 6
   const firstPk = pr
+  let grandBoxes = 0, grandWeight = 0, grandCbm = 0, grandQty = 0
   for (const g of groups) {
     const gStart = pr
+    let groupCbm = 0
     for (const row of g.rows) {
       // แยกไซส์/สี (packing ไม่แยก) — บรรทัดถัดจากตัวแทนไม่มีกล่องเป็นของตัวเอง ข้ามไปเลย ไม่ใส่แถวปลอม
       const clist = row.cartons?.length ? row.cartons : []
@@ -181,39 +183,47 @@ export async function generateProforma(info, groups) {
         const n = Math.max(1, Math.round(num(cg.count, 1)))
         const wt = num(cg.wt), L = num(cg.l), W = num(cg.w), H = num(cg.h)
         for (let k = 0; k < n; k++) {
+          const cbm = r2(L * W * H / 1e6)
           pset(`E${pr}`, 1, { align: CTR })
           pset(`F${pr}`, r2(wt), { align: CTRW })
-          pset(`G${pr}`, { formula: `E${pr}*F${pr}` }, { align: CTRW })
+          pset(`G${pr}`, { formula: `E${pr}*F${pr}`, result: r2(wt) }, { align: CTRW })
           pset(`H${pr}`, r1(L), { align: CTRW })
           pset(`I${pr}`, r1(W), { align: CTRW })
           pset(`J${pr}`, r1(H), { align: CTRW })
-          pset(`K${pr}`, { formula: `H${pr}*I${pr}*J${pr}*0.000001` }, { align: CTRW, numFmt: '0.00' })
-          pset(`L${pr}`, r2(L * W * H / 1e6), { align: CTRW, numFmt: '0.00' })
+          pset(`K${pr}`, { formula: `H${pr}*I${pr}*J${pr}*0.000001`, result: cbm }, { align: CTRW, numFmt: '0.00' })
+          pset(`L${pr}`, cbm, { align: CTRW, numFmt: '0.00' })
           for (const cc of 'ABCD') pk.getCell(`${cc}${pr}`).border = BOX
           pk.getRow(pr).height = 15
           pr++
+          grandBoxes++; grandWeight += wt; grandCbm += cbm; groupCbm += cbm
         }
       }
+      const packingQty = Math.round(num(row.packingQty ?? row.qty))
       if (g.rows.length > 1 && pr > subStart) {
         if (pr - 1 > subStart) pk.mergeCells(`B${subStart}:B${pr - 1}`)
-        pset(`B${subStart}`, Math.round(num(row.packingQty ?? row.qty)), { align: CTR })
+        pset(`B${subStart}`, packingQty, { align: CTR })
+        grandQty += packingQty
       }
     }
     const gEnd = pr - 1
     for (const L of 'ACD') if (gEnd > gStart) pk.mergeCells(`${L}${gStart}:${L}${gEnd}`)
     if (g.rows.length === 1 && gEnd > gStart) pk.mergeCells(`B${gStart}:B${gEnd}`)
     pset(`A${gStart}`, g.no, { align: CTR })
-    if (g.rows.length === 1) pset(`B${gStart}`, Math.round(num(g.rows[0].packingQty ?? g.rows[0].qty)), { align: CTR })
+    if (g.rows.length === 1) {
+      const packingQty = Math.round(num(g.rows[0].packingQty ?? g.rows[0].qty))
+      pset(`B${gStart}`, packingQty, { align: CTR })
+      grandQty += packingQty
+    }
     pset(`C${gStart}`, g.name_en || '', { align: LFT })
     pset(`D${gStart}`, g.name_th || '', { align: LFT })
-    set(pk, `O${gStart}`, { formula: `SUM(L${gStart}:L${gEnd})` }, { align: CTRW })
+    set(pk, `O${gStart}`, { formula: `SUM(L${gStart}:L${gEnd})`, result: r2(groupCbm) }, { align: CTRW })
     await addImg(pk, g.image, colIdx('D') - 1, gStart - 1, 90)
   }
   for (const L of 'ABCDEFGHIJKL') pk.getCell(`${L}${pr}`).border = BOX
-  pset(`B${pr}`, { formula: `SUM(B${firstPk}:B${pr - 1})` }, { font: F_HD, align: CTR })
-  pset(`E${pr}`, { formula: `SUM(E${firstPk}:E${pr - 1})` }, { font: F_HD, align: CTR })
-  pset(`G${pr}`, { formula: `SUM(G${firstPk}:G${pr - 1})` }, { font: F_HD, align: CTR })
-  pset(`L${pr}`, { formula: `SUM(L${firstPk}:L${pr - 1})` }, { font: F_HD, align: CTR, numFmt: '0.00' })
+  pset(`B${pr}`, { formula: `SUM(B${firstPk}:B${pr - 1})`, result: grandQty }, { font: F_HD, align: CTR })
+  pset(`E${pr}`, { formula: `SUM(E${firstPk}:E${pr - 1})`, result: grandBoxes }, { font: F_HD, align: CTR })
+  pset(`G${pr}`, { formula: `SUM(G${firstPk}:G${pr - 1})`, result: r2(grandWeight) }, { font: F_HD, align: CTR })
+  pset(`L${pr}`, { formula: `SUM(L${firstPk}:L${pr - 1})`, result: r2(grandCbm) }, { font: F_HD, align: CTR, numFmt: '0.00' })
 
   wb.addWorksheet('Sheet3')
 
