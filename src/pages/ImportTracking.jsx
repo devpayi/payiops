@@ -837,12 +837,6 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
     const splits = r.splits.map((s, i) => (i === idx ? { ...s, ...patch } : s))
     return { ...r, splits }
   }))
-  const setSplitManual = (id, idx, patch) => setRows((rs) => rs.map((r) => {
-    if (r.id !== id) return r
-    const splits = r.splits.map((s, i) => (i === idx ? { ...s, manualCarton: { count: 1, wt: 0, l: 0, w: 0, h: 0, ...s.manualCarton, ...patch } } : s))
-    return { ...r, splits }
-  }))
-
   const retryLk = async (id) => {
     const r = rows.find((x) => x.id === id)
     if (!r?.shipping_no) return
@@ -860,10 +854,10 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
   // ไม่ fallback ไปใช้เลขเก่าจาก product_master (คนละลอต ขนาดกล่องไม่เท่ากัน) ต้องเปิดชีท LK เช็คเองแล้วกรอกมือ
   const view = useMemo(() => {
     if (!rows) return null
-    const enrichOne = (sku, qty, cartons, cartonNote, manualCarton, itemName, extraId) => {
+    const enrichOne = (sku, qty, cartons, cartonNote, manualCarton, itemName, extraId, needsManual, packingQty) => {
       const pm = sku ? PM_BY_SKU[sku] : null
       return {
-        id: extraId, sku, qty, item_name: itemName, pm, cartons, cartonNote, manualCarton, needsManual: !cartons.length,
+        id: extraId, sku, qty, packingQty, item_name: itemName, pm, cartons, cartonNote, manualCarton, needsManual,
         name_en: pm?.name_en || itemName || sku || '',
         name_th: pm?.name_th || '',
         name_zh: pm?.name_zh || '',
@@ -874,19 +868,18 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
       }
     }
     const enriched = rows.flatMap((r) => {
-      if (r.splits) {
-        // ของเข้าเดียวกัน แต่มีหลายไซส์/สี — แยกเป็นหลายบรรทัดในใบจริง แต่ละบรรทัดกรอกกล่องเองเพราะ
-        // ชีท LK ให้ยอดรวมของทั้ง shipping_no มาก้อนเดียว แยกตามไซส์ให้ไม่ได้
-        return r.splits.map((s, i) => {
-          const hasManual = s.manualCarton && (s.manualCarton.wt || s.manualCarton.l)
-          const cartons = hasManual ? [s.manualCarton] : []
-          return { ...enrichOne(s.sku, s.qty, cartons, hasManual ? 'กรอกมือ (แยกไซส์/สี)' : 'แยกไซส์/สี — กรอกกล่องเอง', s.manualCarton, r.item_name, `${r.id}-s${i}`), parentId: r.id, splitIdx: i, shipping_no: r.shipping_no, splitCount: r.splits.length }
-        })
-      }
       const hasManual = r.manualCarton && (r.manualCarton.wt || r.manualCarton.l)
       const cartons = r.cartons.length ? r.cartons : (hasManual ? [r.manualCarton] : [])
       const cartonNote = r.carton_src === 'LK' ? '' : hasManual ? 'กรอกมือ (เช็คจากชีท LK แล้ว)' : 'บอทหาไม่เจอ — เปิดชีท LK เช็คเอง แล้วกรอกด้านล่าง'
-      return [{ ...enrichOne(r.sku, r.qty, cartons, cartonNote, r.manualCarton, r.item_name, r.id), parentId: r.id, splitIdx: null, shipping_no: r.shipping_no, splitCount: 0 }]
+      if (r.splits) {
+        // ของเข้าเดียวกัน แต่มีหลายไซส์/สี — แยกแค่ "จำนวน/ราคา" ในใบ INVOICE เท่านั้น
+        // packing list ไม่แยก — ใช้กล่องจริงก้อนเดียวจากชีท LK ของของเข้านี้ (แยกตามไซส์ไม่ได้อยู่แล้ว)
+        return r.splits.map((s, i) => (i === 0
+          ? { ...enrichOne(s.sku, s.qty, cartons, cartonNote, r.manualCarton, r.item_name, `${r.id}-s${i}`, !cartons.length, r.qty), parentId: r.id, splitIdx: i, shipping_no: r.shipping_no, splitCount: r.splits.length }
+          : { ...enrichOne(s.sku, s.qty, [], 'แยกไซส์/สี — ใช้กล่องเดียวกับรายการแรก (packing ไม่แยกไซส์)', null, r.item_name, `${r.id}-s${i}`, false, null), parentId: r.id, splitIdx: i, shipping_no: r.shipping_no, splitCount: r.splits.length }
+        ))
+      }
+      return [{ ...enrichOne(r.sku, r.qty, cartons, cartonNote, r.manualCarton, r.item_name, r.id, !cartons.length, r.qty), parentId: r.id, splitIdx: null, shipping_no: r.shipping_no, splitCount: 0 }]
     })
     const groups = []
     for (const it of enriched) {
@@ -899,13 +892,13 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
     for (const it of enriched) {
       if (!it.sku) warnings.push(`"${it.item_name || 'ไม่มีชื่อ'}" — ยังไม่จับคู่ SKU`)
       else if (!it.pm) warnings.push(`${it.sku} — ไม่มีใน product_master (เพิ่มแถว + redeploy)`)
-      else if (!it.cartons.length) warnings.push(`${it.name_en} — บอทหาไม่เจอในชีท LK เปิดชีทเช็คแล้วกรอกกล่องมือ`)
+      else if (it.needsManual) warnings.push(`${it.name_en} — บอทหาไม่เจอในชีท LK เปิดชีทเช็คแล้วกรอกกล่องมือ`)
     }
     const totals = enriched.reduce((t, r) => ({
       qty: t.qty + Number(r.qty || 0), boxes: t.boxes + r.boxes, wt: t.wt + r.wt, cbm: t.cbm + r.cbm,
     }), { qty: 0, boxes: 0, wt: 0, cbm: 0 })
     const missingSku = enriched.filter((r) => !r.sku).length
-    const missingCartons = enriched.filter((r) => !r.cartons.length).length
+    const missingCartons = enriched.filter((r) => r.needsManual).length
     return { groups, enriched, warnings, totals, missingSku, missingCartons }
   }, [rows])
 
@@ -927,7 +920,7 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
       const groups = view.groups.map((g, i) => ({
         no: i + 1, name_en: g.name_en, name_th: g.rows[0].name_th,
         image: images[g.rows[0].sku] || null,
-        rows: g.rows.map((r) => ({ sku: r.sku, qty: r.qty, name_zh: r.name_zh, name_th: r.name_th, cartons: r.cartons })),
+        rows: g.rows.map((r) => ({ sku: r.sku, qty: r.qty, name_zh: r.name_zh, name_th: r.name_th, cartons: r.cartons, packingQty: r.packingQty ?? r.qty })),
       }))
       const { blob } = await generateProforma(
         { supplier_name_zh: PROFORMA_SUPPLIER, invoice_date: info.invoice_date, consignee_to: buildConsignee(info.shipping_mark) },
@@ -968,7 +961,7 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
               {view.groups.map((g, gi) => g.rows.map((r, ri) => {
                 const isSplit = r.splitIdx !== null
                 const doSetSku = (sku) => (isSplit ? setSplitField(r.parentId, r.splitIdx, { sku }) : setSku(r.parentId, sku))
-                const doSetManual = (patch) => (isSplit ? setSplitManual(r.parentId, r.splitIdx, patch) : setManual(r.parentId, patch))
+                const doSetManual = (patch) => setManual(r.parentId, patch) // splitIdx 0 ใช้กล่องเดียวกับของเข้าจริง (packing ไม่แยกไซส์)
                 const splitQtySum = isSplit ? rows.find((x) => x.id === r.parentId)?.splits.reduce((s, sp) => s + Number(sp.qty || 0), 0) : null
                 const splitQtyTarget = isSplit ? rows.find((x) => x.id === r.parentId)?.qty : null
                 return (
@@ -1037,11 +1030,9 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
                       {r.needsManual && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 4, background: 'var(--payi-surface)', border: '1px dashed var(--payi-danger)', borderRadius: 8, padding: 8 }}>
                           <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--payi-danger)', flexBasis: '100%' }}>
-                            {isSplit
-                              ? 'แยกไซส์/สีแล้ว — ชีท LK ให้ยอดกล่องรวมมาก้อนเดียว แยกให้ไม่ได้ กรอกกล่องของบรรทัดนี้เอง:'
-                              : <>บอทหาไม่เจอในชีท LK — เปิดชีท LK เช็ค (เลข SHIPPING {r.shipping_no || '—'}) แล้วกรอกกล่องเอง:</>}
+                            บอทหาไม่เจอในชีท LK — เปิดชีท LK เช็ค (เลข SHIPPING {r.shipping_no || '—'}) แล้วกรอกกล่องเอง:
                           </span>
-                          {!isSplit && <button type="button" onClick={() => retryLk(r.id)} style={{ ...primaryBtn, padding: '5px 10px', fontSize: 11 }}>ลองดึงจาก LK อีกครั้ง</button>}
+                          <button type="button" onClick={() => retryLk(r.parentId)} style={{ ...primaryBtn, padding: '5px 10px', fontSize: 11 }}>ลองดึงจาก LK อีกครั้ง</button>
                           {[['จำนวนกล่อง', 'count'], ['กก./กล่อง', 'wt'], ['ยาว cm', 'l'], ['กว้าง cm', 'w'], ['สูง cm', 'h']].map(([lbl, k]) => (
                             <label key={k} style={{ fontSize: 10, color: 'var(--payi-text-muted)', display: 'flex', flexDirection: 'column', gap: 2 }}>
                               {lbl}

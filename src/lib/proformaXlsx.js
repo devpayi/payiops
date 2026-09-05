@@ -163,7 +163,8 @@ export async function generateProforma(info, groups) {
   for (const g of groups) {
     const gStart = pr
     for (const row of g.rows) {
-      const clist = row.cartons?.length ? row.cartons : [{ count: 1, wt: 0, l: 0, w: 0, h: 0 }]
+      // แยกไซส์/สี (packing ไม่แยก) — บรรทัดถัดจากตัวแทนไม่มีกล่องเป็นของตัวเอง ข้ามไปเลย ไม่ใส่แถวปลอม
+      const clist = row.cartons?.length ? row.cartons : []
       const subStart = pr
       for (const cg of clist) {
         const n = Math.max(1, Math.round(num(cg.count, 1)))
@@ -182,16 +183,16 @@ export async function generateProforma(info, groups) {
           pr++
         }
       }
-      if (g.rows.length > 1) {
+      if (g.rows.length > 1 && pr > subStart) {
         if (pr - 1 > subStart) pk.mergeCells(`B${subStart}:B${pr - 1}`)
-        pset(`B${subStart}`, Math.round(num(row.qty)), { align: CTR })
+        pset(`B${subStart}`, Math.round(num(row.packingQty ?? row.qty)), { align: CTR })
       }
     }
     const gEnd = pr - 1
     for (const L of 'ACD') if (gEnd > gStart) pk.mergeCells(`${L}${gStart}:${L}${gEnd}`)
     if (g.rows.length === 1 && gEnd > gStart) pk.mergeCells(`B${gStart}:B${gEnd}`)
     pset(`A${gStart}`, g.no, { align: CTR })
-    if (g.rows.length === 1) pset(`B${gStart}`, Math.round(num(g.rows[0].qty)), { align: CTR })
+    if (g.rows.length === 1) pset(`B${gStart}`, Math.round(num(g.rows[0].packingQty ?? g.rows[0].qty)), { align: CTR })
     pset(`C${gStart}`, g.name_en || '', { align: LFT })
     pset(`D${gStart}`, g.name_th || '', { align: LFT })
     set(pk, `O${gStart}`, { formula: `SUM(L${gStart}:L${gEnd})` }, { align: CTRW })
