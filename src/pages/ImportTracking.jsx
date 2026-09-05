@@ -674,7 +674,7 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
           if (r.found && r.cartons?.length) { cartons = groupCartons(r.cartons); carton_src = 'LK' }
         } catch { /* noop */ }
       }
-      out.push({ id: a.id, item_name: a.item_name || '', qty: a.qty || 0, sku: a.sku || '', sku0: a.sku || '', cartons, carton_src })
+      out.push({ id: a.id, item_name: a.item_name || '', qty: a.qty || 0, sku: a.sku || '', sku0: a.sku || '', shipping_no: a.shipping_no || '', arrive_date: a.arrive_date || '', cartons, carton_src, manualCarton: null })
     }
     return out
   }, [lot])
@@ -686,20 +686,31 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
   }, [load])
 
   const setSku = (id, sku) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, sku } : r)))
+  const setManual = (id, patch) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, manualCarton: { count: 1, wt: 0, l: 0, w: 0, h: 0, ...r.manualCarton, ...patch } } : r)))
+  const retryLk = async (id) => {
+    const r = rows.find((x) => x.id === id)
+    if (!r?.shipping_no) return
+    try {
+      const q = new URLSearchParams({ view: 'lk-lookup', shipping_no: r.shipping_no, date: r.arrive_date || '' })
+      const res = await fetch(`${API}&${q}`).then((x) => x.json())
+      if (res.found && res.cartons?.length) {
+        setRows((rs) => rs.map((x) => (x.id === id ? { ...x, cartons: groupCartons(res.cartons), carton_src: 'LK' } : x)))
+      }
+    } catch { /* noop */ }
+  }
 
-  // ── derive: ผูก product_master + กล่อง fallback + จัดกลุ่ม ──
+  // ── derive: ผูก product_master + กล่องมือ (ถ้าบอทหาไม่เจอ) + จัดกลุ่ม ──
+  // หมายเหตุ: ชีท LK มีของจริงเสมอ ที่ "หาไม่เจอ" ได้คือบอท/API เท่านั้น —
+  // ไม่ fallback ไปใช้เลขเก่าจาก product_master (คนละลอต ขนาดกล่องไม่เท่ากัน) ต้องเปิดชีท LK เช็คเองแล้วกรอกมือ
   const view = useMemo(() => {
     if (!rows) return null
     const enriched = rows.map((r) => {
       const pm = r.sku ? PM_BY_SKU[r.sku] : null
-      let cartons = r.cartons
-      let cartonNote = r.carton_src === 'LK' ? '' : 'ไม่เจอกล่องในชีท LK'
-      if (!cartons.length && pm && (pm.box_l_cm || pm.carton_weight_kg)) {
-        cartons = [{ count: 1, wt: +pm.carton_weight_kg || 0, l: +pm.box_l_cm || 0, w: +pm.box_w_cm || 0, h: +pm.box_h_cm || 0 }]
-        cartonNote = 'ใช้ขนาดกล่องจาก product_master (1 กล่อง)'
-      }
+      const hasManual = r.manualCarton && (r.manualCarton.wt || r.manualCarton.l)
+      const cartons = r.cartons.length ? r.cartons : (hasManual ? [r.manualCarton] : [])
+      const cartonNote = r.carton_src === 'LK' ? '' : hasManual ? 'กรอกมือ (เช็คจากชีท LK แล้ว)' : 'บอทหาไม่เจอ — เปิดชีท LK เช็คเอง แล้วกรอกด้านล่าง'
       return {
-        ...r, pm, cartons, cartonNote,
+        ...r, pm, cartons, cartonNote, needsManual: !r.cartons.length,
         name_en: pm?.name_en || r.item_name || r.sku || '',
         name_th: pm?.name_th || '',
         name_zh: pm?.name_zh || '',
@@ -720,13 +731,14 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
     for (const it of enriched) {
       if (!it.sku) warnings.push(`"${it.item_name || 'ไม่มีชื่อ'}" — ยังไม่จับคู่ SKU`)
       else if (!it.pm) warnings.push(`${it.sku} — ไม่มีใน product_master (เพิ่มแถว + redeploy)`)
-      else if (!it.cartons.length) warnings.push(`${it.name_en} — ไม่มีข้อมูลกล่องเลย`)
+      else if (!it.cartons.length) warnings.push(`${it.name_en} — บอทหาไม่เจอในชีท LK เปิดชีทเช็คแล้วกรอกกล่องมือ`)
     }
     const totals = enriched.reduce((t, r) => ({
       qty: t.qty + Number(r.qty || 0), boxes: t.boxes + r.boxes, wt: t.wt + r.wt, cbm: t.cbm + r.cbm,
     }), { qty: 0, boxes: 0, wt: 0, cbm: 0 })
     const missingSku = enriched.filter((r) => !r.sku).length
-    return { groups, enriched, warnings, totals, missingSku }
+    const missingCartons = enriched.filter((r) => !r.cartons.length).length
+    return { groups, enriched, warnings, totals, missingSku, missingCartons }
   }, [rows])
 
   const makeFile = async () => {
@@ -812,6 +824,26 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
                       {r.pm && <span style={{ fontSize: 11, color: 'var(--payi-success)' }}>✓ {r.desc_preview.slice(0, 40)}</span>}
                       {!r.pm && r.sku && <span style={{ fontSize: 11, color: 'var(--payi-danger)' }}>ไม่พบใน product_master</span>}
                     </div>
+
+                    {r.needsManual && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 4, background: 'var(--payi-surface)', border: '1px dashed var(--payi-danger)', borderRadius: 8, padding: 8 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--payi-danger)', flexBasis: '100%' }}>
+                          บอทหาไม่เจอในชีท LK — เปิดชีท LK เช็ค (เลข SHIPPING {r.shipping_no || '—'}) แล้วกรอกกล่องเอง:
+                        </span>
+                        <button type="button" onClick={() => retryLk(r.id)} style={{ ...primaryBtn, padding: '5px 10px', fontSize: 11 }}>ลองดึงจาก LK อีกครั้ง</button>
+                        {[['จำนวนกล่อง', 'count'], ['กก./กล่อง', 'wt'], ['ยาว cm', 'l'], ['กว้าง cm', 'w'], ['สูง cm', 'h']].map(([lbl, k]) => (
+                          <label key={k} style={{ fontSize: 10, color: 'var(--payi-text-muted)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            {lbl}
+                            <input
+                              type="number" step="any" min="0"
+                              value={r.manualCarton?.[k] ?? ''}
+                              onChange={(e) => setManual(r.id, { [k]: e.target.value === '' ? 0 : Number(e.target.value) })}
+                              style={{ ...inputStyle, width: 64, padding: '4px 6px', fontSize: 12 }}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )))}
@@ -846,8 +878,11 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
             {gen && gen !== 'working' && gen !== 'done' && <div style={{ color: 'var(--payi-danger)', fontSize: 12 }}>{gen}</div>}
             {gen === 'done' && <div style={{ color: 'var(--payi-success)', fontSize: 12, fontWeight: 700 }}>✓ ดาวน์โหลดไฟล์แล้ว — เปิดไฟล์ใส่ Unit Price ให้พี่หยก แล้วส่ง LK</div>}
 
-            <button onClick={makeFile} disabled={busy || gen === 'working' || view.missingSku > 0} style={{ ...primaryBtn, justifyContent: 'center', padding: '12px 16px', fontSize: 14, opacity: (busy || gen === 'working' || view.missingSku > 0) ? 0.5 : 1 }}>
-              {gen === 'working' ? 'กำลังสร้างไฟล์...' : view.missingSku > 0 ? `จับคู่ SKU ให้ครบก่อน (เหลือ ${view.missingSku})` : 'คอนเฟิร์ม — สร้างไฟล์ Proforma'}
+            <button onClick={makeFile} disabled={busy || gen === 'working' || view.missingSku > 0 || view.missingCartons > 0} style={{ ...primaryBtn, justifyContent: 'center', padding: '12px 16px', fontSize: 14, opacity: (busy || gen === 'working' || view.missingSku > 0 || view.missingCartons > 0) ? 0.5 : 1 }}>
+              {gen === 'working' ? 'กำลังสร้างไฟล์...'
+                : view.missingSku > 0 ? `จับคู่ SKU ให้ครบก่อน (เหลือ ${view.missingSku})`
+                  : view.missingCartons > 0 ? `กรอกกล่องให้ครบก่อน (เหลือ ${view.missingCartons})`
+                    : 'คอนเฟิร์ม — สร้างไฟล์ Proforma'}
             </button>
             <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', textAlign: 'center' }}>ไฟล์ที่ได้เหลือแค่ช่อง Unit Price ที่รอกรอก</div>
           </>
