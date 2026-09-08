@@ -27,6 +27,10 @@ export default async function handler(req, res) {
   if (!requireAuth(req, res)) return
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' })
 
+  // หน้า "Dashboard รายวัน" — สรุปยอดวันล่าสุดที่มีข้อมูล เทียบเมื่อวาน + ค่าเฉลี่ย 7 วัน
+  // piggyback ไฟล์นี้ (ไม่เพิ่ม api/*.js ใหม่ ตาม 12-function cap) ผ่าน ?view=daily
+  if (req.query.view === 'daily') return handleDaily(req, res)
+
   const { business = 'all', platform = 'all', startDate = '', endDate = '' } = req.query
   const inDate = (d) => (!startDate || d >= startDate) && (!endDate || d <= endDate)
   const keepBiz = (b) => business === 'all' || b === business
@@ -267,6 +271,171 @@ export default async function handler(req, res) {
       dataRange: { earliestDate: earliestDataDate, latestDate: latestDataDate },
     }
     dashboardCache.set(cacheKey, { data, at: Date.now() })
+    res.setHeader('Cache-Control', cacheable('public, s-maxage=120, stale-while-revalidate=600'))
+    res.status(200).json(data)
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message })
+  }
+}
+
+// ---- ?view=daily ----
+const dailyCache = new Map()
+
+async function handleDaily(req, res) {
+  const { business = 'all', platform = 'all' } = req.query
+  const keepBiz = (b) => business === 'all' || b === business
+  const keepPlat = (p) => platform === 'all' || p === platform
+
+  const cacheKey = `${business}|${platform}`
+  const cached = dailyCache.get(cacheKey)
+  if (cached && Date.now() - cached.at < DASHBOARD_CACHE_MS) {
+    res.setHeader('Cache-Control', cacheable('public, s-maxage=120, stale-while-revalidate=600'))
+    return res.status(200).json(cached.data)
+  }
+
+  try {
+    let overrideMap = new Map()
+    try { overrideMap = buildOverrideMap(await getSheet('product_aliases')) } catch { /* ไม่มี sheet */ }
+    const [redirectMap, recipeKeySet] = await Promise.all([getSkuRedirectMap(), getSetRecipeKeySet()])
+
+    const meta = await getMetaCached()
+    const tabs = meta.sheets.map((s) => s.properties.title).filter((t) => t.startsWith('raw_orders'))
+    const ranges = tabs.flatMap((t) => [`${t}!B:F`, `${t}!I:N`])
+    const vr = await batchGetValues(ranges)
+
+    const dateRev = new Map()     // date -> revenue (ตัดยกเลิก/ตีคืน)
+    const dateUnits = new Map()   // date -> units
+    const dateOrders = new Map()  // date -> Set(order_id) — นับรวมยกเลิก/ตีคืน (งานแพ็คเกิดแล้ว)
+    const dateStore = new Map()   // date -> Map(store -> {store,business,platform,revenue,orders:Set,units})
+    const dateGroup = new Map()   // date -> Map(groupKey -> {name,revenue,qty})
+
+    for (let i = 0; i < tabs.length; i++) {
+      const left = vr[2 * i].values || []
+      const right = vr[2 * i + 1].values || []
+      const n = Math.max(left.length, right.length)
+      for (let j = 1; j < n; j++) {
+        const l = left[j] || [], r = right[j] || []
+        const orderId = l[0], date = l[2], plat = l[3] || '', biz = l[4] || ''
+        if (!date || !keepBiz(biz) || !keepPlat(plat)) continue
+        const variationName = r[0], rawMasterSku = r[1], name = r[2], qty = parseInt(r[3], 10) || 0, rev = num(r[4]), status = r[5]
+        const masterSku = resolveSalesSku(rawMasterSku, variationName, redirectMap, recipeKeySet)
+        const excluded = isCancelled(status) || isReturned(status)
+
+        let os = dateOrders.get(date); if (!os) dateOrders.set(date, (os = new Set())); if (orderId) os.add(orderId)
+        const store = `${biz} · ${plat}`
+        let sm = dateStore.get(date); if (!sm) dateStore.set(date, (sm = new Map()))
+        let st = sm.get(store); if (!st) sm.set(store, (st = { store, business: biz, platform: plat, revenue: 0, orders: new Set(), units: 0 }))
+        if (orderId) st.orders.add(orderId)
+
+        if (excluded) continue
+        dateRev.set(date, (dateRev.get(date) || 0) + rev)
+        dateUnits.set(date, (dateUnits.get(date) || 0) + qty)
+        st.revenue += rev; st.units += qty
+
+        const { key, label } = deriveGroup(name, masterSku, overrideMap)
+        let gm = dateGroup.get(date); if (!gm) dateGroup.set(date, (gm = new Map()))
+        let g = gm.get(key); if (!g) gm.set(key, (g = { name: label, revenue: 0, qty: 0 }))
+        g.revenue += rev; g.qty += qty
+      }
+    }
+
+    const allDates = [...dateOrders.keys()].sort()
+    const today = allDates[allDates.length - 1] || null
+    const yesterday = allDates[allDates.length - 2] || null
+    const prev7 = allDates.slice(-8, -1) // สูงสุด 7 วันก่อน "วันล่าสุด"
+
+    const statOf = (d) => ({
+      revenue: round2(dateRev.get(d) || 0),
+      orders: dateOrders.get(d)?.size || 0,
+      units: dateUnits.get(d) || 0,
+    })
+
+    let avg7 = null
+    if (prev7.length) {
+      let rev = 0, ord = 0, u = 0
+      for (const d of prev7) { rev += dateRev.get(d) || 0; ord += dateOrders.get(d)?.size || 0; u += dateUnits.get(d) || 0 }
+      const k = prev7.length
+      avg7 = { revenue: round2(rev / k), orders: Math.round(ord / k), units: Math.round(u / k), days: k }
+    }
+
+    const stToday = dateStore.get(today) || new Map()
+    const stYest = dateStore.get(yesterday) || new Map()
+    const byStore = [...stToday.values()].map((s) => {
+      const y = stYest.get(s.store)
+      return {
+        store: s.store, business: s.business, platform: s.platform,
+        revenue: round2(s.revenue), orders: s.orders.size, units: s.units,
+        prevRevenue: round2(y?.revenue || 0), prevOrders: y?.orders.size || 0,
+      }
+    }).sort((a, b) => b.revenue - a.revenue)
+
+    const gToday = dateGroup.get(today) || new Map()
+    const topToday = [...gToday.values()]
+      .map((g) => ({ name: g.name, qty: g.qty, revenue: round2(g.revenue) }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 12)
+
+    // สินค้ายอดลด/ขายดีขึ้น: เทียบยอดวันล่าสุด กับค่าเฉลี่ย 7 วันก่อนหน้า (รายกลุ่มสินค้า)
+    // risers = ไว้ดูว่าควรย้ายกำลังคนแพ็คไปไว้ตรงไหน (มี qty วันนี้ + เฉลี่ยด้วย)
+    const decliners = []
+    const risers = []
+    if (prev7.length) {
+      const groupSum = new Map() // key -> { name, revSum, qtySum }
+      for (const d of prev7) {
+        for (const [k, g] of (dateGroup.get(d) || new Map())) {
+          let a = groupSum.get(k); if (!a) groupSum.set(k, (a = { name: g.name, revSum: 0, qtySum: 0 }))
+          a.revSum += g.revenue; a.qtySum += g.qty
+        }
+      }
+      for (const [k, a] of groupSum) {
+        const avg = a.revSum / prev7.length
+        const avgQty = a.qtySum / prev7.length
+        const t = gToday.get(k)
+        const todayRev = t?.revenue || 0
+        const todayQty = t?.qty || 0
+        if (avg > 200 && todayRev < avg * 0.7) {
+          decliners.push({
+            name: a.name, todayRevenue: round2(todayRev), avgRevenue: round2(avg),
+            todayQty, avgQty: Math.round(avgQty),
+            drop: round2(avg - todayRev), dropPct: Math.round(((avg - todayRev) / avg) * 100),
+          })
+        } else if (avg > 200 && todayRev > avg * 1.3 && todayQty >= 5) {
+          // เรียง/กรองด้วย "จำนวนชิ้น" ไม่ใช่ยอดเงิน — เพราะใช้ตัดสินใจย้ายกำลังคนแพ็ค
+          risers.push({
+            name: a.name, todayRevenue: round2(todayRev), avgRevenue: round2(avg),
+            todayQty, avgQty: Math.round(avgQty), qtyGain: todayQty - Math.round(avgQty),
+            gainPct: Math.round(((todayRev - avg) / avg) * 100),
+          })
+        }
+      }
+      // สินค้าใหม่/ไม่มีในอดีต 7 วัน แต่วันนี้แพ็คเยอะ (>=10 ชิ้น) ก็นับเป็น riser
+      for (const [k, t] of gToday) {
+        if (groupSum.has(k)) continue
+        if ((t.qty || 0) >= 10) {
+          risers.push({
+            name: t.name, todayRevenue: round2(t.revenue), avgRevenue: 0,
+            todayQty: t.qty, avgQty: 0, qtyGain: t.qty, gainPct: null,
+          })
+        }
+      }
+      decliners.sort((a, b) => b.drop - a.drop)
+      risers.sort((a, b) => b.qtyGain - a.qtyGain)
+    }
+
+    const data = {
+      success: true,
+      today, yesterday,
+      generatedAt: new Date().toISOString(),
+      todayStats: today ? statOf(today) : null,
+      yesterdayStats: yesterday ? statOf(yesterday) : null,
+      avg7,
+      byStore,
+      topToday,
+      risers: risers.slice(0, 8),
+      decliners: decliners.slice(0, 8),
+      recentDays: allDates.slice(-14).map((d) => ({ date: d, ...statOf(d) })),
+    }
+    dailyCache.set(cacheKey, { data, at: Date.now() })
     res.setHeader('Cache-Control', cacheable('public, s-maxage=120, stale-while-revalidate=600'))
     res.status(200).json(data)
   } catch (e) {

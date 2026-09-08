@@ -1,7 +1,6 @@
-import { TrendingUp, TrendingDown } from 'lucide-react'
-
 // KPI การ์ดสำหรับหน้า Executive
 // props: title, value, subtitle, icon (lucide component), trend (string เช่น "+12%" หรือ null), isPositive
+// สไตล์ pill (.kpi-trend) อยู่ใน theme.css — หน้าสไตล์ .daily-glass-page จะ override เป็นขอบดำ/แดงทึบ
 export default function KpiCard({ title, value, subtitle, icon: Icon, trend, isPositive = true }) {
   return (
     <div
@@ -51,21 +50,8 @@ export default function KpiCard({ title, value, subtitle, icon: Icon, trend, isP
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto' }}>
         {trend && (
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              fontSize: 12,
-              fontWeight: 800,
-              padding: '2px 8px',
-              borderRadius: 999,
-              color: isPositive ? 'var(--payi-success)' : 'var(--payi-danger)',
-              background: isPositive ? 'var(--payi-success-bg)' : 'var(--payi-danger-bg)',
-            }}
-          >
-            {isPositive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-            {trend}
+          <span className={`kpi-trend ${isPositive ? 'kpi-trend--up' : 'kpi-trend--down'}`}>
+            {isPositive ? '▲' : '▼'} {trend}
           </span>
         )}
         <span style={{ fontSize: 12, color: 'var(--payi-text-faint)' }}>{subtitle}</span>

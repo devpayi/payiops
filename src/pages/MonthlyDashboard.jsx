@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { DollarSign, ShoppingBag, Package, Loader2, Info } from 'lucide-react'
+import { DollarSign, ShoppingBag, Package, Megaphone, Loader2, Info } from 'lucide-react'
+import { canManageMarketing } from '../../shared/roles.js'
+import Mascot from '../components/Mascot.jsx'
 import {
   ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, CartesianGrid,
   PieChart, Pie, ComposedChart, Line, Legend,
@@ -11,13 +13,13 @@ const fmtBaht = (n) => '฿' + fmt(n)
 const fmtShort = (n) => '฿' + (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : Math.round(n))
 const PLATFORM_COLORS = {
   Shopee: '#D9784A',
-  'TikTok Shop': '#374151',
+  'TikTok Shop': '#6a63e8',
   Lazada: '#4F7FC8',
 }
 const CHART_COLORS = {
-  sales: '#4F9B82',
-  orders: '#B49A6A',
-  grid: 'rgba(100, 116, 139, 0.10)',
+  sales: '#2f86cf',
+  orders: '#e5342b',
+  grid: 'rgba(20, 22, 28, 0.10)',
 }
 const platColor = (p) => PLATFORM_COLORS[p] || '#94a3b8'
 const THAI_MONTH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
@@ -25,6 +27,35 @@ const monthLabel = (ym) => (ym === 'all' ? 'ทั้งหมด' : THAI_MONTH[
 const periodLabel = (ym) => (ym === 'all' ? 'ทั้งหมด' : `เดือน${monthLabel(ym)}`)
 
 // ป้ายท้ายแท่ง: ค่า + %MoM (เทียบเดือนก่อนหน้า) — ใช้กับกราฟ "แยกร้าน" ทั้งยอดขายและออเดอร์
+// รายการร้านสไตล์หน้ารายวัน — จุดสี + ชื่อ + ค่า + แถบ track + pill %MoM
+function StoreRows({ items, dataKey, prevMap, formatValue }) {
+  const max = Math.max(1, ...items.map((i) => i[dataKey] || 0))
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+      {items.map((s) => {
+        const cur = s[dataKey] || 0
+        const pv = prevMap.get(s.store)?.[dataKey]
+        const p = pv > 0 ? Math.round(((cur - pv) / pv) * 100) : null
+        return (
+          <div key={s.store}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 3, background: platColor(s.platform), flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 12, color: 'var(--payi-text-strong)', fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {s.store.replace('TikTok Shop', 'TikTok').replace('Payi Outlet', 'Outlet')}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--payi-text-strong)' }}>{formatValue(cur)}</span>
+              {p !== null && <span className={`kpi-trend ${p >= 0 ? 'kpi-trend--up' : 'kpi-trend--down'}`}>{p >= 0 ? '▲' : '▼'} {p >= 0 ? '+' : ''}{p}%</span>}
+            </div>
+            <div style={{ height: 7, borderRadius: 999, background: 'rgba(20,22,28,0.10)', border: '1px solid rgba(20,22,28,0.18)', overflow: 'hidden' }}>
+              <div style={{ width: `${(cur / max) * 100}%`, height: '100%', borderRadius: 999, background: platColor(s.platform) }} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function StoreBarLabel({ x, y, width, height, index, items, prevMap, dataKey, formatValue, globalLatestDay }) {
   const item = items?.[index]
   if (!item) return null
@@ -104,6 +135,31 @@ export default function MonthlyDashboard() {
   const [error, setError] = useState(null)
   const [month, setMonth] = useState('')
 
+  // ค่า Ads รายเดือน (กรอกมือ, marketing_inputs) — เป็นข้อมูลต้นทุน โชว์เฉพาะ dev/boss/marketing
+  const [ads, setAds] = useState(null)
+  const [authOn, setAuthOn] = useState(true)
+  const me = (() => { try { return JSON.parse(localStorage.getItem('payi-user') || 'null') } catch { return null } })()
+  const canSeeAds = !authOn || canManageMarketing(me?.role)
+
+  useEffect(() => {
+    fetch('/api/auth?action=status').then((r) => r.json()).then((d) => setAuthOn(!!d.enabled)).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!canSeeAds) return
+    let alive = true
+    fetch('/api/marketing?kind=inputs')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive || !d.success) return
+        const m = {}
+        for (const r of d.inputs || []) if (r.metric === 'ads') m[r.month] = (m[r.month] || 0) + r.value
+        setAds(m)
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [canSeeAds])
+
   useEffect(() => {
     let alive = true
     setLoading(true); setError(null)
@@ -177,8 +233,16 @@ export default function MonthlyDashboard() {
   const ordersMoM = cur && prev ? mom(cur.orders, prev.orders) : null
   const unitsMoM = cur && prev ? mom(cur.units, prev.units) : null
 
+  const adsHas = ads ? (isAll ? Object.keys(ads).length > 0 : Object.prototype.hasOwnProperty.call(ads, month)) : false
+  const adsCur = !adsHas ? null : isAll ? Object.values(ads).reduce((a, b) => a + b, 0) : ads[month]
+  const adsPrev = ads && prev && Object.prototype.hasOwnProperty.call(ads, prev.month) ? ads[prev.month] : null
+  const adsMoM = adsCur != null && adsPrev ? mom(adsCur, adsPrev) : null
+  const adsPctCur = adsCur && cur?.sales ? Math.round((adsCur / cur.sales) * 1000) / 10 : null
+  const adsPctPrev = adsPrev && prev?.sales ? Math.round((adsPrev / prev.sales) * 1000) / 10 : null
+
   return (
-    <div style={{ width: '100%' }}>
+    <div className="daily-glass-page" style={{ width: '100%', position: 'relative' }}>
+      <Mascot pose="cheer" size={46} style={{ position: 'absolute', top: -18, right: 2, zIndex: 3, pointerEvents: 'none', transform: 'rotate(8deg)' }} />
       {/* Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
         <select value={year} onChange={(e) => setYear(e.target.value)} className="payi-select" style={{ padding: '8px 12px', fontSize: 13 }}>
@@ -206,23 +270,26 @@ export default function MonthlyDashboard() {
         <KpiCard title="ยอดขายรวม" value={fmtBaht(cur?.sales || 0)} subtitle={prev ? `${monthLabel(prev.month)}${partial ? ` (1-${partial.latestDay})` : ''}: ${fmtBaht(prev.sales)}` : periodLabel(month)} icon={DollarSign} trend={salesMoM !== null ? `${salesMoM >= 0 ? '+' : ''}${salesMoM}%` : null} isPositive={salesMoM === null || salesMoM >= 0} />
         <KpiCard title="จำนวนออเดอร์" value={fmt(cur?.orders || 0)} subtitle={prev ? `${monthLabel(prev.month)}${partial ? ` (1-${partial.latestDay})` : ''}: ${fmt(prev.orders)}` : periodLabel(month)} icon={ShoppingBag} trend={ordersMoM !== null ? `${ordersMoM >= 0 ? '+' : ''}${ordersMoM}%` : null} isPositive={ordersMoM === null || ordersMoM >= 0} />
         <KpiCard title="จำนวนชิ้น" value={fmt(cur?.units || 0)} subtitle={prev ? `${monthLabel(prev.month)}${partial ? ` (1-${partial.latestDay})` : ''}: ${fmt(prev.units)}` : periodLabel(month)} icon={Package} trend={unitsMoM !== null ? `${unitsMoM >= 0 ? '+' : ''}${unitsMoM}%` : null} isPositive={unitsMoM === null || unitsMoM >= 0} />
+        {canSeeAds && (
+          <KpiCard
+            title="ค่า Ads (กรอกมือ)"
+            value={adsCur == null ? '—' : fmtBaht(adsCur)}
+            subtitle={
+              adsCur == null ? 'ยังไม่ได้กรอก — ไปหน้า Ads & Channels'
+                : adsPctCur != null ? `${adsPctCur}% ของยอดขาย${adsPctPrev != null ? ` · ${monthLabel(prev.month)}: ${adsPctPrev}%` : ''}`
+                  : periodLabel(month)
+            }
+            icon={Megaphone}
+            trend={adsMoM !== null ? `${adsMoM >= 0 ? '+' : ''}${adsMoM}%` : null}
+            isPositive={adsMoM === null || adsMoM <= (salesMoM ?? 0)}
+          />
+        )}
       </div>
 
       {/* Sales by store + Platform donut */}
       <div className="app-two-col-fixed" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.6fr) minmax(240px, 1fr)', gap: 16, marginBottom: 20 }}>
         <Card title="ยอดขายแยกร้าน" sub={`${periodLabel(month)} · เรียงจากมากไปน้อย${prev ? ` · %MoM เทียบ ${monthLabel(prev.month)}${partial ? ` (1-${partial.latestDay})` : ''}` : ''}`}>
-          <ResponsiveContainer width="100%" height={Math.max(200, stores.length * 42)}>
-            <BarChart data={stores} layout="vertical" margin={{ left: 8, right: 95, top: 4, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 10, fill: '#888' }} axisLine={false} tickLine={false} tickFormatter={(v) => `฿${v >= 1000000 ? (v / 1000000).toFixed(1) + 'M' : Math.round(v / 1000) + 'k'}`} />
-              <YAxis type="category" dataKey="store" tick={{ fontSize: 12, fill: 'var(--payi-text)' }} axisLine={false} tickLine={false} width={110} />
-              <Tooltip content={<TooltipBox moneyKeys={['sales']} />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
-              <Bar dataKey="sales" name="ยอดขาย" radius={[0, 6, 6, 0]} barSize={20}
-                label={<StoreBarLabel items={stores} prevMap={prevStoreMap} dataKey="sales" formatValue={fmtShort} globalLatestDay={partial?.latestDay} />}>
-                {stores.map((s, i) => <Cell key={i} fill={platColor(s.platform)} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <StoreRows items={stores} dataKey="sales" prevMap={prevStoreMap} formatValue={fmtShort} />
         </Card>
 
         <Card title="สัดส่วนแพลตฟอร์ม" sub={periodLabel(month)}>
@@ -273,18 +340,7 @@ export default function MonthlyDashboard() {
 
       {/* Orders by store — ใช้วางแผนแพ็กของ/OT ต่อร้าน */}
       <Card title="จำนวนออเดอร์แยกร้าน" sub={`${periodLabel(month)} · ไว้วางแผนแพ็กของ/OT${prev ? ` · %MoM เทียบ ${monthLabel(prev.month)}${partial ? ` (1-${partial.latestDay})` : ''}` : ''}`}>
-        <ResponsiveContainer width="100%" height={Math.max(180, storesByOrders.length * 42)}>
-          <BarChart data={storesByOrders} layout="vertical" margin={{ left: 8, right: 95, top: 4, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} horizontal={false} />
-            <XAxis type="number" tick={{ fontSize: 10, fill: '#888' }} axisLine={false} tickLine={false} />
-            <YAxis type="category" dataKey="store" tick={{ fontSize: 12, fill: 'var(--payi-text)' }} axisLine={false} tickLine={false} width={110} />
-            <Tooltip content={<TooltipBox />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
-            <Bar dataKey="orders" name="ออเดอร์" radius={[0, 6, 6, 0]} barSize={20}
-              label={<StoreBarLabel items={storesByOrders} prevMap={prevStoreMap} dataKey="orders" formatValue={fmt} globalLatestDay={partial?.latestDay} />}>
-              {storesByOrders.map((s, i) => <Cell key={i} fill={platColor(s.platform)} />)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        <StoreRows items={storesByOrders} dataKey="orders" prevMap={prevStoreMap} formatValue={fmt} />
       </Card>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, padding: '10px 14px', background: 'var(--payi-surface-muted)', borderRadius: 10, fontSize: 12, color: 'var(--payi-text-muted)' }}>

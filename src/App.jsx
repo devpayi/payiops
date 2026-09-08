@@ -3,6 +3,8 @@ import payiLogo from './assets/payi-logo.png'
 import { canAccessTab, normalizeRole } from '../shared/roles.js'
 import { avatarGradient, AVATAR_COLORS } from '../shared/avatar.js'
 import AvatarPicker from './components/AvatarPicker.jsx'
+import Mascot from './components/Mascot.jsx'
+import Sparkline from './components/Sparkline.jsx'
 
 const getMeUser = () => { try { return JSON.parse(localStorage.getItem('payi-user') || 'null') } catch { return null } }
 import {
@@ -21,6 +23,7 @@ const Upload = lazy(() => import('./pages/Upload'))
 const LinksHub = lazy(() => import('./pages/LinksHub'))
 const DevHub = lazy(() => import('./pages/DevHub'))
 const MonthlyDashboard = lazy(() => import('./pages/MonthlyDashboard'))
+const DailyDashboard = lazy(() => import('./pages/DailyDashboard'))
 const HR = lazy(() => import('./pages/HR'))
 const ProductDashboard = lazy(() => import('./pages/ProductDashboard'))
 const ProductTrends = lazy(() => import('./pages/ProductTrends'))
@@ -73,7 +76,7 @@ function exportToCsv(filename, rows) {
   URL.revokeObjectURL(url)
 }
 
-const PLATFORM_COLORS = { 'Shopee': '#E05D45', 'TikTok Shop': '#2D2D2D', 'Lazada': '#0F146D' }
+const PLATFORM_COLORS = { 'Shopee': '#D9784A', 'TikTok Shop': '#6a63e8', 'Lazada': '#4F7FC8' }
 
 // ============================================================
 // CRISP SVG ICONS (MATCHING THE SCREENSHOT)
@@ -102,7 +105,7 @@ const Icons = {
 }
 
 const KNOWN_TABS = new Set([
-  'Home', 'Executive', 'Monthly', 'Products', 'ProductTrends',
+  'Home', 'Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends',
   'AdsChannels', 'ContentOS', 'MarketingRadar', 'Inventory',
   'Import Tracking', 'WHT Cert', 'Stock Movement', 'HR', 'CFO', 'Demographic', 'Fulfillment',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings',
@@ -112,7 +115,7 @@ const menuGroups = [
   {
     title: 'ภาพรวมธุรกิจ',
     items: [
-      { id: 'Executive', label: 'Dashboard สรุปยอดขาย', renderIcon: Icons.Executive, group: ['Executive', 'Monthly'] },
+      { id: 'Executive', label: 'Dashboard สรุปยอดขาย', renderIcon: Icons.Executive, group: ['Executive', 'Daily', 'Monthly'] },
       { id: 'Products', label: 'Dashboard สินค้า', renderIcon: Icons.Products, group: ['Products', 'ProductTrends'] }
     ]
   },
@@ -163,7 +166,7 @@ const menuGroups = [
 // ใช้เฉพาะ role ที่เห็นแท็บเยอะ (boss/dev/staff) — role แคบๆ ที่เห็นแค่ไม่กี่แท็บ (เช่น stock)
 // ใช้ทุกแท็บที่ตัวเองเห็นตรงๆ แทน ไม่ต้องมีปุ่ม "เมนู" เลย ดู MOBILE_TAB_LIMIT ด้านล่าง
 const MOBILE_TAB_CANDIDATES = [
-  { id: 'Executive', label: 'หน้าหลัก', renderIcon: Icons.Executive, group: ['Executive', 'Monthly'] },
+  { id: 'Executive', label: 'หน้าหลัก', renderIcon: Icons.Executive, group: ['Executive', 'Daily', 'Monthly'] },
   { id: 'Inventory', label: 'สต็อก', renderIcon: Icons.Inventory },
 ]
 // ป้ายสั้นสำหรับ role แคบที่โชว์ทุกแท็บตรงๆ บน bottom bar (label เต็มใน menuGroups ยาวเกินจะพอดีปุ่มเล็ก)
@@ -172,10 +175,10 @@ const MOBILE_SHORT_LABELS = { Inventory: 'สต็อก', 'Stock Movement': '�
 const MOBILE_TAB_LIMIT = 5
 
 // แท็บย่อยของ Dashboard ใหญ่ที่ยุบมาจากหลายหน้า (render เดิมของแต่ละหน้ายังอยู่ครบ)
-const SALES_SUBTABS = [['Executive', 'ภาพรวม'], ['Monthly', 'รายเดือน']]
+const SALES_SUBTABS = [['Executive', 'ภาพรวม'], ['Daily', 'รายวัน'], ['Monthly', 'รายเดือน']]
 const PRODUCT_SUBTABS = [['Products', 'ภาพรวมสินค้า'], ['ProductTrends', '% เปลี่ยนแปลง']]
 const SUB_TABS = {
-  Executive: SALES_SUBTABS, Monthly: SALES_SUBTABS,
+  Executive: SALES_SUBTABS, Daily: SALES_SUBTABS, Monthly: SALES_SUBTABS,
   Products: PRODUCT_SUBTABS, ProductTrends: PRODUCT_SUBTABS,
 }
 
@@ -220,7 +223,7 @@ function AlertsSection({ alerts }) {
 function TrendingCard({ title, items, isUp }) {
   if (!items || items.length === 0) return null;
   return (
-    <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 16, padding: '20px', flex: '1 1 260px', minWidth: 0 }}>
+    <div className="dd-card" style={{ padding: '20px', flex: '1 1 260px', minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
         {isUp ? <TrendingUp size={18} color="var(--payi-success)" /> : <TrendingDown size={18} color="var(--payi-danger)" />}
         <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{title}</span>
@@ -276,18 +279,21 @@ function useRoiStats(filterMonth) {
     return () => { cancelled = true }
   }, [])
 
-  if (state.loading || state.months.length === 0) return null
-  const { months, adsByMonth, salesByMonth } = state
+  if (state.loading) return null
+  const { months = [], adsByMonth = {}, salesByMonth = {} } = state
+  const scopeLabel = filterMonth ? roiMonthLabel(filterMonth) : 'ทั้งหมด'
+  // ยังไม่มีค่า Ads (ทั้งระบบ หรือเดือนที่เลือก) → คืน missing เพื่อให้ยังมีการ์ด "ยังไม่ได้กรอก" โชว์
+  if (months.length === 0) return { missing: true, label: scopeLabel }
+
   const totalAds = months.reduce((s, m) => s + adsByMonth[m], 0)
   const totalSales = months.reduce((s, m) => s + (salesByMonth[m] || 0), 0)
   const roiOverall = totalAds > 0 ? totalSales / totalAds : null
 
   if (filterMonth) {
-    // เจาะจงเดือน — ยังไม่มีค่า Ads กรอกไว้เดือนนี้ก็ไม่โชว์การ์ด (กันตัวเลข 0/ว่างที่เข้าใจผิดว่าเป็นค่าจริง)
     const ads = adsByMonth[filterMonth]
-    if (!ads) return null
+    if (!ads) return { missing: true, label: scopeLabel }
     const sales = salesByMonth[filterMonth] || 0
-    return { label: roiMonthLabel(filterMonth), ads, roi: sales / ads, totalAds, roiOverall }
+    return { label: scopeLabel, ads, roi: sales / ads, totalAds, roiOverall }
   }
   return { label: 'ทั้งหมด', ads: totalAds, roi: roiOverall, totalAds, roiOverall }
 }
@@ -724,7 +730,7 @@ export default function App() {
   }, [filteredSkus])
 
   const activeChart = chartMode === 'orders' 
-    ? { title: 'Orders Trend', label: 'Orders', dataKey: 'orders', formatter: (value) => [fmt(value), 'Orders'], gradientFrom: '#7c3aed' }
+    ? { title: 'Orders Trend', label: 'Orders', dataKey: 'orders', formatter: (value) => [fmt(value), 'Orders'], gradientFrom: '#e5342b' }
     : { title: 'Revenue Trend', label: 'Revenue', dataKey: 'revenue', formatter: (value) => [`฿${fmt(value)}`, 'Revenue'], gradientFrom: 'var(--payi-mint)' };
 
   const pageMeta = {
@@ -737,6 +743,11 @@ export default function App() {
       title: 'Dashboard สรุปยอดขาย',
       eyebrow: 'Overview',
       subtitle: 'ภาพรวมคำสั่งซื้อรายวัน + สรุปรายเดือน (ยอดขาย ออเดอร์ ร้าน แพลตฟอร์ม)'
+    },
+    Daily: {
+      title: 'Dashboard สรุปยอดขาย',
+      eyebrow: 'Overview',
+      subtitle: 'ยอดขายวันล่าสุด เทียบเมื่อวาน + เฉลี่ย 7 วัน · รีเฟรชอัตโนมัติทุก 5 นาที'
     },
     'Import Orders': {
       title: 'Import Orders',
@@ -1057,36 +1068,55 @@ export default function App() {
             </div>
           </div>
         ) : (activeTab === 'Executive') ? (
-          <div style={{ width: '100%' }}>
-            {/* HERO — ยอดขายรวม เด่นสุด ตัวใหญ่สุด เหมือนแอพธนาคารเปิดมาเจอยอดเงินก่อน */}
-            <div style={{
-              borderRadius: 20, padding: '26px 28px', marginBottom: 14,
-              background: 'var(--payi-gradient-primary)', color: '#fff',
-              boxShadow: '0 16px 36px rgba(37,99,235,0.22)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                <div style={{ fontSize: 13, opacity: 0.85, fontWeight: 700 }}>Total Revenue · {rangeLabel}</div>
-                {fmtTrend(revenueTrend) && (
-                  <span style={{
-                    fontSize: 12.5, fontWeight: 800, padding: '3px 10px', borderRadius: 999,
-                    background: 'rgba(255,255,255,0.18)',
-                    color: (revenueTrend === null || revenueTrend >= 0) ? '#baffd9' : '#ffd0d0',
-                  }}>{fmtTrend(revenueTrend)}</span>
-                )}
-              </div>
-              <div style={{ fontSize: 42, fontWeight: 850, marginTop: 8, lineHeight: 1.05, letterSpacing: '-0.01em' }}>
-                THB {fmt(totalRevenue)}
-              </div>
-              <div style={{ fontSize: 12, opacity: 0.85, marginTop: 8 }}>รวมยกเลิก/ตีคืน THB {fmt(totalGrossRevenue)}</div>
-            </div>
+          <div className="daily-glass-page" style={{ width: '100%', position: 'relative' }}>
+            <Mascot pose="wave" size={48} style={{ position: 'absolute', top: -18, right: 2, zIndex: 3, pointerEvents: 'none', transform: 'rotate(8deg)' }} />
+            {/* HERO — สไตล์เดียวกับการ์ดยอดขายหน้ารายวัน (dd-card--grad + pill + sparkline) */}
+            {(() => {
+              const byDay = dashData?.revenueByDay || []
+              let sparkData
+              if (selectedMonth) {
+                // เลือกเดือน → แท่งรายวันของเดือนนั้น
+                sparkData = byDay.map((d) => ({ label: `วันที่ ${d.date.slice(8, 10)}`, value: d.amount }))
+              } else {
+                // ทั้งหมด → แท่งรายเดือน (รวมยอดต่อเดือน)
+                const m = new Map()
+                for (const d of byDay) { const k = d.date.slice(0, 7); m.set(k, (m.get(k) || 0) + d.amount) }
+                sparkData = [...m.entries()].sort().map(([k, v]) => ({ label: monthLabel(k), value: v }))
+              }
+              return (
+                <div className="dd-card dd-card--grad" style={{ borderRadius: 20, padding: '15px 22px', marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.9 }}>Total Revenue · {rangeLabel}</div>
+                  <div style={{ fontSize: 34, fontWeight: 850, letterSpacing: '-0.02em', margin: '3px 0 2px', lineHeight: 1.1 }}>
+                    THB {fmt(totalRevenue)}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, opacity: 0.92, flexWrap: 'wrap' }}>
+                    {fmtTrend(revenueTrend) && (
+                      <span className="dd-pill dd-pill--on-grad">
+                        {revenueTrend >= 0 ? '▲' : '▼'} {fmtTrend(revenueTrend)}
+                      </span>
+                    )}
+                    <span>รวมยกเลิก/ตีคืน THB {fmt(totalGrossRevenue)}</span>
+                  </div>
+                  <Sparkline data={sparkData} formatValue={(v) => `THB ${fmt(v)}`} />
+                </div>
+              )
+            })()}
 
             {/* รอง — Orders/Units/AOV/Ads/ROI สีต่างกันให้แยกง่ายด้วยตาแวบเดียว */}
-            <div className="app-kpi-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${roiStats ? 5 : 3}, minmax(0, 1fr))`, gap: 12, marginBottom: 16 }}>
+            <div className="app-kpi-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${roiStats ? (roiStats.missing ? 4 : 5) : 3}, minmax(0, 1fr))`, gap: 12, marginBottom: 16 }}>
               {[
                 { title: 'Orders', value: fmt(totalOrders), icon: ShoppingBag, color: '#2f6fe0', trend: fmtTrend(ordersTrend), isPositive: ordersTrend === null || ordersTrend >= 0 },
                 { title: 'Units', value: fmt(totalQty), icon: Package, color: '#7a6fce', trend: fmtTrend(unitsTrend), isPositive: unitsTrend === null || unitsTrend >= 0 },
                 { title: 'AOV', value: `THB ${fmt(avgOrder)}`, icon: TrendingUp, color: '#3f7f6f', trend: fmtTrend(aovTrend), isPositive: aovTrend === null || aovTrend >= 0 },
-                ...(roiStats ? [
+                ...(roiStats && roiStats.missing ? [
+                  {
+                    title: `ค่า Ads · ${roiStats.label}`,
+                    value: 'ยังไม่ได้กรอก',
+                    note: 'กดเพื่อไปกรอกที่ Ads & Channels',
+                    icon: Megaphone, color: '#d64545', muted: true,
+                    onClick: () => setActiveTab('AdsChannels'),
+                  },
+                ] : roiStats ? [
                   {
                     title: `ค่า Ads · ${roiStats.label}`,
                     value: `THB ${fmt(roiStats.ads || 0)}`,
@@ -1106,9 +1136,8 @@ export default function App() {
               ].map((item) => {
                 const Icon = item.icon
                 return (
-                  <div key={item.title} onClick={item.onClick} className="app-stat-tile" style={{
-                    background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 14, padding: '14px 16px', minHeight: 82,
-                    boxShadow: '0 8px 20px rgba(15,23,42,0.04)', cursor: item.onClick ? 'pointer' : 'default',
+                  <div key={item.title} onClick={item.onClick} className="app-stat-tile dd-card" style={{
+                    padding: '14px 16px', minHeight: 82, cursor: item.onClick ? 'pointer' : 'default',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                       <div style={{ width: 26, height: 26, borderRadius: 8, background: `${item.color}1a`, color: item.color, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
@@ -1117,9 +1146,11 @@ export default function App() {
                       <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-                      <div style={{ fontSize: 18, lineHeight: 1.05, color: 'var(--payi-text-strong)', fontWeight: 850, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value}</div>
+                      <div style={{ fontSize: item.muted ? 13 : 18, lineHeight: 1.05, color: item.muted ? 'var(--payi-text-muted)' : 'var(--payi-text-strong)', fontWeight: item.muted ? 700 : 850, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value}</div>
                       {item.trend && (
-                        <span style={{ fontSize: 10.5, fontWeight: 850, color: item.isPositive ? 'var(--payi-success)' : 'var(--payi-danger)', flexShrink: 0 }}>{item.trend}</span>
+                        <span className={`kpi-trend ${item.isPositive ? 'kpi-trend--up' : 'kpi-trend--down'}`} style={{ fontSize: 10.5, flexShrink: 0 }}>
+                          {item.isPositive ? '▲' : '▼'} {item.trend}
+                        </span>
                       )}
                     </div>
                     {item.note && (
@@ -1138,8 +1169,9 @@ export default function App() {
             {/* CONTROL PANEL */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16,
-              background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', padding: '12px 14px', borderRadius: 8, marginBottom: 18,
-              boxShadow: '0 8px 20px rgba(16,24,40,0.04)'
+              background: 'linear-gradient(150deg, rgba(255,255,255,0.9), rgba(238,246,253,0.72))',
+              border: '2px solid rgba(20,22,28,0.9)', padding: '12px 14px', borderRadius: 16, marginBottom: 18,
+              boxShadow: '3px 4px 0 rgba(20,22,28,0.1), 0 12px 26px rgba(47,134,207,0.12)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <select
@@ -1161,37 +1193,25 @@ export default function App() {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', background: 'var(--payi-border)', padding: 3, borderRadius: 8, border: '1px solid var(--payi-border)' }}>
+                <div className="dd-seg">
                   {[
                     { id: 'today', label: 'วันนี้' },
                     { id: '7d', label: '7 วัน' },
                     { id: '30d', label: '30 วัน' },
                     { id: 'all', label: 'ทั้งหมด' }
-                  ].map(p => {
-                    const isSel = datePreset === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        onClick={() => handlePresetChange(p.id)}
-                        style={{
-                          padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6, border: 'none', cursor: 'pointer', transition: 'all 150ms ease',
-                          background: isSel ? 'var(--payi-surface)' : 'transparent',
-                          color: isSel ? 'var(--payi-mint)' : 'var(--payi-text)',
-                          boxShadow: isSel ? '0 2px 8px rgba(15,23,42,0.05)' : 'none'
-                        }}
-                      >
-                        {p.label}
-                      </button>
-                    )
-                  })}
+                  ].map(p => (
+                    <button key={p.id} onClick={() => handlePresetChange(p.id)} className={datePreset === p.id ? 'on' : ''}>
+                      {p.label}
+                    </button>
+                  ))}
                 </div>
 
-                <select value={business} onChange={e => setBusiness(e.target.value)} style={{ border: '1px solid var(--payi-border)', borderRadius: 8, padding: '7px 10px', fontSize: 13, color: 'var(--payi-text)', fontWeight: 500, outline: 'none', background: 'var(--payi-surface-muted)' }}>
+                <select value={business} onChange={e => setBusiness(e.target.value)} style={{ padding: '7px 10px', fontSize: 13, outline: 'none' }}>
                   <option value="all">ทุกธุรกิจ</option>
                   {businesses.map(b => <option key={b} value={b}>{b}</option>)}
                 </select>
 
-                <select value={platform} onChange={e => setPlatform(e.target.value)} style={{ border: '1px solid var(--payi-border)', borderRadius: 8, padding: '7px 10px', fontSize: 13, color: 'var(--payi-text)', fontWeight: 500, outline: 'none', background: 'var(--payi-surface-muted)' }}>
+                <select value={platform} onChange={e => setPlatform(e.target.value)} style={{ padding: '7px 10px', fontSize: 13, outline: 'none' }}>
                   <option value="all">ทุกแพลตฟอร์ม</option>
                   {platforms.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
@@ -1248,31 +1268,25 @@ export default function App() {
             </div>
 
             {/* GRAPH METRIC AREA */}
-            <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 20, padding: '22px', marginBottom: 24, boxShadow: '0 10px 40px rgba(15,23,42,0.01)' }}>
+            <div className="dd-card" style={{ padding: '22px', marginBottom: 24 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, gap: 12, flexWrap: 'wrap' }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{activeChart.title}</div>
                   <div style={{ fontSize: 12, color: 'var(--payi-text-faint)', marginTop: 4 }}>สถิติวิเคราะห์แนวโน้มการเติบโตแบบ Dynamic</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', background: 'var(--payi-border)', padding: 3, borderRadius: 8, border: '1px solid var(--payi-border)' }}>
+                  <div className="dd-seg">
                     {[
                       { id: 'daily',   label: 'รายวัน' },
                       { id: 'weekly',  label: 'สัปดาห์' },
                       { id: 'monthly', label: 'เดือน' },
                     ].map(p => (
-                      <button key={p.id} onClick={() => setPeriod(p.id)} style={{
-                        padding: '5px 12px', fontSize: 11, fontWeight: 600, borderRadius: 8, border: 'none', cursor: 'pointer',
-                        background: period === p.id ? 'var(--payi-surface)' : 'transparent',
-                        color: period === p.id ? 'var(--payi-mint)' : 'var(--payi-text)',
-                        boxShadow: period === p.id ? '0 2px 8px rgba(15,23,42,0.05)' : 'none',
-                        transition: 'all 150ms ease'
-                      }}>{p.label}</button>
+                      <button key={p.id} onClick={() => setPeriod(p.id)} className={period === p.id ? 'on' : ''}>{p.label}</button>
                     ))}
                   </div>
-                  <div style={{ display: 'flex', gap: 6, background: 'var(--payi-border)', padding: 3, borderRadius: 8 }}>
+                  <div className="dd-seg">
                     {['revenue', 'orders'].map((mode) => (
-                      <button key={mode} onClick={() => setChartMode(mode)} style={{ padding: '5px 12px', fontSize: 11, fontWeight: 600, borderRadius: 8, border: 'none', cursor: 'pointer', background: chartMode === mode ? 'var(--payi-mint)' : 'transparent', color: chartMode === mode ? 'var(--payi-surface)' : 'var(--payi-text)' }}>
+                      <button key={mode} onClick={() => setChartMode(mode)} className={chartMode === mode ? 'on' : ''}>
                         {mode === 'revenue' ? 'Revenue' : 'Orders'}
                       </button>
                     ))}
@@ -1291,7 +1305,9 @@ export default function App() {
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.1)" vertical={false} />
                     <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--payi-text-muted)' }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11, fill: 'var(--payi-text-muted)' }} axisLine={false} tickLine={false} />
-                    <Tooltip cursor={{ fill: 'rgba(56,189,248,0.04)' }} contentStyle={{ borderRadius: 12 }} formatter={activeChart.formatter} />
+                    <Tooltip cursor={{ fill: 'rgba(47,134,207,0.06)' }} formatter={activeChart.formatter}
+                      contentStyle={{ borderRadius: 10, background: '#16181d', border: 'none', boxShadow: '0 8px 20px rgba(0,0,0,0.25)' }}
+                      labelStyle={{ color: '#cbd5e1', fontWeight: 700 }} itemStyle={{ color: '#fff' }} />
                     <Bar dataKey={chartMode} fill={`url(#${chartMode}Gradient)`} radius={[10, 10, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1299,7 +1315,7 @@ export default function App() {
             </div>
 
             {/* PLATFORM BREAKDOWN */}
-            <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 16, padding: '20px', marginBottom: 24 }}>
+            <div className="dd-card" style={{ padding: '20px', marginBottom: 24 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--payi-text)' }}>สัดส่วนยอดขายตามแพลตฟอร์มรวม</div>
                 {byPlatform.length > 0 && (
@@ -1381,7 +1397,7 @@ export default function App() {
             </div>
 
             {/* TOP PERFORMANCE SKUs TABLE */}
-            <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 16, overflowX: 'auto', marginBottom: 40, boxShadow: '0 4px 20px rgba(0,0,0,0.01)' }}>
+            <div className="dd-card" style={{ padding: 0, overflowX: 'auto', marginBottom: 40 }}>
               <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse', fontSize: 13, textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: 'var(--payi-surface-muted)', borderBottom: '1px solid var(--payi-border)' }}>
@@ -1426,6 +1442,7 @@ export default function App() {
 
         {/* แท็บพวกนี้ mount ค้างไว้เมื่อเคยเปิดแล้ว (ซ่อนด้วย CSS แทนการ unmount) กัน fetch ข้อมูลซ้ำทุกครั้งที่กดสลับแท็บไปมา */}
         {[
+          ['Daily', <DailyDashboard />],
           ['Monthly', <MonthlyDashboard />],
           ['Products', <ProductDashboard />],
           ['ProductTrends', <ProductTrends />],
