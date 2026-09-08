@@ -5,14 +5,15 @@ import {
   LineChart, Line, Legend,
 } from 'recharts'
 import KpiCard from '../components/KpiCard.jsx'
+import Mascot from '../components/Mascot.jsx'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
 const fmtBaht = (n) => '฿' + fmt(n)
 const fmtShort = (n) => '฿' + (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : Math.round(n))
-const PLATFORM_COLORS = { Shopee: '#F0662C', 'TikTok Shop': '#2AA79B', Lazada: '#2F5FD0' }
-const platColor = (p) => PLATFORM_COLORS[p] || '#94a3b8'
-// จานสีสำหรับกราฟเส้นแนวโน้ม (top groups)
-const LINE_COLORS = ['#2AA79B', '#F0662C', '#2F5FD0', '#9333EA', '#DB2777', '#0891B2', '#CA8A04', '#65A30D']
+const PLATFORM_COLORS = { Shopee: '#D9784A', 'TikTok Shop': '#6a63e8', Lazada: '#4F7FC8' }
+const platColor = (p) => PLATFORM_COLORS[p] || '#a78bfa'
+// จานสีสำหรับกราฟเส้นแนวโน้ม (top groups) — โทนป็อปอาร์ตฟ้า-แดง-เหลือง
+const LINE_COLORS = ['#2f86cf', '#e5342b', '#6a63e8', '#f59e0b', '#12915a', '#0891b2', '#db2777', '#65a30d']
 const THAI_MONTH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 const monthLabel = (ym) => (ym === 'all' ? 'ทั้งหมด' : THAI_MONTH[parseInt(String(ym).slice(5, 7), 10) - 1] || ym)
 // ป้ายช่วงเวลาไว้ต่อท้ายหัวข้อการ์ด — "all" = "ทั้งหมด" เฉยๆ, เดือนอื่นนำหน้าด้วย "เดือน"
@@ -106,7 +107,8 @@ export default function ProductDashboard() {
   if (error) return <Center danger><Info size={18} /> โหลดไม่สำเร็จ: {error}</Center>
 
   return (
-    <div style={{ width: '100%' }}>
+    <div className="daily-glass-page" style={{ width: '100%', position: 'relative' }}>
+      <Mascot pose="think" size={48} style={{ position: 'absolute', top: -18, right: 2, zIndex: 3, pointerEvents: 'none', transform: 'rotate(8deg)' }} />
       {/* Filters */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <FilterGroup label="ร้าน" value={business} setValue={setBusiness} options={BUSINESSES} />

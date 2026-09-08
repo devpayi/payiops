@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Loader2, Info, Search, ChevronRight, ChevronDown, TrendingUp, TrendingDown } from 'lucide-react'
+import Mascot from '../components/Mascot.jsx'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
 const fmtBaht = (n) => '฿' + fmt(n)
@@ -24,9 +25,9 @@ function pctChange(prev, cur) {
 // สีพื้น/สีตัวอักษรของ % เปลี่ยนแปลง (เขียว = ขึ้น, แดง/ส้ม = ลง) — เลียนแบบชีท
 function deltaStyle(pct) {
   if (pct === null) return { bg: 'transparent', color: 'var(--payi-text-faint)' }
-  if (pct === Infinity) return { bg: 'rgba(47,111,224,0.10)', color: '#2F6FE0' }
-  if (pct >= 0) return { bg: 'rgba(22,163,74,0.12)', color: '#15803d' }
-  return { bg: 'rgba(234,88,12,0.12)', color: '#c2410c' }
+  if (pct === Infinity) return { bg: 'rgba(47,134,207,0.12)', color: '#1f6fb2' }
+  if (pct >= 0) return { bg: 'rgba(18,145,90,0.14)', color: '#0b6b42' }
+  return { bg: 'rgba(229,52,43,0.13)', color: '#b91c1c' }
 }
 function deltaText(pct) {
   if (pct === null) return '—'
@@ -90,7 +91,8 @@ export default function ProductTrends() {
   const colCount = 2 + months.length + 1 // สินค้า + เดือน + รวม (สินค้ากิน 1, ปุ่มขยายกิน 1 รวมในคอลัมน์แรก)
 
   return (
-    <div style={{ width: '100%' }}>
+    <div className="daily-glass-page" style={{ width: '100%', position: 'relative' }}>
+      <Mascot pose="cheer" size={46} style={{ position: 'absolute', top: -18, right: 2, zIndex: 3, pointerEvents: 'none', transform: 'rotate(8deg)' }} />
       {/* Filters */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         <FilterGroup label="ร้าน" value={business} setValue={setBusiness} options={BUSINESSES} />
@@ -119,9 +121,9 @@ export default function ProductTrends() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--payi-text-muted)', alignItems: 'center' }}>
-            <Legend color="#15803d" text="เพิ่มขึ้น" />
-            <Legend color="#c2410c" text="ลดลง" />
-            <Legend color="#2F6FE0" text="เพิ่งเริ่มขาย" />
+            <Legend color="#0b6b42" text="เพิ่มขึ้น" />
+            <Legend color="#b91c1c" text="ลดลง" />
+            <Legend color="#1f6fb2" text="เพิ่งเริ่มขาย" />
             {metric === 'units' && <Legend color="var(--payi-mint-strong)" text="* = รวมยอดจาก Set แล้ว" />}
           </div>
         </div>
