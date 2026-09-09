@@ -3420,7 +3420,9 @@ async function opLineWebhook(req, res) {
         if (/ชมพู/.test(t)) {
           const nums = (t.match(/\d{6,9}/g) || [])
           if (nums.length) {
-            try { await createArrivalsFromShipping(nums) } catch (e) { console.error('pink-slip:', e.message) }
+            // ชื่อสินค้า = ข้อความที่เหลือ หลังตัด "ชมพู" + เลขทุกตัวออก (เช่น "ชมพู 1234567 ถุงเท้าส้น")
+            const nameHint = t.replace(/ชมพู/g, '').replace(/\d{6,9}/g, '').replace(/\s+/g, ' ').trim()
+            try { await createArrivalsFromShipping(nums, undefined, nameHint) } catch (e) { console.error('pink-slip:', e.message) }
             continue
           }
         }

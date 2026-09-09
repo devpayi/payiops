@@ -311,15 +311,18 @@ async function upsertArrival(body) {
   return { id: outId }
 }
 
-// LINE "ชมพู <เลข SHIPPING> ..." — สร้าง import_arrival จากเลขหลายตัวในครั้งเดียว (อ่าน/เขียนชีทรอบเดียว)
+// LINE "ชมพู <เลข SHIPPING> ... [ชื่อสินค้าไทย]" — สร้าง import_arrival จากเลขหลายตัวในครั้งเดียว (อ่าน/เขียนชีทรอบเดียว)
 // เจอในชีท LK -> เติมกล่อง/นน./ขนาด/ชื่อจีน ให้ ; ไม่เจอ -> สร้างแถวมีแค่ shipping_no + ธงให้กรอกมือ
+// nameHint = ชื่อสินค้าที่คนพิมพ์ต่อท้าย (เช่น "ถุงเท้าส้น") — ใช้เป็น item_name แทนชื่อจีน + ลอง alias หา sku ให้
 // กันซ้ำด้วย shipping_no (มีอยู่แล้ว = ข้าม). ไม่ throw ทั้งฟังก์ชัน — ให้ webhook เงียบเสมอ
-export async function createArrivalsFromShipping(shippingNos, dateHint) {
+export async function createArrivalsFromShipping(shippingNos, dateHint, nameHint) {
   await ensureAll()
   const [rows, aliasMap] = await Promise.all([getSheet(ARRIVALS), loadAliasMap()])
   const existing = new Set(rows.filter((r) => r.id).map((r) => String(r.shipping_no || '').trim()).filter(Boolean))
   const now = new Date().toISOString()
   const today = todayBKK()
+  const name = String(nameHint || '').trim()
+  const nameSku = name ? aliasMap[aliasKey(name)] : null
   const added = []
   for (const raw of shippingNos || []) {
     const s = String(raw || '').trim()
@@ -336,16 +339,16 @@ export async function createArrivalsFromShipping(shippingNos, dateHint) {
     })
     if (lk.found) {
       row.ctn_no = lk.ctn_no || ''
-      row.item_name = lk.goods_zh || `SHIPPING ${s}`
+      row.item_name = name || lk.goods_zh || `SHIPPING ${s}`
       row.box_count = lk.box_count || ''
       row.qty = lk.qty || ''
       row.weight_kg = lk.weight_kg || ''
       row.cbm = lk.cbm || ''
       row.note = `LK ${lk.tab}: ${lk.goods_zh || ''}`.trim()
-      const alias = aliasMap[aliasKey(row.item_name)]
-      if (alias) row.sku = alias
+      row.sku = nameSku || aliasMap[aliasKey(row.item_name)] || ''
     } else {
-      row.item_name = `SHIPPING ${s}`
+      row.item_name = name || `SHIPPING ${s}`
+      row.sku = nameSku || ''
       row.note = `⚠ ไม่เจอในชีท LK (จากไลน์ ${today}) — เช็คเลขในกลุ่มไลน์อีกที / กรอกมือ`
     }
     rows.push(row)
