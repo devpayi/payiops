@@ -3412,10 +3412,11 @@ async function opLineWebhook(req, res) {
       // ลงทะเบียน groupId ของกลุ่มไลน์ทีมงานอัตโนมัติ ถ้า event นี้มาจากกลุ่ม (ดู comment บน LINE_GROUP_LINK_SHEET)
       if (event.source?.type === 'group' && event.source.groupId) await registerLineGroup(event.source.groupId)
 
-      // ── "ชมพู <เลข SHIPPING> ..." — จับเลขจากใบชมพูในกลุ่ม สร้าง import_arrival ให้เอง (ติดตามนำเข้า) ──
-      // เป็นข้อยกเว้นเดียวที่รับคำสั่งจากกลุ่มได้ (owner ขอ): stateless ล้วน ไม่มี session ไม่ตอบกลับเลย
-      // ไม่ match pattern นี้ = ตกไปทาง continue เดิมด้านล่างทุกอย่างเหมือนเดิม
-      if (event.type === 'message' && event.message?.type === 'text') {
+      // ── "ชมพู <เลข SHIPPING> <ชื่อสินค้าคร่าวๆ>" — พิมพ์ใน 1:1 กับบอทเท่านั้น (owner ขอ 2026-09-09) ──
+      // สร้าง import_arrival ให้เอง (ติดตามนำเข้า): stateless ล้วน ไม่มี session ไม่ตอบกลับเลย
+      // ไม่รับจากกลุ่ม — ถ้าต้องไล่ย้อนหลังก็เปิดกลุ่มดูเอง
+      // ไม่ match pattern นี้ = ตกไปทาง flow ปกติด้านล่างทุกอย่างเหมือนเดิม
+      if (event.source?.type === 'user' && event.type === 'message' && event.message?.type === 'text') {
         const t = String(event.message.text || '')
         if (/ชมพู/.test(t)) {
           const nums = (t.match(/\d{6,9}/g) || [])
