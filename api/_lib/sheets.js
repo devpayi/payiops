@@ -183,12 +183,18 @@ export async function ensureSheet(sheetName, headers) {
   const meta = await getMetaCached()
   const exists = meta.sheets.some((s) => s.properties.title === sheetName)
   if (!exists) {
-    await withQuotaRetry(() => getClient().spreadsheets.batchUpdate({
-      spreadsheetId: sheetId(),
-      requestBody: {
-        requests: [{ addSheet: { properties: { title: sheetName } } }],
-      },
-    }))
+    try {
+      await withQuotaRetry(() => getClient().spreadsheets.batchUpdate({
+        spreadsheetId: sheetId(),
+        requestBody: {
+          requests: [{ addSheet: { properties: { title: sheetName } } }],
+        },
+      }))
+    } catch (e) {
+      // getMetaCached() อาจ stale (แท็บเพิ่งถูกสร้างโดย request คู่ขนาน) หรือสอง request แข่งสร้างพร้อมกัน
+      // — ถ้า Sheets ตอบว่า "already exists" แปลว่าแท็บมีจริงแล้ว เดินหน้าต่อไปเช็ค header ได้เลย
+      if (!/already exists/i.test(e.message || '')) throw e
+    }
   }
 
   const res = await withQuotaRetry(() => getClient().spreadsheets.values.get({
