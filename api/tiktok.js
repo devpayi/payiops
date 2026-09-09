@@ -64,7 +64,8 @@ async function upsertToken(patch) {
 const htmlPage = (title, body) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><body style="font-family:system-ui,sans-serif;max-width:520px;margin:40px auto;padding:0 20px;line-height:1.6;color:#16181d"><h2>${title}</h2>${body}</body>`
 
 export default async function handler(req, res) {
-  const action = String(req.query.action || (req.query.cron ? 'cron' : ''))
+  // TikTok เด้งกลับพร้อม ?code= (บางกรณี query 'action' หายถ้า redirect URL ที่ตั้งไว้ไม่มี ?action=callback)
+  const action = String(req.query.action || (req.query.cron ? 'cron' : (req.query.code || req.query.auth_code ? 'callback' : '')))
 
   try {
     // ── authorize: เด้งไป TikTok ──
