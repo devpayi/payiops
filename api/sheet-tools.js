@@ -3776,9 +3776,9 @@ export default async function handler(req, res) {
     return opDemographic(req, res)
   }
   if (op === 'import-tracking') {
-    // ติดตามนำเข้าแบบล็อต — ยังทำไม่เสร็จ เปิดให้ dev คนเดียวก่อน (owner ขอ 2026-09-04)
+    // ติดตามนำเข้าแบบล็อต — เปิดให้ dev + boss (พี่หยก/Lady = boss)
     // หมายเหตุ: LINE "ชมพู" handler เรียก createArrivalsFromShipping ตรงๆ ไม่ผ่าน gate นี้ (ตั้งใจ)
-    if (authEnabled() && normalizeRole(req.user?.role) !== 'dev') {
+    if (authEnabled() && !canManageOperations(req.user?.role)) {
       return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงส่วนนี้' })
     }
     return opImportTracking(req, res)
