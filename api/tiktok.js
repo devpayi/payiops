@@ -96,9 +96,12 @@ export default async function handler(req, res) {
         `<p>เชื่อมแล้ว: <b>${shops.map((s) => s.name).join(', ')}</b></p><p>ระบบจะดึงออเดอร์อัตโนมัติทุกวัน ปิดหน้านี้ได้เลย</p>`))
     }
 
+    // เปิดหน้า status/pull ผ่าน browser ตรง ๆ ได้ด้วย ?secret=<CRON_SECRET> (ไม่มี dev token ในการเปิด URL)
+    const secretOk = () => process.env.CRON_SECRET && String(req.query.secret || '') === process.env.CRON_SECRET
+
     // ── status ──
     if (action === 'status') {
-      if (!requireDev(req, res)) return
+      if (!secretOk() && !requireDev(req, res)) return
       const rows = await loadTokenRows()
       return res.status(200).json({
         success: true,
@@ -112,7 +115,7 @@ export default async function handler(req, res) {
         const authz = req.headers.authorization || ''
         if (process.env.CRON_SECRET && authz !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ error: 'unauthorized' })
       } else {
-        if (!requireDev(req, res)) return
+        if (!secretOk() && !requireDev(req, res)) return
       }
 
       const hours = Math.min(Number(req.query.hours) || 26, 24 * 14) // default 26 ชม. (เผื่อ cron พลาด 1 รอบ)
