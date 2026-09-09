@@ -51,6 +51,12 @@ const PRODUCT_FAMILIES = (() => {
   return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label, 'th'))
 })()
 
+// ชื่อสินค้าภาษาไทย (รายสินค้า) จาก SKU ที่จับคู่แล้ว — ใช้โชว์แทนโค้ด PYxxx / ชื่อจีนจากชีท LK
+const skuThaiName = (sku) => {
+  const p = sku ? PM_BY_SKU[sku] : null
+  return p ? cleanFamilyName(p.name_th, p.name_en) : ''
+}
+
 // รายชื่อสินค้าภาษาไทยล้วน คลิกเลือก — ไม่โชว์ SKU (เหมือนหน้า Dashboard สินค้า)
 function FamilyListPicker({ onPick, onClose }) {
   const [q, setQ] = useState('')
@@ -354,15 +360,17 @@ function ArrivalsPanel({ arrivals, sel, lots, onToggleSel, onTogglePink, onAdd, 
                     </td>
                     <td style={{ padding: '8px' }}>
                       <div style={{ fontWeight: 600, color: 'var(--payi-text-strong)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        {a.item_name}
+                        {skuThaiName(a.sku) || a.item_name}
                         {a.lk_missing
                           ? <span style={{ fontSize: 10, fontWeight: 800, background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', padding: '1px 6px', borderRadius: 999 }}>✗ ไม่เจอ LK</span>
                           : !a.sku && <span style={{ fontSize: 10, fontWeight: 800, background: 'var(--payi-warning-bg)', color: 'var(--payi-warning)', padding: '1px 6px', borderRadius: 999 }}>รอใส่ SKU</span>}
                       </div>
                       <div style={{ fontSize: 11.5, color: 'var(--payi-text-muted)', fontFamily: 'monospace' }}>
-                        {a.sku || '—'} · SHIPPING {a.shipping_no || '—'}
+                        SHIPPING {a.shipping_no || '—'}{a.sku ? ` · ${a.sku}` : ''}
                         {a.codename ? <span style={{ marginLeft: 6, fontWeight: 800, background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)', padding: '1px 6px', borderRadius: 999 }}>{a.codename}</span> : null}
                       </div>
+                      {skuThaiName(a.sku) && a.item_name && a.item_name !== skuThaiName(a.sku)
+                        ? <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>ชีท LK: {a.item_name}</div> : null}
                       {a.lk_missing && <div style={{ fontSize: 11, color: 'var(--payi-danger)', marginTop: 3 }}>{a.note}</div>}
                     </td>
                     <td style={{ padding: '8px', fontFamily: 'monospace', fontSize: 12 }}>{a.ctn_no || '—'}</td>
@@ -451,8 +459,8 @@ function LotDetail({ lot, stages, busy, onSetStage, onToggle, onEditLot, onDelet
             {lot.arrivals.map((a) => (
               <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--payi-surface-muted)', borderRadius: 9 }}>
                 <div style={{ flex: 1 }}>
-                  <span style={{ fontWeight: 600, color: 'var(--payi-text-strong)' }}>{a.item_name}</span>
-                  <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--payi-text-muted)', marginLeft: 8 }}>{a.sku} · {fmt(a.qty)} ชิ้น · {a.box_count} กล่อง</span>
+                  <span style={{ fontWeight: 600, color: 'var(--payi-text-strong)' }}>{skuThaiName(a.sku) || a.item_name}</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--payi-text-muted)', marginLeft: 8 }}>{fmt(a.qty)} ชิ้น · {a.box_count} กล่อง</span>
                   {a.codename ? <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 800, background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)', padding: '1px 6px', borderRadius: 999 }}>{a.codename}</span> : null}
                 </div>
                 <PinkChip on={a.pink_slip} />
