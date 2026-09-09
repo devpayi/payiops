@@ -60,11 +60,44 @@ function bahttext(n) {
 }
 const money = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// pdf-lib ไม่ shape ภาษาไทย (วรรณยุกต์ซ้อนสระเพี้ยน/หาย ทั้ง subset true/false) — วาดข้อความไทยลง canvas
+// (เบราว์เซอร์ shape ให้ถูก) แล้วฝังเป็นรูปแทน. ตัวเลข/latin ยังใช้ drawText ปกติได้
+let _thaiFontReady
+async function ensureThaiFont(fontBytes) {
+  if (!_thaiFontReady) {
+    _thaiFontReady = (async () => {
+      const ff = new FontFace('WhtThai', fontBytes)
+      await ff.load()
+      document.fonts.add(ff)
+    })()
+  }
+  return _thaiFontReady
+}
+// คืน { url, wPt, hPt } ของข้อความไทย ที่ความสูงตัวอักษร ~sizePt (เรนเดอร์ 4x กัน aliasing)
+function thaiTextPng(text, sizePt) {
+  const S = 4
+  const fontPx = sizePt * S
+  const pad = Math.ceil(fontPx * 0.35)
+  const meas = document.createElement('canvas').getContext('2d')
+  meas.font = `${fontPx}px WhtThai, "Leelawadee UI", "Tahoma", sans-serif`
+  const w = Math.ceil(meas.measureText(text).width)
+  const cvs = document.createElement('canvas')
+  cvs.width = w + pad * 2
+  cvs.height = Math.ceil(fontPx * 1.6)
+  const ctx = cvs.getContext('2d')
+  ctx.font = `${fontPx}px WhtThai, "Leelawadee UI", "Tahoma", sans-serif`
+  ctx.fillStyle = '#000'
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillText(text, pad, Math.ceil(fontPx * 1.15))
+  return { url: cvs.toDataURL('image/png'), wPt: cvs.width / S, hPt: cvs.height / S, baselinePt: (fontPx * 1.15) / S }
+}
+
 async function buildPdf({ runNo, dateISO, bookNo }) {
   const [tplBytes, fontBytes] = await Promise.all([
     fetch(TEMPLATE_URL).then((r) => r.arrayBuffer()),
     fetch(FONT_URL).then((r) => r.arrayBuffer()),
   ])
+  await ensureThaiFont(fontBytes.slice(0))
   const pdf = await PDFDocument.load(tplBytes)
   pdf.registerFontkit(fontkit)
   const thai = await pdf.embedFont(fontBytes, { subset: true })
@@ -75,13 +108,24 @@ async function buildPdf({ runNo, dateISO, bookNo }) {
   const be = d.getFullYear() + 543
   const dd = d.getDate()
   const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dateShort = `${dd}/${mm}/${be}`
+  const yy2 = String(d.getFullYear() % 100).padStart(2, '0')
+  const dateShort = `${String(dd).padStart(2, '0')}/${mm}/${yy2}` // ตามไฟล์จริง: ค.ศ. 2 หลัก (2026 -> 26)
   const tax = Math.round(SERVICE_FEE * WHT_RATE * 100) / 100
 
   const T = (txt, x, y, size = 9) => page.drawText(String(txt), { x, y, size, font: thai, color: black })
   const R = (txt, xRight, y, size = 9) => {
     const w = thai.widthOfTextAtSize(String(txt), size)
     page.drawText(String(txt), { x: xRight - w, y, size, font: thai, color: black })
+  }
+  const C = (txt, xCenter, y, size = 9) => {
+    const w = thai.widthOfTextAtSize(String(txt), size)
+    page.drawText(String(txt), { x: xCenter - w / 2, y, size, font: thai, color: black })
+  }
+  // จำนวนเงิน: "บาท." ชิดเส้นแบ่งสตางค์ (ซ้าย), "00" ชิดเส้นแบ่ง (ขวา) — เส้นแบ่งจริง: คอลัมน์เงิน x475.0, คอลัมน์ภาษี x546.3
+  const moneyCell = (amount, satDivX, y, size = 9) => {
+    const [intPart] = money(amount).split('.')
+    R(`${intPart}.`, satDivX - 0.3, y, size)
+    T('00', satDivX + 1.5, y, size)
   }
   const digits = (str, boxes, yBase) => {
     let i = 0
@@ -95,15 +139,32 @@ async function buildPdf({ runNo, dateISO, bookNo }) {
       }
     }
   }
+  // ── ข้อความไทย: เรนเดอร์ผ่าน canvas แล้วฝังเป็นรูป (pdf-lib shape ไทยไม่ได้) ──
+  const _imgCache = new Map()
+  const embedThai = async (text, sizePt) => {
+    const key = `${text}@${sizePt}`
+    if (_imgCache.has(key)) return _imgCache.get(key)
+    const png = thaiTextPng(text, sizePt)
+    const rec = { img: await pdf.embedPng(png.url), png }
+    _imgCache.set(key, rec)
+    return rec
+  }
+  // align: 'l'|'c'|'r' อ้างอิง x ; y = baseline (bottom-up)
+  const TH = async (text, x, y, sizePt = 9, align = 'l') => {
+    const { img, png } = await embedThai(text, sizePt)
+    const w = png.wPt, h = png.hPt
+    const drawX = align === 'r' ? x - w : align === 'c' ? x - w / 2 : x
+    page.drawImage(img, { x: drawX, y: y - (h - png.baselinePt), width: w, height: h })
+  }
 
   // header
   T(bookNo || BOOK_NO, 522, 784)
   T(runNo, 522, 768)
-  // payer / payee
-  T(PAYER.name, 56, 733, 9)
-  T(PAYER.addr, 62, 709, 7.5)
-  T(PAYEE.name, 55, 661, 9)
-  T(PAYEE.addr, 62, 631, 7.5)
+  // payer / payee (ไทย → รูป)
+  await TH(PAYER.name, 56, 733, 9)
+  await TH(PAYER.addr, 62, 709, 7.5)
+  await TH(PAYEE.name, 55, 661, 9)
+  await TH(PAYEE.addr, 62, 631, 7.5)
   digits(PAYER.tin, ID_BOXES, 747.5)
   digits(PAYEE.tin, ID_BOXES_2, 679)
   // ภ.ง.ด.53  +  ผู้จ่ายเงิน (1) หัก ณ ที่จ่าย
@@ -111,19 +172,20 @@ async function buildPdf({ runNo, dateISO, bookNo }) {
   try { form.getCheckBox('chk7').check() } catch (e) { void e }
   try { form.getCheckBox('chk8').check() } catch (e) { void e }
   // income row 5 (ม.3 เตรส — ค่าบริการ)  +  รวม
-  T(dateShort, 330, 219, 8)
-  R(money(SERVICE_FEE), 487, 219)
-  R(money(tax), 559, 219)
-  R(money(SERVICE_FEE), 487, 183.5)
-  R(money(tax), 559, 183.5)
-  // ตัวอักษร
-  T(`( ${bahttext(tax)} )`, 190, 162, 10)
-  // วันที่ออกหนังสือรับรอง (ล่างขวา)
-  T(String(dd), 347, 75, 9)
-  T(TH_MONTHS[d.getMonth() + 1], 370, 75, 9)
-  T(String(be), 432, 75, 9)
+  C(dateShort, 364.6, 219, 8) // กลางช่อง "วัน เดือน ที่จ่าย" (x326.5-402.7)
+  moneyCell(SERVICE_FEE, 475.0, 219)
+  moneyCell(tax, 546.3, 219)
+  moneyCell(SERVICE_FEE, 475.0, 183.5)
+  moneyCell(tax, 546.3, 183.5)
+  // วันที่ออกหนังสือรับรอง (ล่างขวา) — กลางแต่ละช่อง date/month/year_pay
+  C(String(dd), 353.9, 75, 9)
+  await TH(TH_MONTHS[d.getMonth() + 1], 396, 75, 9, 'c')
+  C(String(be), 449.7, 75, 9)
 
   try { form.flatten() } catch (e) { void e }
+  // ช่อง total (ตัวอักษรจำนวนเงิน) เป็น text field ว่างที่ flatten ทิ้งพื้นเทาไว้ (เส้นซ้อน) — ลบพื้นเทา แล้ววาดข้อความทับ
+  page.drawRectangle({ x: 182, y: page.getHeight() - 685.2, width: 559.5 - 182, height: 685.2 - 664.5, color: rgb(1, 1, 1) })
+  await TH(`( ${bahttext(tax)} )`, 371, 162, 9, 'c')
   // แก้เงาซ้อน: pdf-lib flatten() วาดกรอบ checkbox ตาม widget rect เป๊ะ แต่กรอบสี่เหลี่ยมที่พิมพ์ไว้ใน
   // ฟอร์ม RD ต้นฉบับเยื้องจาก widget rect เล็กน้อย (ไม่เท่ากันทุกช่อง วัดจริงทีละช่องด้วย pymupdf) —
   // เห็นเป็นเส้นจางซ้อนที่ช่อง (1)-(6) ที่ไม่ได้ติ๊ก (chk7 ติ๊กแล้วไม่ต้องแก้) ลบเฉพาะส่วนที่ widget
