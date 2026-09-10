@@ -96,7 +96,7 @@ const API = '/api/sheet-tools?op=import-tracking'
 
 const STAGE_LABELS = {
   draft: 'รวมของ', proforma: 'ทำ Proforma', customs_filed: 'ยื่นใบขน', paid: 'จ่ายเงิน',
-  customs_done: 'ใบขนใช้จริง', docs_done: 'เอกสารครบ', handed_over: 'ส่งต่อ', closed: 'ปิดลอต',
+  customs_done: 'ใบขนใช้จริง', docs_done: 'เอกสารครบ', handed_over: 'ปริ้นแล้ว', closed: 'ปิดลอต',
 }
 const DOC_FIELDS = [
   ['draft_doc', 'ใบดราฟ (PROFORMA+packing)', 'ทำ Proforma'],
