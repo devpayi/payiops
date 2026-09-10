@@ -147,6 +147,16 @@ function MapProductModal({ productName, variation, business, platform, onClose, 
   )
 }
 
+// เดาแพลตฟอร์มจากหัวคอลัมน์ (mirror ของ detectPlatform ใน api/import-orders.js) — ใช้แค่โชว์ในคิว
+function guessPlatform(headerList) {
+  const keys = new Set((headerList || []).map((h) => String(h || '').trim().toLowerCase()))
+  const has = (...c) => c.some((x) => keys.has(x))
+  if (has('order substatus', 'rts time', 'sku id', 'warehouse name', 'creator handle')) return 'TikTok Shop'
+  if (has('ordernumber', 'createtime', 'sellersku', 'lazadasku', 'orderitemid')) return 'Lazada'
+  if (has('เลขที่คำสั่งซื้อ', 'หมายเลขคำสั่งซื้อ')) return 'Shopee'
+  return ''
+}
+
 export default function Upload() {
   const [file, setFile] = useState(null)
   const [rows, setRows] = useState([])
@@ -156,6 +166,8 @@ export default function Upload() {
   const [result, setResult] = useState(null)
   const [platform, setPlatform] = useState('auto')
   const [business, setBusiness] = useState('')
+  // โหมดหลายไฟล์ — queue: [{ name, rows, headers, guessed, status:'pending'|'importing'|'done'|'error', note }]
+  const [queue, setQueue] = useState([])
   const [expectedMonth, setExpectedMonth] = useState('')
   const [multiMonth, setMultiMonth] = useState(false)
   const [monthBreakdown, setMonthBreakdown] = useState(null)
@@ -191,6 +203,79 @@ export default function Upload() {
       alert(e.message)
     } finally {
       setDeletingId('')
+    }
+  }
+
+  // เข้าจุดเดียวจาก input/drop — 1 ไฟล์ = โหมดเดิม, หลายไฟล์ = โหมด queue
+  const handleFiles = async (fileList) => {
+    const files = [...(fileList || [])].filter(Boolean)
+    if (!files.length) return
+    if (files.length === 1) { setQueue([]); return handleFile(files[0]) }
+    // reset โหมดเดี่ยว
+    setFile(null); setRows([]); setHeaders([]); setResult(null); setExpectedMonth(''); setMultiMonth(false)
+    setParsing(true)
+    try {
+      const XLSX = await import('xlsx')
+      const parsed = []
+      for (const f of files) {
+        try {
+          const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' })
+          const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
+          const hdrs = json.length ? Object.keys(json[0]) : []
+          parsed.push({ name: f.name, rows: json, headers: hdrs, guessed: guessPlatform(hdrs), status: 'pending', note: '' })
+        } catch (e) {
+          parsed.push({ name: f.name, rows: [], headers: [], guessed: '', status: 'error', note: 'อ่านไฟล์ไม่สำเร็จ: ' + e.message })
+        }
+      }
+      setQueue(parsed)
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  const removeFromQueue = (name) => setQueue((q) => q.filter((x) => x.name !== name))
+
+  const doImportQueue = async () => {
+    const active = queue.filter((x) => x.status !== 'error' && x.rows.length)
+    if (!active.length) return
+    setImporting(true); setResult(null)
+    let imported = 0, updated = 0, mapped = 0, skipped = 0, skippedInvalid = 0
+    const tabs = new Set()
+    const unmappedSamples = []
+    try {
+      for (let f = 0; f < queue.length; f++) {
+        const item = queue[f]
+        if (item.status === 'error' || !item.rows.length) continue
+        setQueue((q) => q.map((x) => x.name === item.name ? { ...x, status: 'importing' } : x))
+        const slim = item.rows.map(slimRow)
+        const batches = []
+        for (let i = 0; i < slim.length; i += BATCH_SIZE) batches.push(slim.slice(i, i + BATCH_SIZE))
+        let fileErr = ''
+        for (let i = 0; i < batches.length; i++) {
+          setResult({ success: true, inProgress: true, note: `ไฟล์ ${f + 1}/${queue.length} · batch ${i + 1}/${batches.length}...` })
+          const r = await fetch(`${API}/import-orders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileName: item.name, platform, business, rows: batches[i], expectedMonth: 'multi' }),
+          })
+          const d = await readApiResponse(r)
+          if (!r.ok || !d.success) { fileErr = d.error || `นำเข้าไม่สำเร็จ (${r.status})`; break }
+          imported += d.imported || 0; updated += d.updated || 0; mapped += d.mapped || 0
+          skipped += d.skipped || 0; skippedInvalid += d.skippedInvalid || 0
+          for (const t of d.tabs || []) tabs.add(t)
+          for (const s of (d.unmappedSamples || [])) {
+            const k = `${s.productName}|${s.variation}`
+            if (unmappedSamples.length < 20 && !unmappedSamples.some((x) => `${x.productName}|${x.variation}` === k)) unmappedSamples.push(s)
+          }
+        }
+        setQueue((q) => q.map((x) => x.name === item.name ? { ...x, status: fileErr ? 'error' : 'done', note: fileErr } : x))
+      }
+      setResult({ success: true, imported, updated, mapped, skipped, skippedInvalid, unmappedSamples, tabs: [...tabs] })
+      loadLog()
+    } catch (e) {
+      setResult({ success: false, error: e.message })
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -336,12 +421,12 @@ export default function Upload() {
         className="payi-glass-card"
         style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '40px 20px', border: '2px dashed var(--payi-line)', cursor: 'pointer', marginBottom: 20 }}
         onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files?.[0]) }}
+        onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files) }}
       >
         <UploadCloud size={38} style={{ color: 'var(--payi-mint-strong)' }} />
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--payi-text-strong)' }}>ลากไฟล์มาวาง หรือคลิกเพื่อเลือก</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--payi-text-strong)' }}>ลากไฟล์มาวาง หรือคลิกเพื่อเลือก (เลือกหลายไฟล์พร้อมกันได้)</div>
         <div style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>รองรับไฟล์ .xlsx / .xls จาก Shopee, TikTok Shop, Lazada</div>
-        <input type="file" accept=".xlsx,.xls" onChange={(e) => handleFile(e.target.files?.[0])} style={{ display: 'none' }} />
+        <input type="file" accept=".xlsx,.xls" multiple onChange={(e) => handleFiles(e.target.files)} style={{ display: 'none' }} />
       </label>
 
       {parsing && (
@@ -350,8 +435,68 @@ export default function Upload() {
         </div>
       )}
 
-      {/* Preview + confirm */}
-      {rows.length > 0 && !parsing && (
+      {/* หลายไฟล์ — queue */}
+      {queue.length > 0 && !parsing && (
+        <div className="payi-glass-card" style={{ padding: 20, marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <FileSpreadsheet size={18} style={{ color: 'var(--payi-mint-strong)' }} />
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{queue.length} ไฟล์</span>
+            <span style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>· รวม {fmt(queue.reduce((s, x) => s + x.rows.length, 0))} แถว</span>
+            <button onClick={() => setQueue([])} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: 'var(--payi-text-muted)', fontSize: 12, cursor: 'pointer' }}>ล้างทั้งหมด</button>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginBottom: 4 }}>แพลตฟอร์ม (ใช้กับทุกไฟล์)</div>
+              <select className="payi-select" value={platform} onChange={(e) => setPlatform(e.target.value)} style={{ padding: '8px 12px', fontSize: 13 }}>
+                <option value="auto">ตรวจอัตโนมัติต่อไฟล์</option>
+                <option value="Shopee">Shopee</option>
+                <option value="TikTok Shop">TikTok Shop</option>
+                <option value="Lazada">Lazada</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginBottom: 4 }}>ธุรกิจ/แบรนด์ (ถ้ามีในไฟล์ไม่ต้องเลือก)</div>
+              <select className="payi-select" value={business} onChange={(e) => setBusiness(e.target.value)} style={{ padding: '8px 12px', fontSize: 13 }}>
+                <option value="">ไม่ระบุ</option>
+                <option value="Payi">Payi</option>
+                <option value="Payi Outlet">Payi Outlet</option>
+                <option value="กรอบรูป">กรอบรูป</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid var(--payi-border)', borderRadius: 10, overflow: 'hidden', marginBottom: 14 }}>
+            {queue.map((x, i) => (
+              <div key={x.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderTop: i ? '1px solid var(--payi-border)' : 'none', fontSize: 12 }}>
+                <span style={{ flex: 1, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.name}</span>
+                <span style={{ color: 'var(--payi-text-muted)', whiteSpace: 'nowrap' }}>{x.guessed || (platform !== 'auto' ? platform : 'auto')} · {fmt(x.rows.length)} แถว</span>
+                <span style={{ whiteSpace: 'nowrap', fontWeight: 700, color: x.status === 'done' ? 'var(--payi-success)' : x.status === 'error' ? 'var(--payi-danger)' : x.status === 'importing' ? 'var(--payi-mint-strong)' : 'var(--payi-text-faint)' }}>
+                  {x.status === 'done' ? 'เสร็จ' : x.status === 'error' ? 'ผิดพลาด' : x.status === 'importing' ? 'กำลังนำเข้า...' : 'รอ'}
+                </span>
+                {!importing && x.status !== 'importing' && (
+                  <button onClick={() => removeFromQueue(x.name)} style={{ border: 'none', background: 'transparent', color: 'var(--payi-text-muted)', cursor: 'pointer', padding: 2 }}><X size={14} /></button>
+                )}
+              </div>
+            ))}
+          </div>
+          {queue.some((x) => x.note) && (
+            <div style={{ fontSize: 11, color: 'var(--payi-danger)', marginBottom: 10 }}>
+              {queue.filter((x) => x.note).map((x) => <div key={x.name}>{x.name}: {x.note}</div>)}
+            </div>
+          )}
+
+          <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginBottom: 10 }}>
+            โหมดหลายไฟล์แยกลงเดือนตามวันที่ในแต่ละแถวอัตโนมัติ · ออเดอร์ที่มีอยู่แล้วจะถูกอัปเดต ไม่สร้างซ้ำ (อัพไฟล์เต็มทับได้เลย)
+          </div>
+          <button onClick={doImportQueue} disabled={importing || !queue.some((x) => x.status !== 'error' && x.rows.length)} className="payi-btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 22px', fontSize: 14, fontWeight: 700, cursor: importing ? 'default' : 'pointer', opacity: importing ? 0.6 : 1 }}>
+            {importing ? <><Loader2 size={16} className="payi-spin" /> กำลังนำเข้า...</> : <><CheckCircle2 size={16} /> นำเข้าทุกไฟล์เข้า Google Sheets</>}
+          </button>
+        </div>
+      )}
+
+      {/* Preview + confirm (ไฟล์เดียว) */}
+      {queue.length === 0 && rows.length > 0 && !parsing && (
         <div className="payi-glass-card" style={{ padding: 20, marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
             <FileSpreadsheet size={18} style={{ color: 'var(--payi-mint-strong)' }} />
