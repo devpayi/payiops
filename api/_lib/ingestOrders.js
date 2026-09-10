@@ -120,7 +120,8 @@ export async function ingestOrders(rows, { platform, businessDefault = '', fileN
   // หลังจากดึงรอบก่อนจะถูกแก้ให้อัตโนมัติในรอบถัดไป
   const tabs = [...byMonth.keys()]
   let skippedDup = 0, imported = 0, updated = 0
-  const MUTABLE_COLS = [11, 12, 13, 18, 19, 20, 21] // qty, revenue, order_status, province, shipping_option, fulfillment_type, buyer_hash
+  // เทียบทุกคอลัมน์ ยกเว้น 0-5 (ระบุตัวตนแถว ไม่มีทางเปลี่ยน) และ 14-16 (meta การนำเข้า ต่างทุกครั้ง)
+  const CMP_COLS = [6, 7, 8, 9, 10, 11, 12, 13, 17, 18, 19, 20, 21]
   const stripQuote = (v) => String(v ?? '').replace(/^'/, '')
   for (const tab of tabs) {
     await ensureSheet(tab, RAW_HEADERS)
@@ -136,7 +137,7 @@ export async function ingestOrders(rows, { platform, businessDefault = '', fileN
       const j = idxByKey.get(r.orderKey)
       if (j == null) { newRows.push(r.arr); continue }
       const cur = body[j] || []
-      if (MUTABLE_COLS.some((c) => stripQuote(cur[c]) !== stripQuote(r.arr[c]))) {
+      if (CMP_COLS.some((c) => stripQuote(cur[c]) !== stripQuote(r.arr[c]))) {
         updates.push({ range: `${tab}!A${j + 2}:V${j + 2}`, values: [r.arr] })
         updated++
       } else {

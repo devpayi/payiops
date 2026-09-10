@@ -329,9 +329,14 @@ export default async function handler(req, res) {
     // ทับได้เลย ออเดอร์ที่เปลี่ยนสถานะ/ถูกยกเลิกหลังจากนั้นจะถูกแก้ให้อัตโนมัติ ไม่ต้องลบทั้งเดือนก่อน
     const tabs = [...byMonth.keys()]
     let skippedDup = 0, imported = 0, updated = 0
-    // คอลัมน์ที่ถือว่า "เปลี่ยนได้" — เทียบเฉพาะพวกนี้เพื่อไม่เขียนทับแถวที่ไม่มีอะไรเปลี่ยนจริง
-    // (11=qty 12=revenue 13=order_status 18=province 19=shipping_option 20=fulfillment_type 21=buyer_hash)
-    const MUTABLE_COLS = [11, 12, 13, 18, 19, 20, 21]
+    // คอลัมน์ที่เทียบว่า "เปลี่ยนไหม" — ทุกคอลัมน์ ยกเว้น (ก) ระบุตัวตนแถว 0-5 ที่ไม่มีทางเปลี่ยนสำหรับ
+    // order_key เดิม (order_key/order_id/order_item_id/date/platform/business) และ (ข) meta การนำเข้า
+    // 14-16 (imported_at/source_file/import_id) ที่ต่างทุกครั้งอยู่แล้ว จึงเทียบ 6-13 + 17-21:
+    // 6 sku_platform, 7 product_name, 8 variation_name, 9 master_sku, 10 display_name, 11 qty,
+    // 12 revenue, 13 order_status, 17 alias_key, 18 province, 19 shipping_option,
+    // 20 fulfillment_type, 21 buyer_hash — ครอบทั้งข้อมูลจากไฟล์และผลจับคู่ SKU ของเราเอง
+    // (อัพไฟล์ซ้ำหลังเพิ่ม alias จะแก้ master_sku/display_name ของแถวที่เคยไม่จับคู่ให้ด้วย)
+    const CMP_COLS = [6, 7, 8, 9, 10, 11, 12, 13, 17, 18, 19, 20, 21]
     const stripQuote = (v) => String(v ?? '').replace(/^'/, '')
     for (const tab of tabs) {
       await ensureSheet(tab, RAW_HEADERS)
@@ -347,7 +352,7 @@ export default async function handler(req, res) {
         const j = idxByKey.get(r.orderKey)
         if (j == null) { newRows.push(r.arr); continue }
         const cur = body[j] || []
-        if (MUTABLE_COLS.some((c) => stripQuote(cur[c]) !== stripQuote(r.arr[c]))) {
+        if (CMP_COLS.some((c) => stripQuote(cur[c]) !== stripQuote(r.arr[c]))) {
           updates.push({ range: `${tab}!A${j + 2}:V${j + 2}`, values: [r.arr] })
           updated++
         } else {
