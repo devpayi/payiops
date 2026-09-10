@@ -296,15 +296,26 @@ export default function AdsChannels() {
 
 function ChannelStack({ title, data }) {
   const hasData = data.some((d) => d.affiliate || d.live || d.vdo || d.other)
+  // เติม: total ต่อเดือน, สัดส่วน % ของแต่ละ channel, และ % เทียบเดือนก่อน (MoM)
+  const enriched = useMemo(() => data.map((d, i) => {
+    const prev = data[i - 1]
+    const total = (d.affiliate || 0) + (d.live || 0) + (d.vdo || 0) + (d.other || 0)
+    const e = { ...d, _total: total }
+    for (const [id] of CHANNELS) {
+      e[`_pct_${id}`] = total ? (d[id] || 0) / total : 0
+      e[`_mom_${id}`] = prev && prev[id] ? ((d[id] || 0) - prev[id]) / prev[id] : null
+    }
+    return e
+  }), [data])
   return (
-    <Card title={title} sub="GMV แยก channel รายเดือน (กรอกมือ)">
+    <Card title={title} sub="GMV แยก channel รายเดือน · ชี้เมาส์ดู % สัดส่วน + % เทียบเดือนก่อน">
       {hasData ? (
         <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+          <BarChart data={enriched} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--payi-text-muted)' }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 10, fill: '#888' }} axisLine={false} tickLine={false} tickFormatter={(v) => '฿' + fmtShort(v)} />
-            <Tooltip content={<TipBox moneyKeys={CHANNELS.map(([, l]) => l)} />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
+            <Tooltip content={<ChannelTip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             {CHANNELS.map(([id, lbl, color]) => (
               <Bar key={id} dataKey={id} name={lbl} stackId="a" fill={color} radius={id === 'other' ? [4, 4, 0, 0] : 0} maxBarSize={46} />
@@ -313,6 +324,32 @@ function ChannelStack({ title, data }) {
         </ResponsiveContainer>
       ) : <EmptyBox text="ยังไม่มีข้อมูล channel — กรอกด้านบนแล้วบันทึก" />}
     </Card>
+  )
+}
+
+function ChannelTip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  const row = payload[0]?.payload || {}
+  return (
+    <div style={{ background: 'var(--payi-surface-dark)', borderRadius: 10, padding: '10px 13px', fontSize: 12, color: '#fff', minWidth: 230 }}>
+      <div style={{ color: 'var(--payi-line)', marginBottom: 7, fontWeight: 700, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <span>{label}</span><span>รวม {fmtBaht(row._total)}</span>
+      </div>
+      {CHANNELS.map(([id, lbl, color]) => {
+        const mom = row[`_mom_${id}`]
+        return (
+          <div key={id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 3 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+            <span style={{ color: '#cbd5e1', flex: 1 }}>{lbl}</span>
+            <span style={{ fontWeight: 700, width: 78, textAlign: 'right' }}>{fmtBaht(row[id])}</span>
+            <span style={{ color: '#94a3b8', width: 34, textAlign: 'right' }}>{Math.round((row[`_pct_${id}`] || 0) * 100)}%</span>
+            <span style={{ width: 52, textAlign: 'right', fontWeight: 700, color: mom == null ? '#64748b' : mom >= 0 ? '#4ade80' : '#f87171' }}>
+              {mom == null ? '–' : (mom >= 0 ? '▲' : '▼') + Math.abs(Math.round(mom * 100)) + '%'}
+            </span>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
