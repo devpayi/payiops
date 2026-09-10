@@ -97,6 +97,24 @@ export default function AdsChannels() {
     return { ordersByMonth: o, salesByMonth: s }
   }, [monthly])
 
+  // GMV TikTok ต่อร้านต่อเดือน (จาก raw_orders) — ใช้คิด "อื่น ๆ" = GMV − Affiliate − Live − VDO
+  const ttGmvByMonthBiz = useMemo(() => {
+    const m = {}
+    for (const [ym, arr] of Object.entries(monthly?.byStore || {})) {
+      for (const s of arr) {
+        if (s.platform === 'TikTok Shop') (m[ym] ||= {})[s.business] = s.sales
+      }
+    }
+    return m
+  }, [monthly])
+
+  // "อื่น ๆ" ไม่ต้องกรอก — เป็นส่วนที่เหลือของ GMV หลังหัก 3 channel
+  const calcOther = (b) => {
+    const gmv = ttGmvByMonthBiz[selMonth]?.[b] || 0
+    const rest = ['affiliate', 'live', 'vdo'].reduce((s, id) => s + (parseFloat(form.tt[b]?.[id]) || 0), 0)
+    return Math.max(0, Math.round((gmv - rest) * 100) / 100)
+  }
+
   // ── กราฟ: Ads รวมต่อเดือน เทียบกับ ยอดขาย และ Orders ──
   const adsVsSales = useMemo(() => months.map((m) => {
     const ads = Object.values(adsByMonth[m] || {}).reduce((s, v) => s + v, 0)
@@ -139,7 +157,7 @@ export default function AdsChannels() {
         if (v) rows.push({ business: b, platform: p, metric: 'ads', value: v })
       }
       for (const b of TT_BUSINESSES) for (const [id] of CHANNELS) {
-        const v = parseFloat(form.tt[b]?.[id]) || 0
+        const v = id === 'other' ? calcOther(b) : (parseFloat(form.tt[b]?.[id]) || 0)
         if (v) rows.push({ business: b, platform: 'TikTok Shop', metric: id, value: v })
       }
       const res = await fetch('/api/marketing?kind=inputs', {
@@ -212,14 +230,24 @@ export default function AdsChannels() {
                     <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{b}</td>
                     {CHANNELS.map(([id]) => (
                       <td key={id} style={{ ...tdStyle, textAlign: 'right' }}>
-                        <input inputMode="numeric" value={form.tt[b]?.[id] ?? ''} onChange={(e) => setTt(b, id, e.target.value.replace(/[^\d.]/g, ''))}
-                          placeholder="0" style={cellInput} />
+                        {id === 'other' ? (
+                          <span title="คำนวณอัตโนมัติ = GMV TikTok ของเดือนนี้ (จาก orders) − Affiliate − Live − VDO"
+                            style={{ ...cellInput, display: 'inline-block', background: 'var(--payi-surface-dark)', color: 'var(--payi-text-muted)', cursor: 'default' }}>
+                            {fmt(calcOther(b))}
+                          </span>
+                        ) : (
+                          <input inputMode="numeric" value={form.tt[b]?.[id] ?? ''} onChange={(e) => setTt(b, id, e.target.value.replace(/[^\d.]/g, ''))}
+                            placeholder="0" style={cellInput} />
+                        )}
                       </td>
                     ))}
                   </tr>
                 ))}
               </tbody>
             </table>
+            <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 6 }}>
+              อื่น ๆ = ยอดที่เหลือหลังหัก Affiliate/Live/VDO ออกจาก GMV TikTok ของเดือนนั้น (ไม่ต้องกรอก)
+            </div>
           </div>
         </div>
 
