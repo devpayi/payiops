@@ -87,6 +87,8 @@ export default function AdsChannels() {
         const v = ttByMonth[selMonth]?.[b]?.[id]
         tt[b][id] = v ? String(v) : ''
       }
+      const g = ttByMonth[selMonth]?.[b]?.tt_gmv
+      tt[b].gmv = g ? String(g) : ''
     }
     setForm({ ads, tt })
   }, [selMonth, adsByMonth, ttByMonth])
@@ -97,7 +99,7 @@ export default function AdsChannels() {
     return { ordersByMonth: o, salesByMonth: s }
   }, [monthly])
 
-  // GMV TikTok ต่อร้านต่อเดือน (จาก raw_orders) — ใช้คิด "อื่น ๆ" = GMV − Affiliate − Live − VDO
+  // GMV TikTok ต่อร้านต่อเดือน จาก raw_orders — ใช้เป็น fallback ถ้าไม่ได้กรอก GMV รวมเอง
   const ttGmvByMonthBiz = useMemo(() => {
     const m = {}
     for (const [ym, arr] of Object.entries(monthly?.byStore || {})) {
@@ -108,11 +110,16 @@ export default function AdsChannels() {
     return m
   }, [monthly])
 
-  // "อื่น ๆ" ไม่ต้องกรอก — เป็นส่วนที่เหลือของ GMV หลังหัก 3 channel
+  // GMV รวมที่ใช้คิด "อื่น ๆ" — เลขที่กรอกเอง (จาก Compass) ก่อน, ไม่มีค่อย fallback raw_orders
+  const gmvBasis = (b) => {
+    const typed = parseFloat(form.tt[b]?.gmv)
+    return Number.isFinite(typed) && typed > 0 ? typed : (ttGmvByMonthBiz[selMonth]?.[b] || 0)
+  }
+
+  // "อื่น ๆ" ไม่ต้องกรอก — ส่วนที่เหลือของ GMV รวมหลังหัก Affiliate/Live/VDO
   const calcOther = (b) => {
-    const gmv = ttGmvByMonthBiz[selMonth]?.[b] || 0
     const rest = ['affiliate', 'live', 'vdo'].reduce((s, id) => s + (parseFloat(form.tt[b]?.[id]) || 0), 0)
-    return Math.max(0, Math.round((gmv - rest) * 100) / 100)
+    return Math.max(0, Math.round((gmvBasis(b) - rest) * 100) / 100)
   }
 
   // ── กราฟ: Ads รวมต่อเดือน เทียบกับ ยอดขาย และ Orders ──
@@ -156,9 +163,13 @@ export default function AdsChannels() {
         const v = parseFloat(form.ads[comboKey(b, p)]) || 0
         if (v) rows.push({ business: b, platform: p, metric: 'ads', value: v })
       }
-      for (const b of TT_BUSINESSES) for (const [id] of CHANNELS) {
-        const v = id === 'other' ? calcOther(b) : (parseFloat(form.tt[b]?.[id]) || 0)
-        if (v) rows.push({ business: b, platform: 'TikTok Shop', metric: id, value: v })
+      for (const b of TT_BUSINESSES) {
+        const g = parseFloat(form.tt[b]?.gmv) || 0
+        if (g) rows.push({ business: b, platform: 'TikTok Shop', metric: 'tt_gmv', value: g })
+        for (const [id] of CHANNELS) {
+          const v = id === 'other' ? calcOther(b) : (parseFloat(form.tt[b]?.[id]) || 0)
+          if (v) rows.push({ business: b, platform: 'TikTok Shop', metric: id, value: v })
+        }
       }
       const res = await fetch('/api/marketing?kind=inputs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -215,12 +226,13 @@ export default function AdsChannels() {
           </div>
 
           {/* TikTok channel grid */}
-          <div>
+          <div style={{ overflowX: 'auto' }}>
             <SectionLabel>TikTok GMV แยก channel (บาท)</SectionLabel>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr style={{ color: 'var(--payi-text-muted)', fontSize: 11 }}>
                   <th style={{ ...thStyle, textAlign: 'left' }}>ร้าน</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>GMV รวม</th>
                   {CHANNELS.map(([id, lbl]) => <th key={id} style={{ ...thStyle, textAlign: 'right' }}>{lbl}</th>)}
                 </tr>
               </thead>
@@ -228,10 +240,14 @@ export default function AdsChannels() {
                 {TT_BUSINESSES.map((b) => (
                   <tr key={b} style={{ borderTop: '1px solid var(--payi-border)' }}>
                     <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{b}</td>
+                    <td style={{ ...tdStyle, textAlign: 'right' }}>
+                      <input inputMode="numeric" value={form.tt[b]?.gmv ?? ''} onChange={(e) => setTt(b, 'gmv', e.target.value.replace(/[^\d.]/g, ''))}
+                        placeholder={ttGmvByMonthBiz[selMonth]?.[b] ? fmt(Math.round(ttGmvByMonthBiz[selMonth][b])) : '0'} style={cellInput} />
+                    </td>
                     {CHANNELS.map(([id]) => (
                       <td key={id} style={{ ...tdStyle, textAlign: 'right' }}>
                         {id === 'other' ? (
-                          <span title="คำนวณอัตโนมัติ = GMV TikTok ของเดือนนี้ (จาก orders) − Affiliate − Live − VDO"
+                          <span title="คำนวณอัตโนมัติ = GMV รวม − Affiliate − Live − VDO"
                             style={{ ...cellInput, display: 'inline-block', background: 'var(--payi-surface-dark)', color: 'var(--payi-text-muted)', cursor: 'default' }}>
                             {fmt(calcOther(b))}
                           </span>
@@ -246,7 +262,8 @@ export default function AdsChannels() {
               </tbody>
             </table>
             <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 6 }}>
-              อื่น ๆ = ยอดที่เหลือหลังหัก Affiliate/Live/VDO ออกจาก GMV TikTok ของเดือนนั้น (ไม่ต้องกรอก)
+              GMV รวม = เลข GMV จาก Compass (การวิเคราะห์ร้านค้า, ทั้งเดือน) · ถ้าไม่กรอกจะใช้ยอดจาก orders แทน<br />
+              อื่น ๆ = GMV รวม − Affiliate − Live − VDO (คำนวณอัตโนมัติ ไม่ต้องกรอก)
             </div>
           </div>
         </div>
