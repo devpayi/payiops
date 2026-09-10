@@ -3,7 +3,7 @@
 //   POST   { fileName, platform, business, rows } → นำเข้าออเดอร์เข้า raw_orders_YYYY_MM
 //   DELETE ?importId=IMPxxxx      → ลบล็อตไฟล์นี้ออกจาก raw_orders_* ทุก tab ที่เกี่ยวข้อง
 import { requireDev } from './_lib/auth.js'
-import { getSheet, appendRows, batchGetValues, overwriteSheet, getMeta } from './_lib/sheets.js'
+import { getSheet, appendRows, batchGetValues, batchUpdateValues, overwriteSheet, getMeta, ensureSheet } from './_lib/sheets.js'
 import { isoDate } from './_lib/dates.js'
 import ZIP_TO_PROVINCE from './_lib/zipToProvince.js'
 import { createHash } from 'node:crypto'
@@ -324,21 +324,38 @@ export default async function handler(req, res) {
       })
     }
 
-    // ---- กันซ้ำกับข้อมูลเดิม (อ่าน order_key คอลัมน์ A ของ tab ที่เกี่ยวข้อง) ----
+    // ---- รวมเข้าข้อมูลเดิม (upsert ตาม order_key) ----
+    // เจอ order_key ซ้ำ = อัปเดตแถวเดิม (สถานะ/ยอด/จำนวน/จังหวัด ฯลฯ) ไม่ใช่ข้าม — ทำให้อัพไฟล์เต็ม
+    // ทับได้เลย ออเดอร์ที่เปลี่ยนสถานะ/ถูกยกเลิกหลังจากนั้นจะถูกแก้ให้อัตโนมัติ ไม่ต้องลบทั้งเดือนก่อน
     const tabs = [...byMonth.keys()]
-    let skippedDup = 0, imported = 0
-    if (tabs.length) {
-      let existing = []
-      try { existing = await batchGetValues(tabs.map((t) => `${t}!A:A`)) } catch { existing = [] }
-      for (let i = 0; i < tabs.length; i++) {
-        const tab = tabs[i]
-        const existSet = new Set((existing[i]?.values || []).flat())
-        const fresh = byMonth.get(tab).filter((r) => { if (existSet.has(r.orderKey)) { skippedDup++; return false } return true })
-        if (fresh.length) {
-          await appendRows(tab, fresh.map((r) => r.arr))
-          imported += fresh.length
+    let skippedDup = 0, imported = 0, updated = 0
+    // คอลัมน์ที่ถือว่า "เปลี่ยนได้" — เทียบเฉพาะพวกนี้เพื่อไม่เขียนทับแถวที่ไม่มีอะไรเปลี่ยนจริง
+    // (11=qty 12=revenue 13=order_status 18=province 19=shipping_option 20=fulfillment_type 21=buyer_hash)
+    const MUTABLE_COLS = [11, 12, 13, 18, 19, 20, 21]
+    const stripQuote = (v) => String(v ?? '').replace(/^'/, '')
+    for (const tab of tabs) {
+      await ensureSheet(tab, RAW_HEADERS)
+      let rows = []
+      try { rows = (await batchGetValues([`${tab}!A:V`]))[0]?.values || [] } catch { rows = [] }
+      const body = rows.slice(1)
+      const idxByKey = new Map()
+      body.forEach((row, j) => { if (row[0]) idxByKey.set(row[0], j) })
+
+      const updates = []
+      const newRows = []
+      for (const r of byMonth.get(tab)) {
+        const j = idxByKey.get(r.orderKey)
+        if (j == null) { newRows.push(r.arr); continue }
+        const cur = body[j] || []
+        if (MUTABLE_COLS.some((c) => stripQuote(cur[c]) !== stripQuote(r.arr[c]))) {
+          updates.push({ range: `${tab}!A${j + 2}:V${j + 2}`, values: [r.arr] })
+          updated++
+        } else {
+          skippedDup++
         }
       }
+      if (updates.length) await batchUpdateValues(updates)
+      if (newRows.length) { await appendRows(tab, newRows); imported += newRows.length }
     }
 
     // ---- บันทึก import_log ----
@@ -346,7 +363,7 @@ export default async function handler(req, res) {
       await appendRows('import_log', [[importId, fileName, bizSel || (byMonth.size ? '' : ''), platformSel === 'auto' ? '' : platformSel, imported, mapped, imported - mapped, importedAt, tabs.join(','), 'active']])
     } catch { /* ignore */ }
 
-    res.status(200).json({ success: true, importId, imported, mapped, skipped: skippedDup + skippedInvalid, skippedDup, skippedInvalid, unmappedSamples, tabs })
+    res.status(200).json({ success: true, importId, imported, updated, mapped, skipped: skippedDup + skippedInvalid, skippedDup, skippedInvalid, unmappedSamples, tabs })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })
   }

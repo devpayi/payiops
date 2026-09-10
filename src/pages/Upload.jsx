@@ -292,7 +292,7 @@ export default function Upload() {
       const batches = []
       for (let i = 0; i < slim.length; i += BATCH_SIZE) batches.push(slim.slice(i, i + BATCH_SIZE))
 
-      let imported = 0, mapped = 0, skipped = 0, skippedInvalid = 0
+      let imported = 0, updated = 0, mapped = 0, skipped = 0, skippedInvalid = 0
       const tabs = new Set()
       const unmappedSamples = []
       for (let i = 0; i < batches.length; i++) {
@@ -309,6 +309,7 @@ export default function Upload() {
           return
         }
         imported += d.imported || 0
+        updated += d.updated || 0
         mapped += d.mapped || 0
         skipped += d.skipped || 0
         skippedInvalid += d.skippedInvalid || 0
@@ -319,7 +320,7 @@ export default function Upload() {
         }
       }
 
-      setResult({ success: true, imported, mapped, skipped, skippedInvalid, unmappedSamples, tabs: [...tabs] })
+      setResult({ success: true, imported, updated, mapped, skipped, skippedInvalid, unmappedSamples, tabs: [...tabs] })
       setFile(null); setRows([]); setHeaders([]); setExpectedMonth(''); setMultiMonth(false); setMonthBreakdown(null); setBreakdownConfirmed(false); loadLog()
     } catch (e) {
       setResult({ success: false, error: e.message })
@@ -470,7 +471,7 @@ export default function Upload() {
             {result.inProgress
               ? result.note
               : result.success
-                ? `นำเข้าสำเร็จ ${fmt(result.imported)} แถว · จับคู่ SKU ได้ ${fmt(result.mapped)} · ข้ามซ้ำ ${fmt(result.skipped - (result.skippedInvalid || 0))}${result.skippedInvalid ? ` · ข้อมูลไม่ครบ ${fmt(result.skippedInvalid)}` : ''}`
+                ? `นำเข้าสำเร็จ ${fmt(result.imported)} แถว${result.updated ? ` · อัปเดตของเดิม ${fmt(result.updated)}` : ''} · จับคู่ SKU ได้ ${fmt(result.mapped)} · ข้ามซ้ำ (ไม่เปลี่ยน) ${fmt(result.skipped - (result.skippedInvalid || 0))}${result.skippedInvalid ? ` · ข้อมูลไม่ครบ ${fmt(result.skippedInvalid)}` : ''}`
                 : `ผิดพลาด: ${result.error}`}
             {result.success && !result.inProgress && result.unmappedSamples?.length > 0 && (
               <div style={{ marginTop: 8, color: '#92400e' }}>

@@ -11,7 +11,7 @@
 //   order_id, order_item_id, date (YYYY-MM-DD), product_name, variation_name,
 //   sku_platform, qty, revenue, order_status, province, shipping_option,
 //   fulfillment_type, buyer_hash, business
-import { getSheet, appendRows, batchGetValues } from './sheets.js'
+import { getSheet, appendRows, batchGetValues, batchUpdateValues, ensureSheet } from './sheets.js'
 import { isoDate } from './dates.js'
 
 const normalize = (s) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
@@ -115,21 +115,36 @@ export async function ingestOrders(rows, { platform, businessDefault = '', fileN
     })
   }
 
-  // ---- กันซ้ำกับข้อมูลเดิม (order_key คอลัมน์ A) ----
+  // ---- รวมเข้าข้อมูลเดิม (upsert ตาม order_key) ----
+  // เจอ order_key ซ้ำ = อัปเดตแถวเดิม (สถานะ/ยอด/จำนวน ฯลฯ) ไม่ใช่ข้าม — ออเดอร์ที่เปลี่ยนสถานะ
+  // หลังจากดึงรอบก่อนจะถูกแก้ให้อัตโนมัติในรอบถัดไป
   const tabs = [...byMonth.keys()]
-  let skippedDup = 0, imported = 0
-  if (tabs.length) {
-    let existing = []
-    try { existing = await batchGetValues(tabs.map((t) => `${t}!A:A`)) } catch { existing = [] }
-    for (let i = 0; i < tabs.length; i++) {
-      const tab = tabs[i]
-      const existSet = new Set((existing[i]?.values || []).flat())
-      const fresh = byMonth.get(tab).filter((r) => { if (existSet.has(r.orderKey)) { skippedDup++; return false } return true })
-      if (fresh.length) {
-        await appendRows(tab, fresh.map((r) => r.arr))
-        imported += fresh.length
+  let skippedDup = 0, imported = 0, updated = 0
+  const MUTABLE_COLS = [11, 12, 13, 18, 19, 20, 21] // qty, revenue, order_status, province, shipping_option, fulfillment_type, buyer_hash
+  const stripQuote = (v) => String(v ?? '').replace(/^'/, '')
+  for (const tab of tabs) {
+    await ensureSheet(tab, RAW_HEADERS)
+    let rows = []
+    try { rows = (await batchGetValues([`${tab}!A:V`]))[0]?.values || [] } catch { rows = [] }
+    const body = rows.slice(1)
+    const idxByKey = new Map()
+    body.forEach((row, j) => { if (row[0]) idxByKey.set(row[0], j) })
+
+    const updates = []
+    const newRows = []
+    for (const r of byMonth.get(tab)) {
+      const j = idxByKey.get(r.orderKey)
+      if (j == null) { newRows.push(r.arr); continue }
+      const cur = body[j] || []
+      if (MUTABLE_COLS.some((c) => stripQuote(cur[c]) !== stripQuote(r.arr[c]))) {
+        updates.push({ range: `${tab}!A${j + 2}:V${j + 2}`, values: [r.arr] })
+        updated++
+      } else {
+        skippedDup++
       }
     }
+    if (updates.length) await batchUpdateValues(updates)
+    if (newRows.length) { await appendRows(tab, newRows); imported += newRows.length }
   }
 
   // ---- import_log ----
@@ -137,7 +152,7 @@ export async function ingestOrders(rows, { platform, businessDefault = '', fileN
     await appendRows('import_log', [[importId, fileName, businessDefault, platform, imported, mapped, imported - mapped, importedAt, tabs.join(','), 'active']])
   } catch { /* ignore */ }
 
-  return { importId, imported, mapped, skippedInvalid, skippedDup, unmappedSamples, tabs }
+  return { importId, imported, updated, mapped, skippedInvalid, skippedDup, unmappedSamples, tabs }
 }
 
 export { RAW_HEADERS }

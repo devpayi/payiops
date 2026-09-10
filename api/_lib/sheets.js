@@ -94,6 +94,14 @@ const ensuredSheets = new Set()
 const BATCH_CACHE_MS = 20_000
 const batchCache = new Map()
 const batchInflight = new Map()
+
+// ล้าง batchCache ทุก entry ที่อ้างถึง tab เหล่านี้ — เรียกหลัง write เพื่อกันอ่านค่าเก่าในลูปเดียวกัน
+// (invalidateSheet ล้างแค่ sheetCache/sheetInflight ที่ key เป็นชื่อ tab ตรง ๆ ไม่ครอบ batchCache
+// ที่ key เป็น range string)
+function invalidateBatchCache(sheetNames) {
+  const names = [...sheetNames]
+  for (const key of batchCache.keys()) if (names.some((n) => key.includes(n))) batchCache.delete(key)
+}
 export async function batchGetValues(ranges) {
   const key = ranges.join('')
   const cached = batchCache.get(key)
@@ -141,6 +149,19 @@ export async function getSheet(sheetName) {
   return pending
 }
 
+// อัปเดตหลายช่วงพร้อมกัน (targeted) — data: [{ range: 'tab!A5:V5', values: [[...]] }]
+// ใช้แก้แถวเดิมแบบเจาะจงโดยไม่ต้อง clear+rewrite ทั้งชีต (เบากว่า/ปลอดภัยกว่า overwriteSheet)
+export async function batchUpdateValues(data) {
+  if (!data || !data.length) return
+  await withQuotaRetry(() => getClient().spreadsheets.values.batchUpdate({
+    spreadsheetId: sheetId(),
+    requestBody: { valueInputOption: 'USER_ENTERED', data },
+  }))
+  const names = new Set(data.map((d) => d.range.split('!')[0].replace(/^'|'$/g, '')))
+  names.forEach(invalidateSheet)
+  invalidateBatchCache(names)
+}
+
 export async function getExternalSheet(spreadsheetId, range = 'A:Z') {
   const res = await withQuotaRetry(() => getClient().spreadsheets.values.get({ spreadsheetId, range }))
   return res.data.values || []
@@ -155,6 +176,7 @@ export async function appendRows(sheetName, rows) {
     requestBody: { values: rows },
   }))
   invalidateSheet(sheetName)
+  invalidateBatchCache([sheetName])
 }
 
 // append(rows) แล้วอ่านย้อนกลับ verify ว่าแต่ละแถวลงจริง — กัน race กับฟังก์ชันอื่นที่ overwriteSheet
@@ -271,4 +293,5 @@ export async function overwriteSheet(sheetName, headers, rows) {
     requestBody: { values: [headers, ...rows] },
   }))
   invalidateSheet(sheetName)
+  invalidateBatchCache([sheetName])
 }
