@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="robots" content="noindex">
+<title>ใบสมัครงาน — PAYI</title>
+<style>
+  :root {
+    --mint: #2563eb; --mint-strong: #0b63d8; --mint-soft: #eaf3ff;
+    --surface: #ffffff; --surface-muted: #f7fbff; --border: #dbe3ef;
+    --text: #111827; --muted: #64748b; --faint: #94a3b8; --danger: #ef4444;
+    --bg: #eef4fb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans Thai", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 520px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 20px 20px 14px; }
+  header .brand { font-size: 12px; font-weight: 800; color: var(--mint-strong); letter-spacing: .06em; text-transform: uppercase; }
+  header h1 { margin: 4px 0 10px; font-size: 22px; font-weight: 850; }
+  .progress-track { height: 6px; border-radius: 99px; background: var(--border); overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--mint), #34d399); transition: width .25s ease; }
+  .step-label { margin-top: 8px; font-size: 12px; color: var(--muted); }
+  main { flex: 1; padding: 4px 20px 100px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 8px 24px -12px rgba(16,24,40,.12); }
+  .card h2 { margin: 0 0 4px; font-size: 17px; font-weight: 800; }
+  .card p.hint { margin: 0 0 16px; font-size: 13px; color: var(--muted); }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 650; margin-bottom: 5px; color: var(--text); }
+  .field label .opt { font-weight: 400; color: var(--faint); }
+  .field input[type=text], .field input[type=tel], .field input[type=email], .field input[type=number],
+  .field input[type=date], .field select, .field textarea {
+    width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--border);
+    font: inherit; font-size: 14px; background: var(--surface); color: var(--text);
+  }
+  .field textarea { resize: vertical; min-height: 70px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .checks { display: flex; flex-direction: column; gap: 8px; }
+  .checks label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+  .checks input { width: 17px; height: 17px; }
+  .radios { display: flex; flex-direction: column; gap: 8px; }
+  .radios label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+  .repeat-item { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px; background: var(--surface-muted); position: relative; }
+  .repeat-item .remove { position: absolute; top: 8px; right: 8px; border: none; background: none; color: var(--danger); font-size: 18px; cursor: pointer; line-height: 1; padding: 4px; }
+  .add-row { display: inline-flex; align-items: center; gap: 6px; background: var(--mint-soft); color: var(--mint-strong); border: none; border-radius: 10px; padding: 9px 14px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  footer { position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--border); padding: 12px 20px; display: flex; gap: 10px; }
+  footer button { flex: 1; padding: 13px; border-radius: 12px; font-size: 15px; font-weight: 750; border: none; cursor: pointer; }
+  .btn-back { background: var(--surface-muted); color: var(--text); border: 1px solid var(--border) !important; }
+  .btn-next { background: linear-gradient(135deg, var(--mint), #34d399); color: #fff; }
+  .btn-next:disabled { opacity: .5; cursor: not-allowed; }
+  .done-screen { text-align: center; padding: 60px 20px; }
+  .done-screen .icon { font-size: 52px; }
+  .done-screen h2 { margin: 12px 0 6px; }
+  .err-box { background: #fef2f2; color: var(--danger); border: 1px solid #fecaca; border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px; }
+  .field-select-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">PAYI · สมัครงาน</div>
+    <h1 id="stepTitle">ใบสมัครงาน</h1>
+    <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="step-label" id="stepLabel"></div>
+  </header>
+  <main>
+    <div class="card" id="cardBody"></div>
+  </main>
+  <footer>
+    <button class="btn-back" id="btnBack">ย้อนกลับ</button>
+    <button class="btn-next" id="btnNext">ถัดไป</button>
+  </footer>
+</div>
+
+<script>
+const API = '/api/sheet-tools?op=hr-people';
+const DRAFT_KEY = 'payi-apply-draft-v1';
+
+const answers = Object.assign({
+  documents_ready: [], office_skills: [], computer_programs: [],
+  education_history: [], work_history: [],
+}, loadDraft());
+
+function loadDraft() {
+  try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}'); } catch { return {}; }
+}
+function saveDraft() {
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(answers)); } catch {}
+}
+
+function el(tag, attrs, ...children) {
+  const e = document.createElement(tag);
+  for (const k in attrs || {}) {
+    if (k === 'class') e.className = attrs[k];
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), attrs[k]);
+    else e.setAttribute(k, attrs[k]);
+  }
+  children.flat().forEach(c => { if (c != null) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+  return e;
+}
+
+function field(labelText, inputEl, optional) {
+  const label = el('label', {}, labelText, optional ? el('span', { class: 'opt' }, '  (ไม่บังคับ)') : null);
+  return el('div', { class: 'field' }, label, inputEl);
+}
+function textInput(key, type = 'text', placeholder = '') {
+  const i = el('input', { type, placeholder, value: answers[key] || '' });
+  i.addEventListener('input', () => { answers[key] = i.value; saveDraft(); });
+  return i;
+}
+function textarea(key, placeholder = '') {
+  const i = el('textarea', { placeholder }, answers[key] || '');
+  i.addEventListener('input', () => { answers[key] = i.value; saveDraft(); });
+  return i;
+}
+function selectInput(key, options, placeholder = 'เลือก') {
+  const s = el('select', {});
+  s.appendChild(el('option', { value: '' }, placeholder));
+  options.forEach(o => {
+    const opt = el('option', { value: o }, o);
+    if (answers[key] === o) opt.selected = true;
+    s.appendChild(opt);
+  });
+  s.addEventListener('change', () => { answers[key] = s.value; saveDraft(); });
+  return s;
+}
+function checkGroup(key, options) {
+  const wrap = el('div', { class: 'checks' });
+  options.forEach(o => {
+    const cb = el('input', { type: 'checkbox' });
+    cb.checked = (answers[key] || []).includes(o);
+    cb.addEventListener('change', () => {
+      const set = new Set(answers[key] || []);
+      cb.checked ? set.add(o) : set.delete(o);
+      answers[key] = [...set];
+      saveDraft();
+    });
+    wrap.appendChild(el('label', {}, cb, o));
+  });
+  return wrap;
+}
+function radioGroup(key, options) {
+  const wrap = el('div', { class: 'radios' });
+  options.forEach(o => {
+    const rb = el('input', { type: 'radio', name: key });
+    rb.checked = answers[key] === o;
+    rb.addEventListener('change', () => { answers[key] = o; saveDraft(); });
+    wrap.appendChild(el('label', {}, rb, o));
+  });
+  return wrap;
+}
+
+// ---- แถวซ้ำ (การศึกษา / ประสบการณ์ทำงาน) ----
+function repeatList(key, fieldsDef, addLabel) {
+  const wrap = el('div', {});
+  const listEl = el('div', {});
+  function render() {
+    listEl.innerHTML = '';
+    (answers[key] || []).forEach((item, idx) => {
+      const box = el('div', { class: 'repeat-item' });
+      box.appendChild(el('button', { class: 'remove', type: 'button', onclick: () => { answers[key].splice(idx, 1); saveDraft(); render(); } }, '✕'));
+      fieldsDef.forEach(([k, label, type]) => {
+        const inp = el('input', { type: type || 'text', value: item[k] || '', placeholder: label });
+        inp.addEventListener('input', () => { item[k] = inp.value; saveDraft(); });
+        box.appendChild(el('div', { class: 'field' }, el('label', {}, label), inp));
+      });
+      listEl.appendChild(box);
+    });
+  }
+  render();
+  const addBtn = el('button', {
+    type: 'button', class: 'add-row',
+    onclick: () => { (answers[key] = answers[key] || []).push({}); saveDraft(); render(); }
+  }, '+ ' + addLabel);
+  wrap.appendChild(listEl);
+  wrap.appendChild(addBtn);
+  return wrap;
+}
+
+// ---- นิยามขั้นตอนทั้งหมด ----
+const steps = [
+  {
+    title: 'ตำแหน่งงาน', sub: 'ข้อมูลตำแหน่งที่ต้องการสมัคร',
+    render: (c) => {
+      c.appendChild(field('ตำแหน่งงานที่สมัคร', textInput('position')));
+      c.appendChild(field('เงินเดือนที่ต้องการ', textInput('expected_salary', 'text', 'เช่น 12,000 หรือ ตามตกลง'), true));
+      c.appendChild(field('วันที่เริ่มงานได้', textInput('available_date', 'text', 'เช่น ทันที / ภายใน 15 วัน'), true));
+      c.appendChild(field('สถานภาพการทำงานปัจจุบัน', selectInput('current_status', ['ว่างงาน', 'ทำงานประจำ', 'ทำงาน Part-Time', 'กำลังศึกษาอยู่']), true));
+    },
+    required: () => !!answers.position,
+  },
+  {
+    title: 'เอกสารที่เตรียมมา', sub: 'เลือกเอกสารที่มี (ไม่บังคับ)',
+    render: (c) => {
+      c.appendChild(checkGroup('documents_ready', ['สำเนาบัตรประชาชน', 'สำเนาทะเบียนบ้าน', 'ใบรับรองวุฒิการศึกษา', 'หนังสือรับรองการทำงาน']));
+    },
+    required: () => true,
+  },
+  {
+    title: 'ข้อมูลส่วนตัว', sub: 'ข้อมูลพื้นฐานของคุณ',
+    render: (c) => {
+      c.appendChild(field('คำนำหน้า', selectInput('title', ['นาย', 'นาง', 'นางสาว'])));
+      c.appendChild(field('ชื่อ-นามสกุล', textInput('full_name')));
+      c.appendChild(field('ชื่อเล่น', textInput('nickname'), true));
+      const row = el('div', { class: 'row2' });
+      row.appendChild(field('อายุ', textInput('age', 'number')));
+      row.appendChild(field('วันเดือนปีเกิด', textInput('birth_date', 'date')));
+      c.appendChild(row);
+      c.appendChild(field('สัญชาติ', textInput('nationality', 'text', 'ไทย'), true));
+      c.appendChild(field('เชื้อชาติ', textInput('ethnicity', 'text', 'ไทย'), true));
+      c.appendChild(field('ศาสนา', textInput('religion'), true));
+      c.appendChild(field('ภูมิลำเนาเดิม (จังหวัด)', textInput('hometown'), true));
+    },
+    required: () => !!answers.full_name,
+  },
+  {
+    title: 'พี่น้อง', sub: 'ข้อมูลลำดับพี่น้อง (ไม่บังคับ)',
+    render: (c) => {
+      c.appendChild(field('จำนวนพี่น้อง', textInput('siblings', 'text', 'เช่น พี่ 1 คน น้อง 2 คน'), true));
+      c.appendChild(field('เป็นบุตรคนที่', textInput('birth_order', 'text', 'เช่น คนที่ 2'), true));
+    },
+    required: () => true,
+  },
+  {
+    title: 'ที่อยู่และการติดต่อ', sub: 'ที่อยู่ปัจจุบันที่ติดต่อได้',
+    render: (c) => {
+      c.appendChild(field('ที่อยู่ปัจจุบัน (บ้านเลขที่/ถนน/ซอย)', textarea('address')));
+      const row = el('div', { class: 'row2' });
+      row.appendChild(field('ตำบล/แขวง', textInput('sub_district'), true));
+      row.appendChild(field('อำเภอ/เขต', textInput('district'), true));
+      c.appendChild(row);
+      const row2 = el('div', { class: 'row2' });
+      row2.appendChild(field('จังหวัด', textInput('province')));
+      row2.appendChild(field('รหัสไปรษณีย์', textInput('postal_code', 'text'), true));
+      c.appendChild(row2);
+      c.appendChild(field('เบอร์มือถือ', textInput('mobile_phone', 'tel')));
+      c.appendChild(field('โทรศัพท์บ้าน', textInput('home_phone', 'tel'), true));
+      c.appendChild(field('Email', textInput('email', 'email'), true));
+    },
+    required: () => !!answers.address && !!answers.province && !!answers.mobile_phone,
+  },
+  {
+    title: 'ที่พักอาศัย/ครอบครัว', sub: '',
+    render: (c) => {
+      c.appendChild(field('ประเภทที่อยู่อาศัยปัจจุบัน', selectInput('residence_type', ['บ้านตัวเอง', 'บ้านญาติ', 'ห้องเช่า/บ้านเช่า', 'อื่นๆ']), true));
+      c.appendChild(field('อาศัยมาแล้วกี่ปี', textInput('residence_years', 'number'), true));
+      c.appendChild(field('สถานภาพครอบครัว', selectInput('marital_status', ['โสด', 'แต่งงาน', 'หย่าร้าง', 'แยกกันอยู่']), true));
+      c.appendChild(field('ชื่อคู่สมรส (ถ้ามี)', textInput('spouse_name'), true));
+      c.appendChild(field('อาชีพคู่สมรส', textInput('spouse_occupation'), true));
+      c.appendChild(field('จำนวนบุตร', textInput('children_count', 'number'), true));
+    },
+    required: () => true,
+  },
+  {
+    title: 'ข้อมูลบิดา-มารดา', sub: 'กรอกเท่าที่ทราบ (ไม่บังคับ)',
+    render: (c) => {
+      c.appendChild(field('ชื่อบิดา', textInput('father_name'), true));
+      c.appendChild(field('สถานะบิดา / อาชีพ', textInput('father_status', 'text', 'เช่น มีชีวิตอยู่ / ถึงแก่กรรม, อาชีพ'), true));
+      c.appendChild(field('ที่อยู่/จังหวัดบิดา', textInput('father_address'), true));
+      c.appendChild(field('ชื่อมารดา', textInput('mother_name'), true));
+      c.appendChild(field('สถานะมารดา / อาชีพ', textInput('mother_status'), true));
+      c.appendChild(field('ที่อยู่/จังหวัดมารดา', textInput('mother_address'), true));
+    },
+    required: () => true,
+  },
+  {
+    title: 'สถานะทางการทหาร', sub: 'สำหรับผู้สมัครเพศชาย (ข้ามได้ถ้าไม่เกี่ยวข้อง)',
+    render: (c) => {
+      c.appendChild(radioGroup('military_status', ['ได้รับการยกเว้น', 'ศึกษาวิชาทหาร (รด.)', 'ผ่านการเกณฑ์ทหารแล้ว', 'ไม่เกี่ยวข้อง/ไม่ระบุ']));
+    },
+    required: () => true,
+  },
+  {
+    title: 'ประวัติการศึกษา', sub: 'เพิ่มได้หลายรายการ เรียงจากล่าสุด',
+    render: (c) => {
+      c.appendChild(field('วุฒิการศึกษาที่ใช้สมัครงาน', textInput('education_level')));
+      c.appendChild(repeatList('education_history', [
+        ['level', 'ระดับการศึกษา (เช่น ปวส./ปริญญาตรี)'],
+        ['school', 'สถาบันการศึกษา'],
+        ['major', 'สาขาวิชาเอก'],
+        ['year', 'ปีที่จบการศึกษา'],
+        ['gpa', 'เกรดเฉลี่ย'],
+      ], 'เพิ่มรายการการศึกษา'));
+      c.appendChild(field('กิจกรรม/รางวัลระหว่างการศึกษา', textarea('education_activities'), true));
+      c.appendChild(field('สาขาวิชาที่ชอบเป็นพิเศษ', textInput('favorite_subject'), true));
+    },
+    required: () => true,
+  },
+  {
+    title: 'ประสบการณ์การทำงาน', sub: 'ข้ามได้ถ้ายังไม่เคยทำงาน',
+    render: (c) => {
+      c.appendChild(repeatList('work_history', [
+        ['company', 'ชื่อสถานประกอบการ'],
+        ['phone', 'เบอร์โทรศัพท์บริษัท'],
+        ['salary', 'เงินเดือน'],
+        ['from', 'ทำงานตั้งแต่ (เดือน/ปี)'],
+        ['to', 'ถึง (เดือน/ปี)'],
+        ['position', 'หน้าที่/ตำแหน่ง'],
+        ['reason_left', 'สาเหตุที่ออก'],
+      ], 'เพิ่มประสบการณ์ทำงาน'));
+    },
+    required: () => true,
+  },
+  {
+    title: 'ทักษะและความสามารถ', sub: '',
+    render: (c) => {
+      c.appendChild(el('div', { class: 'field' }, el('label', {}, 'ภาษาอังกฤษ')));
+      const grid = el('div', { class: 'field-select-grid' });
+      grid.appendChild(selectInput('english_speak', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้'], 'การพูด'));
+      grid.appendChild(selectInput('english_read', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้'], 'การอ่าน'));
+      grid.appendChild(selectInput('english_write', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้'], 'การเขียน'));
+      c.appendChild(grid);
+      c.appendChild(field('ภาษาอื่นๆ', textInput('other_language'), true));
+      c.appendChild(field('ความสามารถใช้เครื่องใช้สำนักงาน', checkGroup('office_skills', ['เครื่องถ่ายเอกสาร', 'โทรสาร', 'พิมพ์ดีด']), true));
+      c.appendChild(field('ความสามารถใช้คอมพิวเตอร์', selectInput('computer_level', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้']), true));
+      c.appendChild(field('โปรแกรมที่ใช้ได้', checkGroup('computer_programs', ['Excel', 'Word', 'PowerPoint', 'Photoshop', 'โปรแกรมบัญชี', 'อื่นๆ']), true));
+    },
+    required: () => true,
+  },
+  {
+    title: 'บุคคลอ้างอิง', sub: '',
+    render: (c) => {
+      c.appendChild(field('ชื่อบุคคลอ้างอิง / ความสัมพันธ์', textInput('reference_name'), true));
+      c.appendChild(field('อาชีพบุคคลอ้างอิง', textInput('reference_occupation'), true));
+      c.appendChild(field('เบอร์โทรบุคคลอ้างอิง', textInput('reference_phone', 'tel'), true));
+      c.appendChild(field('ทราบข่าวการสมัครงานจาก', textInput('heard_from', 'text', 'เช่น เพื่อนแนะนำ / Facebook'), true));
+    },
+    required: () => true,
+  },
+  {
+    title: 'ยืนยันและส่งใบสมัคร', sub: 'ตรวจสอบก่อนกดส่ง',
+    render: (c) => {
+      c.appendChild(el('div', { class: 'field' }, el('div', { style: 'font-size:14px;line-height:1.7' },
+        el('b', {}, answers.full_name || '-'), ' — ', answers.position || '-', el('br'),
+        'เบอร์โทร: ', answers.mobile_phone || '-'
+      )));
+      const cb = el('input', { type: 'checkbox' });
+      cb.checked = !!answers.confirmed;
+      cb.addEventListener('change', () => { answers.confirmed = cb.checked; saveDraft(); refreshNextState(); });
+      c.appendChild(el('div', { class: 'checks' }, el('label', {}, cb, 'ข้าพเจ้าขอรับรองว่าข้อมูลที่กรอกในใบสมัครนี้เป็นความจริงทุกประการ')));
+    },
+    required: () => !!answers.confirmed,
+    isFinal: true,
+  },
+];
+
+let stepIdx = 0;
+const cardBody = document.getElementById('cardBody');
+const btnBack = document.getElementById('btnBack');
+const btnNext = document.getElementById('btnNext');
+const stepTitle = document.getElementById('stepTitle');
+const stepLabel = document.getElementById('stepLabel');
+const progressFill = document.getElementById('progressFill');
+
+function refreshNextState() {
+  const st = steps[stepIdx];
+  btnNext.disabled = !st.required();
+  btnNext.textContent = st.isFinal ? 'ส่งใบสมัคร' : 'ถัดไป';
+}
+
+function renderStep() {
+  const st = steps[stepIdx];
+  cardBody.innerHTML = '';
+  cardBody.appendChild(el('h2', {}, st.title));
+  if (st.sub) cardBody.appendChild(el('p', { class: 'hint' }, st.sub));
+  st.render(cardBody);
+  stepTitle.textContent = 'ใบสมัครงาน';
+  stepLabel.textContent = `ขั้นตอน ${stepIdx + 1} / ${steps.length} — ${st.title}`;
+  progressFill.style.width = Math.round(((stepIdx) / (steps.length - 1)) * 100) + '%';
+  btnBack.style.visibility = stepIdx === 0 ? 'hidden' : 'visible';
+  refreshNextState();
+  window.scrollTo(0, 0);
+}
+
+// ทุกช่องกรอกในการ์ดปัจจุบัน อัปเดต answers ผ่าน listener ของตัวเอง (ดูฟังก์ชัน textInput/
+// selectInput/checkGroup ฯลฯ ด้านบน) แต่ enable/disable ปุ่ม "ถัดไป" ต้องเช็คใหม่ทุกครั้ง —
+// ใช้ event delegation ตัวเดียวจับ input/change ทั้งการ์ด แทนที่จะเรียก refreshNextState()
+// ซ้ำในทุก listener (ลืมจุดใดจุดหนึ่งแล้วปุ่มค้าง disabled ทั้งที่กรอกครบแล้ว)
+cardBody.addEventListener('input', refreshNextState);
+cardBody.addEventListener('change', refreshNextState);
+
+btnBack.addEventListener('click', () => { if (stepIdx > 0) { stepIdx--; renderStep(); } });
+btnNext.addEventListener('click', async () => {
+  const st = steps[stepIdx];
+  if (!st.required()) return;
+  if (!st.isFinal) { stepIdx++; renderStep(); return; }
+  await submit();
+});
+
+async function submit() {
+  btnNext.disabled = true;
+  btnNext.textContent = 'กำลังส่ง...';
+  const payload = { action: 'submit-applicant' };
+  const FIELD_KEYS = [
+    'position','expected_salary','available_date','current_status','title','full_name','nickname','age',
+    'birth_date','nationality','ethnicity','religion','hometown','siblings','birth_order','address',
+    'sub_district','district','province','postal_code','home_phone','mobile_phone','email','residence_type',
+    'residence_years','marital_status','spouse_name','spouse_occupation','children_count','father_name',
+    'father_status','father_occupation','father_address','mother_name','mother_status','mother_occupation',
+    'mother_address','military_status','education_level','education_activities','favorite_subject',
+    'english_speak','english_read','english_write','other_language','computer_level','reference_name',
+    'reference_occupation','reference_phone','heard_from',
+  ];
+  FIELD_KEYS.forEach(k => { payload[k] = answers[k] || ''; });
+  payload.documents_ready = (answers.documents_ready || []).join(', ');
+  payload.office_skills = (answers.office_skills || []).join(', ');
+  payload.computer_programs = (answers.computer_programs || []).join(', ');
+  payload.education_history = JSON.stringify(answers.education_history || []);
+  payload.work_history = JSON.stringify(answers.work_history || []);
+  payload.confirmed = answers.confirmed ? 'ยืนยันแล้ว' : '';
+
+  try {
+    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error || 'ส่งไม่สำเร็จ');
+    localStorage.removeItem(DRAFT_KEY);
+    document.querySelector('.wrap').innerHTML = `
+      <main style="padding-top:60px"><div class="card done-screen">
+        <div class="icon">✅</div>
+        <h2>ส่งใบสมัครเรียบร้อยแล้ว</h2>
+        <p class="hint">ขอบคุณที่สนใจร่วมงานกับ PAYI ทีมงานจะติดต่อกลับหากผ่านการพิจารณาเบื้องต้น</p>
+      </div></main>`;
+  } catch (e) {
+    cardBody.insertBefore(el('div', { class: 'err-box' }, e.message || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง'), cardBody.firstChild.nextSibling);
+    btnNext.disabled = false;
+    btnNext.textContent = 'ส่งใบสมัคร';
+  }
+}
+
+renderStep();
+</script>
+</body>
+</html>

@@ -167,6 +167,46 @@ export async function getExternalSheet(spreadsheetId, range = 'A:Z') {
   return res.data.values || []
 }
 
+// ensureSheet/appendRows แบบข้ามสเปรดชีต — สำหรับเขียนลง HR_SHEET_ID (แยกจาก SHEET_ID หลัก)
+// ไม่มี cache เพราะ traffic น้อย (ฟอร์มสมัครงานไม่ได้ยิงถี่)
+export async function ensureExternalSheet(spreadsheetId, sheetName, headers) {
+  const meta = await withQuotaRetry(() => getClient().spreadsheets.get({ spreadsheetId }))
+  const exists = meta.data.sheets.some((s) => s.properties.title === sheetName)
+  if (!exists) {
+    try {
+      await withQuotaRetry(() => getClient().spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: { requests: [{ addSheet: { properties: { title: sheetName } } }] },
+      }))
+    } catch (e) {
+      if (!/already exists/i.test(e.message || '')) throw e
+    }
+  }
+  const res = await withQuotaRetry(() => getClient().spreadsheets.values.get({
+    spreadsheetId,
+    range: `${sheetName}!A1:Z1`,
+  }))
+  const current = res.data.values?.[0] || []
+  const missingHeader = headers.some((h, i) => current[i] !== h)
+  if (!current.length || missingHeader) {
+    await withQuotaRetry(() => getClient().spreadsheets.values.update({
+      spreadsheetId,
+      range: `${sheetName}!A1`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [headers] },
+    }))
+  }
+}
+
+export async function appendExternalRows(spreadsheetId, sheetName, rows) {
+  await withQuotaRetry(() => getClient().spreadsheets.values.append({
+    spreadsheetId,
+    range: `${sheetName}!A1`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: rows },
+  }))
+}
+
 // เขียนต่อท้าย (append)
 export async function appendRows(sheetName, rows) {
   await withQuotaRetry(() => getClient().spreadsheets.values.append({

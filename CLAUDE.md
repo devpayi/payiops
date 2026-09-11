@@ -149,6 +149,41 @@ Sheets rate limits.
   imported the page) — production silently lost the menu item. **Never `git add -A`**
   when other in-progress work might be sitting in the tree; stage the specific files for
   the change being shipped.
+  **✅ DONE (2026-09-11) — full mobile applicant wizard (`public/apply.html`), replaces
+  the "แบบเต็ม" Google Form.** Boss sent a paper-based ใบสมัครงาน with way more sections
+  than the short Google Form (family/parents/military/education+work history tables/
+  skills/references). Owner asked for a mobile web alternative instead of a longer form
+  ("ทำหน้าเว็ปสำหรับมือถือง่ายๆ ทีละเรื่องๆ"). Confirmed via AskUserQuestion: writes
+  straight into "Staff Payi" (`HR_SHEET_ID`) replacing the Google Form for this path;
+  covers every paper-form topic; **no photo/file upload this round** (no free Drive
+  quota on the service account + ID-card photo PII risk) — text only.
+  - `public/apply.html` — static, no build step (same pattern as the deferred เกด-claims
+    idea in TODO #11), served straight from Vite's `public/` dir so it bypasses the SPA
+    login gate. Vanilla JS, 13-step wizard, `localStorage` draft autosave
+    (`payi-apply-draft-v1`), education/work history are repeating rows
+    (`repeatList()`) JSON-stringified into one cell each — Sheets can't do variable-length
+    repeating columns natively.
+  - New public POST route: `sheet-tools.js?op=hr-people` body `{action:
+    'submit-applicant', ...}` → `opSubmitApplicant` (`_lib/hrPeople.js`) — checked
+    **before** `requireAuth`, same unauthenticated pattern as `line-webhook`, since job
+    applicants have no account. Writes to `applicants_full` tab (env
+    `HR_APPLICANT_FULL_TAB`, default `applicants_full`) via new `ensureExternalSheet`/
+    `appendExternalRows` helpers in `sheets.js` (the old `getExternalSheet` was read-only,
+    targeted `SHEET_ID` — these two target an arbitrary spreadsheet id, i.e. `HR_SHEET_ID`).
+    51 fields defined in `APPLICANT_FULL_FIELDS` (key + Thai column label, append-only
+    order, same rule as every other sheet in this codebase).
+  - **Gotcha — Sheets strips leading zeros.** `valueInputOption: 'USER_ENTERED'`
+    auto-parses pure-numeric strings as numbers, so phone/postal fields lost their
+    leading `0` (`0812345678` → `812345678`). Fixed with `TEXT_FORCE_KEYS` +
+    `cleanField()` prefixing a literal `'` (Sheets force-text marker) for
+    `mobile_phone`/`home_phone`/`postal_code`/`reference_phone`.
+  - `HRPeople.jsx` dashboard: new 3rd view `applicants_full` ("ผู้สมัครงาน (แบบเต็ม)"),
+    form-link button points to `/apply.html` instead of a Forms URL. Added
+    `JsonRowsView`/`parseJsonRows` to render the education/work-history JSON cells as a
+    bullet list in the drawer and a "N รายการ" summary in the table cell instead of raw
+    JSON text.
+  - Old short Google Form ("แบบสั้น", `applicants` tab) still lives — the wizard doesn't
+    replace it, boss chose to keep both entry paths for now.
 - `LinksHub.jsx`, `DevHub.jsx` (static link/doc hubs — real content, no backend)
 - `Login.jsx`, `Settings.jsx` (auth screens, user management)
 - **`ContentOSPrototype.jsx`** ("Content OS Prototype") — **UI-only prototype, no API

@@ -6,8 +6,31 @@ const API = '/api/sheet-tools?op=hr-people'
 
 const VIEWS = [
   { id: 'employees', label: 'พนักงาน', icon: Users, formLabel: 'ฟอร์มข้อมูลพนักงาน', formUrl: 'https://docs.google.com/forms/d/1hxqaPqkZfiOaR7Hclm5XtBYrZTnS4vHdf7p4KviBVTk/viewform' },
-  { id: 'applicants', label: 'ผู้สมัครงาน', icon: UserPlus, formLabel: 'ฟอร์มใบสมัครงาน', formUrl: 'https://docs.google.com/forms/d/1sjhYp5tFwJlvuhpa5yT0DwPOVutZdmxXmBnENiWs_AM/viewform' },
+  { id: 'applicants', label: 'ผู้สมัครงาน (แบบสั้น)', icon: UserPlus, formLabel: 'ฟอร์มใบสมัครงาน (แบบสั้น)', formUrl: 'https://docs.google.com/forms/d/1sjhYp5tFwJlvuhpa5yT0DwPOVutZdmxXmBnENiWs_AM/viewform' },
+  { id: 'applicants_full', label: 'ผู้สมัครงาน (แบบเต็ม)', icon: FilePlus2, formLabel: 'ฟอร์มใบสมัครงาน (แบบเต็ม บนมือถือ)', formUrl: '/apply.html' },
 ]
+
+// ประวัติการศึกษา/ประวัติการทำงานเก็บเป็น JSON array ต่อแถว (มาจาก public/apply.html) —
+// แปลงเป็นข้อความอ่านง่ายแทนโชว์ JSON ดิบ
+function parseJsonRows(value) {
+  try {
+    const arr = JSON.parse(value)
+    if (Array.isArray(arr) && arr.length && arr.every((x) => x && typeof x === 'object')) return arr
+  } catch { /* not JSON, ignore */ }
+  return null
+}
+function JsonRowsView({ value }) {
+  const rows = parseJsonRows(value)
+  if (!rows) return <LinkOrText value={value} />
+  if (!rows.length) return <span style={{ color: 'var(--payi-text-faint)' }}>—</span>
+  return (
+    <ul style={{ margin: 0, paddingLeft: 18 }}>
+      {rows.map((r, i) => (
+        <li key={i} style={{ marginBottom: 2 }}>{Object.values(r).filter(Boolean).join(' · ') || '—'}</li>
+      ))}
+    </ul>
+  )
+}
 
 // ป้ายแสดงผลสวยกว่าชื่อ header ดิบจากฟอร์ม — "ประทับเวลา" คือคอลัมน์ที่ Google Forms
 // สร้างให้อัตโนมัติ แก้ชื่อในฟอร์มไม่ได้ (ไม่ใช่คำถามจริง) เลยแมปตรงนี้แทน
@@ -44,7 +67,7 @@ function DetailDrawer({ row, headers, onClose }) {
           {headers.map((h) => (
             <div key={h}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--payi-text-muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>{displayLabel(h)}</div>
-              <div style={{ fontSize: 14, color: 'var(--payi-text-strong)', wordBreak: 'break-word' }}><LinkOrText value={row[h]} /></div>
+              <div style={{ fontSize: 14, color: 'var(--payi-text-strong)', wordBreak: 'break-word' }}><JsonRowsView value={row[h]} /></div>
             </div>
           ))}
         </div>
@@ -163,7 +186,9 @@ export default function HRPeople() {
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
                     {headers.map((h) => (
                       <td key={h} style={{ padding: '9px 12px', color: 'var(--payi-text-strong)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: h === nameCol ? 700 : 400 }}>
-                        {isUrl(row[h]) ? <LinkOrText value={row[h]} /> : (row[h] || '—')}
+                        {parseJsonRows(row[h])
+                          ? `${parseJsonRows(row[h]).length} รายการ (คลิกดูรายละเอียด)`
+                          : isUrl(row[h]) ? <LinkOrText value={row[h]} /> : (row[h] || '—')}
                       </td>
                     ))}
                   </tr>
