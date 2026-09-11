@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Users, UserPlus, Search, X, ExternalLink, RefreshCw } from 'lucide-react'
+import { Users, UserPlus, Search, X, ExternalLink, RefreshCw, FilePlus2 } from 'lucide-react'
 import KpiCard from '../components/KpiCard'
 
 const API = '/api/sheet-tools?op=hr-people'
 
 const VIEWS = [
-  { id: 'employees', label: 'พนักงาน', icon: Users },
-  { id: 'applicants', label: 'ผู้สมัครงาน', icon: UserPlus },
+  { id: 'employees', label: 'พนักงาน', icon: Users, formLabel: 'ฟอร์มข้อมูลพนักงาน', formUrl: 'https://docs.google.com/forms/d/1hxqaPqkZfiOaR7Hclm5XtBYrZTnS4vHdf7p4KviBVTk/viewform' },
+  { id: 'applicants', label: 'ผู้สมัครงาน', icon: UserPlus, formLabel: 'ฟอร์มใบสมัครงาน', formUrl: 'https://docs.google.com/forms/d/1sjhYp5tFwJlvuhpa5yT0DwPOVutZdmxXmBnENiWs_AM/viewform' },
 ]
 
 const isUrl = (v) => /^https?:\/\//i.test(String(v || '').trim())
@@ -86,6 +86,7 @@ export default function HRPeople() {
 
   useEffect(() => { load() }, [load])
 
+  const activeView = VIEWS.find((v) => v.id === view) || VIEWS[0]
   const headers = data.headers || []
   const rows = data.rows || []
   const nameCol = useMemo(() => headers.find(nameHint) || headers[1] || headers[0], [headers])
@@ -114,7 +115,14 @@ export default function HRPeople() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', color: 'var(--payi-text-muted)' }}>
           <RefreshCw size={14} />
         </button>
+        <a href={activeView.formUrl} target="_blank" rel="noreferrer"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600, border: 'none', background: 'var(--payi-gradient-primary)', color: '#fff', textDecoration: 'none', marginLeft: 'auto' }}>
+          <FilePlus2 size={15} /> เปิด{activeView.formLabel}
+        </a>
       </div>
+      <p style={{ margin: '-8px 0 0', fontSize: 12, color: 'var(--payi-text-faint)' }}>
+        ส่งลิงก์นี้ให้พนักงาน/ผู้สมัครกรอกได้เลย: <a href={activeView.formUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--payi-mint-strong)' }}>{activeView.formUrl}</a>
+      </p>
 
       {data.configured === false ? (
         <SetupHint />
