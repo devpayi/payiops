@@ -16,6 +16,7 @@ import opImportTracking, { createArrivalsFromShipping } from './_lib/importTrack
 import opCfo from './_lib/cfo.js'
 import opDemographic from './_lib/demographic.js'
 import opFulfillment from './_lib/fulfillment.js'
+import opHrPeople from './_lib/hrPeople.js'
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
 // req.body ยังใช้ได้ตามปกติในทุก op เดิม เพราะ readRawBody() ด้านล่าง parse JSON ให้เหมือน Vercel ทำเอง
@@ -3796,6 +3797,13 @@ export default async function handler(req, res) {
     }
     return opFulfillment(req, res)
   }
+  if (op === 'hr-people') {
+    // ข้อมูลพนักงาน / ผู้สมัครงาน (PII: เลขบัตร ปชช, ทะเบียนบ้าน) — dev + boss เท่านั้น
+    if (authEnabled() && !canManageOperations(req.user?.role)) {
+      return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงส่วนนี้' })
+    }
+    return opHrPeople(req, res)
+  }
   // Staff only needs the data behind its operational areas (now includes
   // inventory, per owner request to open Inventory/Stock Movement to staff).
   // Raw sheet tools, HR and settings data remain restricted even if called directly.
@@ -3810,5 +3818,5 @@ export default async function handler(req, res) {
   if (op === 'planner') return opPlanner(req, res)
   if (op === 'hr') return opHr(req, res)
   if (op === 'inventory') return opInventory(req, res)
-  return res.status(400).json({ error: 'ต้องระบุ ?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|cfo|demographic|fulfillment|line-webhook' })
+  return res.status(400).json({ error: 'ต้องระบุ ?op=summary|sheet|append|overwrite|workforce|planner|hr|hr-people|inventory|import-tracking|cfo|demographic|fulfillment|line-webhook' })
 }
