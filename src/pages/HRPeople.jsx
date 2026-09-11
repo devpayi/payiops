@@ -9,6 +9,11 @@ const VIEWS = [
   { id: 'applicants', label: 'ผู้สมัครงาน', icon: UserPlus, formLabel: 'ฟอร์มใบสมัครงาน', formUrl: 'https://docs.google.com/forms/d/1sjhYp5tFwJlvuhpa5yT0DwPOVutZdmxXmBnENiWs_AM/viewform' },
 ]
 
+// ป้ายแสดงผลสวยกว่าชื่อ header ดิบจากฟอร์ม — "ประทับเวลา" คือคอลัมน์ที่ Google Forms
+// สร้างให้อัตโนมัติ แก้ชื่อในฟอร์มไม่ได้ (ไม่ใช่คำถามจริง) เลยแมปตรงนี้แทน
+const HEADER_LABELS = { 'ประทับเวลา': 'วันที่ส่งฟอร์ม' }
+const displayLabel = (h) => HEADER_LABELS[h] || h
+
 const isUrl = (v) => /^https?:\/\//i.test(String(v || '').trim())
 // คอลัมน์ที่เป็นชื่อคน/หัวข้อหลัก — เดาจากชื่อ header เพื่อโชว์เป็นหัวแถวในตาราง
 const nameHint = (h) => /ชื่อ|name|พนักงาน|ผู้สมัคร/i.test(h) && !/บริษัท|เล่น|ผู้ติดต่อ|ฉุกเฉิน|company/i.test(h)
@@ -38,7 +43,7 @@ function DetailDrawer({ row, headers, onClose }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {headers.map((h) => (
             <div key={h}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--payi-text-muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>{h}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--payi-text-muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>{displayLabel(h)}</div>
               <div style={{ fontSize: 14, color: 'var(--payi-text-strong)', wordBreak: 'break-word' }}><LinkOrText value={row[h]} /></div>
             </div>
           ))}
@@ -146,7 +151,7 @@ export default function HRPeople() {
               <thead>
                 <tr>
                   {headers.map((h) => (
-                    <th key={h} style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '1px solid var(--payi-border)', color: 'var(--payi-text-muted)', fontWeight: 700, whiteSpace: 'nowrap', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.03em' }}>{h}</th>
+                    <th key={h} style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '1px solid var(--payi-border)', color: 'var(--payi-text-muted)', fontWeight: 700, whiteSpace: 'nowrap', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.03em' }}>{displayLabel(h)}</th>
                   ))}
                 </tr>
               </thead>
