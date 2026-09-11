@@ -12,7 +12,7 @@ import {
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
   LayoutDashboard, UploadCloud, Radar, Megaphone, Boxes,
   ArrowLeftRight, BookOpen, Link2,
-  Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet, MapPin, Warehouse, FileSignature, Users,
+  Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet, MapPin, Warehouse, FileSignature,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -25,7 +25,6 @@ const DevHub = lazy(() => import('./pages/DevHub'))
 const MonthlyDashboard = lazy(() => import('./pages/MonthlyDashboard'))
 const DailyDashboard = lazy(() => import('./pages/DailyDashboard'))
 const HR = lazy(() => import('./pages/HR'))
-const HRPeople = lazy(() => import('./pages/HRPeople'))
 const ProductDashboard = lazy(() => import('./pages/ProductDashboard'))
 const ProductTrends = lazy(() => import('./pages/ProductTrends'))
 const MarketingRadar = lazy(() => import('./pages/MarketingRadar'))
@@ -99,7 +98,6 @@ const Icons = {
   Demographic: MapPin,
   Fulfillment: Warehouse,
   HR: CalendarCheck,
-  'HR People': Users,
   SOPs: BookOpen,
   LinksHub: Link2,
   DevHub: Code2,
@@ -109,7 +107,7 @@ const Icons = {
 const KNOWN_TABS = new Set([
   'Home', 'Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends',
   'AdsChannels', 'ContentOS', 'MarketingRadar', 'Inventory',
-  'Import Tracking', 'WHT Cert', 'Stock Movement', 'HR', 'HR People', 'CFO', 'Demographic', 'Fulfillment',
+  'Import Tracking', 'WHT Cert', 'Stock Movement', 'HR', 'CFO', 'Demographic', 'Fulfillment',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings',
 ])
 
@@ -138,8 +136,7 @@ const menuGroups = [
       { id: 'Stock Movement', label: 'Stock Movement', renderIcon: Icons.StockMovement },
       { id: 'Import Tracking', label: 'ติดตามนำเข้า', renderIcon: Icons.ImportTracking, dotColor: '#0ea5e9' },
       { id: 'WHT Cert', label: 'ใบหัก ณ ที่จ่าย', renderIcon: Icons.WhtCert, dotColor: '#0ea5e9' },
-      { id: 'HR', label: 'พนักงาน (ลา)', renderIcon: Icons.HR },
-      { id: 'HR People', label: 'ข้อมูลพนักงาน', renderIcon: Icons['HR People'] }
+      { id: 'HR', label: 'พนักงาน (ลา)', renderIcon: Icons.HR }
     ]
   },
   {
@@ -791,11 +788,6 @@ export default function App() {
       title: 'พนักงาน (ลา)',
       eyebrow: 'Operations Planning',
       subtitle: 'คำขอลา + อนุมัติ และวันลาพักร้อนคงเหลือ'
-    },
-    'HR People': {
-      title: 'ข้อมูลพนักงาน',
-      eyebrow: 'Operations Planning',
-      subtitle: 'ประวัติพนักงาน + ใบสมัครงาน จาก Google Form (เลขบัตร ปชช/ทะเบียนบ้าน/ผู้ติดต่อ) — dev/boss เท่านั้น'
     },
     Inventory: {
       title: 'Inventory',
@@ -1465,7 +1457,6 @@ export default function App() {
           ['Fulfillment', ['dev', 'boss', 'finance', 'tang'].includes(currentRole) ? <Fulfillment /> : <DevOnlyLock label="Fulfillment" />],
           ['Stock Movement', <StockMovement />],
           ['HR', <HR />],
-          ['HR People', ['dev', 'boss'].includes(currentRole) ? <HRPeople /> : <DevOnlyLock label="ข้อมูลพนักงาน" />],
           ['Import Orders', <Upload onNavigate={handleNavigate} />],
           ['Links Hub', <LinksHub />],
           ['Dev Hub', <DevHub />],
