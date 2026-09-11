@@ -7,8 +7,19 @@
     "dev": "cross-env NODE_OPTIONS=--use-system-ca vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node --test",
-    "preview": "vite preview"
+    "test": "node --test test/*.test.js",
+    "core:install": "npm ci --prefix backend/core",
+    "core:typecheck": "npm run typecheck --prefix backend/core",
+    "core:build": "npm run build --prefix backend/core",
+    "core:test": "npm test --prefix backend/core",
+    "core:start": "npm start --prefix backend/core",
+    "ops:setup": "npm run local:setup --prefix backend/core",
+    "ops:build": "npm run core:build && npm run build --prefix backend/core/apps/web",
+    "ops:start": "npm run local:start --prefix backend/core",
+    "ops:backup": "npm run local:backup --prefix backend/core",
+    "ops:verify-backup": "npm run local:verify-backup --prefix backend/core",
+    "preview": "vite preview",
+    "ops:install": "npm run core:install && npm ci --prefix backend/core/database/tests && npm ci --prefix backend/core/apps/web && powershell -NoProfile -File backend/core/scripts/install-free.ps1"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",

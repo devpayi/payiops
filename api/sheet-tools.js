@@ -1,7 +1,8 @@
 // GET/POST /api/sheet-tools?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory
 // รวม 4 endpoint เครื่องมือชีตเดิม (/api/summary /api/sheet /api/append /api/overwrite)
 // เป็นฟังก์ชันเดียว — Vercel Hobby จำกัด 12 serverless functions ต่อโปรเจค
-import { requireAuth, cacheable, authEnabled } from './_lib/auth.js'
+import { requireAuth, cacheable, authEnabled, verifyToken } from './_lib/auth.js'
+import { createMonaBridge } from '../backend/core/integration/mona-bridge.ts'
 import { canManageOperations, normalizeRole } from '../shared/roles.js'
 import { getMetaCached, batchGetValues, getSheet, appendRows, appendRowsVerified, overwriteSheet, ensureSheet, ensureSheets } from './_lib/sheets.js'
 import { verifySignature, pushMessage, pushMessageWithFallback, replyMessage, linkRichMenuToUser } from './_lib/line.js'
@@ -16,6 +17,8 @@ import opImportTracking, { createArrivalsFromShipping } from './_lib/importTrack
 import opCfo from './_lib/cfo.js'
 import opDemographic from './_lib/demographic.js'
 import opFulfillment from './_lib/fulfillment.js'
+import opHrPeople from './_lib/hrPeople.js'
+const opFinancialCore = createMonaBridge({ verifySession: verifyToken, loadUsers: () => getSheet('users'), normalizeRole })
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
 // req.body ยังใช้ได้ตามปกติในทุก op เดิม เพราะ readRawBody() ด้านล่าง parse JSON ให้เหมือน Vercel ทำเอง
@@ -3415,12 +3418,15 @@ async function opLineWebhook(req, res) {
       // ── "ชมพู <เลข SHIPPING> <ชื่อสินค้าคร่าวๆ>" — พิมพ์ใน 1:1 กับบอทเท่านั้น (owner ขอ 2026-09-09) ──
       // สร้าง import_arrival ให้เอง (ติดตามนำเข้า): stateless ล้วน ไม่มี session ไม่ตอบกลับเลย
       // ไม่รับจากกลุ่ม — ถ้าต้องไล่ย้อนหลังก็เปิดกลุ่มดูเอง
-      // ไม่ match pattern นี้ = ตกไปทาง flow ปกติด้านล่างทุกอย่างเหมือนเดิม
+      // ล็อกเฉพาะคนที่ผูกไลน์ไว้ใน "คนนับของ (แจ้งของเข้า)" (resolveArrivalReporter, การ์ดเดียวกับ
+      // StockCounterLineCard ใน Settings) — คนอื่นพิมคำว่า "ชมพู" เฉยๆ ไม่สร้างอะไร (owner ขอ 2026-09-11)
+      // ไม่ match / ไม่ผ่านล็อก = ตกไปทาง flow ปกติด้านล่างทุกอย่างเหมือนเดิม
       if (event.source?.type === 'user' && event.type === 'message' && event.message?.type === 'text') {
         const t = String(event.message.text || '')
         if (/ชมพู/.test(t)) {
           const nums = (t.match(/\d{6,9}/g) || [])
-          if (nums.length) {
+          const reporter = nums.length ? await resolveArrivalReporter(event.source.userId) : null
+          if (nums.length && reporter) {
             // ชื่อสินค้า = ข้อความที่เหลือ หลังตัด "ชมพู" + เลขทุกตัวออก (เช่น "ชมพู 1234567 ถุงเท้าส้น")
             const nameHint = t.replace(/ชมพู/g, '').replace(/\d{6,9}/g, '').replace(/\s+/g, ' ').trim()
             try { await createArrivalsFromShipping(nums, undefined, nameHint) } catch (e) { console.error('pink-slip:', e.message) }
@@ -3763,6 +3769,7 @@ export default async function handler(req, res) {
   if (op === 'inventory' && req.query.cron === 'low-stock') return opLowStockCron(req, res)
   if (op === 'workforce' && req.query.cron === 'holiday-reminder') return opHolidayReminderCron(req, res)
   if (!requireAuth(req, res)) return
+  if (op === 'financial-core') return opFinancialCore(req, res)
   // CFO / Demographic / Import Tracking — เปิดให้เฉพาะ DEV เท่านั้น (owner ขอ 2026-09-01)
   // role อื่นเห็นแท็บได้แต่หน้าเป็น placeholder (ดู DevOnlyLock ใน App.jsx) — endpoint ปิดตายด้วย
   // pair กับ authEnabled() เสมอ: local dev ไม่มี AUTH_SECRET → req.user undefined → ข้ามเช็ค
@@ -3786,6 +3793,13 @@ export default async function handler(req, res) {
     }
     return opImportTracking(req, res)
   }
+  if (op === 'hr-people') {
+    // ข้อมูลพนักงาน / ผู้สมัครงาน (PII: เลขบัตร ปชช, ทะเบียนบ้าน) — dev + boss เท่านั้น
+    if (authEnabled() && !canManageOperations(req.user?.role)) {
+      return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงส่วนนี้' })
+    }
+    return opHrPeople(req, res)
+  }
   if (op === 'fulfillment') {
     // Fulfillment เปิดให้ dev + boss + finance (พี่หยก/พี่แต้ว) + tang — owner ขอ 2026-09-02, tang เพิ่ม 2026-09-04
     if (authEnabled() && !['dev', 'boss', 'finance', 'tang'].includes(normalizeRole(req.user?.role))) {
@@ -3807,5 +3821,5 @@ export default async function handler(req, res) {
   if (op === 'planner') return opPlanner(req, res)
   if (op === 'hr') return opHr(req, res)
   if (op === 'inventory') return opInventory(req, res)
-  return res.status(400).json({ error: 'ต้องระบุ ?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory|import-tracking|cfo|demographic|fulfillment|line-webhook' })
+  return res.status(400).json({ error: 'ต้องระบุ ?op=summary|sheet|append|overwrite|workforce|planner|hr|hr-people|inventory|import-tracking|cfo|demographic|fulfillment|line-webhook' })
 }

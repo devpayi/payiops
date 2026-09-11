@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2023", "module": "NodeNext", "moduleResolution": "NodeNext",
+    "strict": true, "noUncheckedIndexedAccess": true, "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true, "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true, "noUnusedParameters": true, "verbatimModuleSyntax": true,
+    "esModuleInterop": true, "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true, "rootDir": ".", "outDir": "dist",
+    "declaration": true, "sourceMap": true, "types": ["node"]
+  },
+  "include": ["packages/**/*.ts", "apps/api/**/*.ts", "tests/**/*.ts", "integration/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

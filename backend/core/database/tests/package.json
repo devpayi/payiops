@@ -1,0 +1,10 @@
+{
+  "name": "cmo-cfo-schema-verification",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node verify.mjs" },
+  "devDependencies": {
+    "@embedded-postgres/windows-x64": "18.4.0-beta.17",
+    "pg": "8.16.3"
+  }
+}
