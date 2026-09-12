@@ -1195,7 +1195,12 @@ async function assignRichMenuForLink(username, lineUserId, role) {
 // สรุปผล Approve/จับคู่ลอต เป็นข้อความสั้นเข้ากลุ่ม (ปฏิเสธ ไม่แจ้งกลุ่ม — แจ้งกลับผู้แจ้งของเข้า 1:1
 // คนเดียว, owner ขอ 2026-08-05) — การ์ดจริงกับปุ่มกดทั้งหมดย้ายไปอยู่ 1:1 กับ boss/dev แล้ว (2026-08-01)
 // กลุ่มเลยไม่เห็นอะไรเลยถ้าไม่ประกาศผลตรงนี้ ไม่มีกลุ่มลงทะเบียนไว้ก็แค่ข้ามเงียบๆ
+// ✅ ปิดไว้ (2026-09-12, owner ขอ) — ทุกครั้งที่ boss approve ของเข้า ยิงข้อความเข้ากลุ่มกินโควตา LINE
+// ฟรี 300 ข้อความ/เดือนโดยไม่จำเป็น (เห็นผลจาก 1:1 กับ boss/dev อยู่แล้ว) — no-op ไว้ก่อน ไม่ลบฟังก์ชัน/
+// จุดเรียกใช้ เผื่ออยากเปิดกลับมาใช้ทีหลัง
 async function announceStockInResultToGroup(text) {
+  return
+  // eslint-disable-next-line no-unreachable
   const groupId = await getGroupTarget()
   if (!groupId) return
   try { await pushMessage(groupId, [{ type: 'text', text }]) }
