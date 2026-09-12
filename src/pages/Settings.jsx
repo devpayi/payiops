@@ -65,6 +65,8 @@ function BossLineNotifyCard({ hrData, hrLoading, usersData, usersLoading, reload
         line_user_id: link?.line_user_id || '',
         notify_hr: link ? String(link.notify_hr) !== '0' : true,
         notify_stock: link ? String(link.notify_stock) !== '0' : true,
+        // notify_import ตรงข้ามด้าน default กับอีก 2 หมวด — ต้องติ๊กเปิดเองเท่านั้นถึงรับ (ฟีเจอร์ใหม่ owner ขอทดสอบก่อน)
+        notify_import: link ? String(link.notify_import) === '1' : false,
       }
     })
   }, [hrData, usersData])
@@ -72,7 +74,7 @@ function BossLineNotifyCard({ hrData, hrLoading, usersData, usersLoading, reload
   useEffect(() => {
     setDrafts((prev) => {
       const next = { ...prev }
-      for (const r of rows) if (!next[r.username]) next[r.username] = { line_user_id: r.line_user_id, notify_hr: r.notify_hr, notify_stock: r.notify_stock }
+      for (const r of rows) if (!next[r.username]) next[r.username] = { line_user_id: r.line_user_id, notify_hr: r.notify_hr, notify_stock: r.notify_stock, notify_import: r.notify_import }
       return next
     })
   }, [rows])
@@ -87,7 +89,7 @@ function BossLineNotifyCard({ hrData, hrLoading, usersData, usersLoading, reload
     try {
       const res = await fetch('/api/sheet-tools?op=hr', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'set-line-id-for', username: row.username, line_user_id: draft.line_user_id || '', notify_hr: draft.notify_hr, notify_stock: draft.notify_stock }),
+        body: JSON.stringify({ action: 'set-line-id-for', username: row.username, line_user_id: draft.line_user_id || '', notify_hr: draft.notify_hr, notify_stock: draft.notify_stock, notify_import: draft.notify_import }),
       })
       const d = await res.json()
       if (!d.success) throw new Error(d.error || 'บันทึกไม่สำเร็จ')
@@ -101,7 +103,7 @@ function BossLineNotifyCard({ hrData, hrLoading, usersData, usersLoading, reload
 
   const isDirty = (row) => {
     const d = drafts[row.username]
-    return d && (d.line_user_id !== row.line_user_id || d.notify_hr !== row.notify_hr || d.notify_stock !== row.notify_stock)
+    return d && (d.line_user_id !== row.line_user_id || d.notify_hr !== row.notify_hr || d.notify_stock !== row.notify_stock || d.notify_import !== row.notify_import)
   }
 
   return (
@@ -117,7 +119,7 @@ function BossLineNotifyCard({ hrData, hrLoading, usersData, usersLoading, reload
           )}
           {!rows.length && <div style={{ fontSize: 13, color: 'var(--payi-text-faint)' }}>ยังไม่มี user role boss/dev ในระบบ</div>}
           {rows.map((row) => {
-            const draft = drafts[row.username] || { line_user_id: row.line_user_id, notify_hr: true, notify_stock: true }
+            const draft = drafts[row.username] || { line_user_id: row.line_user_id, notify_hr: true, notify_stock: true, notify_import: false }
             const busy = busyUser === row.username
             return (
               <div key={row.username} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', borderRadius: 10, background: 'var(--payi-surface-muted)' }}>
@@ -137,6 +139,10 @@ function BossLineNotifyCard({ hrData, hrLoading, usersData, usersLoading, reload
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1 }}>
                     <input type="checkbox" checked={!!draft.notify_stock} disabled={busy} onChange={(e) => patchDraft(row.username, { notify_stock: e.target.checked })} />
                     ของใกล้หมด
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1 }}>
+                    <input type="checkbox" checked={!!draft.notify_import} disabled={busy} onChange={(e) => patchDraft(row.username, { notify_import: e.target.checked })} />
+                    ใบชมพูครบ 5
                   </label>
                 </div>
                 <button

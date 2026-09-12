@@ -57,7 +57,9 @@ const LEAVE_EDIT_HEADERS = ['leave_id', 'mode', 'before_json', 'after_json', 'ch
 const SCHEDULE_HEADERS = ['id', 'date', 'username', 'employee_name', 'shift_start', 'shift_end', 'role_note', 'created_at', 'created_by']
 // notify_hr/notify_stock: '1'/'' = รับ (default), '0' = ปิด — แยกเปิด/ปิดแจ้งเตือนแต่ละหมวดได้ต่อคน
 // (บอสลาไม่เกี่ยวกับบอสสต็อก คนละคนกัน ไม่อยากให้ได้แจ้งเตือนของอีกฝั่ง)
-const LINE_LINK_HEADERS = ['username', 'line_user_id', 'updated_at', 'notify_hr', 'notify_stock']
+// notify_import: ตรงข้าม default ปิด ('1' เท่านั้นถึงรับ) — ฟีเจอร์ใหม่ "ใบชมพูครบ 5" owner ขอทดสอบ
+// กับไลน์ dev ก่อน (2026-09-12) คนอื่นที่ยังไม่เคยตั้งค่า (คอลัมน์ว่าง) ต้องไม่ได้รับอัตโนมัติ
+const LINE_LINK_HEADERS = ['username', 'line_user_id', 'updated_at', 'notify_hr', 'notify_stock', 'notify_import']
 const LINE_SESSION_HEADERS = ['line_user_id', 'step', 'leave_type', 'date', 'date2', 'backup_office', 'updated_at', 'leave_period', 'backup_assignments', 'backup_needs', 'backup_cursor', 'edit_leave_id']
 // โควตาวันลาพักร้อนต่อคนต่อปี — แยกชีตต่างหาก (ไม่ยุ่งกับ workforce_people) เพราะครอบคุมทั้งบ้านล่างและออฟฟิศ แก้ค่าตรงในชีตได้เลย ไม่ต้องแก้โค้ด
 const QUOTA_HEADERS = ['code', 'quota', 'updated_at']
@@ -2760,10 +2762,11 @@ async function opHrInner(req, res) {
     const now = new Date().toISOString()
     const kept = current.filter((r) => r.username !== username).map((r) => LINE_LINK_HEADERS.map((h) => r[h] ?? ''))
     // notify_hr/notify_stock: ใช้ค่าที่ส่งมาถ้ามี ไม่งั้นสืบต่อจากของเดิม (แก้แค่ userId ไม่ควรรีเซ็ตค่าที่ตั้งไว้) —
-    // ยังไม่เคยมีแถวเดิมเลย (ผูกครั้งแรก) default เปิดทั้งคู่
+    // ยังไม่เคยมีแถวเดิมเลย (ผูกครั้งแรก) default เปิดทั้งคู่ / notify_import default ปิด (opt-in)
     const notifyHr = body.notify_hr !== undefined ? (body.notify_hr ? '1' : '0') : (existing?.notify_hr ?? '1')
     const notifyStock = body.notify_stock !== undefined ? (body.notify_stock ? '1' : '0') : (existing?.notify_stock ?? '1')
-    const rows = lineUserId ? [...kept, LINE_LINK_HEADERS.map((h) => ({ username, line_user_id: lineUserId, updated_at: now, notify_hr: notifyHr, notify_stock: notifyStock })[h] ?? '')] : kept
+    const notifyImport = body.notify_import !== undefined ? (body.notify_import ? '1' : '0') : (existing?.notify_import ?? '0')
+    const rows = lineUserId ? [...kept, LINE_LINK_HEADERS.map((h) => ({ username, line_user_id: lineUserId, updated_at: now, notify_hr: notifyHr, notify_stock: notifyStock, notify_import: notifyImport })[h] ?? '')] : kept
     await overwriteSheet('hr_line_links', LINE_LINK_HEADERS, rows)
     clearHrCache()
     // ผูกเมนู richmenu ให้ตรง tier ทันทีที่ผูก/เปลี่ยน LINE user id — mp:<code> (พนักงานทั่วไปไม่มี login)
@@ -2786,7 +2789,7 @@ async function opHrInner(req, res) {
     if (idx === -1) return res.status(400).json({ success: false, error: 'คนนี้ยังไม่ได้ผูก LINE' })
     const now = new Date().toISOString()
     const rows = current.map((r, i) => LINE_LINK_HEADERS.map((h) => (i === idx
-      ? { ...r, notify_hr: body.notify_hr ? '1' : '0', notify_stock: body.notify_stock ? '1' : '0', updated_at: now }
+      ? { ...r, notify_hr: body.notify_hr ? '1' : '0', notify_stock: body.notify_stock ? '1' : '0', notify_import: body.notify_import ? '1' : (r.notify_import ?? '0'), updated_at: now }
       : r)[h] ?? ''))
     await overwriteSheet('hr_line_links', LINE_LINK_HEADERS, rows)
     clearHrCache()

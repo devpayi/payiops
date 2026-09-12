@@ -10,6 +10,7 @@
 // เวอร์ชันก่อน ๆ ใช้ `import_tracking` แล้ว `import_lots`/`import_lot_items` — sheet เก่าไม่ถูกอ่านแล้ว
 import { getSheet, overwriteSheet, ensureSheet, getExternalSheet } from './sheets.js'
 import { isoDate } from './dates.js'
+import { pushMessage } from './line.js'
 
 // ── ชีท LK (Lively Kingdom Import) — ดึง carton/น้ำหนัก/ขนาด ตามเลข SHIPPING บนใบชมพู ──
 /* global process */
@@ -78,6 +79,11 @@ const IMAGES = 'product_images'
 const IMAGE_HEADERS = ['sku', 'image', 'updated_at']
 const MAX_IMAGE_CHARS = 45000
 
+// จำว่าเพิ่งแจ้งเตือน "ใบชมพูครบ 5" ไปหรือยัง (กันส่งซ้ำทุกครั้งที่จำนวนยังค้างอยู่ >= 5) — 1 แถวเดียว
+// รีเซ็ตเป็นยังไม่แจ้งทันทีที่จำนวนตกลงต่ำกว่า 5 อีกครั้ง (จัดลอตไปแล้ว) พร้อมแจ้งรอบใหม่ได้
+const NOTIFY_STATE = 'import_notify_state'
+const NOTIFY_STATE_HEADERS = ['id', 'notified', 'updated_at']
+
 // ต่อท้ายเท่านั้น (ห้ามแทรกกลาง)
 const ARRIVAL_HEADERS = [
   'id', 'sku', 'item_name', 'codename',
@@ -130,6 +136,7 @@ const ensureAll = () => (ensurePromise ||= Promise.all([
   ensureSheet(LOTS, LOT_HEADERS),
   ensureSheet(ALIAS, ALIAS_HEADERS),
   ensureSheet(IMAGES, IMAGE_HEADERS),
+  ensureSheet(NOTIFY_STATE, NOTIFY_STATE_HEADERS),
 ]))
 
 async function loadProductImages() {
@@ -268,6 +275,59 @@ async function loadAll() {
   return { arrivals, unassigned, lots, totals, stages: STAGES }
 }
 
+// URL เปิดหน้า "ติดตามนำเข้า" ตรงๆ จากปุ่มในการ์ดไลน์ — ต้องตั้ง APP_BASE_URL ใน env (เช่น
+// https://payiops.vercel.app) ไม่งั้นการ์ดจะไม่มีปุ่ม (ยังส่งข้อความได้ปกติ)
+const APP_BASE_URL = String(process.env.APP_BASE_URL || '').replace(/\/$/, '')
+const importTrackingWebUrl = () => `${APP_BASE_URL}/?tab=${encodeURIComponent('Import Tracking')}`
+
+// ── แจ้งเตือน LINE 1:1 เมื่อใบชมพูครบ 5 พร้อมจัดลอต ──
+// ผู้รับ = คนที่เปิดรับ "ใบชมพูครบ 5" ไว้ (notify_import='1' ใน hr_line_links, ตั้งค่าที่หน้า Settings
+// การ์ด "แจ้งเตือน LINE ของบอส/dev") — opt-in ล้วน ค่าเริ่มต้น (คอลัมน์ว่าง) = ปิด ต่างจาก notify_hr/
+// notify_stock ที่ default เปิด เพราะฟีเจอร์นี้ owner ขอทดสอบกับไลน์ dev ก่อน (2026-09-12)
+async function getImportLineTargets() {
+  const links = await getSheet('hr_line_links')
+  return links.filter((l) => l.username && l.line_user_id && String(l.notify_import) === '1').map((l) => l.line_user_id)
+}
+
+async function checkLotReadyNotify() {
+  try {
+    const rows = await getSheet(ARRIVALS)
+    const ready = rows.filter((r) => r.id && !r.lot_id && bool(r.pink_slip))
+    const [state] = await getSheet(NOTIFY_STATE)
+    const wasNotified = state && String(state.notified) === '1'
+    if (ready.length >= LOT_TARGET) {
+      if (wasNotified) return
+      const targets = await getImportLineTargets()
+      if (targets.length) {
+        const names = [...new Set(ready.map((r) => r.item_name).filter(Boolean))].slice(0, 8)
+        const url = APP_BASE_URL ? importTrackingWebUrl() : ''
+        // โทนชมพูอ่อนๆ น่ารักๆ เข้าธีมชื่อฟีเจอร์ "ใบชมพู" (owner ขอ 2026-09-12)
+        const PINK = { bg: '#FFF0F5', soft: '#FFD9E8', text: '#B8305A', button: '#F582AB' }
+        const bubble = {
+          type: 'bubble',
+          body: {
+            type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'xs', backgroundColor: PINK.bg,
+            contents: [
+              { type: 'text', text: `🌸 ใบชมพูครบ ${ready.length} รายการแล้ว`, weight: 'bold', size: 'md', wrap: true, color: PINK.text },
+              { type: 'text', text: 'พร้อมจัดลอตน้า~', size: 'sm', color: PINK.text, margin: 'xs' },
+              { type: 'separator', margin: 'md', color: PINK.soft },
+              ...names.map((n) => ({ type: 'text', text: `• ${n}`, size: 'sm', wrap: true, margin: 'sm', color: '#7A4A5A' })),
+            ],
+          },
+          ...(url ? { footer: { type: 'box', layout: 'vertical', paddingAll: '12px', backgroundColor: PINK.bg, contents: [
+            { type: 'button', style: 'primary', height: 'sm', color: PINK.button, action: { type: 'uri', label: 'เปิดหน้าติดตามนำเข้า', uri: url } },
+          ] } } : {}),
+        }
+        const messages = [{ type: 'flex', altText: `📦 ใบชมพูครบ ${ready.length} รายการ พร้อมจัดลอต`, contents: bubble }]
+        await Promise.all(targets.map((to) => pushMessage(to, messages).catch(() => {})))
+      }
+      await overwriteSheet(NOTIFY_STATE, NOTIFY_STATE_HEADERS, [['ready', '1', new Date().toISOString()]])
+    } else if (wasNotified) {
+      await overwriteSheet(NOTIFY_STATE, NOTIFY_STATE_HEADERS, [['ready', '', new Date().toISOString()]])
+    }
+  } catch (e) { console.error('lot-ready-notify:', e.message) } // ไม่ให้ล้มทั้ง request เพราะแจ้งเตือนพัง
+}
+
 // ---------- writes ----------
 
 async function upsertArrival(body) {
@@ -308,6 +368,7 @@ async function upsertArrival(body) {
     outId = id
   }
   await overwriteSheet(ARRIVALS, ARRIVAL_HEADERS, rows.map((r) => ARRIVAL_HEADERS.map((h) => r[h] ?? '')))
+  if (body.pink_slip !== undefined) await checkLotReadyNotify()
   return { id: outId }
 }
 
@@ -356,6 +417,7 @@ export async function createArrivalsFromShipping(shippingNos, dateHint, nameHint
   }
   if (added.length) {
     await overwriteSheet(ARRIVALS, ARRIVAL_HEADERS, rows.map((r) => ARRIVAL_HEADERS.map((h) => r[h] ?? '')))
+    await checkLotReadyNotify()
   }
   return { added, total: (shippingNos || []).length }
 }
@@ -408,6 +470,7 @@ async function assignArrivals(arrivalIds, lotId) {
   }
   if (!hit) throw new Error('ไม่พบรายการของเข้า')
   await overwriteSheet(ARRIVALS, ARRIVAL_HEADERS, rows.map((r) => ARRIVAL_HEADERS.map((h) => r[h] ?? '')))
+  await checkLotReadyNotify() // จัดลอตไปแล้วอาจตกลงต่ำกว่า 5 — รีเซ็ตธงไว้แจ้งรอบใหม่ได้
   return { assigned: hit, lot_id: lotId || '' }
 }
 
