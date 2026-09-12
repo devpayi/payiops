@@ -37,6 +37,14 @@ function cleanFamilyName(nameTh, nameEn) {
       s = words.join(' ')
     } else break
   }
+  // ตัดคำสี/รุ่นย่อยที่ติดกับชื่อโดยไม่มีช่องว่างคั่น เช่น "ถุงเท้าสปาสีเขียว" (ไม่มี space ก่อน "สีเขียว"
+  // ทำให้ split ด้านบนหาไม่เจอ) — ลองตัด suffix ที่ตรงกับคำในลิสต์ยาวสุดก่อน กันเหลือ "สี" ค้าง
+  const suffixWords = [...FAMILY_COLOR_WORDS, ...FAMILY_VARIANT_WORDS].sort((a, b) => b.length - a.length)
+  for (let i = 0; i < 3; i++) {
+    const hit = suffixWords.find((w) => s.length > w.length && s.endsWith(w))
+    if (!hit) break
+    s = s.slice(0, s.length - hit.length)
+  }
   s = s.replace(/\s{2,}/g, ' ').trim()
   return s || nameEn || ''
 }
