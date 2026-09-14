@@ -33,7 +33,9 @@ const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_b
 // ผ่าน packaging_recipes (ดูด้านล่าง)
 // shipping_no: เลขใบชมพูจากการนำเข้าจีน (LK) — ไม่บังคับ กรอกได้ตอนแจ้งของเข้าทางไลน์เท่านั้น
 // (ดู STOCK_IN_SESSION_HEADERS ใน sheet-tools.js) ไล่ตามมาถึงแถว movement จริงตอน match (owner ขอ 2026-09-14)
-const MOVEMENTS_HEADERS = ['id', 'date', 'sku', 'type', 'qty', 'note', 'shipping_no', 'created_by', 'created_at', 'updated_by', 'updated_at']
+// ⚠️ ต่อท้ายสุดเท่านั้น — ชีทจริงอ่าน/เขียนแบบ positional (คอลัมน์ตามตำแหน่ง ไม่ใช่ตามชื่อ) แทรกกลางจะทำ
+// ให้แถวเก่าที่มีอยู่แล้วเลื่อนคอลัมน์ผิดทั้งหมด (บั๊กจริงที่เจอ 2026-09-14: created_by/created_at เลื่อนตำแหน่ง)
+const MOVEMENTS_HEADERS = ['id', 'date', 'sku', 'type', 'qty', 'note', 'created_by', 'created_at', 'updated_by', 'updated_at', 'shipping_no']
 const MOVEMENT_TYPES = new Set(['in', 'out', 'adjust'])
 // ประวัติแก้ไขรายการเข้า-ออก — append-only เก็บ before/after ทั้งแถว (เหมือน pattern workforce_ot_history)
 const MOVEMENTS_HISTORY_SHEET = 'stock_movements_history'
