@@ -621,6 +621,7 @@ async function updateMovement(body, actorName) {
     date: isoDate(body.date) || before.date,
     type, qty,
     note: body.note !== undefined ? body.note : before.note,
+    shipping_no: body.shipping_no !== undefined ? String(body.shipping_no || '').trim() : before.shipping_no,
     updated_by: actorName || '',
     updated_at: now,
   }
@@ -890,6 +891,7 @@ export async function editStockInRequest(body, actorName, role) {
     count_date: body.count_date !== undefined ? (isoDate(body.count_date) || '') : requests[idx].count_date,
     order_date: body.order_date !== undefined ? (isoDate(body.order_date) || requests[idx].order_date) : requests[idx].order_date,
     note: body.note !== undefined ? body.note : requests[idx].note,
+    shipping_no: body.shipping_no !== undefined ? String(body.shipping_no || '').trim() : requests[idx].shipping_no,
     status: 'pending',
     created_by: actorName || requests[idx].created_by,
     matched_by: '',

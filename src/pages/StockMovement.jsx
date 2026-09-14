@@ -889,11 +889,12 @@ function StockInRequestModal({ items, saving, initial, onClose, onSave }) {
   const [arrivalDate, setArrivalDate] = useState(initial?.arrival_date || (() => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }))())
   const [countDate, setCountDate] = useState(initial?.count_date || '')
   const [note, setNote] = useState(initial?.note || '')
+  const [shippingNo, setShippingNo] = useState(initial?.shipping_no || '')
 
   const submit = (e) => {
     e.preventDefault()
     if (!sku || !qty || Number(qty) <= 0) return
-    onSave({ sku, qty, arrival_date: arrivalDate, count_date: countDate, note })
+    onSave({ sku, qty, arrival_date: arrivalDate, count_date: countDate, note, shipping_no: shippingNo })
   }
 
   return (
@@ -928,6 +929,10 @@ function StockInRequestModal({ items, saving, initial, onClose, onSave }) {
               <label style={labelStyle}>วันนับ</label>
               <input type="date" value={countDate} onChange={(e) => setCountDate(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
             </div>
+          </div>
+          <div>
+            <label style={labelStyle}>เลขใบชมพู (ถ้าเป็นของนำเข้า)</label>
+            <input value={shippingNo} onChange={(e) => setShippingNo(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="ไม่บังคับ" />
           </div>
           <div>
             <label style={labelStyle}>หมายเหตุ</label>
@@ -1113,11 +1118,12 @@ function AddMovementModal({ items, saving, initial, onClose, onSave }) {
   const [qty, setQty] = useState(initial ? String(initial.type === 'adjust' ? initial.qty : Math.abs(initial.qty)) : '')
   const [date, setDate] = useState(initial?.date || (() => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }))())
   const [note, setNote] = useState(initial?.note || '')
+  const [shippingNo, setShippingNo] = useState(initial?.shipping_no || '')
 
   const submit = (e) => {
     e.preventDefault()
     if (!sku || !qty || Number(qty) === 0) return
-    onSave({ sku, type, qty, date, note })
+    onSave({ sku, type, qty, date, note, shipping_no: shippingNo })
   }
 
   return (
@@ -1163,6 +1169,12 @@ function AddMovementModal({ items, saving, initial, onClose, onSave }) {
             <label style={labelStyle}>วันที่</label>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
           </div>
+          {type === 'in' && (
+            <div>
+              <label style={labelStyle}>เลขใบชมพู (ถ้าเป็นของนำเข้า)</label>
+              <input value={shippingNo} onChange={(e) => setShippingNo(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="ไม่บังคับ" />
+            </div>
+          )}
           <div>
             <label style={labelStyle}>หมายเหตุ</label>
             <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="ไม่บังคับ" />
