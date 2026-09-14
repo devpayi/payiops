@@ -1065,7 +1065,7 @@ async function handleStockInStart(event, initialQuery = '') {
     await handleStockInSearchReply(event, initialQuery)
     return true
   }
-  await replyMessage(replyToken, [{ type: 'text', text: 'ของเข้าอะไรคะ? พิมพ์ชื่อสินค้าหรือ SKU ได้เลย (แจ้งได้หลายรายการต่อเนื่องกัน ระบบจะถามทีละรายการให้เอง)' }])
+  await replyMessage(replyToken, [{ type: 'text', text: 'ของเข้าอะไรคะ? พิมพ์ชื่อสินค้าหรือ SKU ได้เลย (ถ้าเป็นของนำเข้า พิมพ์เลขใบชมพูแทนได้เลย ระบบจะหาสินค้าให้เอง) — แจ้งได้หลายรายการต่อเนื่องกัน ระบบจะถามทีละรายการให้เอง' }])
   return true
 }
 
@@ -1076,6 +1076,23 @@ async function handleStockInSearchReply(event, queryOverride = '') {
   const rawText = String(queryOverride || event.message?.text || '')
   const query = rawText.trim().toLowerCase()
   if (!query) return replyMessage(replyToken, [{ type: 'text', text: 'พิมพ์ชื่อสินค้าหรือ SKU ได้เลยค่ะ (แจ้งหลายรายการทีเดียวก็ได้ บรรทัดละ 1 รายการ เช่น sky 35-36 = 10 หรือ 37-38 20)' }])
+
+  // พิมพ์เป็นตัวเลขล้วน 6-9 หลัก = เดาว่าเป็นเลขใบชมพู (ของนำเข้าจีน) — เช็คกับ import_arrivals
+  // ก่อนเลย ถ้าเจอและจับคู่ sku ไว้แล้ว (ผ่าน alias ใน ImportTracking) ข้ามการพิมพ์ชื่อสินค้าไปเลย
+  // เหลือแค่ถามจำนวน ไม่เจอ/ยังไม่มี sku ก็ตกไปค้นหาแบบชื่อสินค้าปกติด้านล่าง (owner ขอ 2026-09-14)
+  if (/^\d{6,9}$/.test(query)) {
+    const arrival = (await getSheet('import_arrivals')).find((r) => String(r.shipping_no || '').trim() === query)
+    if (arrival?.sku) {
+      const items = await loadOrderableItems()
+      const item = items.find((it) => String(it.sku).toUpperCase() === String(arrival.sku).toUpperCase())
+      if (item) {
+        const hint = arrival.qty ? `\nใบชมพูแจ้งไว้ ${arrival.qty} ${item.unit || 'ชิ้น'}` : ''
+        await upsertStockInSession(lineUserId, { step: 'await_item_qty', sku: item.sku, qty: '', shipping_no: query })
+        return replyMessage(replyToken, [{ type: 'text', text: `เจอเลขใบชมพูนี้ค่ะ — "${item.display_name}"\nเข้ากี่${item.unit || 'ชิ้น'}คะ? พิมพ์ตัวเลขได้เลย${hint}\nคงเหลือตอนนี้ ${item.balance} ${item.unit || 'ชิ้น'}` }])
+      }
+    }
+    return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบเลขใบชมพูนี้ในระบบนำเข้า (หรือยังไม่จับคู่สินค้า) ลองพิมพ์ชื่อสินค้าแทนได้เลยค่ะ' }])
+  }
 
   const items = await loadOrderableItems()
   const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
@@ -1472,6 +1489,8 @@ async function handleStockInDatePostback(event, choice) {
     }])
   }
   if (isEdit) return finishStockInEdit(replyToken, lineUserId, session.edit_target_id, { arrival_date: session.arrival_date, count_date: selectedDate })
+  // มีเลขใบชมพูอยู่แล้ว (พิมพ์ตอนค้นหาสินค้าตอนแรก จับคู่กับ import_arrivals ได้เลย) — ไม่ต้องถามซ้ำ ปิดตะกร้าได้เลย
+  if (session.shipping_no) return completeStockInBatch(replyToken, lineUserId, session, session.arrival_date, selectedDate)
   // ขั้นตอนเสริม (ไม่บังคับ): เลขใบชมพู (นำเข้าจีน) ถ้าของล็อตนี้เป็นของนำเข้า — พิมพ์เลขหรือกด "ข้าม"
   // (owner ขอ 2026-09-14) เก็บไว้ที่ session ก่อน ยังไม่ปิดตะกร้าจนกว่าจะตอบขั้นนี้
   await upsertStockInSession(lineUserId, { step: 'await_shipping_no', count_date: selectedDate })
