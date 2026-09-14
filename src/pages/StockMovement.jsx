@@ -519,10 +519,10 @@ export default function StockMovement() {
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {pendingRequests.map((r) => (
                   <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 4px', borderBottom: '1px solid var(--payi-border)', fontSize: 12.5 }}>
-                    <div style={{ minWidth: 0, flex: '1 1 auto', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }} title={`${r.display_name} +${fmt(r.qty)} · เข้า ${r.arrival_date || '-'} · นับ ${r.count_date || '-'} · แจ้งโดย ${r.created_by || '-'}${r.note ? ` · ${r.note}` : ''}`}>
+                    <div style={{ minWidth: 0, flex: '1 1 auto', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }} title={`${r.display_name} +${fmt(r.qty)} · เข้า ${r.arrival_date || '-'} · นับ ${r.count_date || '-'} · แจ้งโดย ${r.created_by || '-'}${r.shipping_no ? ` · ใบชมพู ${r.shipping_no}` : ''}${r.note ? ` · ${r.note}` : ''}`}>
                       <span style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name}</span>{' '}
                       <span style={{ fontWeight: 800, color: 'var(--payi-mint-strong)' }}>+{fmt(r.qty)}</span>{' '}
-                      <span style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>· เข้า {r.arrival_date || '-'} · แจ้งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</span>
+                      <span style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>· เข้า {r.arrival_date || '-'} · แจ้งโดย {r.created_by || '-'}{r.shipping_no ? ` · ใบชมพู ${r.shipping_no}` : ''}{r.note ? ` · ${r.note}` : ''}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                       <button onClick={() => setMatching(r)} title="Match" style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'linear-gradient(135deg, #2563eb 0%, #34d399 100%)', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 9px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}>
@@ -546,10 +546,10 @@ export default function StockMovement() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {pendingRequests.map((r) => (
-              <div key={r.id} style={{ padding: '7px 4px', borderBottom: '1px solid var(--payi-border)', fontSize: 12.5, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }} title={`${r.display_name} +${fmt(r.qty)} · เข้า ${r.arrival_date || '-'} · นับ ${r.count_date || '-'} · แจ้งโดย ${r.created_by || '-'}${r.note ? ` · ${r.note}` : ''}`}>
+              <div key={r.id} style={{ padding: '7px 4px', borderBottom: '1px solid var(--payi-border)', fontSize: 12.5, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }} title={`${r.display_name} +${fmt(r.qty)} · เข้า ${r.arrival_date || '-'} · นับ ${r.count_date || '-'} · แจ้งโดย ${r.created_by || '-'}${r.shipping_no ? ` · ใบชมพู ${r.shipping_no}` : ''}${r.note ? ` · ${r.note}` : ''}`}>
                 <span style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name}</span>{' '}
                 <span style={{ fontWeight: 800, color: 'var(--payi-mint-strong)' }}>+{fmt(r.qty)}</span>{' '}
-                <span style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>· เข้า {r.arrival_date || '-'} · แจ้งโดย {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</span>
+                <span style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>· เข้า {r.arrival_date || '-'} · แจ้งโดย {r.created_by || '-'}{r.shipping_no ? ` · ใบชมพู ${r.shipping_no}` : ''}{r.note ? ` · ${r.note}` : ''}</span>
               </div>
             ))}
           </div>
@@ -632,6 +632,7 @@ export default function StockMovement() {
                   {expanded ? (
                     <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--payi-border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <div style={{ fontSize: 12.5, color: 'var(--payi-text-muted)' }}>ผู้ทำรายการ: {m.created_by || '-'}</div>
+                      {m.shipping_no && <div style={{ fontSize: 12.5, color: 'var(--payi-text-muted)' }}>ใบชมพู: {m.shipping_no}</div>}
                       <div style={{ fontSize: 12.5, color: 'var(--payi-text-muted)' }}>หมายเหตุ: {m.note || '-'}</div>
                       {m.updated_at && <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }} title={fmtDateTime(m.updated_at)}>แก้ไขล่าสุดโดย {m.updated_by || '-'}</div>}
                       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
@@ -656,12 +657,13 @@ export default function StockMovement() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
               <colgroup>
-                <col style={{ width: '14%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '9%' }} />
+                <col style={{ width: '18%' }} />
                 <col style={{ width: '10%' }} />
-                <col style={{ width: '20%' }} />
+                <col style={{ width: '10%' }} />
                 <col style={{ width: '11%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '27%' }} />
+                <col style={{ width: '23%' }} />
                 <col style={{ width: '6%' }} />
               </colgroup>
               <thead>
@@ -669,6 +671,7 @@ export default function StockMovement() {
                   <th style={{ padding: '8px 10px' }}>วันที่</th>
                   <th style={{ padding: '8px 10px' }}>ประเภท</th>
                   <th style={{ padding: '8px 10px' }}>สินค้า</th>
+                  <th style={{ padding: '8px 10px' }}>ใบชมพู</th>
                   <th style={{ padding: '8px 10px', textAlign: 'right' }}>จำนวน</th>
                   <th style={{ padding: '8px 10px' }}>ผู้ทำรายการ</th>
                   <th style={{ padding: '8px 10px' }}>หมายเหตุ</th>
@@ -684,6 +687,7 @@ export default function StockMovement() {
                       <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.display_name}>{m.display_name}</div>
                       <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{m.sku}</div>
                     </td>
+                    <td style={{ padding: '10px', color: 'var(--payi-text-muted)', fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>{m.shipping_no || '—'}</td>
                     <td style={{ padding: '10px', textAlign: 'right', fontWeight: 800, whiteSpace: 'nowrap', color: m.qty < 0 ? 'var(--payi-danger)' : '#16a34a' }}>
                       {m.qty > 0 ? '+' : ''}{fmt(m.qty)}
                     </td>

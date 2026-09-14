@@ -31,7 +31,9 @@ const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_b
 // เดิมอยู่ในชีท Excel "Something" แยกต่างหาก ไม่มี dailyAverage จากยอดขายลูกค้าเหมือนสินค้าจริง เพราะใช้ตามการผลิตไม่ใช่ตามออเดอร์
 // units_per_batch: เฉพาะ category=packaging — 1 แผ่น/แพ็คมีกี่ชิ้น ไว้แปลงยอดใช้ (ชิ้น) เป็นจุดสั่งซื้อ (แผ่น/แพ็ค)
 // ผ่าน packaging_recipes (ดูด้านล่าง)
-const MOVEMENTS_HEADERS = ['id', 'date', 'sku', 'type', 'qty', 'note', 'created_by', 'created_at', 'updated_by', 'updated_at']
+// shipping_no: เลขใบชมพูจากการนำเข้าจีน (LK) — ไม่บังคับ กรอกได้ตอนแจ้งของเข้าทางไลน์เท่านั้น
+// (ดู STOCK_IN_SESSION_HEADERS ใน sheet-tools.js) ไล่ตามมาถึงแถว movement จริงตอน match (owner ขอ 2026-09-14)
+const MOVEMENTS_HEADERS = ['id', 'date', 'sku', 'type', 'qty', 'note', 'shipping_no', 'created_by', 'created_at', 'updated_by', 'updated_at']
 const MOVEMENT_TYPES = new Set(['in', 'out', 'adjust'])
 // ประวัติแก้ไขรายการเข้า-ออก — append-only เก็บ before/after ทั้งแถว (เหมือน pattern workforce_ot_history)
 const MOVEMENTS_HISTORY_SHEET = 'stock_movements_history'
@@ -52,7 +54,8 @@ const STOCK_IN_REQUESTS_SHEET = 'stock_in_requests'
 // (owner ขอ 2026-08-12: สั่งไปแล้ว 15 วันไม่มีของเข้า อยากให้เด้งถามว่า "รอต่อ/เตือนอีกที 10 วัน/ยกเลิก"
 // ป้องกันเคสลอตค้างเงียบๆ แบบ PY043 ที่เจอมาก่อน) next_reminder_at ว่าง = ยังไม่เคยตั้ง คำนวณ due date
 // สดจาก order_date/created_at + 15 วันแทน (ดู computeOverdueOrders) — ตั้งจริงเฉพาะตอน snooze/mute
-const STOCK_IN_REQUESTS_HEADERS = ['id', 'sku', 'arrival_date', 'count_date', 'qty', 'note', 'status', 'created_by', 'created_at', 'matched_by', 'matched_at', 'movement_id', 'reject_reason', 'linked_order_id', 'order_date', 'next_reminder_at', 'reminder_muted']
+// shipping_no: ต่อท้ายล่าสุด — เลขใบชมพูจากการนำเข้าจีน กรอกได้ตอนแจ้งของเข้าทางไลน์ (ไม่บังคับ)
+const STOCK_IN_REQUESTS_HEADERS = ['id', 'sku', 'arrival_date', 'count_date', 'qty', 'note', 'status', 'created_by', 'created_at', 'matched_by', 'matched_at', 'movement_id', 'reject_reason', 'linked_order_id', 'order_date', 'next_reminder_at', 'reminder_muted', 'shipping_no']
 const STOCK_IN_STATUSES = new Set(['pending', 'matched', 'rejected', 'done', 'cancelled'])
 const ORDER_REMINDER_DAYS = 15
 const addDaysIso = (iso, days) => {
@@ -268,6 +271,7 @@ async function loadMovements({ type, q, from, to }) {
     type: m.type,
     qty: num(m.qty),
     note: m.note || '',
+    shipping_no: m.shipping_no || '',
     created_by: m.created_by || '',
     created_at: m.created_at || '',
     updated_by: m.updated_by || '',
@@ -572,6 +576,7 @@ async function addMovement(body, actorName) {
     type,
     qty,
     note: body.note || '',
+    shipping_no: String(body.shipping_no || '').trim(),
     created_by: actorName || '',
     created_at: now,
   }
@@ -673,6 +678,7 @@ export async function loadStockInRequests({ status, role } = {}) {
     linked_order_id: r.linked_order_id || '',
     order_date: isoDate(r.order_date),
     order_only: !isoDate(r.arrival_date),
+    shipping_no: r.shipping_no || '',
   }))
 
   // FIFO เทียบลอต: ต่อ sku เดียวกัน เรียง "สั่งของ" (order_only) ที่ยัง pending ตาม created_at ก่อนหลัง
@@ -730,6 +736,7 @@ export async function addStockInRequest(body, actorName) {
     status: 'pending',
     created_by: actorName || '',
     created_at: now,
+    shipping_no: String(body.shipping_no || '').trim(),
   }
   await appendRows(STOCK_IN_REQUESTS_SHEET, [STOCK_IN_REQUESTS_HEADERS.map((h) => row[h] ?? '')])
   return row
@@ -780,6 +787,7 @@ export async function matchStockInRequest(body, actorName, role) {
     qty,
     date: req.count_date || req.arrival_date,
     note: body.note || defaultNote,
+    shipping_no: req.shipping_no || '',
   }, actorName)
 
   const now = new Date().toISOString()

@@ -311,7 +311,8 @@ const STOCK_ORDER_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'orde
 // แยกชีต/session จาก stock_order_sessions เพื่อกันคนที่กำลังสั่งของค้างอยู่แล้วมาแจ้งของเข้าพร้อมกัน
 // (หรือกลับกัน) ไม่ให้ session ของทั้งสอง flow ทับกัน
 const STOCK_IN_SESSION_SHEET = 'stock_in_sessions'
-const STOCK_IN_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'arrival_date', 'count_date', 'updated_at', 'items_json', 'pending_json', 'edit_target_id']
+// shipping_no: เลขใบชมพู (นำเข้าจีน) ที่ฟ้าพิมพ์เองตอนแจ้งของเข้าทางไลน์ — ไม่บังคับ กด "ข้าม" ได้ (owner ขอ 2026-09-14)
+const STOCK_IN_SESSION_HEADERS = ['line_user_id', 'step', 'sku', 'qty', 'arrival_date', 'count_date', 'updated_at', 'items_json', 'pending_json', 'edit_target_id', 'shipping_no']
 // เก็บ groupId ของกลุ่มไลน์ทีมงาน (แถวเดียว) — ลงทะเบียนอัตโนมัติทันทีที่มีข้อความจากกลุ่มเข้ามา ไม่ต้อง
 // ตั้งค่าเอง แค่เพิ่มบอทเข้ากลุ่มแล้วมีคนพิมพ์อะไรสักครั้ง ใช้ push การ์ด "แจ้งของเข้า" ให้ทั้งทีมเห็นพร้อมกัน
 const LINE_GROUP_LINK_SHEET = 'line_group_link'
@@ -1361,7 +1362,7 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
   const failed = []
   for (const it of items) {
     try {
-      const request = await addStockInRequest({ sku: it.sku, qty: it.qty, arrival_date: arrivalDate, count_date: countDate, note: 'แจ้งจาก LINE' }, reporter.name)
+      const request = await addStockInRequest({ sku: it.sku, qty: it.qty, arrival_date: arrivalDate, count_date: countDate, note: 'แจ้งจาก LINE', shipping_no: session.shipping_no || '' }, reporter.name)
       done.push({ ...it, request })
     } catch (e) { failed.push(`${it.display_name}: ${e.message}`) }
   }
@@ -1410,7 +1411,7 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
     type: 'flex', altText: `แจ้งของเข้า ${done.length} รายการ`,
     contents: {
       type: 'bubble', size: 'giga',
-      header: stockCardHeader('แจ้งของเข้าแล้ว', `${done.length} รายการ · เข้า ${arrivalDate} · นับ ${countDate} · โดย ${reporter.name}`, '📦'),
+      header: stockCardHeader('แจ้งของเข้าแล้ว', `${done.length} รายการ · เข้า ${arrivalDate} · นับ ${countDate} · โดย ${reporter.name}${session.shipping_no ? ` · ใบชมพู ${session.shipping_no}` : ''}`, '📦'),
       body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: STOCK_CARD.soft, contents: [
         { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: STOCK_CARD.base, contents: itemRows.length ? itemRows : [stockFlexText('ไม่มีรายการสำเร็จ', {})] },
         ...dirtyNote,
@@ -1432,7 +1433,7 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
     const idsJoined = done.map((it) => it.request.id).join(',')
     const fallback = {
       type: 'text',
-      text: `📦 แจ้งของเข้าแล้ว ${done.length} รายการ · เข้า ${arrivalDate} · นับ ${countDate} · โดย ${reporter.name}\n` +
+      text: `📦 แจ้งของเข้าแล้ว ${done.length} รายการ · เข้า ${arrivalDate} · นับ ${countDate} · โดย ${reporter.name}${session.shipping_no ? ` · ใบชมพู ${session.shipping_no}` : ''}\n` +
         done.map((it) => `• ${it.display_name} × ${it.qty} ${it.unit}`).join('\n'),
       quickReply: { items: [
         { type: 'action', action: { type: 'postback', label: 'ปฏิเสธทั้งหมด', data: `stockin-reject:${idsJoined}`, displayText: 'ปฏิเสธของเข้า' } },
@@ -1471,7 +1472,31 @@ async function handleStockInDatePostback(event, choice) {
     }])
   }
   if (isEdit) return finishStockInEdit(replyToken, lineUserId, session.edit_target_id, { arrival_date: session.arrival_date, count_date: selectedDate })
-  await completeStockInBatch(replyToken, lineUserId, session, session.arrival_date, selectedDate)
+  // ขั้นตอนเสริม (ไม่บังคับ): เลขใบชมพู (นำเข้าจีน) ถ้าของล็อตนี้เป็นของนำเข้า — พิมพ์เลขหรือกด "ข้าม"
+  // (owner ขอ 2026-09-14) เก็บไว้ที่ session ก่อน ยังไม่ปิดตะกร้าจนกว่าจะตอบขั้นนี้
+  await upsertStockInSession(lineUserId, { step: 'await_shipping_no', count_date: selectedDate })
+  await replyMessage(replyToken, [{
+    type: 'text', text: 'ถ้าของล็อตนี้เป็นของนำเข้า พิมพ์เลขใบชมพูได้เลยค่ะ ไม่มีก็กด "ข้าม"',
+    quickReply: { items: [{ type: 'action', action: { type: 'postback', label: 'ข้าม', data: 'stockin-shipping:skip', displayText: 'ข้าม' } }] },
+  }])
+}
+
+async function handleStockInShippingNoReply(event, session) {
+  const replyToken = event.replyToken
+  const lineUserId = event.source?.userId
+  if (!replyToken || !lineUserId) return
+  const shippingNo = String(event.message?.text || '').trim().slice(0, 40)
+  await upsertStockInSession(lineUserId, { shipping_no: shippingNo })
+  await completeStockInBatch(replyToken, lineUserId, { ...session, shipping_no: shippingNo }, session.arrival_date, session.count_date)
+}
+
+async function handleStockInShippingNoSkip(event) {
+  const replyToken = event.replyToken
+  const lineUserId = event.source?.userId
+  if (!replyToken || !lineUserId) return
+  const session = (await getStockInSessions()).find((s) => s.line_user_id === lineUserId)
+  if (!session || session.step !== 'await_shipping_no') return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการแจ้งของเข้าที่รอเลขใบชมพูค่ะ' }])
+  await completeStockInBatch(replyToken, lineUserId, session, session.arrival_date, session.count_date)
 }
 
 // สิทธิ์กด Approve ของเข้าในกลุ่ม LINE ดูจาก users.role โดยตรง ไม่ผูกกับชนิด username
@@ -3505,6 +3530,7 @@ async function opLineWebhook(req, res) {
         if (stockInSession?.step === 'await_item_qty') { await handleStockInQtyReply(event, stockInSession); continue }
         if (stockInSession?.step === 'await_edit_qty') { await handleStockInEditQtyReply(event, stockInSession); continue }
         if (stockInSession?.step === 'await_edit_item') { await handleStockInEditItemReply(event, stockInSession); continue }
+        if (stockInSession?.step === 'await_shipping_no') { await handleStockInShippingNoReply(event, stockInSession); continue }
         if (stockSession?.step === 'await_batch_date') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดเลือกวันที่จากข้อความก่อนหน้านี้ หรือพิมพ์ “สั่งของ” เพื่อเริ่มใหม่ค่ะ' }]); continue }
         if (stockInSession?.step === 'await_batch_date') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดเลือกวันที่จากข้อความก่อนหน้านี้ หรือพิมพ์ “แจ้งของเข้า” เพื่อเริ่มใหม่ค่ะ' }]); continue }
         if (stockSession?.step === 'await_item' || stockSession?.step === 'await_item_pick') {
@@ -3540,6 +3566,7 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stockin-pick:')) { await handleStockInPickPostback(event, data.slice('stockin-pick:'.length)); continue }
       if (data.startsWith('stockin-date:')) { await handleStockInDatePostback(event, data.slice('stockin-date:'.length)); continue }
       if (data === 'stockin-cart-done') { await handleStockInCartDonePostback(event); continue }
+      if (data === 'stockin-shipping:skip') { await handleStockInShippingNoSkip(event); continue }
       if (data.startsWith('stockin-editmenu:')) { await handleStockInEditMenu(event, data.slice('stockin-editmenu:'.length)); continue }
       if (data.startsWith('stockin-edititempick:')) {
         const [id, sku] = data.slice('stockin-edititempick:'.length).split(':')
