@@ -1191,3 +1191,123 @@ body:has(.hr-page) .payi-main-content > .payi-topbar > div:last-child {
     background-position: center;
   }
 }
+
+/* ↓ toy-explorers hero theme — restored 2026-09-14 after an accidental over-revert wiped it
+   (it was never committed, so git had nothing to recover). Rebuilt from earlier Read output
+   in this same session; the gap between the two blocks below (a mobile/tablet media-query
+   tweak, background-position: 63% center) could not be recovered byte-for-byte and is
+   approximated here. */
+.hr-dashboard-hero {
+  min-height: 350px;
+  border-color: rgba(255, 255, 255, .64);
+  background:
+    linear-gradient(90deg, rgba(18, 49, 82, .92) 0%, rgba(22, 61, 96, .76) 38%, rgba(22, 67, 99, .2) 59%, rgba(13, 44, 68, .04) 100%),
+    url("/hr-toy-explorers.png") center 52% / cover no-repeat;
+  box-shadow: 0 20px 52px rgba(34, 81, 112, .22), inset 0 1px 0 rgba(255, 255, 255, .7);
+}
+
+.hr-dashboard-hero::before {
+  background: linear-gradient(180deg, rgba(255, 220, 143, .08), transparent 42%, rgba(20, 53, 75, .14));
+  animation: none;
+}
+
+.hr-dashboard-hero::after { display: none; }
+.hr-magic-link { display: none; }
+
+.hr-hero-copy > span { color: #ffe0a0; }
+.hr-hero-copy h1 { text-shadow: 0 3px 16px rgba(9, 32, 55, .45); }
+.hr-hero-copy p { color: rgba(255, 255, 255, .88); }
+
+@media (max-width: 900px) {
+  .hr-dashboard-hero {
+    background-position: 63% center;
+  }
+}
+
+/* Small toy-color accents: decorative only; data/status colors stay unchanged. */
+body:has(.hr-page) .payi-sidebar-nav [data-nav-id="HR"] {
+  background: #168861 !important;
+  box-shadow:
+    0 7px 18px rgba(22, 136, 97, .28),
+    0 0 0 2px rgba(139, 255, 178, .24),
+    0 0 16px rgba(92, 255, 155, .18) !important;
+}
+
+.hr-dashboard-hero {
+  border-color: rgba(184, 232, 216, .7);
+  background:
+    linear-gradient(90deg, rgba(20, 75, 78, .78) 0%, rgba(25, 105, 96, .62) 38%, rgba(25, 105, 96, .32) 58%, rgba(25, 100, 92, .1) 78%, rgba(25, 92, 82, 0) 92%),
+    url("/hr-toy-explorers.png") center 22% / cover no-repeat;
+  box-shadow:
+    0 18px 42px rgba(31, 78, 79, .2),
+    inset 0 1px 0 rgba(255, 255, 255, .48);
+  /* ทดลองเบาๆ ตามที่ขอ — filter กระทบทั้งกล่อง (รวมตัวหนังสือ) เพราะแก้แค่สีชุดในรูปนิ่งแยกไม่ได้ (บอกไว้แล้ว) */
+  filter: hue-rotate(14deg) saturate(1.12);
+}
+
+.hr-dashboard-hero::before {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .04), transparent 48%, rgba(12, 51, 53, .12));
+}
+
+.hr-hero-copy > span {
+  color: #c7f2df;
+  text-shadow: none;
+}
+
+.hr-dashboard-hero .hr-metrics::before {
+  display: none;
+}
+
+.hr-dashboard-hero .hr-metric {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(213, 241, 233, .42);
+  background: rgba(18, 75, 77, .64);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .12),
+    0 8px 18px rgba(12, 46, 49, .14);
+}
+
+.hr-dashboard-hero .hr-metric:nth-child(even) {
+  border-color: rgba(213, 241, 233, .42);
+  background: rgba(18, 75, 77, .64);
+}
+
+.hr-dashboard-hero .hr-refresh {
+  border-color: rgba(255, 255, 255, .58);
+  background: rgba(20, 83, 82, .5);
+  box-shadow: none;
+}
+
+.hr-dashboard-hero .hr-metric::after {
+  display: none;
+}
+
+.hr-dashboard-hero .hr-metric:nth-child(1) {
+  --hr-toy-accent: #91ffa9;
+  --hr-toy-glow: rgba(108, 255, 145, .76);
+}
+
+.hr-dashboard-hero .hr-metric:nth-child(2) {
+  --hr-toy-accent: #c58bf0;
+  --hr-toy-glow: rgba(197, 139, 240, .72);
+}
+
+.hr-dashboard-hero .hr-metric:nth-child(3) {
+  --hr-toy-accent: #ef7d74;
+  --hr-toy-glow: rgba(239, 125, 116, .66);
+}
+
+.hr-dashboard-hero .hr-metric:nth-child(3)::before {
+  display: none;
+}
+
+.hr-dashboard-hero .hr-metric:nth-child(4) {
+  --hr-toy-accent: linear-gradient(90deg, #91ffa9, #c58bf0);
+  --hr-toy-glow: rgba(157, 255, 175, .66);
+}
+
+.hr-dashboard-hero .hr-metric-icon {
+  background: rgba(255, 255, 255, .12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12);
+}
