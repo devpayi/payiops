@@ -941,6 +941,8 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
         image: images[g.rows[0].sku] || null,
         rows: g.rows.map((r) => ({ sku: r.sku, qty: r.qty, name_zh: r.name_zh, name_th: r.name_th, cartons: r.cartons, packingQty: r.packingQty ?? r.qty })),
       }))
+      // ชั่วคราวไล่บั๊ก "รูปไม่มา" (owner รายงาน 2026-09-15) ลบทิ้งทีหลัง
+      console.log('[proforma] images loaded:', Object.keys(images).length, 'groups:', groups.map((g) => ({ sku0: g.rows[0]?.sku, hasImage: !!g.image })))
       const { blob } = await generateProforma(
         { supplier_name_zh: PROFORMA_SUPPLIER, invoice_date: info.invoice_date, consignee_to: buildConsignee(info.shipping_mark) },
         groups,

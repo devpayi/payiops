@@ -73,8 +73,11 @@ export async function generateProforma(info, groups) {
   // colCharWidth: ความกว้างคอลัมน์ปลายทาง (หน่วยเดียวกับที่ตั้งใน getColumn().width) — ใช้ดันรูปชิดขวา
   // ในคอลัมน์ ไม่ให้ทับตัวหนังสือฝั่งซ้าย (คอลัมน์ Description/Product Name กว้างกว่ารูปมาก)
   const addImg = async (ws, dataUrl, anchorCol0, anchorRow0, maxW, colCharWidth) => {
+    // ชั่วคราวไล่บั๊ก "รูปไม่มา" (owner รายงาน 2026-09-15) ลบทิ้งทีหลัง
+    console.log('[proforma addImg]', ws.name, 'row', anchorRow0, 'dataUrl?', !!dataUrl, dataUrl ? dataUrl.slice(0, 30) : null)
     if (!dataUrl) return
     const sz = await imgSize(dataUrl)
+    console.log('[proforma addImg] imgSize result:', sz)
     if (!sz) return
     let id = imgById.get(dataUrl)
     if (id === undefined) {
