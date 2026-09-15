@@ -319,7 +319,11 @@ async function checkLotReadyNotify() {
           ] } } : {}),
         }
         const messages = [{ type: 'flex', altText: `📦 ใบชมพูครบ ${ready.length} รายการ พร้อมจัดลอต`, contents: bubble }]
-        await Promise.all(targets.map((to) => pushMessage(to, messages).catch(() => {})))
+        // owner รายงาน 2026-09-15 ว่าปุ่มเปิดเว็บในการ์ดนี้ไม่ขึ้น (การ์ดอื่นปุ่มขึ้นปกติ) — log url ที่ใช้จริง
+        // + ผลลัพธ์ push ไว้เช็คใน Vercel logs รอบทดสอบหน้า หาสาเหตุจริงก่อนแก้ (2026-09-15)
+        console.log('lot-ready-notify: url=', JSON.stringify(url), 'targets=', targets.length)
+        const results = await Promise.all(targets.map((to) => pushMessage(to, messages)))
+        console.log('lot-ready-notify: push results=', JSON.stringify(results))
       }
       await overwriteSheet(NOTIFY_STATE, NOTIFY_STATE_HEADERS, [['ready', '1', new Date().toISOString()]])
     } else if (wasNotified) {
