@@ -938,11 +938,9 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
       const groups = view.groups.map((g, i) => ({
         // ชื่อไทยที่โชว์บน packing list = ชื่อสินค้าเฉยๆ (ตัดไซส์/สี/ทรงออก) ไม่ใช่ชื่อเฉพาะของ sku แรก
         no: i + 1, name_en: g.name_en, name_th: cleanFamilyName(g.rows[0].name_th, g.rows[0].name_en),
-        image: images[g.rows[0].sku] || null,
-        rows: g.rows.map((r) => ({ sku: r.sku, qty: r.qty, name_zh: r.name_zh, name_th: r.name_th, cartons: r.cartons, packingQty: r.packingQty ?? r.qty })),
+        image: images[g.rows[0].sku] || null, // ตัวแทนกลุ่ม — ใช้แค่ที่ packing list (ไม่แยกไซส์/สี)
+        rows: g.rows.map((r) => ({ sku: r.sku, qty: r.qty, name_zh: r.name_zh, name_th: r.name_th, cartons: r.cartons, packingQty: r.packingQty ?? r.qty, image: images[r.sku] || null })),
       }))
-      // ชั่วคราวไล่บั๊ก "รูปไม่มา" (owner รายงาน 2026-09-15) ลบทิ้งทีหลัง
-      console.log('[proforma] images loaded:', Object.keys(images).length, 'groups:', groups.map((g) => ({ sku0: g.rows[0]?.sku, hasImage: !!g.image })))
       const { blob } = await generateProforma(
         { supplier_name_zh: PROFORMA_SUPPLIER, invoice_date: info.invoice_date, consignee_to: buildConsignee(info.shipping_mark) },
         groups,

@@ -56,7 +56,9 @@ const colIdx = (L) => [...L].reduce((a, ch) => a * 26 + (ch.charCodeAt(0) - 64),
 /**
  * @param {{supplier_name_zh?:string, supplier_ref?:string, contract_label?:string, invoice_date?:string, consignee_to?:string}} info
  * @param {Array<{no:number, name_en:string, name_th:string, image?:string|null,
- *   rows:Array<{sku:string, qty:number, name_zh:string, name_th:string, cartons:Array<{count:number,wt:number,l:number,w:number,h:number}>}>}>} groups
+ *   rows:Array<{sku:string, qty:number, name_zh:string, name_th:string, image?:string|null,
+ *     cartons:Array<{count:number,wt:number,l:number,w:number,h:number}>}>}>} groups
+ *   image = ตัวแทนกลุ่ม (ใช้ที่ packing list ซึ่งไม่แยกไซส์/สี) — row.image = รูปเฉพาะ sku นั้น (ใช้ที่ INVOICE)
  * @returns {Promise<Blob>}
  */
 export async function generateProforma(info, groups) {
@@ -73,11 +75,8 @@ export async function generateProforma(info, groups) {
   // colCharWidth: ความกว้างคอลัมน์ปลายทาง (หน่วยเดียวกับที่ตั้งใน getColumn().width) — ใช้ดันรูปชิดขวา
   // ในคอลัมน์ ไม่ให้ทับตัวหนังสือฝั่งซ้าย (คอลัมน์ Description/Product Name กว้างกว่ารูปมาก)
   const addImg = async (ws, dataUrl, anchorCol0, anchorRow0, maxW, colCharWidth) => {
-    // ชั่วคราวไล่บั๊ก "รูปไม่มา" (owner รายงาน 2026-09-15) ลบทิ้งทีหลัง
-    console.log('[proforma addImg]', ws.name, 'row', anchorRow0, 'dataUrl?', !!dataUrl, dataUrl ? dataUrl.slice(0, 30) : null)
     if (!dataUrl) return
     const sz = await imgSize(dataUrl)
-    console.log('[proforma addImg] imgSize result:', sz)
     if (!sz) return
     let id = imgById.get(dataUrl)
     if (id === undefined) {
@@ -143,7 +142,12 @@ export async function generateProforma(info, groups) {
       set(inv, `G${r}`, null, { border: BOX })
       set(inv, `H${r}`, { formula: `C${r}*G${r}`, result: 0 }, { fill: WHITE, border: BOX, numFmt: '#,##0.00' })
       for (const L of 'BDE') inv.getCell(`${L}${r}`).border = BOX
-      inv.getRow(r).height = g.rows.length === 1 ? 60 : 22
+      // รูปต่อแถว (ไม่ใช่ต่อกลุ่ม) — เดิมมีแค่รูปเดียวต่อกลุ่ม (ของแถวแรก) พอแยกไซส์/สีแล้วแถวอื่นในกลุ่มไม่มีรูปเลย
+      // (owner รายงาน 2026-09-15: แผ่นกันกัด/ถุงเท้าสปา 2 สี เห็นรูปแค่สีเดียว) ใช้รูปของ sku ตัวเอง ถ้าไม่มีค่อย
+      // fallback ไปรูปตัวแทนกลุ่ม (เฉพาะกลุ่มที่มีแถวเดียว กันโชว์รูปผิด sku ซ้ำๆ ตอนมีหลายแถว)
+      const rowImg = row.image || (g.rows.length === 1 ? g.image : null)
+      inv.getRow(r).height = rowImg ? 60 : 22
+      if (rowImg) await addImg(inv, rowImg, colIdx('F') - 1, r - 1, 95, 60.3)
       if (subName === null) subName = row.name_th
       else if (row.name_th !== subName) { closeSub(r - 1); subStart = r; subName = row.name_th }
       r++
@@ -152,7 +156,6 @@ export async function generateProforma(info, groups) {
     const gEnd = r - 1
     if (gEnd > gStart) inv.mergeCells(`B${gStart}:B${gEnd}`)
     set(inv, `B${gStart}`, g.no, { border: BOX })
-    await addImg(inv, g.image, colIdx('F') - 1, gStart - 1, 95, 60.3)
   }
   for (const L of 'BCDEFGH') inv.getCell(`${L}${r}`).border = BOX
   set(inv, `C${r}`, { formula: `SUM(C${firstData}:C${r - 1})`, result: totQty }, { font: F_HD, border: BOX })
