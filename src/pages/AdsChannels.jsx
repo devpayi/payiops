@@ -23,6 +23,9 @@ const CHANNELS = [
 ]
 const STORE_COLORS = ['#e08a1e', '#d64545', '#e4c65a', '#4a90d9', '#3f7f6f', '#b5495b', '#7a6fce', '#7aa5c9']
 const comboKey = (b, p) => `${b}|${p}`
+// ค่า Ads ที่แพลตฟอร์มโชว์ไม่รวม VAT — จ่ายจริง +7% เสมอ (owner แจ้ง 2026-09-15 ยอดไม่ตรงมาตลอดเพราะลืมบวก)
+// กรอกเลขก่อน VAT ตามที่เห็นในแอดแมเนเจอร์ได้เลย ระบบคูณให้ตอนบันทึก
+const ADS_VAT_MULT = 1.07
 
 export default function AdsChannels() {
   const [inputs, setInputs] = useState(null)   // /api/marketing?kind=inputs
@@ -77,8 +80,10 @@ export default function AdsChannels() {
     if (!selMonth) return
     const ads = {}
     for (const b of BUSINESSES) for (const p of PLATFORMS) {
+      // ที่เก็บในชีทรวม VAT 7% แล้ว (ดู save()) — โชว์กลับในช่องกรอกเป็นเลขก่อน VAT เหมือนเดิม
+      // กันบวก VAT ซ้ำถ้าเปิดเดือนเก่ามาแก้แล้วกดบันทึกซ้ำโดยไม่ได้แก้ตัวเลข
       const v = adsByMonth[selMonth]?.[comboKey(b, p)]
-      ads[comboKey(b, p)] = v ? String(v) : ''
+      ads[comboKey(b, p)] = v ? String(Math.round((v / ADS_VAT_MULT) * 100) / 100) : ''
     }
     const tt = {}
     for (const b of TT_BUSINESSES) {
@@ -161,7 +166,7 @@ export default function AdsChannels() {
       const rows = []
       for (const b of BUSINESSES) for (const p of PLATFORMS) {
         const v = parseFloat(form.ads[comboKey(b, p)]) || 0
-        if (v) rows.push({ business: b, platform: p, metric: 'ads', value: v })
+        if (v) rows.push({ business: b, platform: p, metric: 'ads', value: Math.round(v * ADS_VAT_MULT * 100) / 100 })
       }
       for (const b of TT_BUSINESSES) {
         const g = parseFloat(form.tt[b]?.gmv) || 0
@@ -201,7 +206,8 @@ export default function AdsChannels() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 18 }}>
           {/* Ads grid */}
           <div>
-            <SectionLabel>ค่า Ads (บาท) — แยกร้าน/แพลตฟอร์ม</SectionLabel>
+            <SectionLabel>ค่า Ads (บาท ก่อน VAT) — แยกร้าน/แพลตฟอร์ม</SectionLabel>
+            <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginBottom: 6 }}>กรอกเลขที่เห็นในแอดแมเนเจอร์ตรงๆ ระบบจะ +VAT 7% ให้ตอนบันทึก</div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr style={{ color: 'var(--payi-text-muted)', fontSize: 11 }}>
@@ -272,7 +278,7 @@ export default function AdsChannels() {
           <button onClick={save} disabled={saving || !selMonth} style={{ ...primaryBtn, opacity: saving || !selMonth ? 0.6 : 1 }}>
             {saving ? <Loader2 size={15} className="payi-spin" /> : <Save size={15} />} บันทึกเดือน {selMonth && monthLabel(selMonth)}
           </button>
-          <span style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>Ads รวมเดือนนี้: <b style={{ color: 'var(--payi-text-strong)' }}>{fmtBaht(adsTotalSel)}</b></span>
+          <span style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>Ads รวมเดือนนี้ (รวม VAT 7%): <b style={{ color: 'var(--payi-text-strong)' }}>{fmtBaht(adsTotalSel)}</b></span>
         </div>
       </Card>
 
