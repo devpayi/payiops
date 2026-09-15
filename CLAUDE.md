@@ -184,6 +184,19 @@ Sheets rate limits.
     JSON text.
   - Old short Google Form ("แบบสั้น", `applicants` tab) still lives — the wizard doesn't
     replace it, boss chose to keep both entry paths for now.
+  - **✅ DONE (2026-09-15) — field pass per boss's LINE feedback on the paper form.**
+    Added `criminal_record`/`health_condition` (new step "สุขภาพและประวัติ", appended at
+    the end of `APPLICANT_FULL_FIELDS` per the append-only rule). Made `religion`,
+    `marital_status`, and (`education_history` has ≥1 row + `education_activities`)
+    required — were optional before. Removed the work-history "เบอร์โทรศัพท์บริษัท"
+    sub-field (boss: "ไม่ต้อง"). Added AI/Canva options to the `computer_programs`
+    checkbox list. Done-screen now shows a submitted-summary + a "พิมพ์ใบสมัคร (PDF)"
+    button (`window.print()` + `.no-print` CSS — no library, browser's own print-to-PDF).
+    **Employee Google Form still needs the matching expansion** (blood type, reference
+    person, age, weight/height, health condition, bank account, emergency contact) —
+    boss wants it "ยาวๆ เหมือนใบสมัคร" — not done yet, needs Google Forms editor
+    (flaky UI, see the required-toggle gotcha earlier in this doc) or the owner can add
+    the questions directly.
 - `LinksHub.jsx`, `DevHub.jsx` (static link/doc hubs — real content, no backend)
 - `Login.jsx`, `Settings.jsx` (auth screens, user management)
 - **`ContentOSPrototype.jsx`** ("Content OS Prototype") — **UI-only prototype, no API

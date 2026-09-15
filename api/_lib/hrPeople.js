@@ -130,6 +130,9 @@ export const APPLICANT_FULL_FIELDS = [
   ['reference_phone', 'บุคคลอ้างอิง (เบอร์โทร)'],
   ['heard_from', 'ทราบข่าวการสมัครงานจาก'],
   ['confirmed', 'ยืนยันข้อมูลถูกต้อง'],
+  // เพิ่ม 2026-09-15 ตามที่บอสขอเพิ่ม (ต่อท้ายเสมอ ห้ามแทรกกลาง — กฎเดียวกับทุกชีตในระบบนี้)
+  ['criminal_record', 'ประวัติอาชญากรรม'],
+  ['health_condition', 'โรคประจำตัว/สุขภาพ'],
 ]
 const APPLICANT_FULL_HEADERS = ['ประทับเวลา', ...APPLICANT_FULL_FIELDS.map(([, label]) => label)]
 

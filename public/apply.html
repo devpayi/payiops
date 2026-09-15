@@ -57,6 +57,8 @@
   .done-screen h2 { margin: 12px 0 6px; }
   .err-box { background: #fef2f2; color: var(--danger); border: 1px solid #fecaca; border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px; }
   .field-select-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .print-btn { margin-top: 16px; padding: 11px 22px; border-radius: 10px; border: none; background: var(--mint); color: #fff; font-weight: 700; font-size: 14px; cursor: pointer; }
+  @media print { .no-print { display: none !important; } }
 </style>
 </head>
 <body>
@@ -187,7 +189,7 @@ const steps = [
     title: 'ตำแหน่งงาน', sub: 'ข้อมูลตำแหน่งที่ต้องการสมัคร',
     render: (c) => {
       c.appendChild(field('ตำแหน่งงานที่สมัคร', textInput('position')));
-      c.appendChild(field('เงินเดือนที่ต้องการ', textInput('expected_salary', 'text', 'เช่น 12,000 หรือ ตามตกลง'), true));
+      c.appendChild(field('เงินเดือนที่ต้องการ', textInput('expected_salary', 'text', 'เช่น 12,000 หรือ ตามฐานเงินเดือนบริษัท'), true));
       c.appendChild(field('วันที่เริ่มงานได้', textInput('available_date', 'text', 'เช่น ทันที / ภายใน 15 วัน'), true));
       c.appendChild(field('สถานภาพการทำงานปัจจุบัน', selectInput('current_status', ['ว่างงาน', 'ทำงานประจำ', 'ทำงาน Part-Time', 'กำลังศึกษาอยู่']), true));
     },
@@ -212,10 +214,10 @@ const steps = [
       c.appendChild(row);
       c.appendChild(field('สัญชาติ', textInput('nationality', 'text', 'ไทย'), true));
       c.appendChild(field('เชื้อชาติ', textInput('ethnicity', 'text', 'ไทย'), true));
-      c.appendChild(field('ศาสนา', textInput('religion'), true));
+      c.appendChild(field('ศาสนา', textInput('religion')));
       c.appendChild(field('ภูมิลำเนาเดิม (จังหวัด)', textInput('hometown'), true));
     },
-    required: () => !!answers.full_name,
+    required: () => !!answers.full_name && !!answers.religion,
   },
   {
     title: 'พี่น้อง', sub: 'ข้อมูลลำดับพี่น้อง (ไม่บังคับ)',
@@ -248,12 +250,20 @@ const steps = [
     render: (c) => {
       c.appendChild(field('ประเภทที่อยู่อาศัยปัจจุบัน', selectInput('residence_type', ['บ้านตัวเอง', 'บ้านญาติ', 'ห้องเช่า/บ้านเช่า', 'อื่นๆ']), true));
       c.appendChild(field('อาศัยมาแล้วกี่ปี', textInput('residence_years', 'number'), true));
-      c.appendChild(field('สถานภาพครอบครัว', selectInput('marital_status', ['โสด', 'แต่งงาน', 'หย่าร้าง', 'แยกกันอยู่']), true));
+      c.appendChild(field('สถานภาพครอบครัว', selectInput('marital_status', ['โสด', 'แต่งงาน', 'หย่าร้าง', 'แยกกันอยู่'])));
       c.appendChild(field('ชื่อคู่สมรส (ถ้ามี)', textInput('spouse_name'), true));
       c.appendChild(field('อาชีพคู่สมรส', textInput('spouse_occupation'), true));
       c.appendChild(field('จำนวนบุตร', textInput('children_count', 'number'), true));
     },
-    required: () => true,
+    required: () => !!answers.marital_status,
+  },
+  {
+    title: 'สุขภาพและประวัติ', sub: 'กรอกตามความเป็นจริง — ถ้าไม่มี พิมพ์ "ไม่มี"',
+    render: (c) => {
+      c.appendChild(field('ประวัติอาชญากรรม', textarea('criminal_record', 'ถ้าไม่มี พิมพ์ "ไม่มี"')));
+      c.appendChild(field('โรคประจำตัว', textarea('health_condition', 'ถ้าไม่มี พิมพ์ "ไม่มี"')));
+    },
+    required: () => !!answers.criminal_record && !!answers.health_condition,
   },
   {
     title: 'ข้อมูลบิดา-มารดา', sub: 'กรอกเท่าที่ทราบ (ไม่บังคับ)',
@@ -268,7 +278,7 @@ const steps = [
     required: () => true,
   },
   {
-    title: 'สถานะทางการทหาร', sub: 'สำหรับผู้สมัครเพศชาย (ข้ามได้ถ้าไม่เกี่ยวข้อง)',
+    title: 'สถานะทางการทหาร', sub: 'ผู้สมัครเพศหญิงเลือก "ไม่เกี่ยวข้อง/ไม่ระบุ" ได้เลย',
     render: (c) => {
       c.appendChild(radioGroup('military_status', ['ได้รับการยกเว้น', 'ศึกษาวิชาทหาร (รด.)', 'ผ่านการเกณฑ์ทหารแล้ว', 'ไม่เกี่ยวข้อง/ไม่ระบุ']));
     },
@@ -285,17 +295,16 @@ const steps = [
         ['year', 'ปีที่จบการศึกษา'],
         ['gpa', 'เกรดเฉลี่ย'],
       ], 'เพิ่มรายการการศึกษา'));
-      c.appendChild(field('กิจกรรม/รางวัลระหว่างการศึกษา', textarea('education_activities'), true));
+      c.appendChild(field('กิจกรรม/รางวัลระหว่างการศึกษา', textarea('education_activities')));
       c.appendChild(field('สาขาวิชาที่ชอบเป็นพิเศษ', textInput('favorite_subject'), true));
     },
-    required: () => true,
+    required: () => (answers.education_history || []).length > 0 && !!answers.education_activities,
   },
   {
     title: 'ประสบการณ์การทำงาน', sub: 'ข้ามได้ถ้ายังไม่เคยทำงาน',
     render: (c) => {
       c.appendChild(repeatList('work_history', [
         ['company', 'ชื่อสถานประกอบการ'],
-        ['phone', 'เบอร์โทรศัพท์บริษัท'],
         ['salary', 'เงินเดือน'],
         ['from', 'ทำงานตั้งแต่ (เดือน/ปี)'],
         ['to', 'ถึง (เดือน/ปี)'],
@@ -317,7 +326,7 @@ const steps = [
       c.appendChild(field('ภาษาอื่นๆ', textInput('other_language'), true));
       c.appendChild(field('ความสามารถใช้เครื่องใช้สำนักงาน', checkGroup('office_skills', ['เครื่องถ่ายเอกสาร', 'โทรสาร', 'พิมพ์ดีด']), true));
       c.appendChild(field('ความสามารถใช้คอมพิวเตอร์', selectInput('computer_level', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้']), true));
-      c.appendChild(field('โปรแกรมที่ใช้ได้', checkGroup('computer_programs', ['Excel', 'Word', 'PowerPoint', 'Photoshop', 'โปรแกรมบัญชี', 'อื่นๆ']), true));
+      c.appendChild(field('โปรแกรมที่ใช้ได้', checkGroup('computer_programs', ['Excel', 'Word', 'PowerPoint', 'Photoshop', 'โปรแกรมบัญชี', 'AI (ChatGPT ฯลฯ)', 'Canva/คอนเทนต์โซเชียล', 'อื่นๆ']), true));
     },
     required: () => true,
   },
@@ -403,7 +412,7 @@ async function submit() {
     'father_status','father_occupation','father_address','mother_name','mother_status','mother_occupation',
     'mother_address','military_status','education_level','education_activities','favorite_subject',
     'english_speak','english_read','english_write','other_language','computer_level','reference_name',
-    'reference_occupation','reference_phone','heard_from',
+    'reference_occupation','reference_phone','heard_from','criminal_record','health_condition',
   ];
   FIELD_KEYS.forEach(k => { payload[k] = answers[k] || ''; });
   payload.documents_ready = (answers.documents_ready || []).join(', ');
@@ -423,6 +432,12 @@ async function submit() {
         <div class="icon">✅</div>
         <h2>ส่งใบสมัครเรียบร้อยแล้ว</h2>
         <p class="hint">ขอบคุณที่สนใจร่วมงานกับ PAYI ทีมงานจะติดต่อกลับหากผ่านการพิจารณาเบื้องต้น</p>
+        <div style="text-align:left;font-size:13px;line-height:1.8;margin-top:16px">
+          <b>${answers.full_name || '-'}</b> — ${answers.position || '-'}<br>
+          เบอร์โทร: ${answers.mobile_phone || '-'}<br>
+          วันที่ส่ง: ${new Date().toLocaleDateString('th-TH')}
+        </div>
+        <button class="print-btn no-print" onclick="window.print()">พิมพ์ใบสมัคร (PDF)</button>
       </div></main>`;
   } catch (e) {
     cardBody.insertBefore(el('div', { class: 'err-box' }, e.message || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง'), cardBody.firstChild.nextSibling);
