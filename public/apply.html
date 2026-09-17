@@ -184,78 +184,83 @@ function repeatList(key, fieldsDef, addLabel) {
 }
 
 // ---- นิยามขั้นตอนทั้งหมด ----
+// 2026-09-17: บอสสั่งบังคับกรอกทุกช่องหมดก่อน (ทำใหม่ทุกจุดบังคับ เดี๋ยวบอกทีหลังว่าจุด
+// ไหนไม่บังคับ) — ห้ามเผลอเติม optional flag คืนโดยไม่ได้รับแจ้งจากบอสอีกที
 const steps = [
   {
     title: 'ตำแหน่งงาน', sub: 'ข้อมูลตำแหน่งที่ต้องการสมัคร',
     render: (c) => {
       c.appendChild(field('ตำแหน่งงานที่สมัคร', textInput('position')));
-      c.appendChild(field('เงินเดือนที่ต้องการ', textInput('expected_salary', 'text', 'เช่น 12,000 หรือ ตามฐานเงินเดือนบริษัท'), true));
-      c.appendChild(field('วันที่เริ่มงานได้', textInput('available_date', 'text', 'เช่น ทันที / ภายใน 15 วัน'), true));
-      c.appendChild(field('สถานภาพการทำงานปัจจุบัน', selectInput('current_status', ['ว่างงาน', 'ทำงานประจำ', 'ทำงาน Part-Time', 'กำลังศึกษาอยู่']), true));
+      c.appendChild(field('เงินเดือนที่ต้องการ', textInput('expected_salary', 'text', 'เช่น 12,000 หรือ ตามฐานเงินเดือนบริษัท')));
+      c.appendChild(field('วันที่เริ่มงานได้', textInput('available_date', 'text', 'เช่น ทันที / ภายใน 15 วัน')));
+      c.appendChild(field('สถานภาพการทำงานปัจจุบัน', selectInput('current_status', ['ว่างงาน', 'ทำงานประจำ', 'ทำงาน Part-Time', 'กำลังศึกษาอยู่'])));
     },
-    required: () => !!answers.position,
+    required: () => !!answers.position && !!answers.expected_salary && !!answers.available_date && !!answers.current_status,
   },
   {
-    title: 'เอกสารที่เตรียมมา', sub: 'เลือกเอกสารที่มี (ไม่บังคับ)',
+    title: 'เอกสารที่เตรียมมา', sub: 'เลือกเอกสารที่มี',
     render: (c) => {
       c.appendChild(checkGroup('documents_ready', ['สำเนาบัตรประชาชน', 'สำเนาทะเบียนบ้าน', 'ใบรับรองวุฒิการศึกษา', 'หนังสือรับรองการทำงาน']));
     },
-    required: () => true,
+    required: () => (answers.documents_ready || []).length > 0,
   },
   {
     title: 'ข้อมูลส่วนตัว', sub: 'ข้อมูลพื้นฐานของคุณ',
     render: (c) => {
       c.appendChild(field('คำนำหน้า', selectInput('title', ['นาย', 'นาง', 'นางสาว'])));
       c.appendChild(field('ชื่อ-นามสกุล', textInput('full_name')));
-      c.appendChild(field('ชื่อเล่น', textInput('nickname'), true));
+      c.appendChild(field('ชื่อเล่น', textInput('nickname')));
       const row = el('div', { class: 'row2' });
       row.appendChild(field('อายุ', textInput('age', 'number')));
       row.appendChild(field('วันเดือนปีเกิด', textInput('birth_date', 'date')));
       c.appendChild(row);
-      c.appendChild(field('สัญชาติ', textInput('nationality', 'text', 'ไทย'), true));
-      c.appendChild(field('เชื้อชาติ', textInput('ethnicity', 'text', 'ไทย'), true));
+      c.appendChild(field('สัญชาติ', textInput('nationality', 'text', 'ไทย')));
+      c.appendChild(field('เชื้อชาติ', textInput('ethnicity', 'text', 'ไทย')));
       c.appendChild(field('ศาสนา', textInput('religion')));
-      c.appendChild(field('ภูมิลำเนาเดิม (จังหวัด)', textInput('hometown'), true));
+      c.appendChild(field('ภูมิลำเนาเดิม (จังหวัด)', textInput('hometown')));
     },
-    required: () => !!answers.full_name && !!answers.religion,
+    required: () => !!answers.title && !!answers.full_name && !!answers.nickname && !!answers.age && !!answers.birth_date
+      && !!answers.nationality && !!answers.ethnicity && !!answers.religion && !!answers.hometown,
   },
   {
-    title: 'พี่น้อง', sub: 'ข้อมูลลำดับพี่น้อง (ไม่บังคับ)',
+    title: 'พี่น้อง', sub: 'ข้อมูลลำดับพี่น้อง',
     render: (c) => {
-      c.appendChild(field('จำนวนพี่น้อง', textInput('siblings', 'text', 'เช่น พี่ 1 คน น้อง 2 คน'), true));
-      c.appendChild(field('เป็นบุตรคนที่', textInput('birth_order', 'text', 'เช่น คนที่ 2'), true));
+      c.appendChild(field('จำนวนพี่น้อง', textInput('siblings', 'text', 'เช่น พี่ 1 คน น้อง 2 คน')));
+      c.appendChild(field('เป็นบุตรคนที่', textInput('birth_order', 'text', 'เช่น คนที่ 2')));
     },
-    required: () => true,
+    required: () => !!answers.siblings && !!answers.birth_order,
   },
   {
     title: 'ที่อยู่และการติดต่อ', sub: 'ที่อยู่ปัจจุบันที่ติดต่อได้',
     render: (c) => {
       c.appendChild(field('ที่อยู่ปัจจุบัน (บ้านเลขที่/ถนน/ซอย)', textarea('address')));
       const row = el('div', { class: 'row2' });
-      row.appendChild(field('ตำบล/แขวง', textInput('sub_district'), true));
-      row.appendChild(field('อำเภอ/เขต', textInput('district'), true));
+      row.appendChild(field('ตำบล/แขวง', textInput('sub_district')));
+      row.appendChild(field('อำเภอ/เขต', textInput('district')));
       c.appendChild(row);
       const row2 = el('div', { class: 'row2' });
       row2.appendChild(field('จังหวัด', textInput('province')));
-      row2.appendChild(field('รหัสไปรษณีย์', textInput('postal_code', 'text'), true));
+      row2.appendChild(field('รหัสไปรษณีย์', textInput('postal_code', 'text')));
       c.appendChild(row2);
       c.appendChild(field('เบอร์มือถือ', textInput('mobile_phone', 'tel')));
-      c.appendChild(field('โทรศัพท์บ้าน', textInput('home_phone', 'tel'), true));
-      c.appendChild(field('Email', textInput('email', 'email'), true));
+      c.appendChild(field('โทรศัพท์บ้าน', textInput('home_phone', 'tel')));
+      c.appendChild(field('Email', textInput('email', 'email')));
     },
-    required: () => !!answers.address && !!answers.province && !!answers.mobile_phone,
+    required: () => !!answers.address && !!answers.sub_district && !!answers.district && !!answers.province
+      && !!answers.postal_code && !!answers.mobile_phone && !!answers.home_phone && !!answers.email,
   },
   {
     title: 'ที่พักอาศัย/ครอบครัว', sub: '',
     render: (c) => {
-      c.appendChild(field('ประเภทที่อยู่อาศัยปัจจุบัน', selectInput('residence_type', ['บ้านตัวเอง', 'บ้านญาติ', 'ห้องเช่า/บ้านเช่า', 'อื่นๆ']), true));
-      c.appendChild(field('อาศัยมาแล้วกี่ปี', textInput('residence_years', 'number'), true));
+      c.appendChild(field('ประเภทที่อยู่อาศัยปัจจุบัน', selectInput('residence_type', ['บ้านตัวเอง', 'บ้านญาติ', 'ห้องเช่า/บ้านเช่า', 'อื่นๆ'])));
+      c.appendChild(field('อาศัยมาแล้วกี่ปี', textInput('residence_years', 'number')));
       c.appendChild(field('สถานภาพครอบครัว', selectInput('marital_status', ['โสด', 'แต่งงาน', 'หย่าร้าง', 'แยกกันอยู่'])));
-      c.appendChild(field('ชื่อคู่สมรส (ถ้ามี)', textInput('spouse_name'), true));
-      c.appendChild(field('อาชีพคู่สมรส', textInput('spouse_occupation'), true));
-      c.appendChild(field('จำนวนบุตร', textInput('children_count', 'number'), true));
+      c.appendChild(field('ชื่อคู่สมรส (ถ้ามี)', textInput('spouse_name')));
+      c.appendChild(field('อาชีพคู่สมรส', textInput('spouse_occupation')));
+      c.appendChild(field('จำนวนบุตร', textInput('children_count', 'number')));
     },
-    required: () => !!answers.marital_status,
+    required: () => !!answers.residence_type && !!answers.residence_years && !!answers.marital_status
+      && !!answers.spouse_name && !!answers.spouse_occupation && !!answers.children_count,
   },
   {
     title: 'สุขภาพและประวัติ', sub: 'กรอกตามความเป็นจริง — ถ้าไม่มี พิมพ์ "ไม่มี"',
@@ -266,23 +271,24 @@ const steps = [
     required: () => !!answers.criminal_record && !!answers.health_condition,
   },
   {
-    title: 'ข้อมูลบิดา-มารดา', sub: 'กรอกเท่าที่ทราบ (ไม่บังคับ)',
+    title: 'ข้อมูลบิดา-มารดา', sub: 'กรอกเท่าที่ทราบ',
     render: (c) => {
-      c.appendChild(field('ชื่อบิดา', textInput('father_name'), true));
-      c.appendChild(field('สถานะบิดา / อาชีพ', textInput('father_status', 'text', 'เช่น มีชีวิตอยู่ / ถึงแก่กรรม, อาชีพ'), true));
-      c.appendChild(field('ที่อยู่/จังหวัดบิดา', textInput('father_address'), true));
-      c.appendChild(field('ชื่อมารดา', textInput('mother_name'), true));
-      c.appendChild(field('สถานะมารดา / อาชีพ', textInput('mother_status'), true));
-      c.appendChild(field('ที่อยู่/จังหวัดมารดา', textInput('mother_address'), true));
+      c.appendChild(field('ชื่อบิดา', textInput('father_name')));
+      c.appendChild(field('สถานะบิดา / อาชีพ', textInput('father_status', 'text', 'เช่น มีชีวิตอยู่ / ถึงแก่กรรม, อาชีพ')));
+      c.appendChild(field('ที่อยู่/จังหวัดบิดา', textInput('father_address')));
+      c.appendChild(field('ชื่อมารดา', textInput('mother_name')));
+      c.appendChild(field('สถานะมารดา / อาชีพ', textInput('mother_status')));
+      c.appendChild(field('ที่อยู่/จังหวัดมารดา', textInput('mother_address')));
     },
-    required: () => true,
+    required: () => !!answers.father_name && !!answers.father_status && !!answers.father_address
+      && !!answers.mother_name && !!answers.mother_status && !!answers.mother_address,
   },
   {
     title: 'สถานะทางการทหาร', sub: 'ผู้สมัครเพศหญิงเลือก "ไม่เกี่ยวข้อง/ไม่ระบุ" ได้เลย',
     render: (c) => {
       c.appendChild(radioGroup('military_status', ['ได้รับการยกเว้น', 'ศึกษาวิชาทหาร (รด.)', 'ผ่านการเกณฑ์ทหารแล้ว', 'ไม่เกี่ยวข้อง/ไม่ระบุ']));
     },
-    required: () => true,
+    required: () => !!answers.military_status,
   },
   {
     title: 'ประวัติการศึกษา', sub: 'เพิ่มได้หลายรายการ เรียงจากล่าสุด',
@@ -296,12 +302,13 @@ const steps = [
         ['gpa', 'เกรดเฉลี่ย'],
       ], 'เพิ่มรายการการศึกษา'));
       c.appendChild(field('กิจกรรม/รางวัลระหว่างการศึกษา', textarea('education_activities')));
-      c.appendChild(field('สาขาวิชาที่ชอบเป็นพิเศษ', textInput('favorite_subject'), true));
+      c.appendChild(field('สาขาวิชาที่ชอบเป็นพิเศษ', textInput('favorite_subject')));
     },
-    required: () => (answers.education_history || []).length > 0 && !!answers.education_activities,
+    required: () => !!answers.education_level && (answers.education_history || []).length > 0
+      && !!answers.education_activities && !!answers.favorite_subject,
   },
   {
-    title: 'ประสบการณ์การทำงาน', sub: 'ข้ามได้ถ้ายังไม่เคยทำงาน',
+    title: 'ประสบการณ์การทำงาน', sub: 'เพิ่มอย่างน้อย 1 รายการ',
     render: (c) => {
       c.appendChild(repeatList('work_history', [
         ['company', 'ชื่อสถานประกอบการ'],
@@ -312,7 +319,7 @@ const steps = [
         ['reason_left', 'สาเหตุที่ออก'],
       ], 'เพิ่มประสบการณ์ทำงาน'));
     },
-    required: () => true,
+    required: () => (answers.work_history || []).length > 0,
   },
   {
     title: 'ทักษะและความสามารถ', sub: '',
@@ -323,22 +330,23 @@ const steps = [
       grid.appendChild(selectInput('english_read', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้'], 'การอ่าน'));
       grid.appendChild(selectInput('english_write', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้'], 'การเขียน'));
       c.appendChild(grid);
-      c.appendChild(field('ภาษาอื่นๆ', textInput('other_language'), true));
-      c.appendChild(field('ความสามารถใช้เครื่องใช้สำนักงาน', checkGroup('office_skills', ['เครื่องถ่ายเอกสาร', 'โทรสาร', 'พิมพ์ดีด']), true));
-      c.appendChild(field('ความสามารถใช้คอมพิวเตอร์', selectInput('computer_level', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้']), true));
-      c.appendChild(field('โปรแกรมที่ใช้ได้', checkGroup('computer_programs', ['Excel', 'Word', 'PowerPoint', 'Photoshop', 'โปรแกรมบัญชี', 'AI (ChatGPT ฯลฯ)', 'Canva/คอนเทนต์โซเชียล', 'อื่นๆ']), true));
+      c.appendChild(field('ภาษาอื่นๆ', textInput('other_language')));
+      c.appendChild(field('ความสามารถใช้เครื่องใช้สำนักงาน', checkGroup('office_skills', ['เครื่องถ่ายเอกสาร', 'โทรสาร', 'พิมพ์ดีด'])));
+      c.appendChild(field('ความสามารถใช้คอมพิวเตอร์', selectInput('computer_level', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้'])));
+      c.appendChild(field('โปรแกรมที่ใช้ได้', checkGroup('computer_programs', ['Excel', 'Word', 'PowerPoint', 'Photoshop', 'โปรแกรมบัญชี', 'AI (ChatGPT ฯลฯ)', 'Canva/คอนเทนต์โซเชียล', 'อื่นๆ'])));
     },
-    required: () => true,
+    required: () => !!answers.english_speak && !!answers.english_read && !!answers.english_write && !!answers.other_language
+      && (answers.office_skills || []).length > 0 && !!answers.computer_level && (answers.computer_programs || []).length > 0,
   },
   {
     title: 'บุคคลอ้างอิง', sub: '',
     render: (c) => {
-      c.appendChild(field('ชื่อบุคคลอ้างอิง / ความสัมพันธ์', textInput('reference_name'), true));
-      c.appendChild(field('อาชีพบุคคลอ้างอิง', textInput('reference_occupation'), true));
-      c.appendChild(field('เบอร์โทรบุคคลอ้างอิง', textInput('reference_phone', 'tel'), true));
-      c.appendChild(field('ทราบข่าวการสมัครงานจาก', textInput('heard_from', 'text', 'เช่น เพื่อนแนะนำ / Facebook'), true));
+      c.appendChild(field('ชื่อบุคคลอ้างอิง / ความสัมพันธ์', textInput('reference_name')));
+      c.appendChild(field('อาชีพบุคคลอ้างอิง', textInput('reference_occupation')));
+      c.appendChild(field('เบอร์โทรบุคคลอ้างอิง', textInput('reference_phone', 'tel')));
+      c.appendChild(field('ทราบข่าวการสมัครงานจาก', textInput('heard_from', 'text', 'เช่น เพื่อนแนะนำ / Facebook')));
     },
-    required: () => true,
+    required: () => !!answers.reference_name && !!answers.reference_occupation && !!answers.reference_phone && !!answers.heard_from,
   },
   {
     title: 'ยืนยันและส่งใบสมัคร', sub: 'ตรวจสอบก่อนกดส่ง',
