@@ -386,10 +386,14 @@ const steps = [
         });
         c.appendChild(box);
       }
-      c.appendChild(field('กิจกรรม/รางวัลระหว่างการศึกษา', textarea('education_activities'), true));
-      c.appendChild(field('สาขาวิชาที่ชอบเป็นพิเศษ', textInput('favorite_subject'), true));
+      c.appendChild(field('กิจกรรม/รางวัลระหว่างการศึกษา', textarea('education_activities')));
+      c.appendChild(field('สาขาวิชาที่ชอบเป็นพิเศษ', textInput('favorite_subject')));
     },
-    required: () => !!answers.education_level,
+    required: () => {
+      const row = (answers.education_history || [])[0] || {};
+      return !!answers.education_level && !!row.level && !!row.school && !!row.major && !!row.year && !!row.gpa
+        && !!answers.education_activities && !!answers.favorite_subject;
+    },
   },
   {
     title: 'ประสบการณ์การทำงาน', sub: '',
