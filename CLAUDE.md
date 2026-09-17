@@ -301,6 +301,18 @@ Sheets rate limits.
       `uploadEmployeePhoto()` returns `''` on failure rather than throwing, so a bad/huge
       photo never blocks saving the rest of a new hire's data; the cell is just blank
       and boss can chase the photo separately.
+    - **✅ DONE (2026-09-17) — summary table + PDF button on the dashboard.** Owner's
+      screenshot showed `employees_full` rendering all 66 columns in one table —
+      unreadable. `HRPeople.jsx` gained `SUMMARY_COLUMNS` (per-view curated column list:
+      name/position/phone/a date or two) — `employees_full`/`applicants_full` now show
+      only that summary in the table plus an explicit "ดูทั้งหมด" button per row (the
+      row click already opened `DetailDrawer`, which was untouched and still lists
+      every real header — this only changes what the table itself renders). The plain
+      `employees`/`applicants` Google-Form views are unaffected (their header count was
+      never the complaint). `DetailDrawer` gained a "สร้าง PDF" button
+      (`window.print()`) plus scoped print CSS (`.hr-print-area`/`.hr-no-print`, same
+      visibility-toggle trick as any print-one-element approach) so printing only
+      outputs the open record, not the sidebar/table behind it.
     - `HRPeople.jsx` gained a 4th view `employees_full` ("พนักงาน (แบบเต็ม)"), form-link
       → `/employee.html`; existing `employees` view relabeled "พนักงาน (เดิม)" for
       clarity since there are now two employee sources. The old Google Form is NOT

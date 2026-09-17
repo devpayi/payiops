@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Users, UserPlus, Search, X, ExternalLink, RefreshCw, FilePlus2 } from 'lucide-react'
+import { Users, UserPlus, Search, X, ExternalLink, RefreshCw, FilePlus2, Printer } from 'lucide-react'
 import KpiCard from '../components/KpiCard'
 
 const API = '/api/sheet-tools?op=hr-people'
@@ -10,6 +10,14 @@ const VIEWS = [
   { id: 'applicants', label: 'ผู้สมัครงาน (แบบสั้น)', icon: UserPlus, formLabel: 'ฟอร์มใบสมัครงาน (แบบสั้น)', formUrl: 'https://docs.google.com/forms/d/1sjhYp5tFwJlvuhpa5yT0DwPOVutZdmxXmBnENiWs_AM/viewform' },
   { id: 'applicants_full', label: 'ผู้สมัครงาน (แบบเต็ม)', icon: FilePlus2, formLabel: 'ฟอร์มใบสมัครงาน (แบบเต็ม บนมือถือ)', formUrl: '/apply.html' },
 ]
+
+// ตาราง employees_full/applicants_full มีคอลัมน์เยอะมาก (50-65 คอลัมน์) โชว์ทุกคอลัมน์ในตาราง
+// อ่านไม่ไหว — ตารางเลยโชว์แค่สรุปคร่าวๆ ตามนี้ (คลิกแถวหรือกด "ดูทั้งหมด" เพื่อเปิด Drawer ที่มี
+// ทุกคอลัมน์จริง). view อื่น (employees/applicants จาก Google Form) header น้อยอยู่แล้ว โชว์ครบปกติ
+const SUMMARY_COLUMNS = {
+  employees_full: ['ประทับเวลา', 'ชื่อ-นามสกุล', 'ตำแหน่งงาน', 'โทรศัพท์มือถือ', 'วันที่เริ่มงาน'],
+  applicants_full: ['ประทับเวลา', 'ชื่อ-นามสกุล', 'ตำแหน่งงานที่สมัคร', 'โทรศัพท์มือถือ'],
+}
 
 // ประวัติการศึกษา/ประวัติการทำงานเก็บเป็น JSON array ต่อแถว (มาจาก public/apply.html) —
 // แปลงเป็นข้อความอ่านง่ายแทนโชว์ JSON ดิบ
@@ -54,15 +62,31 @@ function LinkOrText({ value }) {
   return <>{value || <span style={{ color: 'var(--payi-text-faint)' }}>—</span>}</>
 }
 
+// พิมพ์เฉพาะเนื้อหา drawer (ซ่อนทุกอย่างอื่นตอนสั่งพิมพ์) — ไม่ต้องใช้ library, ใช้ browser
+// print เดิม เหมือน public/apply.html แค่ scope ด้วย class .hr-print-area แทน
 function DetailDrawer({ row, headers, onClose }) {
   if (!row) return null
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }}>
-      <div className="app-side-drawer" onClick={(e) => e.stopPropagation()}
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .hr-print-area, .hr-print-area * { visibility: visible !important; }
+          .hr-print-area { position: fixed; inset: 0; width: 100%; height: auto !important; overflow: visible !important; }
+          .hr-no-print { display: none !important; }
+        }
+      `}</style>
+      <div className="app-side-drawer hr-print-area" onClick={(e) => e.stopPropagation()}
         style={{ background: 'var(--payi-surface)', width: 'min(460px,100vw)', height: '100%', overflowY: 'auto', padding: 24, boxSizing: 'border-box' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+        <div className="hr-no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <strong style={{ fontSize: 16, color: 'var(--payi-text-strong)' }}>รายละเอียด</strong>
-          <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--payi-text-muted)' }}><X size={20} /></button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button onClick={() => window.print()} title="สร้าง PDF / พิมพ์"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--payi-text-strong)' }}>
+              <Printer size={14} /> สร้าง PDF
+            </button>
+            <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--payi-text-muted)' }}><X size={20} /></button>
+          </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {headers.map((h) => (
@@ -119,6 +143,11 @@ export default function HRPeople() {
   const headers = data.headers || []
   const rows = data.rows || []
   const nameCol = useMemo(() => headers.find(nameHint) || headers[1] || headers[0], [headers])
+  // แบบเต็ม (employees_full/applicants_full) คอลัมน์เยอะเกินโชว์ในตารางไหว — โชว์แค่สรุป
+  // แล้วให้กด "ดูทั้งหมด" เปิด Drawer แทน (Drawer ยังโชว์ headers ครบทุกคอลัมน์เหมือนเดิม)
+  const summaryDef = SUMMARY_COLUMNS[view]
+  const tableCols = summaryDef ? summaryDef.filter((h) => headers.includes(h)) : headers
+  const isSummaryView = !!summaryDef
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase()
@@ -170,13 +199,19 @@ export default function HRPeople() {
 
           {err && <div style={{ color: 'var(--payi-danger)', fontSize: 13 }}>{err}</div>}
 
+          {isSummaryView && (
+            <p style={{ margin: 0, fontSize: 12, color: 'var(--payi-text-faint)' }}>
+              โชว์คร่าวๆ {tableCols.length} คอลัมน์ — คลิกแถวหรือกด "ดูทั้งหมด" เพื่อดูข้อมูลทุกช่องจริงๆ
+            </p>
+          )}
           <div className="payi-glass-card" style={{ padding: 0, overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 720, fontSize: 13 }}>
               <thead>
                 <tr>
-                  {headers.map((h) => (
+                  {tableCols.map((h) => (
                     <th key={h} style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '1px solid var(--payi-border)', color: 'var(--payi-text-muted)', fontWeight: 700, whiteSpace: 'nowrap', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.03em' }}>{displayLabel(h)}</th>
                   ))}
+                  {isSummaryView && <th style={{ padding: '10px 12px', borderBottom: '1px solid var(--payi-border)' }} />}
                 </tr>
               </thead>
               <tbody>
@@ -185,17 +220,25 @@ export default function HRPeople() {
                     style={{ cursor: 'pointer', borderBottom: '1px solid var(--payi-border)' }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--payi-surface-muted)')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
-                    {headers.map((h) => (
+                    {tableCols.map((h) => (
                       <td key={h} style={{ padding: '9px 12px', color: 'var(--payi-text-strong)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: h === nameCol ? 700 : 400 }}>
                         {parseJsonRows(row[h])
                           ? `${parseJsonRows(row[h]).length} รายการ (คลิกดูรายละเอียด)`
                           : isUrl(row[h]) ? <LinkOrText value={row[h]} /> : (row[h] || '—')}
                       </td>
                     ))}
+                    {isSummaryView && (
+                      <td style={{ padding: '9px 12px' }}>
+                        <button onClick={(e) => { e.stopPropagation(); setSelected(row) }}
+                          style={{ border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--payi-mint-strong)', whiteSpace: 'nowrap' }}>
+                          ดูทั้งหมด
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
                 {!loading && !filtered.length && (
-                  <tr><td colSpan={Math.max(headers.length, 1)} style={{ padding: 24, textAlign: 'center', color: 'var(--payi-text-muted)' }}>ไม่มีข้อมูล</td></tr>
+                  <tr><td colSpan={Math.max(tableCols.length, 1)} style={{ padding: 24, textAlign: 'center', color: 'var(--payi-text-muted)' }}>ไม่มีข้อมูล</td></tr>
                 )}
               </tbody>
             </table>
