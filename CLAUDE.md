@@ -223,6 +223,21 @@ Sheets rate limits.
     both files (no shared module — these are deliberately dependency-free static HTML,
     see the file-level comment) — **fix bugs in both copies**, they will not sync
     automatically.
+  - **✅ DONE (2026-09-17) — second field-feedback round after live testing.**
+    ประวัติการศึกษา: education-history row now auto-seeds one empty row the first time
+    the step renders (`if (!length) answers.education_history = [{}]` inline in
+    `render()`) so picking a วุฒิ dropdown value and typing straight into the row needs
+    no separate "+เพิ่มรายการ" click first — boss: "วุฒิไม่ต้องกดเพิ่ม เลือกเสร็จแล้ว
+    กรอกต่อเลย". ประสบการณ์การทำงาน step rebuilt as a ไม่มี/มี radio gate — the
+    `repeatList` (and its length-based required check) only renders/applies when "มี" is
+    picked; the radio's own change handler calls `renderStep()` (full re-render, not just
+    `refreshNextState()`) since visibility of a whole sub-tree needs to change, not just
+    button-disabled state. ทักษะและความสามารถ: dropped fax/typewriter
+    ("ไม่โทรสาร ไม่พิมพ์ดีดกันแล้ว") from `office_skills`, replaced with
+    เครื่องปริ้นเตอร์/สแกนเนอร์ + เครื่องรูดบัตร; `computer_programs` gained
+    Google Docs/Sheets + "ระบบขายออนไลน์ (Shopee/TikTok Shop)", dropped Photoshop
+    (kept AI/Canva from the 09-15 pass). บุคคลอ้างอิง step back to fully optional on
+    both forms.
   - **✅ DONE (2026-09-17) — draft-clear button.** Owner opened a wizard and found fields
     pre-filled, worried it was hardcoded sample data — it wasn't (verified via grep, no
     sample data anywhere); it was the intentional `localStorage` draft-autosave from an

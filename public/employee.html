@@ -358,6 +358,9 @@ const steps = [
     title: 'ประวัติการศึกษา', sub: 'เพิ่มได้หลายรายการ เรียงจากล่าสุด',
     render: (c) => {
       c.appendChild(field('วุฒิการศึกษาสูงสุด', selectInput('education_level', ['ต่ำกว่า ม.6', 'ม.6 / ปวช.', 'ปวส. / อนุปริญญา', 'ปริญญาตรี', 'ปริญญาโท', 'ปริญญาเอก', 'อื่นๆ'])));
+      // เลือกวุฒิเสร็จกรอกต่อได้เลย ไม่ต้องกด "+เพิ่มรายการ" เอง — ใส่แถวว่างให้ 1 แถวล่วงหน้า
+      // (บอส 2026-09-17: "วุฒิไม่ต้องกดเพิ่ม เลือกเสร็จแล้วกรอกต่อเลย")
+      if (!(answers.education_history || []).length) answers.education_history = [{}];
       c.appendChild(repeatList('education_history', [
         ['level', 'ระดับการศึกษา (เช่น ปวส./ปริญญาตรี)'],
         ['school', 'สถาบันการศึกษา'],
@@ -371,18 +374,29 @@ const steps = [
     required: () => !!answers.education_level && (answers.education_history || []).length > 0,
   },
   {
-    title: 'ประสบการณ์การทำงาน', sub: 'เพิ่มอย่างน้อย 1 รายการ',
+    title: 'ประสบการณ์การทำงาน', sub: '',
     render: (c) => {
-      c.appendChild(repeatList('work_history', [
-        ['company', 'ชื่อสถานประกอบการ'],
-        ['salary', 'เงินเดือน'],
-        ['from', 'ทำงานตั้งแต่ (เดือน/ปี)'],
-        ['to', 'ถึง (เดือน/ปี)'],
-        ['position', 'หน้าที่/ตำแหน่ง'],
-        ['reason_left', 'สาเหตุที่ออก'],
-      ], 'เพิ่มประสบการณ์ทำงาน'));
+      const radios = el('div', { class: 'radios' });
+      ['ไม่มี', 'มี'].forEach(o => {
+        const rb = el('input', { type: 'radio', name: 'has_work_experience' });
+        rb.checked = answers.has_work_experience === o;
+        rb.addEventListener('change', () => { answers.has_work_experience = o; saveDraft(); renderStep(); });
+        radios.appendChild(el('label', {}, rb, o));
+      });
+      c.appendChild(field('มีประสบการณ์การทำงานมาก่อนหรือไม่', radios));
+      if (answers.has_work_experience === 'มี') {
+        c.appendChild(repeatList('work_history', [
+          ['company', 'ชื่อสถานประกอบการ'],
+          ['salary', 'เงินเดือน'],
+          ['from', 'ทำงานตั้งแต่ (เดือน/ปี)'],
+          ['to', 'ถึง (เดือน/ปี)'],
+          ['position', 'หน้าที่/ตำแหน่ง'],
+          ['reason_left', 'สาเหตุที่ออก'],
+        ], 'เพิ่มประสบการณ์ทำงาน'));
+      }
     },
-    required: () => (answers.work_history || []).length > 0,
+    required: () => answers.has_work_experience === 'ไม่มี'
+      || (answers.has_work_experience === 'มี' && (answers.work_history || []).length > 0),
   },
   {
     title: 'ทักษะและความสามารถ', sub: '',
@@ -394,21 +408,21 @@ const steps = [
       grid.appendChild(selectInput('english_write', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้'], 'การเขียน'));
       c.appendChild(grid);
       c.appendChild(field('ภาษาอื่นๆ', textInput('other_language')));
-      c.appendChild(field('ความสามารถใช้เครื่องใช้สำนักงาน', checkGroup('office_skills', ['เครื่องถ่ายเอกสาร', 'โทรสาร', 'พิมพ์ดีด'])));
+      c.appendChild(field('อุปกรณ์สำนักงานที่ใช้เป็น', checkGroup('office_skills', ['เครื่องถ่ายเอกสาร', 'เครื่องปริ้นเตอร์/สแกนเนอร์', 'เครื่องรูดบัตร'])));
       c.appendChild(field('ความสามารถใช้คอมพิวเตอร์', selectInput('computer_level', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้'])));
-      c.appendChild(field('โปรแกรมที่ใช้ได้', checkGroup('computer_programs', ['Excel', 'Word', 'PowerPoint', 'Photoshop', 'โปรแกรมบัญชี', 'AI (ChatGPT ฯลฯ)', 'Canva/คอนเทนต์โซเชียล', 'อื่นๆ'])));
+      c.appendChild(field('โปรแกรม/เครื่องมือที่ใช้ได้', checkGroup('computer_programs', ['Excel', 'Word', 'PowerPoint', 'Canva', 'Google Docs/Sheets', 'โปรแกรมบัญชี', 'ระบบขายออนไลน์ (Shopee/TikTok Shop)', 'AI (ChatGPT ฯลฯ)', 'อื่นๆ'])));
     },
     required: () => !!answers.english_speak && !!answers.english_read && !!answers.english_write && !!answers.other_language
       && (answers.office_skills || []).length > 0 && !!answers.computer_level && (answers.computer_programs || []).length > 0,
   },
   {
-    title: 'บุคคลอ้างอิง', sub: '',
+    title: 'บุคคลอ้างอิง', sub: 'ไม่บังคับ',
     render: (c) => {
-      c.appendChild(field('ชื่อบุคคลอ้างอิง / ความสัมพันธ์', textInput('reference_name')));
-      c.appendChild(field('อาชีพบุคคลอ้างอิง', textInput('reference_occupation')));
-      c.appendChild(field('เบอร์โทรบุคคลอ้างอิง', textInput('reference_phone', 'tel')));
+      c.appendChild(field('ชื่อบุคคลอ้างอิง / ความสัมพันธ์', textInput('reference_name'), true));
+      c.appendChild(field('อาชีพบุคคลอ้างอิง', textInput('reference_occupation'), true));
+      c.appendChild(field('เบอร์โทรบุคคลอ้างอิง', textInput('reference_phone', 'tel'), true));
     },
-    required: () => !!answers.reference_name && !!answers.reference_occupation && !!answers.reference_phone,
+    required: () => true,
   },
   {
     title: 'บัญชีธนาคาร', sub: 'สำหรับโอนเงินเดือน',
