@@ -1226,27 +1226,27 @@ body:has(.hr-page) .payi-main-content > .payi-topbar > div:last-child {
 
 /* Small toy-color accents: decorative only; data/status colors stay unchanged. */
 body:has(.hr-page) .payi-sidebar-nav [data-nav-id="HR"] {
-  background: #168861 !important;
+  background: linear-gradient(110deg, #168861 0%, #247b70 52%, #69508c 100%) !important;
   box-shadow:
-    0 7px 18px rgba(22, 136, 97, .28),
-    0 0 0 2px rgba(139, 255, 178, .24),
-    0 0 16px rgba(92, 255, 155, .18) !important;
+    0 6px 16px rgba(43, 103, 88, .2),
+    inset 0 1px 0 rgba(255, 255, 255, .18) !important;
 }
 
 .hr-dashboard-hero {
   border-color: rgba(184, 232, 216, .7);
   background:
-    linear-gradient(90deg, rgba(20, 75, 78, .78) 0%, rgba(25, 105, 96, .62) 38%, rgba(25, 105, 96, .32) 58%, rgba(25, 100, 92, .1) 78%, rgba(25, 92, 82, 0) 92%),
+    linear-gradient(90deg, rgba(66, 40, 91, .84) 0%, rgba(76, 48, 105, .68) 36%, rgba(35, 104, 92, .35) 60%, rgba(111, 71, 144, .14) 80%, rgba(111, 71, 144, .04) 100%),
     url("/hr-toy-explorers.png") center 22% / cover no-repeat;
   box-shadow:
     0 18px 42px rgba(31, 78, 79, .2),
     inset 0 1px 0 rgba(255, 255, 255, .48);
-  /* ทดลองเบาๆ ตามที่ขอ — filter กระทบทั้งกล่อง (รวมตัวหนังสือ) เพราะแก้แค่สีชุดในรูปนิ่งแยกไม่ได้ (บอกไว้แล้ว) */
-  filter: hue-rotate(14deg) saturate(1.12);
+  filter: none;
 }
 
 .hr-dashboard-hero::before {
-  background: linear-gradient(180deg, rgba(255, 255, 255, .04), transparent 48%, rgba(12, 51, 53, .12));
+  background:
+    radial-gradient(ellipse at 95% 95%, rgba(216, 82, 78, .18), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, .04), transparent 48%, rgba(12, 51, 53, .12));
 }
 
 .hr-hero-copy > span {
@@ -1262,7 +1262,7 @@ body:has(.hr-page) .payi-sidebar-nav [data-nav-id="HR"] {
   position: relative;
   overflow: hidden;
   border-color: rgba(213, 241, 233, .42);
-  background: rgba(18, 75, 77, .64);
+  background: rgba(67, 43, 89, .66);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, .12),
     0 8px 18px rgba(12, 46, 49, .14);
@@ -1270,12 +1270,12 @@ body:has(.hr-page) .payi-sidebar-nav [data-nav-id="HR"] {
 
 .hr-dashboard-hero .hr-metric:nth-child(even) {
   border-color: rgba(213, 241, 233, .42);
-  background: rgba(18, 75, 77, .64);
+  background: rgba(67, 43, 89, .66);
 }
 
 .hr-dashboard-hero .hr-refresh {
-  border-color: rgba(255, 255, 255, .58);
-  background: rgba(20, 83, 82, .5);
+  border-color: rgba(246, 160, 151, .72);
+  background: rgba(116, 56, 68, .48);
   box-shadow: none;
 }
 
@@ -1310,4 +1310,10 @@ body:has(.hr-page) .payi-sidebar-nav [data-nav-id="HR"] {
 .hr-dashboard-hero .hr-metric-icon {
   background: rgba(255, 255, 255, .12);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12);
+}
+
+.hr-dashboard-hero .hr-metric:nth-child(3) .hr-metric-icon {
+  color: #ffe2dc;
+  background: rgba(212, 103, 94, .24);
+  box-shadow: inset 0 0 0 1px rgba(246, 173, 163, .28);
 }
