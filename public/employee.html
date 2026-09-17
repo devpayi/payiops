@@ -355,23 +355,41 @@ const steps = [
     required: () => !!answers.military_status,
   },
   {
-    title: 'ประวัติการศึกษา', sub: 'เพิ่มได้หลายรายการ เรียงจากล่าสุด',
+    title: 'ประวัติการศึกษา', sub: '',
     render: (c) => {
-      c.appendChild(field('วุฒิการศึกษาสูงสุด', selectInput('education_level', ['ต่ำกว่า ม.6', 'ม.6 / ปวช.', 'ปวส. / อนุปริญญา', 'ปริญญาตรี', 'ปริญญาโท', 'ปริญญาเอก', 'อื่นๆ'])));
-      // เลือกวุฒิเสร็จกรอกต่อได้เลย ไม่ต้องกด "+เพิ่มรายการ" เอง — ใส่แถวว่างให้ 1 แถวล่วงหน้า
-      // (บอส 2026-09-17: "วุฒิไม่ต้องกดเพิ่ม เลือกเสร็จแล้วกรอกต่อเลย")
-      if (!(answers.education_history || []).length) answers.education_history = [{}];
-      c.appendChild(repeatList('education_history', [
-        ['level', 'ระดับการศึกษา (เช่น ปวส./ปริญญาตรี)'],
-        ['school', 'สถาบันการศึกษา'],
-        ['major', 'สาขาวิชาเอก'],
-        ['year', 'ปีที่จบการศึกษา'],
-        ['gpa', 'เกรดเฉลี่ย'],
-      ], 'เพิ่มรายการการศึกษา'));
+      // เลือกวุฒิก่อน ค่อยขยายรายละเอียดออกมาให้กรอกต่อ — ไม่มีปุ่ม +/✕ ให้กดเลย (บอส
+      // 2026-09-17: "เลือกเสร็จแล้วค่อยขยายส่วนที่เหลือ กากบาทไม่ได้ ไม่ต้องกดเพิ่ม" —
+      // เก็บเป็น array 1 ชิ้นเหมือนเดิมข้างหลัง (เข้ากับ backend/JSON เดิม) แค่ UI ไม่โชว์ปุ่ม
+      const sel = el('select', {});
+      sel.appendChild(el('option', { value: '' }, 'เลือก'));
+      ['ต่ำกว่า ม.6', 'ม.6 / ปวช.', 'ปวส. / อนุปริญญา', 'ปริญญาตรี', 'ปริญญาโท', 'ปริญญาเอก', 'อื่นๆ'].forEach(o => {
+        const opt = el('option', { value: o }, o);
+        if (answers.education_level === o) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener('change', () => { answers.education_level = sel.value; saveDraft(); renderStep(); });
+      c.appendChild(field('วุฒิการศึกษาสูงสุด', sel));
+      if (answers.education_level) {
+        if (!(answers.education_history || [])[0]) answers.education_history = [{}];
+        const row = answers.education_history[0];
+        const box = el('div', { class: 'repeat-item' });
+        [
+          ['level', 'ระดับการศึกษา (เช่น ปวส./ปริญญาตรี)'],
+          ['school', 'สถาบันการศึกษา'],
+          ['major', 'สาขาวิชาเอก'],
+          ['year', 'ปีที่จบการศึกษา'],
+          ['gpa', 'เกรดเฉลี่ย'],
+        ].forEach(([k, label]) => {
+          const inp = el('input', { type: 'text', value: row[k] || '', placeholder: label });
+          inp.addEventListener('input', () => { row[k] = inp.value; saveDraft(); });
+          box.appendChild(el('div', { class: 'field' }, el('label', {}, label), inp));
+        });
+        c.appendChild(box);
+      }
       c.appendChild(field('กิจกรรม/รางวัลระหว่างการศึกษา', textarea('education_activities'), true));
       c.appendChild(field('สาขาวิชาที่ชอบเป็นพิเศษ', textInput('favorite_subject'), true));
     },
-    required: () => !!answers.education_level && (answers.education_history || []).length > 0,
+    required: () => !!answers.education_level,
   },
   {
     title: 'ประสบการณ์การทำงาน', sub: '',

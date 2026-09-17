@@ -238,6 +238,18 @@ Sheets rate limits.
     Google Docs/Sheets + "ระบบขายออนไลน์ (Shopee/TikTok Shop)", dropped Photoshop
     (kept AI/Canva from the 09-15 pass). บุคคลอ้างอิง step back to fully optional on
     both forms.
+  - **✅ DONE (2026-09-17) — ประวัติการศึกษา simplified to single-entry, no +/✕ buttons.**
+    Owner's screenshot showed the auto-seeded row appearing even before a วุฒิ was
+    picked, and asked "กากบาทไม่ได้ ไม่ต้องกดเพิ่ม" — read as: don't need add/remove
+    controls at all for this field, just reveal one fixed set of detail inputs once a
+    วุฒิ dropdown value is chosen. Rebuilt the step with its own inline `<select>`
+    (`change` handler calls `renderStep()`, a full re-render, so the detail box's
+    visibility updates immediately — same pattern as the ประสบการณ์การทำงาน ไม่มี/มี
+    gate) instead of the shared `selectInput()`/`repeatList()` helpers. Still stores
+    `answers.education_history` as a 1-item array under the hood (`answers[k]` on
+    `education_history[0]`) so the submit payload/backend `EMPLOYEE_FULL_FIELDS`/
+    `APPLICANT_FULL_FIELDS` JSON-column shape is unchanged — only the UI lost the
+    repeat/add/remove chrome.
   - **✅ DONE (2026-09-17) — draft-clear button.** Owner opened a wizard and found fields
     pre-filled, worried it was hardcoded sample data — it wasn't (verified via grep, no
     sample data anywhere); it was the intentional `localStorage` draft-autosave from an
