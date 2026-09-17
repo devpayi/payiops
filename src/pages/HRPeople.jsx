@@ -50,6 +50,113 @@ const isUrl = (v) => /^https?:\/\//i.test(String(v || '').trim())
 // คอลัมน์ที่เป็นชื่อคน/หัวข้อหลัก — เดาจากชื่อ header เพื่อโชว์เป็นหัวแถวในตาราง
 const nameHint = (h) => /ชื่อ|name|พนักงาน|ผู้สมัคร/i.test(h) && !/บริษัท|เล่น|ผู้ติดต่อ|ฉุกเฉิน|company/i.test(h)
 
+// จัดกลุ่มหัวข้อสำหรับ PDF ให้หน้าตาเหมือนแบบฟอร์ม HR จริง (กล่องมีหัวข้อ + ตาราง 2 คอลัมน์)
+// แทนโชว์เป็น list เดี่ยวๆ ยาวเป็นหางว่าว — ใช้ label ไทยตรงตาม APPLICANT_FULL_FIELDS/
+// EMPLOYEE_FULL_FIELDS ใน api/_lib/hrPeople.js (คนละไฟล์ ไม่ import ข้ามกันได้ เพราะฝั่งนั้น
+// เป็น backend — ถ้าเปลี่ยน label ตรงนั้น ต้องมาแก้ที่นี่ด้วย)
+const PROFILE_SECTIONS = [
+  { title: 'ข้อมูลตำแหน่งงาน', headers: ['ตำแหน่งงานที่สมัคร', 'ตำแหน่งงาน', 'เงินเดือนที่ต้องการ', 'วันที่เริ่มงานได้', 'วันที่เริ่มงาน', 'สถานภาพการทำงานปัจจุบัน', 'เอกสารที่เตรียมมา'] },
+  { title: 'เอกสารประจำตัว', headers: ['เลขบัตรประชาชน', 'รูปบัตรประชาชน', 'ที่อยู่ตามทะเบียนบ้าน', 'รูปทะเบียนบ้าน'] },
+  { title: 'ข้อมูลส่วนตัว', headers: ['คำนำหน้า', 'ชื่อ-นามสกุล', 'ชื่อเล่น', 'อายุ', 'วันเดือนปีเกิด', 'สัญชาติ', 'เชื้อชาติ', 'ศาสนา', 'ภูมิลำเนาเดิม', 'จำนวนพี่น้อง', 'เป็นบุตรคนที่'] },
+  { title: 'ที่อยู่และการติดต่อ', headers: ['ที่อยู่ปัจจุบัน', 'ตำบล/แขวง', 'อำเภอ/เขต', 'จังหวัด', 'รหัสไปรษณีย์', 'โทรศัพท์บ้าน', 'โทรศัพท์มือถือ', 'Email'] },
+  { title: 'ที่พักอาศัย/ครอบครัว', headers: ['ประเภทที่อยู่อาศัย', 'อาศัยมาแล้ว (ปี)', 'สถานภาพครอบครัว', 'ชื่อคู่สมรส', 'อาชีพคู่สมรส', 'จำนวนบุตร'] },
+  { title: 'สุขภาพและประวัติ', headers: ['กรุ๊ปเลือด', 'น้ำหนัก (กก.)', 'ส่วนสูง (ซม.)', 'ประวัติอาชญากรรม', 'โรคประจำตัว/สุขภาพ'] },
+  { title: 'ข้อมูลบิดา-มารดา', headers: ['ชื่อบิดา', 'สถานะบิดา', 'อาชีพบิดา', 'ที่อยู่/จังหวัดบิดา', 'ชื่อมารดา', 'สถานะมารดา', 'อาชีพมารดา', 'ที่อยู่/จังหวัดมารดา'] },
+  { title: 'สถานะทางการทหาร', headers: ['สถานะทางการทหาร'] },
+  { title: 'ประวัติการศึกษา', headers: ['วุฒิการศึกษาที่ใช้สมัคร', 'วุฒิการศึกษาสูงสุด', 'ประวัติการศึกษา', 'กิจกรรม/รางวัลระหว่างการศึกษา', 'สาขาที่ชอบเป็นพิเศษ'] },
+  { title: 'ประสบการณ์การทำงาน', headers: ['ประวัติการทำงาน'] },
+  { title: 'ทักษะและความสามารถ', headers: ['ภาษาอังกฤษ (พูด)', 'ภาษาอังกฤษ (อ่าน)', 'ภาษาอังกฤษ (เขียน)', 'ภาษาอื่นๆ', 'ความสามารถใช้เครื่องใช้สำนักงาน', 'ความสามารถใช้คอมพิวเตอร์', 'โปรแกรมที่ใช้ได้'] },
+  { title: 'บุคคลอ้างอิง', headers: ['บุคคลอ้างอิง (ชื่อ/ความสัมพันธ์)', 'บุคคลอ้างอิง (อาชีพ)', 'บุคคลอ้างอิง (เบอร์โทร)', 'ทราบข่าวการสมัครงานจาก'] },
+  { title: 'บัญชีธนาคาร', headers: ['ธนาคาร', 'เลขบัญชี', 'ชื่อบัญชี'] },
+  { title: 'บุคคลที่ติดต่อได้กรณีฉุกเฉิน', headers: ['บุคคลที่ติดต่อได้กรณีฉุกเฉิน (ชื่อ)', 'ความสัมพันธ์', 'เบอร์โทรฉุกเฉิน'] },
+]
+
+function fieldValue(row, h) {
+  const rows = parseJsonRows(row[h])
+  if (rows) return null // ตารางแยกต่างหาก ไม่โชว์ในกริด label:value
+  return row[h] || ''
+}
+
+function PrintableProfile({ row, headers }) {
+  const headerSet = new Set(headers)
+  const usedHeaders = new Set()
+  const sections = PROFILE_SECTIONS
+    .map((sec) => ({ ...sec, headers: sec.headers.filter((h) => headerSet.has(h)) }))
+    .filter((sec) => sec.headers.length > 0)
+  sections.forEach((sec) => sec.headers.forEach((h) => usedHeaders.add(h)))
+  const leftoverHeaders = headers.filter((h) => h !== 'ประทับเวลา' && !usedHeaders.has(h))
+  const name = row['ชื่อ-นามสกุล'] || '-'
+  const position = row['ตำแหน่งงานที่สมัคร'] || row['ตำแหน่งงาน'] || '-'
+  const submittedAt = row['ประทับเวลา'] || ''
+
+  return (
+    <div style={{ fontFamily: '-apple-system, "Noto Sans Thai", Arial, sans-serif', color: '#111827', fontSize: 13, lineHeight: 1.6 }}>
+      <div style={{ borderBottom: '3px solid #0b63d8', paddingBottom: 10, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: '#0b63d8', letterSpacing: '.06em', textTransform: 'uppercase' }}>PAYI · เอกสารประวัติบุคคล</div>
+          <div style={{ fontSize: 20, fontWeight: 800, marginTop: 2 }}>{name}</div>
+          <div style={{ fontSize: 13, color: '#475569' }}>ตำแหน่ง: {position}</div>
+        </div>
+        <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'right' }}>วันที่ส่งฟอร์ม<br />{submittedAt}</div>
+      </div>
+
+      {sections.map((sec) => (
+        <div key={sec.title} style={{ border: '1px solid #cbd5e1', borderRadius: 8, marginBottom: 12, overflow: 'hidden', breakInside: 'avoid' }}>
+          <div style={{ background: '#eaf3ff', color: '#0b63d8', fontWeight: 700, fontSize: 12, padding: '6px 12px' }}>{sec.title}</div>
+          {sec.headers.some((h) => parseJsonRows(row[h])) ? (
+            <div style={{ padding: 10 }}>
+              {sec.headers.map((h) => {
+                const rows = parseJsonRows(row[h])
+                if (!rows) return null
+                return (
+                  <table key={h} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 6 }}>
+                    <tbody>
+                      {rows.length ? rows.map((r, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '4px 6px', color: '#475569' }}>{Object.values(r).filter(Boolean).join(' · ') || '—'}</td>
+                        </tr>
+                      )) : (
+                        <tr><td style={{ padding: '4px 6px', color: '#94a3b8' }}>— ไม่มีข้อมูล —</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                )
+              })}
+            </div>
+          ) : null}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+            {sec.headers.filter((h) => !parseJsonRows(row[h])).map((h) => (
+              <div key={h} style={{ display: 'flex', borderTop: '1px solid #e2e8f0' }}>
+                <div style={{ width: '45%', padding: '6px 10px', color: '#64748b', fontSize: 11, borderRight: '1px solid #e2e8f0' }}>{displayLabel(h)}</div>
+                <div style={{ flex: 1, padding: '6px 10px', fontWeight: 500 }}>{fieldValue(row, h) || '—'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {leftoverHeaders.length > 0 && (
+        <div style={{ border: '1px solid #cbd5e1', borderRadius: 8, marginBottom: 12, overflow: 'hidden', breakInside: 'avoid' }}>
+          <div style={{ background: '#eaf3ff', color: '#0b63d8', fontWeight: 700, fontSize: 12, padding: '6px 12px' }}>อื่นๆ</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+            {leftoverHeaders.map((h) => (
+              <div key={h} style={{ display: 'flex', borderTop: '1px solid #e2e8f0' }}>
+                <div style={{ width: '45%', padding: '6px 10px', color: '#64748b', fontSize: 11, borderRight: '1px solid #e2e8f0' }}>{displayLabel(h)}</div>
+                <div style={{ flex: 1, padding: '6px 10px', fontWeight: 500 }}>{row[h] || '—'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginTop: 32, display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+        <div>ลงชื่อ ................................................. ผู้กรอกข้อมูล</div>
+        <div>วันที่ ................./................./.................</div>
+      </div>
+    </div>
+  )
+}
+
 function LinkOrText({ value }) {
   if (isUrl(value)) {
     return (
@@ -72,9 +179,11 @@ function DetailDrawer({ row, headers, onClose }) {
         @media print {
           body * { visibility: hidden !important; }
           .hr-print-area, .hr-print-area * { visibility: visible !important; }
-          .hr-print-area { position: fixed; inset: 0; width: 100%; height: auto !important; overflow: visible !important; }
+          .hr-print-area { position: fixed; inset: 0; width: 100%; height: auto !important; overflow: visible !important; padding: 20px !important; }
           .hr-no-print { display: none !important; }
+          .hr-print-only { display: block !important; }
         }
+        .hr-print-only { display: none; }
       `}</style>
       <div className="app-side-drawer hr-print-area" onClick={(e) => e.stopPropagation()}
         style={{ background: 'var(--payi-surface)', width: 'min(460px,100vw)', height: '100%', overflowY: 'auto', padding: 24, boxSizing: 'border-box' }}>
@@ -88,13 +197,16 @@ function DetailDrawer({ row, headers, onClose }) {
             <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--payi-text-muted)' }}><X size={20} /></button>
           </div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="hr-no-print" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {headers.map((h) => (
             <div key={h}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--payi-text-muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>{displayLabel(h)}</div>
               <div style={{ fontSize: 14, color: 'var(--payi-text-strong)', wordBreak: 'break-word' }}><JsonRowsView value={row[h]} /></div>
             </div>
           ))}
+        </div>
+        <div className="hr-print-only">
+          <PrintableProfile row={row} headers={headers} />
         </div>
       </div>
     </div>

@@ -313,6 +313,26 @@ Sheets rate limits.
       (`window.print()`) plus scoped print CSS (`.hr-print-area`/`.hr-no-print`, same
       visibility-toggle trick as any print-one-element approach) so printing only
       outputs the open record, not the sidebar/table behind it.
+    - **✅ DONE (2026-09-17) — proper document-style PDF layout.** Owner sent reference
+      images of real Thai HR paper forms (bordered sections, boxed headers, signature
+      line) and asked for that look instead of the plain vertical label/value list the
+      "สร้าง PDF" button was printing. Added `PROFILE_SECTIONS` (groups of Thai column
+      labels — ข้อมูลตำแหน่งงาน/เอกสารประจำตัว/ข้อมูลส่วนตัว/ที่อยู่/ครอบครัว/สุขภาพ/
+      บิดา-มารดา/ทหาร/การศึกษา/ประสบการณ์ทำงาน/ทักษะ/บุคคลอ้างอิง/บัญชีธนาคาร/ฉุกเฉิน,
+      union of both `APPLICANT_FULL_FIELDS` and `EMPLOYEE_FULL_FIELDS` labels since one
+      component serves both — **these Thai strings must be kept in sync by hand** with
+      the backend field-label lists in `api/_lib/hrPeople.js`, there's no shared import
+      between frontend and that backend-only file) and a new `PrintableProfile`
+      component: bordered card per section (mint header bar + 2-col label/value grid),
+      education/work-history JSON columns rendered as real tables instead of the bullet
+      list, any header not matched by a section (covers the dynamic Google-Form-sourced
+      `employees`/`applicants` views) falls into a catch-all "อื่นๆ" section, and a
+      signature-line footer. **On-screen drawer content is unchanged** (still the plain
+      scrollable list, good for quick scanning) — `PrintableProfile` is a second copy of
+      the same data rendered into a `.hr-print-only` block (`display:none` normally,
+      `display:block` only inside the existing `@media print` rule alongside
+      `.hr-print-area`/`.hr-no-print`), so screen and print show different layouts of
+      the same row without a second data fetch.
     - `HRPeople.jsx` gained a 4th view `employees_full` ("พนักงาน (แบบเต็ม)"), form-link
       → `/employee.html`; existing `employees` view relabeled "พนักงาน (เดิม)" for
       clarity since there are now two employee sources. The old Google Form is NOT
