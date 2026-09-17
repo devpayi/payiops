@@ -16,7 +16,7 @@ import opImportTracking, { createArrivalsFromShipping } from './_lib/importTrack
 import opCfo from './_lib/cfo.js'
 import opDemographic from './_lib/demographic.js'
 import opFulfillment from './_lib/fulfillment.js'
-import opHrPeople, { opSubmitApplicant } from './_lib/hrPeople.js'
+import opHrPeople, { opSubmitApplicant, opSubmitEmployee } from './_lib/hrPeople.js'
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
 // req.body ยังใช้ได้ตามปกติในทุก op เดิม เพราะ readRawBody() ด้านล่าง parse JSON ให้เหมือน Vercel ทำเอง
@@ -3821,6 +3821,11 @@ export default async function handler(req, res) {
   // ผู้สมัครงานไม่มีบัญชีในระบบ ข้าม requireAuth ตั้งใจ (เหมือน line-webhook ด้านบน)
   if (op === 'hr-people' && req.method === 'POST' && (req.body || {}).action === 'submit-applicant') {
     return opSubmitApplicant(req, res)
+  }
+  // ฟอร์มข้อมูลพนักงานมือถือ (public/employee.html) — เปิดสาธารณะเหมือนกัน (คนกรอกเพิ่งผ่านสัมภาษณ์
+  // ยังไม่มีบัญชีในระบบ) — เก็บ PII เต็มรูปแบบ (บัตร ปชช/ทะเบียนบ้าน+รูป) เข้า employees_full
+  if (op === 'hr-people' && req.method === 'POST' && (req.body || {}).action === 'submit-employee') {
+    return opSubmitEmployee(req, res)
   }
   // Vercel Cron เรียกไม่มี user token — ข้าม requireAuth เหมือน line-webhook แล้วเช็ค CRON_SECRET แทนในตัวมันเอง
   if (op === 'inventory' && req.query.cron === 'low-stock') return opLowStockCron(req, res)

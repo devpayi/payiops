@@ -5,7 +5,8 @@ import KpiCard from '../components/KpiCard'
 const API = '/api/sheet-tools?op=hr-people'
 
 const VIEWS = [
-  { id: 'employees', label: 'พนักงาน', icon: Users, formLabel: 'ฟอร์มข้อมูลพนักงาน', formUrl: 'https://docs.google.com/forms/d/1hxqaPqkZfiOaR7Hclm5XtBYrZTnS4vHdf7p4KviBVTk/viewform' },
+  { id: 'employees', label: 'พนักงาน (เดิม)', icon: Users, formLabel: 'ฟอร์มข้อมูลพนักงาน (เดิม)', formUrl: 'https://docs.google.com/forms/d/1hxqaPqkZfiOaR7Hclm5XtBYrZTnS4vHdf7p4KviBVTk/viewform' },
+  { id: 'employees_full', label: 'พนักงาน (แบบเต็ม)', icon: Users, formLabel: 'ฟอร์มข้อมูลพนักงาน (แบบเต็ม บนมือถือ)', formUrl: '/employee.html' },
   { id: 'applicants', label: 'ผู้สมัครงาน (แบบสั้น)', icon: UserPlus, formLabel: 'ฟอร์มใบสมัครงาน (แบบสั้น)', formUrl: 'https://docs.google.com/forms/d/1sjhYp5tFwJlvuhpa5yT0DwPOVutZdmxXmBnENiWs_AM/viewform' },
   { id: 'applicants_full', label: 'ผู้สมัครงาน (แบบเต็ม)', icon: FilePlus2, formLabel: 'ฟอร์มใบสมัครงาน (แบบเต็ม บนมือถือ)', formUrl: '/apply.html' },
 ]

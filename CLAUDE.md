@@ -197,6 +197,61 @@ Sheets rate limits.
     boss wants it "ยาวๆ เหมือนใบสมัคร" — not done yet, needs Google Forms editor
     (flaky UI, see the required-toggle gotcha earlier in this doc) or the owner can add
     the questions directly.
+  - **✅ DONE (2026-09-17) — employee data collection moved to a matching mobile wizard
+    too (`public/employee.html`), replacing the plan to expand the old Google Form.**
+    Owner decided against fighting the Google Forms editor again — wanted "ทำเหมือนหน้า
+    เว็ป กรอกทีละขั้นตอนเหมือนๆกัน" (same step-by-step web wizard as the applicant one).
+    **Real blocker hit and solved: Service Accounts have zero Drive storage quota,
+    confirmed by live test 2026-09-17** — even with a folder shared as Editor to the
+    Service Account, `drive.files.create` fails with "Service Accounts do not have
+    storage quota" (Google's own error). Workaround: **`api/_lib/driveBridge.js`**
+    calls a **Google Apps Script Web App deployed under the owner's own Google account**
+    (`Execute as: Me` → runs with the owner's real Drive quota, free). Env vars
+    `APPS_SCRIPT_DRIVE_URL` + `APPS_SCRIPT_DRIVE_SECRET` (set on Vercel, not committed —
+    the `.gs` script source lives outside the repo, given to the owner as a one-off file
+    since it has nothing to do with the Vercel deploy). This is now the **general
+    solution for any future feature needing real Drive uploads** on this free-tier
+    stack — reuse `uploadToDrive()` rather than re-deriving the OAuth-vs-Service-Account
+    problem again.
+    - `employee.html` mirrors `apply.html`'s architecture (steps/`answers`/`repeatList`
+      helpers, `localStorage` draft) almost field-for-field, plus employee-only steps:
+      **เอกสารประจำตัว** (`id_card_number` required, `id_card_photo`/
+      `house_registration_photo` — optional file inputs, `fileInputField()` reads via
+      `FileReader.readAsDataURL` and stores `{fileName, mimeType, base64Data}` in
+      `answers` client-side, actual Drive upload happens server-side on submit),
+      **บัญชีธนาคาร**, **บุคคลที่ติดต่อได้กรณีฉุกเฉิน**, plus `blood_type`/`weight`/
+      `height` folded into the shared สุขภาพและประวัติ step. `heard_from` dropped
+      (doesn't apply — already hired) and no ตำแหน่งที่สมัคร/เอกสารที่เตรียมมา steps.
+      **Gotcha noted in-code, not hit yet:** storing photo base64 in the `localStorage`
+      draft can exceed the ~5MB quota on a large photo — `saveDraft()`'s existing
+      try/catch already swallows that silently (draft just doesn't persist that field
+      that tick; doesn't block submit, which reads `answers` in memory directly).
+    - New `opSubmitEmployee` (`_lib/hrPeople.js`) — same public/unauthenticated pattern
+      as `opSubmitApplicant` (checked before `requireAuth` in `sheet-tools.js`, action
+      `submit-employee`). Writes to a **new `employees_full` tab** (env
+      `HR_EMPLOYEE_FULL_TAB`), **deliberately NOT the existing `employees` tab** — that
+      one has real Google-Form-sourced data with its own header row already, and
+      `ensureExternalSheet` overwrites row 1 if the header array doesn't match exactly,
+      which would misalign the existing row's data. Same separation pattern as
+      `applicants` vs `applicants_full`. `EMPLOYEE_FULL_FIELDS` (65 fields) is its own
+      append-only list, not shared with `APPLICANT_FULL_FIELDS` even though most keys
+      overlap — kept independent so editing one form's columns can never shift the
+      other's. `EMPLOYEE_TEXT_FORCE_KEYS` (leading-zero-safe `'` prefix, see the gotcha
+      above in the applicant section) extended to `id_card_number`/
+      `bank_account_number`/`emergency_contact_phone`. Photo upload is best-effort —
+      `uploadEmployeePhoto()` returns `''` on failure rather than throwing, so a bad/huge
+      photo never blocks saving the rest of a new hire's data; the cell is just blank
+      and boss can chase the photo separately.
+    - `HRPeople.jsx` gained a 4th view `employees_full` ("พนักงาน (แบบเต็ม)"), form-link
+      → `/employee.html`; existing `employees` view relabeled "พนักงาน (เดิม)" for
+      clarity since there are now two employee sources. The old Google Form is NOT
+      deleted/disabled — no migration of existing data, just a new intake path for new
+      hires going forward. `id_card_photo_url`/`house_registration_photo_url` columns
+      render the same as the old form's Drive-link columns (`LinkOrText` → "เปิดไฟล์").
+    - Photos land in a Drive folder the owner already uses/shares (id via
+      `HR_EMPLOYEE_DOCS_FOLDER_ID`, falls back to a hardcoded default folder id if unset
+      — added as a fallback specifically to skip one more round of Vercel env setup
+      given how many manual steps this feature already needed).
 - `LinksHub.jsx`, `DevHub.jsx` (static link/doc hubs — real content, no backend)
 - `Login.jsx`, `Settings.jsx` (auth screens, user management)
 - **`ContentOSPrototype.jsx`** ("Content OS Prototype") — **UI-only prototype, no API
