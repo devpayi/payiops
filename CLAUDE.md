@@ -197,6 +197,38 @@ Sheets rate limits.
     boss wants it "ยาวๆ เหมือนใบสมัคร" — not done yet, needs Google Forms editor
     (flaky UI, see the required-toggle gotcha earlier in this doc) or the owner can add
     the questions directly.
+  - **✅ DONE (2026-09-17) — field-requirement pass + real "stuck at ประวัติการศึกษา" bug
+    fix on both `apply.html` and `employee.html`.** Owner first asked to make every field
+    mandatory across both wizards (temporary, "เดี๋ยวบอกทีหลังว่าจุดไหนไม่บังคับ"), then
+    reported the wizard got genuinely stuck at ประวัติการศึกษา and could not proceed even
+    after adding an education-history row. **Root cause: `repeatList()`'s add/remove
+    buttons never called `refreshNextState()`** — the Next-button enable check only runs
+    on delegated `input`/`change` events on `cardBody` (see the 2026-09-11 gotcha comment
+    in the code), but the `+`/`✕` row buttons are plain `click` handlers that mutate
+    `answers` directly, so the button silently stayed disabled after adding a row. Fixed
+    by calling `refreshNextState()` explicitly inside both callbacks — same class of bug
+    as the original Next-button-stuck fix, just a spot the delegated listener couldn't
+    reach. Owner then gave specific optional/required carve-outs, applied to both files:
+    `home_phone`/`email`, `spouse_name`/`spouse_occupation`, all of ข้อมูลบิดา-มารดา (whole
+    step back to always-allowed-through), `education_activities`/`favorite_subject` back
+    to optional. `education_level` changed from free text to a `selectInput` dropdown
+    (ต่ำกว่า ม.6 / ม.6-ปวช. / ปวส.-อนุปริญญา / ปริญญาตรี / โท / เอก / อื่นๆ). `blood_type`
+    (employee.html only) gained a "ไม่รู้" option. **`ประวัติอาชญากรรม`/`โรคประจำตัว`
+    changed from a free-text "พิมพ์ไม่มีถ้าไม่มี" textarea to a real `yesNoDetailField()`
+    widget** — radio "ไม่มี"/"มี (ระบุ)", detail textarea only appears + becomes required
+    when "มี" is picked; the widget writes the final display string back into the same
+    `answers.criminal_record`/`health_condition` key (`'ไม่มี'` or the typed detail) so no
+    new sheet column was needed, `_has`/`_detail` are UI-only scratch keys never sent to
+    the server. Both `repeatList()` and `yesNoDetailField()` are duplicated verbatim in
+    both files (no shared module — these are deliberately dependency-free static HTML,
+    see the file-level comment) — **fix bugs in both copies**, they will not sync
+    automatically.
+  - **✅ DONE (2026-09-17) — draft-clear button.** Owner opened a wizard and found fields
+    pre-filled, worried it was hardcoded sample data — it wasn't (verified via grep, no
+    sample data anywhere); it was the intentional `localStorage` draft-autosave from an
+    earlier fill-in on the same browser/device. Added a small "ล้างข้อมูลที่กรอกไว้
+    (เริ่มใหม่)" link under the progress bar on both wizards — `confirm()` then
+    `localStorage.removeItem(DRAFT_KEY)` + reload.
   - **✅ DONE (2026-09-17) — employee data collection moved to a matching mobile wizard
     too (`public/employee.html`), replacing the plan to expand the old Google Form.**
     Owner decided against fighting the Google Forms editor again — wanted "ทำเหมือนหน้า

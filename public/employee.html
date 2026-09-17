@@ -159,6 +159,35 @@ function radioGroup(key, options) {
   });
   return wrap;
 }
+// ---- "มี/ไม่มี" + ช่องระบุรายละเอียดถ้ามี (ประวัติอาชญากรรม/โรคประจำตัว) — เก็บผลลัพธ์
+// สุดท้ายกลับเข้า answers[key] เป็นข้อความเดียว ('ไม่มี' หรือรายละเอียดที่ระบุ) ไม่เพิ่มคอลัมน์
+// ใหม่ในชีต ใช้ key เดิมได้เลย ('_has'/'_detail' เป็น state ชั่วคราวฝั่ง UI เท่านั้น ไม่ส่งขึ้นเซิร์ฟเวอร์) ----
+function yesNoDetailField(key) {
+  const hasKey = key + '_has';
+  const detailKey = key + '_detail';
+  const wrap = el('div', {});
+  const radios = el('div', { class: 'radios' });
+  const detailWrap = el('div', { style: 'margin-top:8px;display:none' });
+  const detailInput = el('textarea', { placeholder: 'ระบุรายละเอียด' }, answers[detailKey] || '');
+  function sync() {
+    if (!answers[hasKey]) { answers[key] = ''; detailWrap.style.display = 'none'; return; }
+    const has = answers[hasKey] === 'มี (ระบุ)';
+    detailWrap.style.display = has ? 'block' : 'none';
+    answers[key] = has ? (answers[detailKey] || '') : 'ไม่มี';
+  }
+  ['ไม่มี', 'มี (ระบุ)'].forEach(o => {
+    const rb = el('input', { type: 'radio', name: key });
+    rb.checked = answers[hasKey] === o;
+    rb.addEventListener('change', () => { answers[hasKey] = o; sync(); saveDraft(); refreshNextState(); });
+    radios.appendChild(el('label', {}, rb, o));
+  });
+  detailInput.addEventListener('input', () => { answers[detailKey] = detailInput.value; sync(); saveDraft(); });
+  detailWrap.appendChild(detailInput);
+  wrap.appendChild(radios);
+  wrap.appendChild(detailWrap);
+  sync();
+  return wrap;
+}
 // ---- ไฟล์รูป (บัตร ปชช/ทะเบียนบ้าน) — แปลงเป็น base64 เก็บใน answers ตรงๆ ไม่ผ่าน Drive
 // จนกว่าจะกดส่งข้อมูล (เซิร์ฟเวอร์เป็นคนอัพโหลดจริงผ่าน Apps Script bridge) ----
 function fileInputField(key) {
@@ -190,7 +219,7 @@ function repeatList(key, fieldsDef, addLabel) {
     listEl.innerHTML = '';
     (answers[key] || []).forEach((item, idx) => {
       const box = el('div', { class: 'repeat-item' });
-      box.appendChild(el('button', { class: 'remove', type: 'button', onclick: () => { answers[key].splice(idx, 1); saveDraft(); render(); } }, '✕'));
+      box.appendChild(el('button', { class: 'remove', type: 'button', onclick: () => { answers[key].splice(idx, 1); saveDraft(); render(); refreshNextState(); } }, '✕'));
       fieldsDef.forEach(([k, label, type]) => {
         const inp = el('input', { type: type || 'text', value: item[k] || '', placeholder: label });
         inp.addEventListener('input', () => { item[k] = inp.value; saveDraft(); });
@@ -200,9 +229,12 @@ function repeatList(key, fieldsDef, addLabel) {
     });
   }
   render();
+  // ปุ่ม +/✕ เป็น click ธรรมดา ไม่ผ่าน event delegation ที่ cardBody ดักไว้ (input/change เท่านั้น)
+  // ต้องเรียก refreshNextState() ตรงๆ ไม่งั้นปุ่ม "ถัดไป" ค้าง disabled แม้เพิ่มแถวแล้ว
+  // (บั๊กจริงที่เจอ 2026-09-17 — ค้างที่ขั้นตอน "ประวัติการศึกษา" ไปต่อไม่ได้)
   const addBtn = el('button', {
     type: 'button', class: 'add-row',
-    onclick: () => { (answers[key] = answers[key] || []).push({}); saveDraft(); render(); }
+    onclick: () => { (answers[key] = answers[key] || []).push({}); saveDraft(); render(); refreshNextState(); }
   }, '+ ' + addLabel);
   wrap.appendChild(listEl);
   wrap.appendChild(addBtn);
@@ -271,11 +303,11 @@ const steps = [
       row2.appendChild(field('รหัสไปรษณีย์', textInput('postal_code', 'text')));
       c.appendChild(row2);
       c.appendChild(field('เบอร์มือถือ', textInput('mobile_phone', 'tel')));
-      c.appendChild(field('โทรศัพท์บ้าน', textInput('home_phone', 'tel')));
-      c.appendChild(field('Email', textInput('email', 'email')));
+      c.appendChild(field('โทรศัพท์บ้าน', textInput('home_phone', 'tel'), true));
+      c.appendChild(field('Email', textInput('email', 'email'), true));
     },
     required: () => !!answers.address && !!answers.sub_district && !!answers.district && !!answers.province
-      && !!answers.postal_code && !!answers.mobile_phone && !!answers.home_phone && !!answers.email,
+      && !!answers.postal_code && !!answers.mobile_phone,
   },
   {
     title: 'ที่พักอาศัย/ครอบครัว', sub: '',
@@ -283,39 +315,37 @@ const steps = [
       c.appendChild(field('ประเภทที่อยู่อาศัยปัจจุบัน', selectInput('residence_type', ['บ้านตัวเอง', 'บ้านญาติ', 'ห้องเช่า/บ้านเช่า', 'อื่นๆ'])));
       c.appendChild(field('อาศัยมาแล้วกี่ปี', textInput('residence_years', 'number')));
       c.appendChild(field('สถานภาพครอบครัว', selectInput('marital_status', ['โสด', 'แต่งงาน', 'หย่าร้าง', 'แยกกันอยู่'])));
-      c.appendChild(field('ชื่อคู่สมรส (ถ้ามี)', textInput('spouse_name')));
-      c.appendChild(field('อาชีพคู่สมรส', textInput('spouse_occupation')));
+      c.appendChild(field('ชื่อคู่สมรส (ถ้ามี)', textInput('spouse_name'), true));
+      c.appendChild(field('อาชีพคู่สมรส', textInput('spouse_occupation'), true));
       c.appendChild(field('จำนวนบุตร', textInput('children_count', 'number')));
     },
-    required: () => !!answers.residence_type && !!answers.residence_years && !!answers.marital_status
-      && !!answers.spouse_name && !!answers.spouse_occupation && !!answers.children_count,
+    required: () => !!answers.residence_type && !!answers.residence_years && !!answers.marital_status && !!answers.children_count,
   },
   {
-    title: 'สุขภาพและประวัติ', sub: 'กรอกตามความเป็นจริง — ถ้าไม่มี พิมพ์ "ไม่มี"',
+    title: 'สุขภาพและประวัติ', sub: '',
     render: (c) => {
       const row = el('div', { class: 'row2' });
       row.appendChild(field('น้ำหนัก (กก.)', textInput('weight', 'number')));
       row.appendChild(field('ส่วนสูง (ซม.)', textInput('height', 'number')));
       c.appendChild(row);
-      c.appendChild(field('กรุ๊ปเลือด', selectInput('blood_type', ['A', 'B', 'AB', 'O'])));
-      c.appendChild(field('ประวัติอาชญากรรม', textarea('criminal_record', 'ถ้าไม่มี พิมพ์ "ไม่มี"')));
-      c.appendChild(field('โรคประจำตัว', textarea('health_condition', 'ถ้าไม่มี พิมพ์ "ไม่มี"')));
+      c.appendChild(field('กรุ๊ปเลือด', selectInput('blood_type', ['A', 'B', 'AB', 'O', 'ไม่รู้'])));
+      c.appendChild(field('ประวัติอาชญากรรม', yesNoDetailField('criminal_record')));
+      c.appendChild(field('โรคประจำตัว', yesNoDetailField('health_condition')));
     },
     required: () => !!answers.weight && !!answers.height && !!answers.blood_type
       && !!answers.criminal_record && !!answers.health_condition,
   },
   {
-    title: 'ข้อมูลบิดา-มารดา', sub: 'กรอกเท่าที่ทราบ',
+    title: 'ข้อมูลบิดา-มารดา', sub: 'กรอกเท่าที่ทราบ (ไม่บังคับ ข้ามได้)',
     render: (c) => {
-      c.appendChild(field('ชื่อบิดา', textInput('father_name')));
-      c.appendChild(field('สถานะบิดา / อาชีพ', textInput('father_status', 'text', 'เช่น มีชีวิตอยู่ / ถึงแก่กรรม, อาชีพ')));
-      c.appendChild(field('ที่อยู่/จังหวัดบิดา', textInput('father_address')));
-      c.appendChild(field('ชื่อมารดา', textInput('mother_name')));
-      c.appendChild(field('สถานะมารดา / อาชีพ', textInput('mother_status')));
-      c.appendChild(field('ที่อยู่/จังหวัดมารดา', textInput('mother_address')));
+      c.appendChild(field('ชื่อบิดา', textInput('father_name'), true));
+      c.appendChild(field('สถานะบิดา / อาชีพ', textInput('father_status', 'text', 'เช่น มีชีวิตอยู่ / ถึงแก่กรรม, อาชีพ'), true));
+      c.appendChild(field('ที่อยู่/จังหวัดบิดา', textInput('father_address'), true));
+      c.appendChild(field('ชื่อมารดา', textInput('mother_name'), true));
+      c.appendChild(field('สถานะมารดา / อาชีพ', textInput('mother_status'), true));
+      c.appendChild(field('ที่อยู่/จังหวัดมารดา', textInput('mother_address'), true));
     },
-    required: () => !!answers.father_name && !!answers.father_status && !!answers.father_address
-      && !!answers.mother_name && !!answers.mother_status && !!answers.mother_address,
+    required: () => true,
   },
   {
     title: 'สถานะทางการทหาร', sub: 'เพศหญิงเลือก "ไม่เกี่ยวข้อง/ไม่ระบุ" ได้เลย',
@@ -327,7 +357,7 @@ const steps = [
   {
     title: 'ประวัติการศึกษา', sub: 'เพิ่มได้หลายรายการ เรียงจากล่าสุด',
     render: (c) => {
-      c.appendChild(field('วุฒิการศึกษาสูงสุด', textInput('education_level')));
+      c.appendChild(field('วุฒิการศึกษาสูงสุด', selectInput('education_level', ['ต่ำกว่า ม.6', 'ม.6 / ปวช.', 'ปวส. / อนุปริญญา', 'ปริญญาตรี', 'ปริญญาโท', 'ปริญญาเอก', 'อื่นๆ'])));
       c.appendChild(repeatList('education_history', [
         ['level', 'ระดับการศึกษา (เช่น ปวส./ปริญญาตรี)'],
         ['school', 'สถาบันการศึกษา'],
@@ -335,11 +365,10 @@ const steps = [
         ['year', 'ปีที่จบการศึกษา'],
         ['gpa', 'เกรดเฉลี่ย'],
       ], 'เพิ่มรายการการศึกษา'));
-      c.appendChild(field('กิจกรรม/รางวัลระหว่างการศึกษา', textarea('education_activities')));
-      c.appendChild(field('สาขาวิชาที่ชอบเป็นพิเศษ', textInput('favorite_subject')));
+      c.appendChild(field('กิจกรรม/รางวัลระหว่างการศึกษา', textarea('education_activities'), true));
+      c.appendChild(field('สาขาวิชาที่ชอบเป็นพิเศษ', textInput('favorite_subject'), true));
     },
-    required: () => !!answers.education_level && (answers.education_history || []).length > 0
-      && !!answers.education_activities && !!answers.favorite_subject,
+    required: () => !!answers.education_level && (answers.education_history || []).length > 0,
   },
   {
     title: 'ประสบการณ์การทำงาน', sub: 'เพิ่มอย่างน้อย 1 รายการ',
