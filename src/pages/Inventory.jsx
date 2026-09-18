@@ -373,7 +373,13 @@ export default function Inventory() {
   // เพราะอันนั้นนับจาก safety_stock ที่เซฟไว้ในชีตเท่านั้น จะไม่ตรงกับสถานะที่โชว์ในตาราง
   const activeEnriched = useMemo(() => enriched.filter((it) => it.active), [enriched])
   const lowStockCount = useMemo(() => activeEnriched.filter((it) => it.category !== 'packaging' && it.effectiveStatus !== 'ปกติ').length, [activeEnriched])
-  const leadtimeTempActiveCount = useMemo(() => activeEnriched.filter((it) => it.lead_time_temp_active).length, [activeEnriched])
+  const leadtimeTempActiveItems = useMemo(() => activeEnriched.filter((it) => it.lead_time_temp_active), [activeEnriched])
+  const leadtimeTempActiveCount = leadtimeTempActiveItems.length
+  // วันที่ใกล้สุดที่จะกลับปกติเอง (ในบรรดารายการที่ตั้งวันไว้) — โชว์เป็น hint ในป็อปอัพปรับทั้งหมด
+  const leadtimeSoonestUntil = useMemo(() => {
+    const dates = leadtimeTempActiveItems.map((it) => it.lead_time_temp_until).filter(Boolean).sort()
+    return dates[0] || null
+  }, [leadtimeTempActiveItems])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -449,12 +455,12 @@ export default function Inventory() {
 
   // ปรับ lead time ชั่วคราว (เช่น โรงงาน/ขนส่งช้ากว่าปกติเป็นพักๆ) — แยกจากปุ่ม "บันทึก" หลัก มีผลทันที
   // ไม่ต้องกดบันทึกซ้ำ, ปรับกลับได้ทีหลังโดยไม่ต้องจำเลขเดิมเอง (ระบบเก็บสำรองให้)
-  const applyTempLeadTime = async (sku, production, transport) => {
+  const applyTempLeadTime = async (sku, production, transport, days) => {
     setSaving(true); setError('')
     try {
       const res = await fetch('/api/sheet-tools?op=inventory', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'apply-temp-leadtime', sku, production, transport }),
+        body: JSON.stringify({ action: 'apply-temp-leadtime', sku, production, transport, days }),
       })
       const json = await res.json()
       if (!json.success) throw new Error(json.error || 'ปรับไม่สำเร็จ')
@@ -478,12 +484,12 @@ export default function Inventory() {
 
   // ปรับ/ปรับกลับ lead time ชั่วคราว "ทั้งหมดทีเดียว" (owner ขอ 2026-09-18 — เผื่อวันหยุดยาวเช่นตรุษจีน
   // โรงงาน/ขนส่งปิดพร้อมกันหมดทุกสินค้า) บวกจำนวนวันเพิ่มเข้าไปบนฐานเดิมของแต่ละสินค้า ไม่ใช่ตั้งให้เท่ากันหมด
-  const applyTempLeadTimeBulk = async (extraProduction, extraTransport) => {
+  const applyTempLeadTimeBulk = async (extraProduction, extraTransport, days) => {
     setSaving(true); setError('')
     try {
       const res = await fetch('/api/sheet-tools?op=inventory', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'apply-temp-leadtime-bulk', extraProduction, extraTransport }),
+        body: JSON.stringify({ action: 'apply-temp-leadtime-bulk', extraProduction, extraTransport, days }),
       })
       const json = await res.json()
       if (!json.success) throw new Error(json.error || 'ปรับไม่สำเร็จ')
@@ -702,7 +708,7 @@ export default function Inventory() {
                                 title="กดเพื่อดูประวัติรับเข้า-เบิกออก"
                                 style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', width: '100%', display: 'block' }}
                               >
-                                <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}{it.lead_time_temp_active && ' ⏱️'}</div>
+                                <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}{it.lead_time_temp_active && <span title={it.lead_time_temp_until ? `ปรับ lead time ชั่วคราว — จะกลับปกติเอง ${it.lead_time_temp_until}` : 'ปรับ lead time ชั่วคราว — ไม่ได้ตั้งวันสิ้นสุด ต้องกดปรับกลับเอง'}> ⏱️</span>}</div>
                                 <div style={{ fontSize: 10, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{it.sku}</div>
                               </button>
                             </td>
@@ -786,7 +792,7 @@ export default function Inventory() {
                         title="กดเพื่อดูประวัติรับเข้า-เบิกออก"
                         style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', width: '100%', display: 'block', overflow: 'hidden' }}
                       >
-                        <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.display_name}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}{it.lead_time_temp_active && ' ⏱️'}</div>
+                        <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.lead_time_temp_active ? (it.lead_time_temp_until ? `ปรับ lead time ชั่วคราว — จะกลับปกติเอง ${it.lead_time_temp_until}` : 'ปรับ lead time ชั่วคราว — ไม่ได้ตั้งวันสิ้นสุด ต้องกดปรับกลับเอง') : it.display_name}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}{it.lead_time_temp_active && ' ⏱️'}</div>
                         <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{it.sku}</div>
                       </button>
                     </td>
@@ -858,6 +864,7 @@ export default function Inventory() {
       {bulkLeadtimeModal && (
         <BulkLeadtimeModal
           activeCount={leadtimeTempActiveCount}
+          soonestUntil={leadtimeSoonestUntil}
           saving={saving}
           onClose={() => setBulkLeadtimeModal(false)}
           onApply={applyTempLeadTimeBulk}
@@ -910,9 +917,10 @@ const iconBtnStyle = (color) => ({
 
 // ปรับ lead time ชั่วคราวทีเดียวทั้งหมด (owner ขอ 2026-09-18 — เผื่อวันหยุดยาวเช่นตรุษจีน โรงงาน/ขนส่ง
 // ปิดพร้อมกันหมดทุกสินค้า) — บวก "จำนวนวันเพิ่ม" บนฐานเดิมของแต่ละสินค้า ไม่ใช่ตั้งให้ทุกตัวเท่ากัน
-function BulkLeadtimeModal({ activeCount, saving, onClose, onApply, onRevert }) {
+function BulkLeadtimeModal({ activeCount, soonestUntil, saving, onClose, onApply, onRevert }) {
   const [extraProduction, setExtraProduction] = useState('')
   const [extraTransport, setExtraTransport] = useState('')
+  const [days, setDays] = useState('')
   return (
     <Modal title="ปรับ Lead Time ชั่วคราวทั้งหมด" onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -923,6 +931,7 @@ function BulkLeadtimeModal({ activeCount, saving, onClose, onApply, onRevert }) 
         {activeCount > 0 && (
           <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', background: '#fef3c7', borderRadius: 8, padding: '8px 10px' }}>
             ⏱️ ตอนนี้มี {activeCount} รายการปรับชั่วคราวอยู่ (จากปุ่มนี้หรือปรับทีละตัว)
+            {soonestUntil ? ` — ใกล้สุดจะกลับปกติเอง ${soonestUntil}` : ' — ไม่มีรายการไหนตั้งวันสิ้นสุดไว้ ต้องกดปรับกลับเอง'}
           </div>
         )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -935,10 +944,14 @@ function BulkLeadtimeModal({ activeCount, saving, onClose, onApply, onRevert }) 
             <input type="number" value={extraTransport} onChange={(e) => setExtraTransport(e.target.value)} style={inputStyle} placeholder="0" />
           </div>
         </div>
+        <div>
+          <label style={labelStyle}>ปรับกี่วัน (ไม่ระบุ = ต้องกดปรับกลับทั้งหมดเอง)</label>
+          <input type="number" value={days} onChange={(e) => setDays(e.target.value)} style={inputStyle} placeholder="เช่น 10" />
+        </div>
         <button
           type="button"
           disabled={saving || (!Number(extraProduction) && !Number(extraTransport))}
-          onClick={() => onApply(Number(extraProduction) || 0, Number(extraTransport) || 0)}
+          onClick={() => onApply(Number(extraProduction) || 0, Number(extraTransport) || 0, Number(days) || 0)}
           style={{ border: 'none', borderRadius: 10, background: 'var(--payi-gradient-primary)', color: '#fff', fontWeight: 800, fontSize: 13, padding: '10px 14px', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
         >
           ปรับทั้งหมด
@@ -977,6 +990,7 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
   const [tempFormOpen, setTempFormOpen] = useState(false)
   const [tempProd, setTempProd] = useState('')
   const [tempTransport, setTempTransport] = useState('')
+  const [tempDays, setTempDays] = useState('')
   // เปิดมาแล้วมี lead time เดิมอยู่แล้ว = ใช้ค่าที่สูตรคำนวณให้เลยตั้งแต่เปิด ไม่ต้องรอแก้ lead time ก่อน
   const [safetyStock, setSafetyStock] = useState(
     initial?.computedSafety ?? initial?.safety_stock ?? ''
@@ -1162,6 +1176,7 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                     <div style={{ fontSize: 11.5, color: '#92400e', background: '#fef3c7', padding: '4px 8px', borderRadius: 8, fontWeight: 700 }}>
                       ⏱️ ปรับชั่วคราวอยู่ (ปกติ: ผลิต {initial.lead_time_production_saved ?? 0} / ขนส่ง {initial.lead_time_transport_saved ?? 0} วัน)
+                      {initial.lead_time_temp_until ? ` — จะกลับปกติเอง ${initial.lead_time_temp_until}` : ' — ไม่ได้ตั้งวันสิ้นสุด ต้องกดปรับกลับเอง'}
                     </div>
                     <button type="button" onClick={() => onRevertTempLeadTime(sku)} style={{ border: '1px solid var(--payi-border)', borderRadius: 8, background: 'var(--payi-surface)', color: 'var(--payi-text-strong)', fontWeight: 700, fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
                       ปรับกลับค่าเดิม
@@ -1179,8 +1194,12 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
                         <input type="number" value={tempTransport} onChange={(e) => setTempTransport(e.target.value)} style={inputStyle} placeholder={String(leadTransport || 0)} />
                       </div>
                     </div>
+                    <div>
+                      <label style={labelStyle}>ปรับกี่วัน (ไม่ระบุ = ต้องกดปรับกลับเอง)</label>
+                      <input type="number" value={tempDays} onChange={(e) => setTempDays(e.target.value)} style={inputStyle} placeholder="เช่น 10" />
+                    </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button type="button" onClick={() => onApplyTempLeadTime(sku, tempProd || 0, tempTransport || 0)} style={{ border: 'none', borderRadius: 8, background: 'var(--payi-gradient-primary)', color: '#fff', fontWeight: 800, fontSize: 12, padding: '7px 12px', cursor: 'pointer' }}>
+                      <button type="button" onClick={() => onApplyTempLeadTime(sku, tempProd || 0, tempTransport || 0, tempDays || 0)} style={{ border: 'none', borderRadius: 8, background: 'var(--payi-gradient-primary)', color: '#fff', fontWeight: 800, fontSize: 12, padding: '7px 12px', cursor: 'pointer' }}>
                         ใช้ค่าชั่วคราวนี้
                       </button>
                       <button type="button" onClick={() => setTempFormOpen(false)} style={{ border: '1px solid var(--payi-border)', borderRadius: 8, background: 'var(--payi-surface)', color: 'var(--payi-text-muted)', fontWeight: 700, fontSize: 12, padding: '7px 12px', cursor: 'pointer' }}>

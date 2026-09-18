@@ -17,12 +17,16 @@ import {
 const ITEMS_SHEET = 'inventory_items'
 const MOVEMENTS_SHEET = 'stock_movements'
 // ต่อท้ายรายการเดิมเท่านั้น (ห้ามแทรกกลาง) — แถวเดิมใน Sheet อิงตำแหน่งคอลัมน์เดิมอยู่ เหมือน claims sheet
-const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category', 'units_per_batch', 'buffer_percent', 'order_group', 'retail_price', 'lead_time_temp_active', 'lead_time_production_saved', 'lead_time_transport_saved']
+const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category', 'units_per_batch', 'buffer_percent', 'order_group', 'retail_price', 'lead_time_temp_active', 'lead_time_production_saved', 'lead_time_transport_saved', 'lead_time_temp_until']
 // lead_time_temp_*: ปรับ lead time ชั่วคราวได้ (เช่น ช่วงโรงงาน/ขนส่งช้ากว่าปกติ) โดยไม่ต้องจำเลขเดิมเอง
 // แล้วปรับกลับทีหลัง (owner ขอ 2026-09-18) — applyTempLeadTime/revertTempLeadTime ด้านล่าง เขียนทับ
 // lead_time_production/lead_time_transport ตรงๆ (ตัวเดียวกับที่ safety-stock formula ทุกจุดอ่านอยู่แล้ว —
 // เว็บ/cron แจ้งเตือน/บอทไลน์ ไม่ต้องแก้สูตรเลยสักที่) แล้วเก็บค่าเดิมสำรองไว้ใน _saved กับ temp_active='1'
 // กันเขียนทับ backup ซ้ำถ้ากดปรับชั่วคราวซ้อนหลายครั้งก่อนปรับกลับ
+// lead_time_temp_until (owner ขอเพิ่ม 2026-09-18 — "ต้องรู้ว่าจะกลับปกติเมื่อไหร่"): วันที่ตั้งใจจะปรับกลับ
+// เอง ไม่บังคับกรอก (ว่าง = ไม่มีกำหนด ต้องกดปรับกลับเอง) — ตั้งแล้วจะโชว์วันที่ทุกจุด (เว็บ/บอทไลน์) และ
+// cron ของใกล้หมดรายวัน (autoRevertExpiredTempLeadTimes) จะปรับกลับให้อัตโนมัติทันทีที่ถึงวันนั้น + แจ้งเตือน
+// เข้าไลน์ ไม่ต้องมานั่งจำเองว่าเมื่อไหร่ต้องกดปรับกลับ
 // order_group: แท็กกลุ่มสินค้าสำหรับ "สั่งของ" เท่านั้น (เช่น PY051..PY051-J ทั้งไซส์/สีแท็ก "รองเท้าเพื่อสุขภาพ"
 // เดียวกัน) — ตั้งเอง ไม่ auto-derive จากชื่อ เพราะลองแล้วพบว่า deriveGroup (ตัวจับกลุ่มฝั่งยอดขาย) จับ
 // เคสพวกนี้ไม่ได้เลย (ไซส์เป็นตัวเลข "35-36" ไม่ใช่ M/L, สี "เนื้อ"/"ฟ้าเบบี้บลู" ไม่อยู่ใน COLOR_TOKENS)
@@ -146,6 +150,7 @@ export async function loadItemsWithBalance({ includeHidden = false } = {}) {
       lead_time_temp_active: String(it.lead_time_temp_active) === '1',
       lead_time_production_saved: it.lead_time_production_saved === '' || it.lead_time_production_saved === undefined ? null : num(it.lead_time_production_saved),
       lead_time_transport_saved: it.lead_time_transport_saved === '' || it.lead_time_transport_saved === undefined ? null : num(it.lead_time_transport_saved),
+      lead_time_temp_until: it.lead_time_temp_until || '',
       units_per_batch: num(it.units_per_batch),
       buffer_percent: it.buffer_percent === '' || it.buffer_percent === undefined ? null : num(it.buffer_percent),
       active: truthyActive(it.active),
@@ -382,9 +387,12 @@ export async function applyTempLeadTime(body, actorName, role) {
   }
   row.lead_time_production = num(body.production)
   row.lead_time_transport = num(body.transport)
+  // จำนวนวันที่ตั้งใจปรับ (ไม่บังคับ) — คำนวณวันครบกำหนดเก็บไว้โชว์ทุกจุด + ให้ cron ปรับกลับอัตโนมัติ
+  const days = num(body.days)
+  row.lead_time_temp_until = days > 0 ? addDaysIso(todayBKK(), days) : ''
   row.updated_at = now
   await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
-  return { sku, lead_time_production: num(row.lead_time_production), lead_time_transport: num(row.lead_time_transport) }
+  return { sku, lead_time_production: num(row.lead_time_production), lead_time_transport: num(row.lead_time_transport), lead_time_temp_until: row.lead_time_temp_until }
 }
 
 // ปรับกลับค่า lead time เดิมก่อนปรับชั่วคราว (ต้องเคยกด applyTempLeadTime ไว้ก่อน ไม่งั้นไม่มีอะไรให้ปรับกลับ)
@@ -401,6 +409,7 @@ export async function revertTempLeadTime(body, actorName, role) {
   row.lead_time_production = row.lead_time_production_saved || '0'
   row.lead_time_transport = row.lead_time_transport_saved || '0'
   row.lead_time_temp_active = '0'
+  row.lead_time_temp_until = ''
   row.updated_at = new Date().toISOString()
   await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
   return { sku, lead_time_production: num(row.lead_time_production), lead_time_transport: num(row.lead_time_transport) }
@@ -416,6 +425,8 @@ export async function applyTempLeadTimeBulk(body, actorName, role) {
   const extraProduction = num(body.extraProduction)
   const extraTransport = num(body.extraTransport)
   if (!extraProduction && !extraTransport) throw new Error('ต้องระบุจำนวนวันที่จะเพิ่ม')
+  const days = num(body.days)
+  const until = days > 0 ? addDaysIso(todayBKK(), days) : ''
   await ensureInventorySheets()
   const items = await getSheet(ITEMS_SHEET)
   const now = new Date().toISOString()
@@ -431,11 +442,12 @@ export async function applyTempLeadTimeBulk(body, actorName, role) {
     }
     row.lead_time_production = baseProduction + extraProduction
     row.lead_time_transport = baseTransport + extraTransport
+    row.lead_time_temp_until = until
     row.updated_at = now
     count++
   }
   await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
-  return { count, extraProduction, extraTransport }
+  return { count, extraProduction, extraTransport, until }
 }
 
 // ปรับกลับ "ทั้งหมด" ทีเดียว — เฉพาะแถวที่ lead_time_temp_active อยู่ (ปรับทีละตัวไว้ก่อนแล้วมาปรับกลับรวมทีหลัง
@@ -451,11 +463,36 @@ export async function revertTempLeadTimeBulk(actorName, role) {
     row.lead_time_production = row.lead_time_production_saved || '0'
     row.lead_time_transport = row.lead_time_transport_saved || '0'
     row.lead_time_temp_active = '0'
+    row.lead_time_temp_until = ''
     row.updated_at = now
     count++
   }
   await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
   return { count }
+}
+
+// สแกนหาแถวที่ตั้ง lead_time_temp_until ไว้แล้วถึงกำหนดพอดี/เลยแล้ว ปรับกลับให้อัตโนมัติ — เรียกจาก cron
+// ของใกล้หมดรายวัน (opLowStockCron ใน sheet-tools.js) ที่รันอยู่แล้วทุกวัน ไม่ต้องเพิ่ม cron ใหม่ (ติดเพดาน
+// เดิมของ Vercel) คืนรายการที่โดนปรับกลับให้ผู้เรียกเอาไปแจ้งเตือนไลน์ต่อ (owner ขอ 2026-09-18: ตั้งวันไว้แล้ว
+// ต้องกลับปกติเองตามกำหนด ไม่ใช่แค่โชว์วันที่เฉยๆ)
+export async function autoRevertExpiredTempLeadTimes() {
+  await ensureInventorySheets()
+  const items = await getSheet(ITEMS_SHEET)
+  const today = todayBKK()
+  const now = new Date().toISOString()
+  const reverted = []
+  for (const row of items) {
+    if (String(row.lead_time_temp_active) !== '1') continue
+    if (!row.lead_time_temp_until || row.lead_time_temp_until > today) continue
+    reverted.push({ sku: row.sku, display_name: row.display_name || row.sku })
+    row.lead_time_production = row.lead_time_production_saved || '0'
+    row.lead_time_transport = row.lead_time_transport_saved || '0'
+    row.lead_time_temp_active = '0'
+    row.lead_time_temp_until = ''
+    row.updated_at = now
+  }
+  if (reverted.length) await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
+  return reverted
 }
 
 // boss กด "สั่งของ" (ปุ่มแยกจาก "แจ้งของเข้า" บนหน้า Stock Movement) — สร้างแถว pending ใหม่เสมอ

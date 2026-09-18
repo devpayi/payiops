@@ -11,7 +11,7 @@ import {
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides, LEGACY_OVERRIDE_EXEMPT_CODES } from './_lib/scheduleOverrides.js'
 import { isoDate } from './_lib/dates.js'
-import opInventory, { computeLowStockList, computeOverdueOrders, muteOrderReminder, snoozeOrderReminder, cancelOrderRequest, undoOverdueOrderAction, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem, applyTempLeadTime, revertTempLeadTime, applyTempLeadTimeBulk, revertTempLeadTimeBulk } from './_lib/inventory.js'
+import opInventory, { computeLowStockList, computeOverdueOrders, muteOrderReminder, snoozeOrderReminder, cancelOrderRequest, undoOverdueOrderAction, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem, applyTempLeadTime, revertTempLeadTime, applyTempLeadTimeBulk, revertTempLeadTimeBulk, autoRevertExpiredTempLeadTimes } from './_lib/inventory.js'
 import opImportTracking, { createArrivalsFromShipping } from './_lib/importTracking.js'
 import opCfo from './_lib/cfo.js'
 import opDemographic from './_lib/demographic.js'
@@ -543,9 +543,10 @@ async function handleLeadtimeListCommand(event) {
     return replyMessage(replyToken, [{ type: 'text', text: 'ไม่มีการปรับ lead time ชั่วคราวอยู่ตอนนี้ค่ะ\nพิมพ์ "leadtime <ชื่อสินค้า>" เพื่อปรับทีละตัว หรือ "leadtime ทั้งหมด" เพื่อปรับทุกสินค้าทีเดียว (เช่น ช่วงวันหยุดยาว)' }])
   }
   const revertAllButton = { type: 'action', action: { type: 'postback', label: `↩️ ปรับกลับทั้งหมด (${active.length})`, data: 'leadtime-revert:__ALL__', displayText: 'ปรับกลับ lead time ทั้งหมด' } }
+  const lines = active.slice(0, 9).map((it) => `• ${it.display_name}${it.lead_time_temp_until ? ` — จะกลับปกติเอง ${it.lead_time_temp_until}` : ' — ไม่ได้ตั้งวันสิ้นสุด'}`).join('\n')
   await replyMessage(replyToken, [{
     type: 'text',
-    text: `กำลังปรับ lead time ชั่วคราวอยู่ ${active.length} รายการ กดเพื่อปรับกลับทีละตัว หรือกลับทั้งหมดทีเดียว:`,
+    text: `กำลังปรับ lead time ชั่วคราวอยู่ ${active.length} รายการ:\n${lines}${active.length > 9 ? `\n...และอีก ${active.length - 9} รายการ` : ''}\n\nกดเพื่อปรับกลับทีละตัว หรือกลับทั้งหมดทีเดียว:`,
     quickReply: { items: [revertAllButton, ...active.slice(0, 9).map((it) => ({ type: 'action', action: { type: 'postback', label: it.display_name.slice(0, 20), data: `leadtime-revert:${it.sku}`, displayText: `ปรับกลับ ${it.display_name}` } }))] },
   }])
 }
@@ -563,13 +564,13 @@ async function handleLeadtimeBulkStart(event) {
   await upsertLeadtimeSession(lineUserId, LEADTIME_ALL_SENTINEL)
   await replyMessage(replyToken, [{
     type: 'text',
-    text: 'ปรับ lead time ชั่วคราว "ทั้งหมด" — บวกจำนวนวันเพิ่มจากค่าปกติเดิมของแต่ละสินค้า (ไม่ใช่ตั้งให้เท่ากันหมด)\n\nพิมพ์เลขใหม่ 2 ค่าคั่นด้วยช่องว่าง (เพิ่มวันผลิต เพิ่มวันขนส่ง) เช่น "3 5" ค่ะ',
+    text: 'ปรับ lead time ชั่วคราว "ทั้งหมด" — บวกจำนวนวันเพิ่มจากค่าปกติเดิมของแต่ละสินค้า (ไม่ใช่ตั้งให้เท่ากันหมด)\n\nพิมพ์เลข 2 หรือ 3 ค่าคั่นด้วยช่องว่าง (เพิ่มวันผลิต เพิ่มวันขนส่ง [ปรับกี่วัน]) เช่น "3 5" (ไม่ระบุวัน ต้องกดปรับกลับเอง) หรือ "3 5 10" (10 วันแล้วกลับปกติเองอัตโนมัติ) ค่ะ',
   }])
 }
 
 async function askLeadtimeValues(replyToken, lineUserId, item) {
   await upsertLeadtimeSession(lineUserId, item.sku)
-  const text = `"${item.display_name}" ตอนนี้ ผลิต ${item.lead_time_production || 0} วัน / ขนส่ง ${item.lead_time_transport || 0} วัน\n\nพิมพ์เลขใหม่ 2 ค่าคั่นด้วยช่องว่าง (ผลิต ขนส่ง) เช่น "7 15" เพื่อปรับชั่วคราวค่ะ`
+  const text = `"${item.display_name}" ตอนนี้ ผลิต ${item.lead_time_production || 0} วัน / ขนส่ง ${item.lead_time_transport || 0} วัน\n\nพิมพ์เลข 2 หรือ 3 ค่าคั่นด้วยช่องว่าง (ผลิต ขนส่ง [ปรับกี่วัน]) เช่น "7 15" (ไม่ระบุวัน ต้องกดปรับกลับเอง) หรือ "7 15 10" (10 วันแล้วกลับปกติเองอัตโนมัติ) ค่ะ`
   await replyMessage(replyToken, [{ type: 'text', text }])
 }
 
@@ -611,19 +612,19 @@ async function handleLeadtimeValuesReply(event, session) {
   const replyToken = event.replyToken
   const text = String(event.message.text || '').trim()
   const parts = text.split(/\s+/).map(Number)
-  if (parts.length !== 2 || parts.some((n) => !Number.isFinite(n) || n < 0)) {
-    return replyMessage(replyToken, [{ type: 'text', text: 'พิมพ์เลข 2 ค่าคั่นด้วยช่องว่าง เช่น "7 15" (ผลิต ขนส่ง) หรือพิมพ์ "ยกเลิก" เพื่อเลิกค่ะ' }])
+  if ((parts.length !== 2 && parts.length !== 3) || parts.some((n) => !Number.isFinite(n) || n < 0)) {
+    return replyMessage(replyToken, [{ type: 'text', text: 'พิมพ์เลข 2 หรือ 3 ค่าคั่นด้วยช่องว่าง เช่น "7 15" หรือ "7 15 10" (ผลิต ขนส่ง [ปรับกี่วัน]) หรือพิมพ์ "ยกเลิก" เพื่อเลิกค่ะ' }])
   }
-  const [production, transport] = parts
+  const [production, transport, days] = parts
   const approver = lineUserId ? await findStockApprover(lineUserId) : null
   if (!approver) { await clearLeadtimeSession(lineUserId); return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นค่ะ' }]) }
   if (session.sku === LEADTIME_ALL_SENTINEL) {
     try {
-      const result = await applyTempLeadTimeBulk({ extraProduction: production, extraTransport: transport }, approver.name, approver.role)
+      const result = await applyTempLeadTimeBulk({ extraProduction: production, extraTransport: transport, days }, approver.name, approver.role)
       await clearLeadtimeSession(lineUserId)
       await replyMessage(replyToken, [{
         type: 'text',
-        text: `ปรับ lead time ชั่วคราวทั้งหมด ${result.count} รายการแล้วค่ะ (เพิ่มผลิต +${production} / ขนส่ง +${transport} วัน จากค่าเดิมของแต่ละสินค้า)`,
+        text: `ปรับ lead time ชั่วคราวทั้งหมด ${result.count} รายการแล้วค่ะ (เพิ่มผลิต +${production} / ขนส่ง +${transport} วัน จากค่าเดิมของแต่ละสินค้า)${result.until ? ` — จะกลับปกติเอง ${result.until}` : ' (ไม่ได้ตั้งวันสิ้นสุด ต้องกดปรับกลับเอง)'}`,
         quickReply: { items: [{ type: 'action', action: { type: 'postback', label: '↩️ ปรับกลับทั้งหมด', data: `leadtime-revert:${LEADTIME_ALL_SENTINEL}`, displayText: 'ปรับกลับ lead time ทั้งหมด' } }] },
       }])
     } catch (e) {
@@ -634,11 +635,11 @@ async function handleLeadtimeValuesReply(event, session) {
   try {
     const items = await loadOrderableItems()
     const item = items.find((it) => String(it.sku).toUpperCase() === String(session.sku).toUpperCase())
-    await applyTempLeadTime({ sku: session.sku, production, transport }, approver.name, approver.role)
+    const result = await applyTempLeadTime({ sku: session.sku, production, transport, days }, approver.name, approver.role)
     await clearLeadtimeSession(lineUserId)
     await replyMessage(replyToken, [{
       type: 'text',
-      text: `ปรับ lead time ชั่วคราวของ "${item?.display_name || session.sku}" เป็น ผลิต ${production} / ขนส่ง ${transport} วันแล้วค่ะ`,
+      text: `ปรับ lead time ชั่วคราวของ "${item?.display_name || session.sku}" เป็น ผลิต ${production} / ขนส่ง ${transport} วันแล้วค่ะ${result.lead_time_temp_until ? ` — จะกลับปกติเอง ${result.lead_time_temp_until}` : ' (ไม่ได้ตั้งวันสิ้นสุด ต้องกดปรับกลับเอง)'}`,
       quickReply: { items: [{ type: 'action', action: { type: 'postback', label: '↩️ ปรับกลับ', data: `leadtime-revert:${session.sku}`, displayText: 'ปรับกลับ lead time' } }] },
     }])
   } catch (e) {
@@ -687,6 +688,9 @@ async function opLowStockCron(req, res) {
       if (runs.some((r) => r.date === today)) return res.status(200).json({ success: true, skipped: 'already sent today' })
     }
 
+    // ปรับ lead time ชั่วคราวที่ตั้งวันครบกำหนดไว้ให้กลับปกติอัตโนมัติ ก่อนคำนวณของใกล้หมด (owner ขอ 2026-09-18)
+    // — ทำก่อนเสมอ (ไม่รอ dryRun) เพราะไม่งั้น dry run เห็นตัวเลขไม่ตรงกับที่จะเกิดจริงวันนั้น
+    const revertedLeadTimes = dryRun ? [] : await autoRevertExpiredTempLeadTimes()
     const [lowItems, overdueOrders] = await Promise.all([computeLowStockList(), computeOverdueOrders()])
     if (dryRun) return res.status(200).json({ success: true, dryRun: true, item_count: lowItems.length, items: lowItems, overdue_count: overdueOrders.length, overdue: overdueOrders })
 
@@ -694,9 +698,13 @@ async function opLowStockCron(req, res) {
     if (targets.length) {
       if (lowItems.length) await Promise.all(targets.map((t) => pushMessageWithFallback(t.line_user_id, [lowStockFlexMessage(lowItems)], [lowStockFallbackMessage(lowItems)])))
       if (overdueOrders.length) await Promise.all(targets.map((t) => Promise.all(overdueOrders.map((o) => pushMessageWithFallback(t.line_user_id, [overdueOrderReminderMessage(o)], [overdueOrderReminderFallback(o)])))))
+      if (revertedLeadTimes.length) {
+        const text = `⏱️ ครบกำหนดที่ตั้งไว้แล้ว — ปรับ lead time กลับเป็นปกติอัตโนมัติ ${revertedLeadTimes.length} รายการ:\n${revertedLeadTimes.map((r) => `• ${r.display_name}`).join('\n')}`
+        await Promise.all(targets.map((t) => pushMessage(t.line_user_id, [{ type: 'text', text }])))
+      }
     }
     await appendRows(STOCK_ALERT_RUNS_SHEET, [[today, new Date().toISOString(), lowItems.length]])
-    return res.status(200).json({ success: true, item_count: lowItems.length, overdue_count: overdueOrders.length, notified: targets.length })
+    return res.status(200).json({ success: true, item_count: lowItems.length, overdue_count: overdueOrders.length, reverted_leadtime_count: revertedLeadTimes.length, notified: targets.length })
   } catch (e) {
     console.error('opLowStockCron:', e.message)
     return res.status(500).json({ success: false, error: e.message })
