@@ -1338,19 +1338,11 @@ async function handleStockInQtyReply(event, session) {
   await addToStockInCartAndAskMore(replyToken, lineUserId, [{ sku: item.sku, display_name: item.display_name, unit: item.unit || 'ชิ้น', qty }])
 }
 
-// ── แก้ไขรายการที่โดนปฏิเสธ + แจ้งผล Approve ผ่าน 1:1 กับ "คนนับของ" (owner ขอ 2026-07-31 กันไม่ให้แก้ไข
-// ในกลุ่มแล้วรก) ── ค่าเดียวกับ default ในการ์ด StockCounterLineCard ฝั่งเว็บ Settings.jsx (username ล็อกอิน
-// จริง 'fah', เก็บใน hr_line_links แบบ username เปล่า) เปลี่ยนคนวันหน้าแก้การ์ดนั้นได้เลย ไม่ต้องแก้โค้ด
-// เพิ่ม "แตง" (หัวหน้าฟ้า) เข้ามาด้วย 2026-09-18 — owner ขอให้เห็นผล Approve/รายการที่โดนปฏิเสธเหมือนฟ้า
-// ทุกอย่าง (เธอมีปุ่ม "แจ้งของเข้า" ในไลน์ริชเมนูอยู่แล้ว ดู RICHMENU_STOCK_TIER_USERNAME_OVERRIDES) แต่แตง
-// ไม่มี login username จริงในระบบ (ไม่ได้อยู่ใน StockCounterLineCard) — ผูกไลน์ผ่าน hr_office_people แทน
-// (เหมือนพนักงานขอลาทั่วไป) เก็บเป็น 'mp:TANG' ใน hr_line_links ไม่ใช่ username เปล่าแบบฟ้า ต้องหาคนละแบบ
-async function getStockCounterLineUserIds() {
-  const links = await getSheet('hr_line_links')
-  const fahId = links.find((l) => l.username === 'fah')?.line_user_id
-  const tangId = links.find((l) => l.username === 'mp:TANG')?.line_user_id
-  return [fahId, tangId].filter(Boolean)
-}
+// ── แจ้งผล Approve/ปฏิเสธของเข้า 1:1 กลับ "คนที่แจ้งแถวนั้นจริง" ──
+// เดิม (2026-07-31) แจ้งคนนับของตายตัวคนเดียว ('fah'), ลองขยายเป็นแจ้งฟ้า+แตงตายตัวทุกครั้ง (2026-09-18)
+// แต่ owner แจ้งว่าไม่ใช่ — ใครแจ้งของเข้าแถวไหน ก็ต้องได้รับแจ้งกลับแถวนั้นเอง ไม่ใช่แจ้งคนตายตัวเสมอไป
+// ใช้ reporter_line_user_id ที่เก็บไว้ในแถว stock_in_requests ตอนแจ้งของเข้าโดยตรง (ดู addStockInRequest/
+// completeStockInBatch ใน _lib/inventory.js) แทนแล้ว ไม่ต้องมีลิสต์ชื่อคนตายตัวอีกต่อไป
 
 // ── Rich menu tier ────────────────────────────────────────────────────────
 // แตง (staff tang) เป็นหัวหน้าฟ้า — role ในระบบเป็น staff ธรรมดา แต่ owner ขอให้เห็นเมนูชุดเดียวกับฟ้า
@@ -1562,7 +1554,7 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
   const failed = []
   for (const it of items) {
     try {
-      const request = await addStockInRequest({ sku: it.sku, qty: it.qty, arrival_date: arrivalDate, count_date: countDate, note: 'แจ้งจาก LINE', shipping_no: session.shipping_no || '' }, reporter.name)
+      const request = await addStockInRequest({ sku: it.sku, qty: it.qty, arrival_date: arrivalDate, count_date: countDate, note: 'แจ้งจาก LINE', shipping_no: session.shipping_no || '', reporter_line_user_id: lineUserId }, reporter.name)
       done.push({ ...it, request })
     } catch (e) { failed.push(`${it.display_name}: ${e.message}`) }
   }
@@ -3841,16 +3833,22 @@ async function opLineWebhook(req, res) {
             ? `Approve สำเร็จ ${approved.length} รายการ\nไม่สำเร็จ: ${failed.join('; ')}`
             : `Approve สำเร็จ ${approved.length} รายการ โดย ${approver.name}${batchNote}`,
         }])
-        // เดิมประกาศเข้ากลุ่มไลน์ทีม แต่ปิดไปแล้ว (2026-09-12, กันกินโควตา 300 ข้อความ/เดือนฟรี) — owner ขอ
-        // 2026-09-18: ย้ายมาแจ้งกลับ "ฟ้า" (คนแจ้งของเข้า) 1:1 แทนกลุ่ม จะได้รู้ว่า boss กด Approve ของที่
-        // เธอแจ้งไปแล้วจริง ไม่ใช่ปล่อยเงียบไม่มีใครรู้เลย (เคยปิดแจ้งกลับฟ้าไปครั้งนึงตอน 2026-08-05 เพราะตอน
-        // นั้นยังมีกลุ่มคอยแจ้งแทนอยู่ — ตอนนี้ไม่มีใครแจ้งเธอเลยสักทาง จึงเปิดกลับมาแต่เปลี่ยนเป้าหมาย)
+        // เดิมประกาศเข้ากลุ่มไลน์ทีม แต่ปิดไปแล้ว (2026-09-12, กันกินโควตา 300 ข้อความ/เดือนฟรี) แล้วเคยลองแจ้ง
+        // ฟ้า/แตงตายตัวทุกครั้ง (2026-09-18) — owner แก้ให้แจ้งกลับ "คนที่แจ้งแถวนั้นจริง" 1:1 แทน (เก็บไว้ตอน
+        // แจ้งของเข้าใน reporter_line_user_id) ไม่ใช่ฟ้า/แตงเสมอไป ใครแจ้งก็ได้รับกลับเอง — แถวที่แจ้งผ่านเว็บ
+        // ไม่มี LINE ให้แจ้ง (reporter_line_user_id ว่าง) ก็แค่ข้ามเงียบๆ ไป จัดกลุ่มตามคนแจ้งก่อนส่ง กันคนเดียว
+        // แจ้งหลายรายการในแบตช์เดียวกันได้รับหลายข้อความแยกกันโดยไม่จำเป็น
         if (approved.length) {
           const items = await loadOrderableItems()
-          const lines = approved.map((r) => stockInReceivedLine(r, items))
-          const counterIds = await getStockCounterLineUserIds()
-          await Promise.all(counterIds.map((id) => pushMessage(id, [{ type: 'text', text: lines.join('\n') }])
-            .catch((e) => console.error('notify stock counter stockin-approve batch:', e.message))))
+          const byReporter = new Map()
+          for (const r of approved) {
+            if (!r.reporter_line_user_id) continue
+            const lines = byReporter.get(r.reporter_line_user_id) || []
+            lines.push(stockInReceivedLine(r, items))
+            byReporter.set(r.reporter_line_user_id, lines)
+          }
+          await Promise.all([...byReporter.entries()].map(([uid, lines]) => pushMessage(uid, [{ type: 'text', text: lines.join('\n') }])
+            .catch((e) => console.error('notify reporter stockin-approve batch:', e.message))))
         }
         continue
       }
@@ -3873,9 +3871,10 @@ async function opLineWebhook(req, res) {
           const batchNote = otherPendingBatchNote(stillPending, matched)
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `Approve สำเร็จ โดย ${approver.name}${lotId !== 'none' ? ' (จับคู่ลอตแล้ว)' : ''}${batchNote}${skipLotWarning}` }])
           const items = await loadOrderableItems()
-          const counterIds = await getStockCounterLineUserIds()
-          await Promise.all(counterIds.map((id) => pushMessage(id, [{ type: 'text', text: stockInReceivedLine(matched, items) }])
-            .catch((e) => console.error('notify stock counter stockin-matchlot:', e.message))))
+          if (matched.reporter_line_user_id) {
+            await pushMessage(matched.reporter_line_user_id, [{ type: 'text', text: stockInReceivedLine(matched, items) }])
+              .catch((e) => console.error('notify reporter stockin-matchlot:', e.message))
+          }
         } catch (e) {
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
         }
@@ -3894,24 +3893,25 @@ async function opLineWebhook(req, res) {
           try { rejected.push(await rejectStockInRequest({ id }, approver.name, approver.role)) }
           catch (e) { failed.push(e.message) }
         }
-        // แก้ไขให้เกิดขึ้น 1:1 กับคนนับของเท่านั้น (owner ขอ 2026-07-31) — กันกลุ่มรกด้วยเมนูแก้ไขที่ไม่
-        // เกี่ยวกับบอส/dev เลย กลุ่มเห็นแค่สรุปสั้นๆ ว่าปฏิเสธแล้วและแจ้งใครไปให้แก้ไข ส่วนเมนูแก้ไขจริง
-        // (จำนวน/วันที่/สินค้า/ยกเลิก) ส่งตรงเข้าแชท 1:1 ของคนนับของ ผ่าน pushMessage
+        // แก้ไขให้เกิดขึ้น 1:1 กับ "คนที่แจ้งแถวนั้นจริง" เท่านั้น (owner ขอ 2026-07-31, ปรับ 2026-09-18 —
+        // เดิมแจ้งคนนับของตายตัว ตอนนี้ใช้ reporter_line_user_id ที่เก็บไว้ตอนแจ้งของเข้า ใครแจ้งก็ได้รับกลับเอง
+        // ไม่ใช่ฟ้า/แตงเสมอไป) กันกลุ่มรกด้วยเมนูแก้ไขที่ไม่เกี่ยวกับบอส/dev เลย — แถวที่แจ้งผ่านเว็บ (ไม่มี
+        // LINE ให้แจ้ง) ก็แจ้งด้วยตนเองแทน
         let notifyResult = ''
         if (rejected.length) {
-          const counterIds = await getStockCounterLineUserIds()
-          if (counterIds.length) {
+          const withLine = rejected.filter((r) => r.reporter_line_user_id)
+          if (withLine.length) {
             const items = await loadOrderableItems()
-            for (const r of rejected) {
+            for (const r of withLine) {
               const item = items.find((it) => String(it.sku).toUpperCase() === String(r.sku).toUpperCase())
-              for (const counterId of counterIds) {
-                try { await pushMessage(counterId, [stockInEditMenuMessage(r, item)]) }
-                catch (e) { console.error('push edit-menu to stock counter:', e.message) }
-              }
+              try { await pushMessage(r.reporter_line_user_id, [stockInEditMenuMessage(r, item)]) }
+              catch (e) { console.error('push edit-menu to reporter:', e.message) }
             }
-            notifyResult = ' — แจ้งคนนับของให้แก้ไขทาง LINE 1:1 แล้ว'
+            notifyResult = withLine.length === rejected.length
+              ? ' — แจ้งคนที่แจ้งของเข้าให้แก้ไขทาง LINE 1:1 แล้ว'
+              : ` — แจ้งได้ ${withLine.length}/${rejected.length} รายการ (ที่เหลือแจ้งผ่านเว็บ ไม่มี LINE ให้แจ้ง)`
           } else {
-            notifyResult = ' — ยังไม่ได้ผูกไลน์คนนับของ (ตั้งค่าที่หน้า Settings > คนนับของ) ให้แจ้งด้วยตนเองนะคะ'
+            notifyResult = ' — แจ้งผ่านเว็บทั้งหมด ไม่มี LINE ให้แจ้งกลับ ให้แจ้งด้วยตนเองนะคะ'
           }
         }
         if (event.replyToken) await replyMessage(event.replyToken, [{

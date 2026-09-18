@@ -66,7 +66,11 @@ const STOCK_IN_REQUESTS_SHEET = 'stock_in_requests'
 // ป้องกันเคสลอตค้างเงียบๆ แบบ PY043 ที่เจอมาก่อน) next_reminder_at ว่าง = ยังไม่เคยตั้ง คำนวณ due date
 // สดจาก order_date/created_at + 15 วันแทน (ดู computeOverdueOrders) — ตั้งจริงเฉพาะตอน snooze/mute
 // shipping_no: ต่อท้ายล่าสุด — เลขใบชมพูจากการนำเข้าจีน กรอกได้ตอนแจ้งของเข้าทางไลน์ (ไม่บังคับ)
-const STOCK_IN_REQUESTS_HEADERS = ['id', 'sku', 'arrival_date', 'count_date', 'qty', 'note', 'status', 'created_by', 'created_at', 'matched_by', 'matched_at', 'movement_id', 'reject_reason', 'linked_order_id', 'order_date', 'next_reminder_at', 'reminder_muted', 'shipping_no']
+const STOCK_IN_REQUESTS_HEADERS = ['id', 'sku', 'arrival_date', 'count_date', 'qty', 'note', 'status', 'created_by', 'created_at', 'matched_by', 'matched_at', 'movement_id', 'reject_reason', 'linked_order_id', 'order_date', 'next_reminder_at', 'reminder_muted', 'shipping_no', 'reporter_line_user_id']
+// reporter_line_user_id: LINE userId ของคนที่แจ้งของเข้าแถวนี้ผ่านไลน์จริง (ว่าง = แจ้งผ่านเว็บ ไม่มี LINE
+// ให้แจ้งกลับ) — owner ขอ 2026-09-18: ตอน boss approve/ปฏิเสธ ต้องแจ้งกลับ "คนที่แจ้งแถวนี้จริง" 1:1 ไม่ใช่
+// แจ้งฟ้า/แตงตายตัวทุกครั้งไม่ว่าใครเป็นคนแจ้ง — เก็บตรงนี้ตอนสร้างแถว (addStockInRequest) ใช้ตรงๆ ตอน
+// approve/reject แทนการเดาว่าใครคือ "คนนับของ"
 const STOCK_IN_STATUSES = new Set(['pending', 'matched', 'rejected', 'done', 'cancelled'])
 const ORDER_REMINDER_DAYS = 15
 const addDaysIso = (iso, days) => {
@@ -882,6 +886,7 @@ export async function addStockInRequest(body, actorName) {
     created_by: actorName || '',
     created_at: now,
     shipping_no: String(body.shipping_no || '').trim(),
+    reporter_line_user_id: String(body.reporter_line_user_id || '').trim(),
   }
   await appendRows(STOCK_IN_REQUESTS_SHEET, [STOCK_IN_REQUESTS_HEADERS.map((h) => row[h] ?? '')])
   return row
