@@ -11,7 +11,7 @@ import {
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides, LEGACY_OVERRIDE_EXEMPT_CODES } from './_lib/scheduleOverrides.js'
 import { isoDate } from './_lib/dates.js'
-import opInventory, { computeLowStockList, computeOverdueOrders, muteOrderReminder, snoozeOrderReminder, cancelOrderRequest, undoOverdueOrderAction, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem, applyTempLeadTime, revertTempLeadTime } from './_lib/inventory.js'
+import opInventory, { computeLowStockList, computeOverdueOrders, muteOrderReminder, snoozeOrderReminder, cancelOrderRequest, undoOverdueOrderAction, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem, applyTempLeadTime, revertTempLeadTime, applyTempLeadTimeBulk, revertTempLeadTimeBulk } from './_lib/inventory.js'
 import opImportTracking, { createArrivalsFromShipping } from './_lib/importTracking.js'
 import opCfo from './_lib/cfo.js'
 import opDemographic from './_lib/demographic.js'
@@ -540,12 +540,30 @@ async function handleLeadtimeListCommand(event) {
   const items = await loadOrderableItems()
   const active = items.filter((it) => it.lead_time_temp_active)
   if (!active.length) {
-    return replyMessage(replyToken, [{ type: 'text', text: 'ไม่มีการปรับ lead time ชั่วคราวอยู่ตอนนี้ค่ะ\nพิมพ์ "leadtime <ชื่อสินค้า>" เพื่อปรับได้เลย' }])
+    return replyMessage(replyToken, [{ type: 'text', text: 'ไม่มีการปรับ lead time ชั่วคราวอยู่ตอนนี้ค่ะ\nพิมพ์ "leadtime <ชื่อสินค้า>" เพื่อปรับทีละตัว หรือ "leadtime ทั้งหมด" เพื่อปรับทุกสินค้าทีเดียว (เช่น ช่วงวันหยุดยาว)' }])
   }
+  const revertAllButton = { type: 'action', action: { type: 'postback', label: `↩️ ปรับกลับทั้งหมด (${active.length})`, data: 'leadtime-revert:__ALL__', displayText: 'ปรับกลับ lead time ทั้งหมด' } }
   await replyMessage(replyToken, [{
     type: 'text',
-    text: `กำลังปรับ lead time ชั่วคราวอยู่ ${active.length} รายการ กดเพื่อปรับกลับ:`,
-    quickReply: { items: active.slice(0, 10).map((it) => ({ type: 'action', action: { type: 'postback', label: it.display_name.slice(0, 20), data: `leadtime-revert:${it.sku}`, displayText: `ปรับกลับ ${it.display_name}` } })) },
+    text: `กำลังปรับ lead time ชั่วคราวอยู่ ${active.length} รายการ กดเพื่อปรับกลับทีละตัว หรือกลับทั้งหมดทีเดียว:`,
+    quickReply: { items: [revertAllButton, ...active.slice(0, 9).map((it) => ({ type: 'action', action: { type: 'postback', label: it.display_name.slice(0, 20), data: `leadtime-revert:${it.sku}`, displayText: `ปรับกลับ ${it.display_name}` } }))] },
+  }])
+}
+
+// ปรับ lead time ชั่วคราว "ทั้งหมด" ทีเดียวผ่านไลน์ (owner ขอ 2026-09-18 — เผื่อวันหยุดยาวเช่นตรุษจีน)
+// ใช้ session ตัวเดียวกับปรับทีละ SKU แค่แทน sku ด้วย sentinel '__ALL__' ให้ handleLeadtimeValuesReply/
+// handleLeadtimeRevertPostback แยกไปเรียก *Bulk ฝั่งข้อมูลแทน ไม่ต้องเพิ่ม flow ใหม่คู่ขนาน
+const LEADTIME_ALL_SENTINEL = '__ALL__'
+async function handleLeadtimeBulkStart(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นที่ปรับ lead time ได้ค่ะ' }])
+  await upsertLeadtimeSession(lineUserId, LEADTIME_ALL_SENTINEL)
+  await replyMessage(replyToken, [{
+    type: 'text',
+    text: 'ปรับ lead time ชั่วคราว "ทั้งหมด" — บวกจำนวนวันเพิ่มจากค่าปกติเดิมของแต่ละสินค้า (ไม่ใช่ตั้งให้เท่ากันหมด)\n\nพิมพ์เลขใหม่ 2 ค่าคั่นด้วยช่องว่าง (เพิ่มวันผลิต เพิ่มวันขนส่ง) เช่น "3 5" ค่ะ',
   }])
 }
 
@@ -599,6 +617,20 @@ async function handleLeadtimeValuesReply(event, session) {
   const [production, transport] = parts
   const approver = lineUserId ? await findStockApprover(lineUserId) : null
   if (!approver) { await clearLeadtimeSession(lineUserId); return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นค่ะ' }]) }
+  if (session.sku === LEADTIME_ALL_SENTINEL) {
+    try {
+      const result = await applyTempLeadTimeBulk({ extraProduction: production, extraTransport: transport }, approver.name, approver.role)
+      await clearLeadtimeSession(lineUserId)
+      await replyMessage(replyToken, [{
+        type: 'text',
+        text: `ปรับ lead time ชั่วคราวทั้งหมด ${result.count} รายการแล้วค่ะ (เพิ่มผลิต +${production} / ขนส่ง +${transport} วัน จากค่าเดิมของแต่ละสินค้า)`,
+        quickReply: { items: [{ type: 'action', action: { type: 'postback', label: '↩️ ปรับกลับทั้งหมด', data: `leadtime-revert:${LEADTIME_ALL_SENTINEL}`, displayText: 'ปรับกลับ lead time ทั้งหมด' } }] },
+      }])
+    } catch (e) {
+      await replyMessage(replyToken, [{ type: 'text', text: `ปรับไม่สำเร็จ: ${e.message}` }])
+    }
+    return
+  }
   try {
     const items = await loadOrderableItems()
     const item = items.find((it) => String(it.sku).toUpperCase() === String(session.sku).toUpperCase())
@@ -620,6 +652,15 @@ async function handleLeadtimeRevertPostback(event, sku) {
   if (!replyToken) return
   const approver = lineUserId ? await findStockApprover(lineUserId) : null
   if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นค่ะ' }])
+  if (sku === LEADTIME_ALL_SENTINEL) {
+    try {
+      const result = await revertTempLeadTimeBulk(approver.name, approver.role)
+      await replyMessage(replyToken, [{ type: 'text', text: `ปรับกลับ lead time ทั้งหมด ${result.count} รายการเป็นค่าปกติแล้วค่ะ` }])
+    } catch (e) {
+      await replyMessage(replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
+    }
+    return
+  }
   try {
     const items = await loadOrderableItems()
     const item = items.find((it) => String(it.sku).toUpperCase() === String(sku).toUpperCase())
@@ -3684,6 +3725,7 @@ async function opLineWebhook(req, res) {
         if (initialQuery === '') { await handleStockOrderSearchStart(event); continue }
         if (initialInQuery === '') { await handleStockInStart(event); continue }
         if (leadtimeQuery === '') { await handleLeadtimeListCommand(event); continue }
+        if (leadtimeQuery && /^(ทั้งหมด|all)$/i.test(leadtimeQuery)) { await handleLeadtimeBulkStart(event); continue }
         if (leadtimeSession) { await handleLeadtimeValuesReply(event, leadtimeSession); continue }
         if (leadtimeQuery !== null && await handleLeadtimeSearchStart(event, leadtimeQuery)) continue
         if (stockSession?.step === 'await_item_qty') { await handleStockOrderQtyReply(event, stockSession); continue }

@@ -406,6 +406,58 @@ export async function revertTempLeadTime(body, actorName, role) {
   return { sku, lead_time_production: num(row.lead_time_production), lead_time_transport: num(row.lead_time_transport) }
 }
 
+// ปรับ lead time ชั่วคราว "ทั้งหมด" ทีเดียว (owner ขอ 2026-09-18 — เผื่อวันหยุดยาว เช่น ตรุษจีน โรงงาน/ขนส่ง
+// ปิดพร้อมกันหมดทุกสินค้า) — บวก "จำนวนวันเพิ่ม" เข้าไปบนฐานเดิมของแต่ละสินค้า ไม่ใช่เซ็ตทุกตัวให้เท่ากัน
+// (แต่ละสินค้ามี lead time ปกติไม่เท่ากันอยู่แล้ว วันหยุดแค่ต่อคิวเพิ่ม ไม่ได้ทำให้ทุกตัวเท่ากัน) ฐานที่บวก
+// ทับคือค่าที่ยังไม่ปรับ (saved ถ้าปรับชั่วคราวค้างอยู่แล้ว, ไม่งั้นใช้ค่าปัจจุบัน) กันบวกซ้อนถ้ากดสองครั้ง
+// ใช้ตรรกะเดียวกับ applyTempLeadTime ทีละแถว ครอบทุกสินค้าที่ active (รวม packaging ด้วย — วันหยุดกระทบหมด)
+export async function applyTempLeadTimeBulk(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ปรับ lead time ได้')
+  const extraProduction = num(body.extraProduction)
+  const extraTransport = num(body.extraTransport)
+  if (!extraProduction && !extraTransport) throw new Error('ต้องระบุจำนวนวันที่จะเพิ่ม')
+  await ensureInventorySheets()
+  const items = await getSheet(ITEMS_SHEET)
+  const now = new Date().toISOString()
+  let count = 0
+  for (const row of items) {
+    if (!row.sku || !truthyActive(row.active)) continue
+    const baseProduction = String(row.lead_time_temp_active) === '1' ? num(row.lead_time_production_saved) : num(row.lead_time_production)
+    const baseTransport = String(row.lead_time_temp_active) === '1' ? num(row.lead_time_transport_saved) : num(row.lead_time_transport)
+    if (String(row.lead_time_temp_active) !== '1') {
+      row.lead_time_production_saved = baseProduction || '0'
+      row.lead_time_transport_saved = baseTransport || '0'
+      row.lead_time_temp_active = '1'
+    }
+    row.lead_time_production = baseProduction + extraProduction
+    row.lead_time_transport = baseTransport + extraTransport
+    row.updated_at = now
+    count++
+  }
+  await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
+  return { count, extraProduction, extraTransport }
+}
+
+// ปรับกลับ "ทั้งหมด" ทีเดียว — เฉพาะแถวที่ lead_time_temp_active อยู่ (ปรับทีละตัวไว้ก่อนแล้วมาปรับกลับรวมทีหลัง
+// ก็คืนตัวนั้นด้วยเหมือนกัน ไม่ได้จำกัดว่าต้องมาจาก applyTempLeadTimeBulk เท่านั้น)
+export async function revertTempLeadTimeBulk(actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ปรับ lead time ได้')
+  await ensureInventorySheets()
+  const items = await getSheet(ITEMS_SHEET)
+  const now = new Date().toISOString()
+  let count = 0
+  for (const row of items) {
+    if (String(row.lead_time_temp_active) !== '1') continue
+    row.lead_time_production = row.lead_time_production_saved || '0'
+    row.lead_time_transport = row.lead_time_transport_saved || '0'
+    row.lead_time_temp_active = '0'
+    row.updated_at = now
+    count++
+  }
+  await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
+  return { count }
+}
+
 // boss กด "สั่งของ" (ปุ่มแยกจาก "แจ้งของเข้า" บนหน้า Stock Movement) — สร้างแถว pending ใหม่เสมอ
 // ที่ arrival_date/count_date ว่างไว้ก่อน ("สั่งแล้ว รอของเข้า") แยกแถวต่อ 1 ลอตเสมอ (ไม่ทับของเดิม)
 // เพื่อให้สั่งซ้อนหลายลอตพร้อมกันได้โดยไม่ทำลอตแรกหาย — เรียงคิว FIFO ตาม created_at ตอน match
@@ -1053,6 +1105,14 @@ export default async function opInventory(req, res) {
       }
       if (action === 'revert-temp-leadtime') {
         const result = await revertTempLeadTime(req.body, actorName, role)
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'apply-temp-leadtime-bulk') {
+        const result = await applyTempLeadTimeBulk(req.body, actorName, role)
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'revert-temp-leadtime-bulk') {
+        const result = await revertTempLeadTimeBulk(actorName, role)
         return res.status(200).json({ success: true, ...result })
       }
       if (action === 'add-movement') {
