@@ -58,7 +58,13 @@
   .err-box { background: #fef2f2; color: var(--danger); border: 1px solid #fecaca; border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px; }
   .field-select-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .print-btn { margin-top: 16px; padding: 11px 22px; border-radius: 10px; border: none; background: var(--mint); color: #fff; font-weight: 700; font-size: 14px; cursor: pointer; }
-  @media print { .no-print { display: none !important; } }
+  .print-full-form { display: none; }
+  @media print {
+    .no-print { display: none !important; }
+    body * { visibility: hidden !important; }
+    .print-full-form, .print-full-form * { visibility: visible !important; }
+    .print-full-form { display: block !important; position: fixed; inset: 0; width: 100%; padding: 20px; box-sizing: border-box; }
+  }
 </style>
 </head>
 <body>
@@ -474,6 +480,127 @@ btnNext.addEventListener('click', async () => {
   await submit();
 });
 
+// ==================== PDF: แบบฟอร์มล็อคแพตเทิร์นตายตัว ====================
+// สำเนาของ LockedApplicationForm ใน src/pages/HRPeople.jsx (ฝั่ง React ของบอส) มาทำเป็น
+// vanilla JS/HTML string แทน — คนละไฟล์ คนละ runtime (ที่นี่ไม่มี React/build step) ไม่มีทาง
+// share component กันได้ ต้องแก้ทั้งสองที่ถ้าจะเปลี่ยนแพตเทิร์นทีหลัง โครงสร้าง/label/checkbox
+// ต้องตรงกันเป๊ะ — อ้างอิงจากไฟล์ PDF ต้นฉบับที่บอสส่งมา (ใบสมัครงาน 3 หน้า)
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function pBlank(value, minWidth, grow) {
+  return `<span style="display:inline-block;border-bottom:1px dotted #333;min-width:${minWidth || 60}px;flex:${grow == null ? 1 : grow};padding:0 4px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(value) || '&nbsp;'}</span>`;
+}
+function pChk(label, checked) {
+  return `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:16px"><span style="font-family:monospace;font-size:14px">${checked ? '☑' : '☐'}</span>${esc(label)}</span>`;
+}
+function pLine(inner) {
+  return `<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px;margin-bottom:10px;font-size:12.5px">${inner}</div>`;
+}
+function pTable(cols, rows, minRows) {
+  const data = rows.slice();
+  while (data.length < minRows) data.push({});
+  const head = cols.map((c) => `<th style="border:1px solid #333;padding:4px 6px;background:#f1f5f9;font-weight:700">${esc(c.label)}</th>`).join('');
+  const body = data.map((r) => `<tr>${cols.map((c) => `<td style="border:1px solid #333;padding:4px 6px;height:20px">${esc(r[c.key])}</td>`).join('')}</tr>`).join('');
+  return `<table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:14px"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+function buildLockedFormHTML(a) {
+  const fullName = `${a.title || ''}${a.full_name || ''}`;
+  const genderMale = a.title === 'นาย';
+  const genderFemale = a.title === 'นาง' || a.title === 'นางสาว';
+  const residence = a.residence_type;
+  const military = a.military_status;
+  const marital = a.marital_status;
+
+  const eduRow = (a.education_history || [])[0] || {};
+  const eduRows = eduRow.level || eduRow.school ? [{ from: '', to: esc(eduRow.year), school: esc(eduRow.school), major: esc(eduRow.major), cert: esc(eduRow.level) }] : [];
+  const workRows = (a.work_history || []).map((w) => ({ from: w.from, to: w.to, org: w.company, position: w.position, salary: w.salary, reason: w.reason_left }));
+  const programs = a.computer_programs || [];
+  const compLevel = a.computer_level;
+  const compRows = programs.map((p) => ({ program: p, level: compLevel }));
+  const langRows = [
+    a.english_speak && { lang: 'อังกฤษ (พูด)', level: a.english_speak },
+    a.english_read && { lang: 'อังกฤษ (อ่าน)', level: a.english_read },
+    a.english_write && { lang: 'อังกฤษ (เขียน)', level: a.english_write },
+    a.other_language && { lang: a.other_language, level: '' },
+  ].filter(Boolean);
+  const otherAbility = (a.office_skills || []).join(', ');
+  const moreInfoLines = [
+    a.education_activities && `กิจกรรม/รางวัลระหว่างการศึกษา: ${a.education_activities}`,
+    a.favorite_subject && `สาขาที่ชอบเป็นพิเศษ: ${a.favorite_subject}`,
+    a.criminal_record && `ประวัติอาชญากรรม: ${a.criminal_record}`,
+    a.health_condition && `โรคประจำตัว/สุขภาพ: ${a.health_condition}`,
+  ].filter(Boolean);
+
+  return `
+  <div style="font-family:-apple-system,'Noto Sans Thai',Arial,sans-serif;color:#111;font-size:12.5px;line-height:1.7">
+    <div style="text-align:right;font-size:11px">ใบสมัครเลขที่ ${pBlank('', 80, 0)}</div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin:8px 0 16px">
+      <div style="flex:1;text-align:center">
+        <div style="font-size:18px;font-weight:800">ใบสมัครงาน</div>
+        <div style="font-size:11px;color:#555">PAYI — เอกสารประวัติบุคคล</div>
+      </div>
+      <div style="width:90px;height:110px;border:1px solid #333;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999;flex-shrink:0">รูปถ่าย</div>
+    </div>
+
+    <div style="font-weight:700;margin-bottom:8px">1. ประวัติส่วนตัว</div>
+    ${pLine(`<span>ชื่อ - สกุล :</span>${pBlank(fullName, 60, 1)}`)}
+    ${pLine(`<span>ที่อยู่ปัจจุบันเลขที่</span>${pBlank(a.address, 60, 2)}<span>ตำบล/แขวง</span>${pBlank(a.sub_district, 60, 1)}`)}
+    ${pLine(`<span>อำเภอ/เขต</span>${pBlank(a.district, 60, 1)}<span>จังหวัด</span>${pBlank(a.province, 60, 1)}<span>รหัสไปรษณีย์</span>${pBlank(a.postal_code, 50, 1)}`)}
+    ${pLine(pChk('อาศัยกับครอบครัว', residence === 'บ้านญาติ') + pChk('บ้านตัวเอง', residence === 'บ้านตัวเอง') + pChk('บ้านเช่า', residence === 'ห้องเช่า/บ้านเช่า') + pChk('หอพัก', false))}
+    ${pLine(`<span>โทรศัพท์</span>${pBlank(a.home_phone, 60, 1)}<span>มือถือ</span>${pBlank(a.mobile_phone, 60, 1)}`)}
+    ${pLine(`<span>E-mail</span>${pBlank(a.email, 60, 1)}`)}
+    ${pLine(`<span>วัน เดือน ปีเกิด</span>${pBlank(a.birth_date, 60, 1)}<span>อายุ</span>${pBlank(a.age, 40, 0)}<span>ปี เชื้อชาติ</span>${pBlank(a.ethnicity, 60, 1)}`)}
+    ${pLine(`<span>สัญชาติ</span>${pBlank(a.nationality, 60, 1)}<span>ศาสนา</span>${pBlank(a.religion, 60, 1)}`)}
+    ${pLine(`<span>บัตรประชาชนเลขที่</span>${pBlank('', 60, 1)}<span>บัตรหมดอายุ</span>${pBlank('', 60, 1)}`)}
+    ${pLine(`<span>ส่วนสูง</span>${pBlank('', 40, 0)}<span>ซม.</span><span>น้ำหนัก</span>${pBlank('', 40, 0)}<span>กก.</span>`)}
+    ${pLine(`<span style="min-width:90px">ภาวะทางทหาร</span>` + pChk('ได้รับการยกเว้น', military === 'ได้รับการยกเว้น') + pChk('ปลดเป็นทหารกองหนุน', military === 'ผ่านการเกณฑ์ทหารแล้ว') + pChk('ยังไม่ได้รับการเกณฑ์', military === 'ศึกษาวิชาทหาร (รด.)'))}
+    ${pLine(`<span style="min-width:90px">สถานภาพ</span>` + pChk('โสด', marital === 'โสด') + pChk('แต่งงาน', marital === 'แต่งงาน') + pChk('หม้าย', false) + pChk('แยกกัน', marital === 'แยกกันอยู่'))}
+    ${pLine(`<span style="min-width:90px">เพศ</span>` + pChk('ชาย', genderMale) + pChk('หญิง', genderFemale))}
+
+    <div style="font-weight:700;margin:14px 0 8px">บุคคลที่สามารถติดต่อได้ (กรณีฉุกเฉิน)</div>
+    ${pLine(`<span>ชื่อ - สกุล</span>${pBlank(a.reference_name, 60, 2)}<span>อาชีพ</span>${pBlank(a.reference_occupation, 60, 1)}`)}
+    ${pLine(`<span>สถานที่ทำงาน</span>${pBlank('', 60, 2)}<span>เกี่ยวข้องเป็น</span>${pBlank('', 60, 1)}`)}
+    ${pLine(`<span>โทรศัพท์ (มือถือ)</span>${pBlank(a.reference_phone, 60, 1)}`)}
+
+    <div style="break-before:page">
+      <div style="font-weight:700;margin-bottom:6px;margin-top:24px">2. ข้อมูลการศึกษา</div>
+      ${pTable([{ key: 'from', label: 'ปี พ.ศ. (จาก)' }, { key: 'to', label: 'ปี พ.ศ. (ถึง)' }, { key: 'school', label: 'สถาบันการศึกษา' }, { key: 'major', label: 'สาขาวิชา' }, { key: 'cert', label: 'ประกาศนียบัตร/ปริญญาบัตร' }], eduRows, 5)}
+
+      <div style="font-weight:700;margin-bottom:6px">3. ข้อมูลการทำงานและประสบการณ์ทำงาน</div>
+      ${pTable([{ key: 'from', label: 'ปี พ.ศ. (จาก)' }, { key: 'to', label: 'ปี พ.ศ. (ถึง)' }, { key: 'org', label: 'ชื่อและที่อยู่ของหน่วยงาน' }, { key: 'position', label: 'ตำแหน่งและหน้าที่โดยย่อ' }, { key: 'salary', label: 'เงินเดือน' }, { key: 'reason', label: 'สาเหตุที่ออกจากงาน' }], workRows, 5)}
+
+      <div style="font-weight:700;margin-bottom:6px">4. ความสามารถทางด้านคอมพิวเตอร์</div>
+      ${pTable([{ key: 'program', label: 'โปรแกรม' }, { key: 'level', label: 'ระดับความสามารถ' }], compRows, 4)}
+
+      <div style="font-weight:700;margin-bottom:6px">5. ความสามารถทางด้านภาษาต่างประเทศ</div>
+      ${pTable([{ key: 'lang', label: 'ภาษา' }, { key: 'level', label: 'ระดับความสามารถ' }], langRows, 4)}
+    </div>
+
+    <div style="break-before:page">
+      <div style="font-weight:700;margin-bottom:6px;margin-top:24px">6. ความสามารถด้านอื่นๆ</div>
+      ${pLine(pChk('สามารถขับขี่รถยนต์', false) + pChk('มีพาหนะเป็นของตนเอง', false))}
+      ${pLine(pChk('สามารถขับขี่รถจักรยานยนต์', false))}
+      ${pLine(`<span>ความสามารถอื่นๆ (โปรดระบุ)</span>${pBlank(otherAbility, 60, 1)}`)}
+
+      <div style="font-weight:700;margin:14px 0 6px">7. ข้อมูลเพิ่มเติม (เช่น ประวัติการฝึกอบรม/คุณสมบัติอื่นๆ ที่เกี่ยวข้องกับตำแหน่งงาน)</div>
+      ${(moreInfoLines.length ? moreInfoLines : ['', '', '']).map((t) => `<div style="border-bottom:1px dotted #333;padding:3px 0;min-height:18px">${esc(t) || '&nbsp;'}</div>`).join('')}
+
+      <div style="margin-top:28px;font-size:12px">
+        ข้าพเจ้าขอรับรองว่าข้อความข้างต้นเป็นความจริงทุกประการ หากปรากฏในภายหลังว่าข้อความ
+        ที่ข้าพเจ้าได้กล่าวข้างต้นเป็นเท็จ บริษัทอาจพิจารณาเลิกจ้างข้าพเจ้าได้ โดยข้าพเจ้าจะไม่เรียกร้อง
+        ค่าชดเชยหรือค่าเสียหายใดๆ ทั้งสิ้น
+      </div>
+      <div style="margin-top:40px;text-align:center;font-size:12px">
+        <div>ลายมือชื่อผู้สมัคร</div>
+        <div style="margin-top:28px">.......................................................</div>
+        <div>(${esc(fullName) || '......................................................'})</div>
+        <div style="margin-top:6px">........... / ............... / ...........</div>
+      </div>
+    </div>
+  </div>`;
+}
+
 async function submit() {
   btnNext.disabled = true;
   btnNext.textContent = 'กำลังส่ง...';
@@ -512,7 +639,9 @@ async function submit() {
           วันที่ส่ง: ${new Date().toLocaleDateString('th-TH')}
         </div>
         <button class="print-btn no-print" onclick="window.print()">พิมพ์ใบสมัคร (PDF)</button>
-      </div></main>`;
+      </div>
+      <div class="print-full-form">${buildLockedFormHTML(answers)}</div>
+      </main>`;
   } catch (e) {
     cardBody.insertBefore(el('div', { class: 'err-box' }, e.message || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง'), cardBody.firstChild.nextSibling);
     btnNext.disabled = false;

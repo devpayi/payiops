@@ -352,6 +352,29 @@ Sheets rate limits.
         renders this component). Wired in in place of the old `PrintableProfile` inside
         the same `.hr-print-only` block — everything else about the "สร้าง PDF" plumbing
         (`.hr-print-area`/`.hr-no-print` visibility toggle, the button itself) unchanged.
+    - **✅ DONE (2026-09-18) — same locked-pattern PDF ported to the applicant/employee
+      wizards' own done-screens too.** Owner tested the dashboard's "สร้าง PDF" and then
+      asked why the wizard's own "พิมพ์ใบสมัคร (PDF)" button (on `apply.html`'s/
+      `employee.html`'s own done-screen, for the applicant/new-hire's own copy, no login)
+      still only printed the plain summary card — wanted the same 3-page official-form
+      layout available right there too, not just from the boss's dashboard. Ported
+      `LockedApplicationForm` to **vanilla JS/HTML-string** (`buildLockedFormHTML()` +
+      `esc()`/`pBlank()`/`pChk()`/`pLine()`/`pTable()` helpers) duplicated in both
+      `apply.html` and `employee.html` — reads straight from each file's own `answers`
+      object (not Thai sheet-header lookups like the React version, since these files
+      never round-trip through the sheet before printing). Rendered into a
+      `.print-full-form` block (same `display:none` → print-only visibility-toggle
+      trick as the dashboard version) right after the done-screen shows, and a new
+      button next to the existing simple-summary print button. **This is now a 3rd
+      copy of the same fixed layout** (React version in `HRPeople.jsx`, vanilla-JS
+      version in `apply.html`, vanilla-JS version in `employee.html`) — the two
+      vanilla-JS copies are near-identical except which `answers.*` fields feed the
+      "เอกสารประจำตัว"/"คนติดต่อฉุกเฉิน" lines and what gets folded into the "7. ข้อมูล
+      เพิ่มเติม" catch-all (employee.html's version also stuffs กรุ๊ปเลือด/บัญชีธนาคาร/
+      ที่อยู่ทะเบียนบ้าน in there, since the paper template has no dedicated slot for them
+      and applicants don't have those fields at all). **Any future pattern change must be
+      applied in all three places by hand** — no shared module across React/two static
+      HTML files.
     - `HRPeople.jsx` gained a 4th view `employees_full` ("พนักงาน (แบบเต็ม)"), form-link
       → `/employee.html`; existing `employees` view relabeled "พนักงาน (เดิม)" for
       clarity since there are now two employee sources. The old Google Form is NOT
