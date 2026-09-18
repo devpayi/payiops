@@ -275,7 +275,9 @@ function DetailDrawer({ row, headers, onClose }) {
         @media print {
           body * { visibility: hidden !important; }
           .hr-print-area, .hr-print-area * { visibility: visible !important; }
-          .hr-print-area { position: fixed; inset: 0; width: 100%; height: auto !important; overflow: visible !important; padding: 20px !important; }
+          /* position:fixed ตัด content ที่ยาวเกิน 1 หน้าทิ้งหมด (fixed ผูกกับ viewport เดียว
+             พิมพ์ได้แค่หน้าแรก) — ใช้ absolute แทน ให้ไหลข้ามหน้าได้ตามความสูงจริงของเนื้อหา */
+          .hr-print-area { position: absolute; top: 0; left: 0; width: 100%; height: auto !important; overflow: visible !important; padding: 20px !important; }
           .hr-no-print { display: none !important; }
           .hr-print-only { display: block !important; }
         }

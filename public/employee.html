@@ -65,7 +65,10 @@
     .no-print { display: none !important; }
     body * { visibility: hidden !important; }
     .print-full-form, .print-full-form * { visibility: visible !important; }
-    .print-full-form { display: block !important; position: fixed; inset: 0; width: 100%; padding: 20px; box-sizing: border-box; }
+    /* position:fixed ตัด content ที่ยาวเกิน 1 หน้าทิ้งหมด (fixed ผูกกับ viewport เดียว พิมพ์ได้
+       แค่หน้าแรก) — ใช้ absolute แทน ให้ไหลข้ามหน้าได้ตามความสูงจริงของเนื้อหา (บอส 2026-09-18:
+       "ขยายเต็มหน้า A4 ... หลายหน้าก็ต้องทำ") */
+    .print-full-form { display: block !important; position: absolute; top: 0; left: 0; width: 100%; padding: 20px; box-sizing: border-box; }
   }
 </style>
 </head>

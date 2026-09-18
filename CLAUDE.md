@@ -352,6 +352,21 @@ Sheets rate limits.
         renders this component). Wired in in place of the old `PrintableProfile` inside
         the same `.hr-print-only` block — everything else about the "สร้าง PDF" plumbing
         (`.hr-print-area`/`.hr-no-print` visibility toggle, the button itself) unchanged.
+    - **✅ DONE (2026-09-18) — real bug: print output was silently truncated to 1 page,
+      narrow width.** Owner's screenshot showed the printed form cut off mid-table with
+      Chrome's print preview reporting "1/1" pages, and a large blank margin on the
+      right instead of using the full A4 width. **Root cause: `position: fixed` on the
+      isolated print container.** `fixed` positioning is pinned to a single viewport —
+      in Chrome's print pipeline this confines the element to page 1 only and clips
+      anything past one page's height, which also happened to visually compress width in
+      this case. Fixed in **all three copies** (`.hr-print-area` in `HRPeople.jsx`,
+      `.print-full-form` in both `apply.html` and `employee.html`) by switching to
+      `position: absolute; top:0; left:0; width:100%` instead of `position: fixed; inset:
+      0` — `absolute` sizes to the content's real (potentially multi-page) height and
+      lets the existing `break-before: page` rules in `LockedApplicationForm`/
+      `buildLockedFormHTML()` paginate normally across as many pages as the content
+      needs, matching the reference PDF's actual page count instead of being silently
+      squashed onto one.
     - **✅ DONE (2026-09-18) — same locked-pattern PDF ported to the applicant/employee
       wizards' own done-screens too.** Owner tested the dashboard's "สร้าง PDF" and then
       asked why the wizard's own "พิมพ์ใบสมัคร (PDF)" button (on `apply.html`'s/
