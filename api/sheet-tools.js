@@ -1338,14 +1338,18 @@ async function handleStockInQtyReply(event, session) {
   await addToStockInCartAndAskMore(replyToken, lineUserId, [{ sku: item.sku, display_name: item.display_name, unit: item.unit || 'ชิ้น', qty }])
 }
 
-// ── แก้ไขรายการที่โดนปฏิเสธ ผ่าน 1:1 กับคนนับของ (owner ขอ 2026-07-31 กันไม่ให้แก้ไขในกลุ่มแล้วรก) ──
-// จำ username คงที่ของ "คนนับของ" ไว้ตรงนี้ (ค่าเดียวกับ default ในการ์ด StockCounterLineCard ฝั่งเว็บ
-// Settings.jsx) — ยังไม่ทำเป็นค่าตั้งค่าแยก เพราะมีคนเดียวจริง ๆ ตอนนี้ ถ้าเปลี่ยนคนวันหน้า แก้ userId
-// ในการ์ดนั้นได้เลย ไม่ต้องแก้โค้ด (ยกเว้นเปลี่ยน username ล็อกอินไปด้วย ถึงจะต้องแก้ค่านี้ตาม)
-const STOCK_COUNTER_USERNAME = 'fah'
-async function getStockCounterLineUserId() {
+// ── แก้ไขรายการที่โดนปฏิเสธ + แจ้งผล Approve ผ่าน 1:1 กับ "คนนับของ" (owner ขอ 2026-07-31 กันไม่ให้แก้ไข
+// ในกลุ่มแล้วรก) ── ค่าเดียวกับ default ในการ์ด StockCounterLineCard ฝั่งเว็บ Settings.jsx (username ล็อกอิน
+// จริง 'fah', เก็บใน hr_line_links แบบ username เปล่า) เปลี่ยนคนวันหน้าแก้การ์ดนั้นได้เลย ไม่ต้องแก้โค้ด
+// เพิ่ม "แตง" (หัวหน้าฟ้า) เข้ามาด้วย 2026-09-18 — owner ขอให้เห็นผล Approve/รายการที่โดนปฏิเสธเหมือนฟ้า
+// ทุกอย่าง (เธอมีปุ่ม "แจ้งของเข้า" ในไลน์ริชเมนูอยู่แล้ว ดู RICHMENU_STOCK_TIER_USERNAME_OVERRIDES) แต่แตง
+// ไม่มี login username จริงในระบบ (ไม่ได้อยู่ใน StockCounterLineCard) — ผูกไลน์ผ่าน hr_office_people แทน
+// (เหมือนพนักงานขอลาทั่วไป) เก็บเป็น 'mp:TANG' ใน hr_line_links ไม่ใช่ username เปล่าแบบฟ้า ต้องหาคนละแบบ
+async function getStockCounterLineUserIds() {
   const links = await getSheet('hr_line_links')
-  return links.find((l) => l.username === STOCK_COUNTER_USERNAME)?.line_user_id || null
+  const fahId = links.find((l) => l.username === 'fah')?.line_user_id
+  const tangId = links.find((l) => l.username === 'mp:TANG')?.line_user_id
+  return [fahId, tangId].filter(Boolean)
 }
 
 // ── Rich menu tier ────────────────────────────────────────────────────────
@@ -3837,14 +3841,16 @@ async function opLineWebhook(req, res) {
             ? `Approve สำเร็จ ${approved.length} รายการ\nไม่สำเร็จ: ${failed.join('; ')}`
             : `Approve สำเร็จ ${approved.length} รายการ โดย ${approver.name}${batchNote}`,
         }])
-        // การ์ดจริงส่ง 1:1 ไม่ได้ขึ้นในกลุ่มแล้ว — แจ้งผลสั้นๆ เข้ากลุ่มแทน ให้ทีมเห็นว่า Match ไปแล้ว
-        // owner ขอ (2026-08-05): บอกรับเข้าอะไร/จำนวนเท่าไหร่ตรงๆ ไม่ใช่แค่ "Approve สำเร็จ" เฉยๆ
-        // ไม่แจ้งกลับฟ้า 1:1 อีกต่อไปเมื่อ match ตรง (owner ขอ 2026-08-05) — Approve ผ่าน LINE ไม่มีช่องแก้
-        // จำนวนตอน match เลย จำนวนที่รับเข้าจะตรงกับที่ฟ้าแจ้งไว้เสมอ ไม่มีเคส "ไม่ตรง" ให้ต้องแจ้งกลับ
+        // เดิมประกาศเข้ากลุ่มไลน์ทีม แต่ปิดไปแล้ว (2026-09-12, กันกินโควตา 300 ข้อความ/เดือนฟรี) — owner ขอ
+        // 2026-09-18: ย้ายมาแจ้งกลับ "ฟ้า" (คนแจ้งของเข้า) 1:1 แทนกลุ่ม จะได้รู้ว่า boss กด Approve ของที่
+        // เธอแจ้งไปแล้วจริง ไม่ใช่ปล่อยเงียบไม่มีใครรู้เลย (เคยปิดแจ้งกลับฟ้าไปครั้งนึงตอน 2026-08-05 เพราะตอน
+        // นั้นยังมีกลุ่มคอยแจ้งแทนอยู่ — ตอนนี้ไม่มีใครแจ้งเธอเลยสักทาง จึงเปิดกลับมาแต่เปลี่ยนเป้าหมาย)
         if (approved.length) {
           const items = await loadOrderableItems()
           const lines = approved.map((r) => stockInReceivedLine(r, items))
-          await announceStockInResultToGroup(lines.join('\n'))
+          const counterIds = await getStockCounterLineUserIds()
+          await Promise.all(counterIds.map((id) => pushMessage(id, [{ type: 'text', text: lines.join('\n') }])
+            .catch((e) => console.error('notify stock counter stockin-approve batch:', e.message))))
         }
         continue
       }
@@ -3867,7 +3873,9 @@ async function opLineWebhook(req, res) {
           const batchNote = otherPendingBatchNote(stillPending, matched)
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `Approve สำเร็จ โดย ${approver.name}${lotId !== 'none' ? ' (จับคู่ลอตแล้ว)' : ''}${batchNote}${skipLotWarning}` }])
           const items = await loadOrderableItems()
-          await announceStockInResultToGroup(stockInReceivedLine(matched, items))
+          const counterIds = await getStockCounterLineUserIds()
+          await Promise.all(counterIds.map((id) => pushMessage(id, [{ type: 'text', text: stockInReceivedLine(matched, items) }])
+            .catch((e) => console.error('notify stock counter stockin-matchlot:', e.message))))
         } catch (e) {
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
         }
@@ -3891,13 +3899,15 @@ async function opLineWebhook(req, res) {
         // (จำนวน/วันที่/สินค้า/ยกเลิก) ส่งตรงเข้าแชท 1:1 ของคนนับของ ผ่าน pushMessage
         let notifyResult = ''
         if (rejected.length) {
-          const counterId = await getStockCounterLineUserId()
-          if (counterId) {
+          const counterIds = await getStockCounterLineUserIds()
+          if (counterIds.length) {
             const items = await loadOrderableItems()
             for (const r of rejected) {
               const item = items.find((it) => String(it.sku).toUpperCase() === String(r.sku).toUpperCase())
-              try { await pushMessage(counterId, [stockInEditMenuMessage(r, item)]) }
-              catch (e) { console.error('push edit-menu to stock counter:', e.message) }
+              for (const counterId of counterIds) {
+                try { await pushMessage(counterId, [stockInEditMenuMessage(r, item)]) }
+                catch (e) { console.error('push edit-menu to stock counter:', e.message) }
+              }
             }
             notifyResult = ' — แจ้งคนนับของให้แก้ไขทาง LINE 1:1 แล้ว'
           } else {
