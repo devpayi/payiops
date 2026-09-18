@@ -355,18 +355,28 @@ Sheets rate limits.
     - **✅ DONE (2026-09-18) — real bug: print output was silently truncated to 1 page,
       narrow width.** Owner's screenshot showed the printed form cut off mid-table with
       Chrome's print preview reporting "1/1" pages, and a large blank margin on the
-      right instead of using the full A4 width. **Root cause: `position: fixed` on the
+      right instead of using the full A4 width. **Root cause 1: `position: fixed` on the
       isolated print container.** `fixed` positioning is pinned to a single viewport —
       in Chrome's print pipeline this confines the element to page 1 only and clips
-      anything past one page's height, which also happened to visually compress width in
-      this case. Fixed in **all three copies** (`.hr-print-area` in `HRPeople.jsx`,
-      `.print-full-form` in both `apply.html` and `employee.html`) by switching to
-      `position: absolute; top:0; left:0; width:100%` instead of `position: fixed; inset:
-      0` — `absolute` sizes to the content's real (potentially multi-page) height and
-      lets the existing `break-before: page` rules in `LockedApplicationForm`/
-      `buildLockedFormHTML()` paginate normally across as many pages as the content
-      needs, matching the reference PDF's actual page count instead of being silently
-      squashed onto one.
+      anything past one page's height. Fixed in **all three copies** (`.hr-print-area`
+      in `HRPeople.jsx`, `.print-full-form` in both `apply.html` and `employee.html`) by
+      switching to `position: absolute; top:0; left:0; width:100%` — lets the existing
+      `break-before: page` rules paginate normally instead of squashing onto one page.
+      **Root cause 2, found when the owner reported the dashboard's version still looked
+      unchanged after root cause 1's fix: the `.hr-print-area` element also carries an
+      inline `style` prop** (`width: 'min(460px,100vw)'`, used for its normal on-screen
+      role as the 460px side drawer) — **inline styles always beat a class rule that
+      lacks `!important`, media query or not**, so `width: 100%` in the print rule was
+      silently losing to the inline 460px cap the whole time — this, not the position
+      fix, was the actual cause of "still half-page". Added `!important` to every
+      property in the `.hr-print-area` print override (`apply.html`/`employee.html`'s
+      `.print-full-form` has no competing inline style, but hardened with `!important`
+      too for consistency/future-proofing). **Lesson: when a print override targets an
+      element that also serves a normal on-screen role with its own inline styles,
+      check for inline style collisions first, not just the CSS property values
+      themselves** — a correct property value inside a losing specificity battle looks
+      identical to "not deployed yet" from a screenshot, which is why root cause 2 took
+      an extra round to find after root cause 1's fix visibly changed nothing.
     - **✅ DONE (2026-09-18) — same locked-pattern PDF ported to the applicant/employee
       wizards' own done-screens too.** Owner tested the dashboard's "สร้าง PDF" and then
       asked why the wizard's own "พิมพ์ใบสมัคร (PDF)" button (on `apply.html`'s/

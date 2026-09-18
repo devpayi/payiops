@@ -276,8 +276,12 @@ function DetailDrawer({ row, headers, onClose }) {
           body * { visibility: hidden !important; }
           .hr-print-area, .hr-print-area * { visibility: visible !important; }
           /* position:fixed ตัด content ที่ยาวเกิน 1 หน้าทิ้งหมด (fixed ผูกกับ viewport เดียว
-             พิมพ์ได้แค่หน้าแรก) — ใช้ absolute แทน ให้ไหลข้ามหน้าได้ตามความสูงจริงของเนื้อหา */
-          .hr-print-area { position: absolute; top: 0; left: 0; width: 100%; height: auto !important; overflow: visible !important; padding: 20px !important; }
+             พิมพ์ได้แค่หน้าแรก) — ใช้ absolute แทน ให้ไหลข้ามหน้าได้ตามความสูงจริงของเนื้อหา
+             ตัว div เดียวกันนี้มี inline style width:'min(460px,100vw)' อยู่ (ใช้ตอนโชว์บนจอเป็น
+             แผงเลื่อนด้านข้าง) — inline style ชนะ class ที่ไม่มี !important เสมอ ไม่ว่าจะอยู่ใน
+             @media print หรือไม่ก็ตาม เลยยังโดนบีบแคบครึ่งหน้าอยู่แม้จะแก้ position แล้ว —
+             ต้องใส่ !important ที่ width ด้วยถึงจะเอาชนะ inline ได้จริง */
+          .hr-print-area { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; height: auto !important; overflow: visible !important; padding: 20px !important; }
           .hr-no-print { display: none !important; }
           .hr-print-only { display: block !important; }
         }
