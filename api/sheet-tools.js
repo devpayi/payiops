@@ -11,7 +11,7 @@ import {
 } from './_lib/leaveCoverage.js'
 import { applyScheduleOverrides, LEGACY_OVERRIDE_EXEMPT_CODES } from './_lib/scheduleOverrides.js'
 import { isoDate } from './_lib/dates.js'
-import opInventory, { computeLowStockList, computeOverdueOrders, muteOrderReminder, snoozeOrderReminder, cancelOrderRequest, undoOverdueOrderAction, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem } from './_lib/inventory.js'
+import opInventory, { computeLowStockList, computeOverdueOrders, muteOrderReminder, snoozeOrderReminder, cancelOrderRequest, undoOverdueOrderAction, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem, applyTempLeadTime, revertTempLeadTime } from './_lib/inventory.js'
 import opImportTracking, { createArrivalsFromShipping } from './_lib/importTracking.js'
 import opCfo from './_lib/cfo.js'
 import opDemographic from './_lib/demographic.js'
@@ -521,6 +521,115 @@ async function handleStockCheckCommand(event) {
   return true
 }
 
+// ปรับ lead time ชั่วคราวผ่านไลน์ (owner ขอ 2026-09-18) — พิมพ์ "leadtime <ชื่อสินค้า>" ค้นหา แล้วพิมพ์
+// เลข 2 ค่า "ผลิต ขนส่ง" (เช่น "7 15") เพื่อยืนยัน ปรับกลับพิมพ์ "leadtime" เปล่าๆ ดูรายการที่ปรับอยู่แล้วกดคืนค่า
+// boss/dev เท่านั้น (findStockApprover เกตเดียวกับสั่งของ/แจ้งของเข้า/เช็คของ) มีผลทันทีทั้งเว็บ/cron แจ้งเตือน
+// เพราะฝั่งข้อมูล (applyTempLeadTime/revertTempLeadTime ใน _lib/inventory.js) เขียนทับ lead_time_production/
+// transport ตรงๆ ตัวเดียวกับที่สูตรทุกจุดอ่านอยู่แล้ว
+function leadtimeCommandQuery(text) {
+  const match = String(text || '').trim().match(/^leadtime\s*(.*)$/i)
+  return match ? match[1].trim() : null
+}
+
+async function handleLeadtimeListCommand(event) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นที่ปรับ lead time ได้ค่ะ' }])
+  const items = await loadOrderableItems()
+  const active = items.filter((it) => it.lead_time_temp_active)
+  if (!active.length) {
+    return replyMessage(replyToken, [{ type: 'text', text: 'ไม่มีการปรับ lead time ชั่วคราวอยู่ตอนนี้ค่ะ\nพิมพ์ "leadtime <ชื่อสินค้า>" เพื่อปรับได้เลย' }])
+  }
+  await replyMessage(replyToken, [{
+    type: 'text',
+    text: `กำลังปรับ lead time ชั่วคราวอยู่ ${active.length} รายการ กดเพื่อปรับกลับ:`,
+    quickReply: { items: active.slice(0, 10).map((it) => ({ type: 'action', action: { type: 'postback', label: it.display_name.slice(0, 20), data: `leadtime-revert:${it.sku}`, displayText: `ปรับกลับ ${it.display_name}` } })) },
+  }])
+}
+
+async function askLeadtimeValues(replyToken, lineUserId, item) {
+  await upsertLeadtimeSession(lineUserId, item.sku)
+  const text = `"${item.display_name}" ตอนนี้ ผลิต ${item.lead_time_production || 0} วัน / ขนส่ง ${item.lead_time_transport || 0} วัน\n\nพิมพ์เลขใหม่ 2 ค่าคั่นด้วยช่องว่าง (ผลิต ขนส่ง) เช่น "7 15" เพื่อปรับชั่วคราวค่ะ`
+  await replyMessage(replyToken, [{ type: 'text', text }])
+}
+
+async function handleLeadtimeSearchStart(event, query) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return false
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return false
+  const items = await loadOrderableItems()
+  const matches = searchItemsByQuery(query, items).slice(0, 10)
+  if (!matches.length) {
+    await replyMessage(replyToken, [{ type: 'text', text: `ไม่เจอสินค้าคำว่า "${query}" ค่ะ` }])
+    return true
+  }
+  if (matches.length === 1) { await askLeadtimeValues(replyToken, lineUserId, matches[0]); return true }
+  await replyMessage(replyToken, [{
+    type: 'text',
+    text: `เจอ ${matches.length} รายการ เลือกอันที่ใช่:`,
+    quickReply: { items: matches.map((it) => ({ type: 'action', action: { type: 'postback', label: it.display_name.slice(0, 20), data: `leadtime-pick:${it.sku}`, displayText: it.display_name } })) },
+  }])
+  return true
+}
+
+async function handleLeadtimePickPostback(event, sku) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นค่ะ' }])
+  const items = await loadOrderableItems()
+  const item = items.find((it) => String(it.sku).toUpperCase() === String(sku).toUpperCase())
+  if (!item) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้แล้วค่ะ' }])
+  await askLeadtimeValues(replyToken, lineUserId, item)
+}
+
+async function handleLeadtimeValuesReply(event, session) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  const text = String(event.message.text || '').trim()
+  const parts = text.split(/\s+/).map(Number)
+  if (parts.length !== 2 || parts.some((n) => !Number.isFinite(n) || n < 0)) {
+    return replyMessage(replyToken, [{ type: 'text', text: 'พิมพ์เลข 2 ค่าคั่นด้วยช่องว่าง เช่น "7 15" (ผลิต ขนส่ง) หรือพิมพ์ "ยกเลิก" เพื่อเลิกค่ะ' }])
+  }
+  const [production, transport] = parts
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) { await clearLeadtimeSession(lineUserId); return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นค่ะ' }]) }
+  try {
+    const items = await loadOrderableItems()
+    const item = items.find((it) => String(it.sku).toUpperCase() === String(session.sku).toUpperCase())
+    await applyTempLeadTime({ sku: session.sku, production, transport }, approver.name, approver.role)
+    await clearLeadtimeSession(lineUserId)
+    await replyMessage(replyToken, [{
+      type: 'text',
+      text: `ปรับ lead time ชั่วคราวของ "${item?.display_name || session.sku}" เป็น ผลิต ${production} / ขนส่ง ${transport} วันแล้วค่ะ`,
+      quickReply: { items: [{ type: 'action', action: { type: 'postback', label: '↩️ ปรับกลับ', data: `leadtime-revert:${session.sku}`, displayText: 'ปรับกลับ lead time' } }] },
+    }])
+  } catch (e) {
+    await replyMessage(replyToken, [{ type: 'text', text: `ปรับไม่สำเร็จ: ${e.message}` }])
+  }
+}
+
+async function handleLeadtimeRevertPostback(event, sku) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return
+  const approver = lineUserId ? await findStockApprover(lineUserId) : null
+  if (!approver) return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะ Boss หรือ Dev เท่านั้นค่ะ' }])
+  try {
+    const items = await loadOrderableItems()
+    const item = items.find((it) => String(it.sku).toUpperCase() === String(sku).toUpperCase())
+    await revertTempLeadTime({ sku }, approver.name, approver.role)
+    await replyMessage(replyToken, [{ type: 'text', text: `ปรับกลับ "${item?.display_name || sku}" เป็นค่าปกติแล้วค่ะ` }])
+  } catch (e) {
+    await replyMessage(replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
+  }
+}
+
 // entry point ของ Vercel Cron (vercel.json) — ต้องข้าม requireAuth ปกติเพราะ cron ไม่มี user token
 // (เหมือน line-webhook) ใช้ CRON_SECRET (Vercel ส่ง Authorization: Bearer อัตโนมัติเมื่อตั้ง env ไว้) แทน
 // dry=1 ไว้ทดสอบ local โดยไม่ยิงข้อความจริง — คืนรายการที่คำนวณได้กลับมาเป็น JSON เฉยๆ
@@ -576,6 +685,27 @@ async function clearStockOrderSession(lineUserId) {
   const current = await getStockOrderSessions()
   const rows = current.filter((r) => r.line_user_id !== lineUserId).map((r) => STOCK_ORDER_SESSION_HEADERS.map((h) => r[h] ?? ''))
   await overwriteSheet(STOCK_ORDER_SESSION_SHEET, STOCK_ORDER_SESSION_HEADERS, rows)
+}
+
+// session สำหรับ "ปรับ leadtime ชั่วคราว" ผ่านไลน์ (owner ขอ 2026-09-18) — เก็บแค่ sku ที่กำลังรอเลข
+// ผลิต/ขนส่งใหม่จากบอส คนละชีตจาก stock_order/stock_in เพราะเป็นคำถามคนละเรื่อง ไม่ควรชนกัน
+const LEADTIME_SESSION_SHEET = 'leadtime_sessions'
+const LEADTIME_SESSION_HEADERS = ['line_user_id', 'sku', 'updated_at']
+async function getLeadtimeSessions() {
+  await ensureSheet(LEADTIME_SESSION_SHEET, LEADTIME_SESSION_HEADERS)
+  return getSheet(LEADTIME_SESSION_SHEET)
+}
+async function upsertLeadtimeSession(lineUserId, sku) {
+  const current = await getLeadtimeSessions()
+  const rows = current.filter((r) => r.line_user_id !== lineUserId).map((r) => LEADTIME_SESSION_HEADERS.map((h) => r[h] ?? ''))
+  rows.push(LEADTIME_SESSION_HEADERS.map((h) => ({ line_user_id: lineUserId, sku, updated_at: new Date().toISOString() }[h] ?? '')))
+  await overwriteSheet(LEADTIME_SESSION_SHEET, LEADTIME_SESSION_HEADERS, rows)
+}
+async function clearLeadtimeSession(lineUserId) {
+  await ensureSheet(LEADTIME_SESSION_SHEET, LEADTIME_SESSION_HEADERS)
+  const current = await getLeadtimeSessions()
+  const rows = current.filter((r) => r.line_user_id !== lineUserId).map((r) => LEADTIME_SESSION_HEADERS.map((h) => r[h] ?? ''))
+  await overwriteSheet(LEADTIME_SESSION_SHEET, LEADTIME_SESSION_HEADERS, rows)
 }
 
 // session สำหรับ flow "แจ้งของเข้า" (ตะกร้าเหมือนสั่งของ แต่คนละชีต) — ensureSheet ก่อนอ่านเสมอ เหตุผลเดียวกับ
@@ -3453,6 +3583,7 @@ const ensureLineFlowSheets = () => lineFlowEnsurePromise ||= ensureSheets([
   [STOCK_ORDER_SESSION_SHEET, STOCK_ORDER_SESSION_HEADERS],
   [STOCK_IN_SESSION_SHEET, STOCK_IN_SESSION_HEADERS],
   [LINE_GROUP_LINK_SHEET, LINE_GROUP_LINK_HEADERS],
+  [LEADTIME_SESSION_SHEET, LEADTIME_SESSION_HEADERS],
 ])
 
 async function opLineWebhook(req, res) {
@@ -3505,29 +3636,36 @@ async function opLineWebhook(req, res) {
         const isStale = (s) => s && Date.now() - new Date(s.updated_at).getTime() > 30 * 60 * 1000
         let stockSession = lineUserId ? (await getStockOrderSessions()).find((s) => s.line_user_id === lineUserId) : null
         let stockInSession = lineUserId ? (await getStockInSessions()).find((s) => s.line_user_id === lineUserId) : null
+        let leadtimeSession = lineUserId ? (await getLeadtimeSessions()).find((s) => s.line_user_id === lineUserId) : null
         if (isStale(stockSession)) { await clearStockOrderSession(lineUserId); stockSession = null }
         if (isStale(stockInSession)) { await clearStockInSession(lineUserId); stockInSession = null }
+        if (isStale(leadtimeSession)) { await clearLeadtimeSession(lineUserId); leadtimeSession = null }
         const initialQuery = stockOrderCommandQuery(event.message.text)
         const initialInQuery = stockInCommandQuery(event.message.text)
-        // ทางออกด่วน — พิมพ์คำพวกนี้ตอนติดอยู่กลาง flow สั่งของ/แจ้งของเข้า จะเคลียร์ session ทันที ไม่ต้องรอ
-        // หมดอายุ 30 นาที (isStale ด้านบน) — เช็คเฉพาะตอนมี session ค้างจริง กันบอทไปตอบ "ยกเลิก" ลอยๆ ในกลุ่ม
-        if ((stockSession || stockInSession) && isCancelStockFlowCommand(event.message.text)) {
+        const leadtimeQuery = leadtimeCommandQuery(event.message.text)
+        // ทางออกด่วน — พิมพ์คำพวกนี้ตอนติดอยู่กลาง flow สั่งของ/แจ้งของเข้า/ปรับ leadtime จะเคลียร์ session
+        // ทันที ไม่ต้องรอหมดอายุ 30 นาที (isStale ด้านบน) — เช็คเฉพาะตอนมี session ค้างจริง กันบอทไปตอบ
+        // "ยกเลิก" ลอยๆ ในกลุ่ม
+        if ((stockSession || stockInSession || leadtimeSession) && isCancelStockFlowCommand(event.message.text)) {
           await clearStockOrderSession(lineUserId)
           await clearStockInSession(lineUserId)
+          await clearLeadtimeSession(lineUserId)
           if (event.replyToken) await replyMessage(event.replyToken, [{ type: 'text', text: 'ยกเลิกแล้วค่ะ' }])
           continue
         }
         // กดปุ่มริชเมนูอันไหนก็ได้ ต้อง "ชนะ" เสมอ ไม่ว่าจะติดอยู่กลาง flow ไหนอยู่ก่อนก็ตาม (owner ขอ
         // 2026-08-06: ค้างขั้นตอนลาอยู่ กดช่วยเหลือ ต้องสลับได้ทันที ไม่ใช่แค่ตอบไม่ได้เงียบๆ) เคลียร์ session
-        // ทั้ง 3 ชุด (สั่งของ/แจ้งของเข้า/ตัวช่วยขอลา) ทิ้งก่อนเข้า handler จริงข้างล่าง กันของเก่าค้างสับสน
-        const isAnyMenuCommand = initialQuery === '' || initialInQuery === '' ||
+        // ทั้งหมด (สั่งของ/แจ้งของเข้า/ปรับ leadtime/ตัวช่วยขอลา) ทิ้งก่อนเข้า handler จริงข้างล่าง กันของเก่าค้างสับสน
+        const isAnyMenuCommand = initialQuery === '' || initialInQuery === '' || leadtimeQuery === '' ||
           [STOCK_PENDING_TRIGGER, LEAVE_PENDING_TRIGGER, HELP_TRIGGER, BOSS_LEAVE_HISTORY_TRIGGER, ORDER_LIST_TRIGGER, STOCK_IN_UNDO_TRIGGER, STOCK_MENU_TRIGGER, HR_MENU_TRIGGER, LEAVE_TRIGGER, LEAVE_HISTORY_TRIGGER, LEAVE_SUMMARY_TRIGGER].includes(event.message.text)
         if (isAnyMenuCommand) {
           await clearStockOrderSession(lineUserId)
           await clearStockInSession(lineUserId)
+          await clearLeadtimeSession(lineUserId)
           await clearSession(lineUserId)
           stockSession = null
           stockInSession = null
+          leadtimeSession = null
         }
         // ปุ่มริชเมนู "ของเข้ารอตรวจ"/"อนุมัติการลา"/"ช่วยเหลือ" ต้องใช้ได้ทุกเมื่อเหมือนกัน แม้กำลังติดอยู่
         // กลาง flow สั่งของ/แจ้งของเข้า (เช่นรอเลือกสินค้าอยู่) ไม่งั้นข้อความจะโดนตีความเป็นชื่อสินค้าค้นหา
@@ -3542,9 +3680,12 @@ async function opLineWebhook(req, res) {
         if (event.message.text === HR_MENU_TRIGGER) { await handleHrMenuCommand(event); continue }
         // คำสั่ง “เช็คของที่ต้องสั่ง” ดูได้ทุกเมื่อจากทุกขั้นตอนเหมือนกัน — ไม่ต้องรอการ์ดแจ้งเตือนรายวัน
         if (isStockCheckCommand(event.message.text) && await handleStockCheckCommand(event)) continue
-        // คำสั่ง “สั่งของ”/“แจ้งของเข้า” เริ่มใหม่ได้จากทุกขั้นตอน รวมถึงตอนที่รอจำนวนหรือรอเลือกวันที่
+        // คำสั่ง “สั่งของ”/“แจ้งของเข้า”/“leadtime” เริ่มใหม่ได้จากทุกขั้นตอน รวมถึงตอนที่รอจำนวนหรือรอเลือกวันที่
         if (initialQuery === '') { await handleStockOrderSearchStart(event); continue }
         if (initialInQuery === '') { await handleStockInStart(event); continue }
+        if (leadtimeQuery === '') { await handleLeadtimeListCommand(event); continue }
+        if (leadtimeSession) { await handleLeadtimeValuesReply(event, leadtimeSession); continue }
+        if (leadtimeQuery !== null && await handleLeadtimeSearchStart(event, leadtimeQuery)) continue
         if (stockSession?.step === 'await_item_qty') { await handleStockOrderQtyReply(event, stockSession); continue }
         if (stockInSession?.step === 'await_item_qty') { await handleStockInQtyReply(event, stockInSession); continue }
         if (stockInSession?.step === 'await_edit_qty') { await handleStockInEditQtyReply(event, stockInSession); continue }
@@ -3582,6 +3723,8 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stock-pick:')) { await handleStockPickPostback(event, data.slice('stock-pick:'.length)); continue }
       if (data.startsWith('stock-order-date:')) { await handleStockOrderDatePostback(event, data.slice('stock-order-date:'.length)); continue }
       if (data === 'stock-cart-done') { await handleStockCartDonePostback(event); continue }
+      if (data.startsWith('leadtime-pick:')) { await handleLeadtimePickPostback(event, data.slice('leadtime-pick:'.length)); continue }
+      if (data.startsWith('leadtime-revert:')) { await handleLeadtimeRevertPostback(event, data.slice('leadtime-revert:'.length)); continue }
       if (data.startsWith('stockin-pick:')) { await handleStockInPickPostback(event, data.slice('stockin-pick:'.length)); continue }
       if (data.startsWith('stockin-date:')) { await handleStockInDatePostback(event, data.slice('stockin-date:'.length)); continue }
       if (data === 'stockin-cart-done') { await handleStockInCartDonePostback(event); continue }

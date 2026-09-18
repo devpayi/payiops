@@ -445,6 +445,35 @@ export default function Inventory() {
     }
   }
 
+  // ปรับ lead time ชั่วคราว (เช่น โรงงาน/ขนส่งช้ากว่าปกติเป็นพักๆ) — แยกจากปุ่ม "บันทึก" หลัก มีผลทันที
+  // ไม่ต้องกดบันทึกซ้ำ, ปรับกลับได้ทีหลังโดยไม่ต้องจำเลขเดิมเอง (ระบบเก็บสำรองให้)
+  const applyTempLeadTime = async (sku, production, transport) => {
+    setSaving(true); setError('')
+    try {
+      const res = await fetch('/api/sheet-tools?op=inventory', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'apply-temp-leadtime', sku, production, transport }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'ปรับไม่สำเร็จ')
+      setItemModal(null) // ปิดป็อปอัพ กันโชว์ค่าเก่าค้าง (initial prop ไม่รีเฟรชเองหลัง load())
+      await load()
+    } catch (e) { setError(e.message) } finally { setSaving(false) }
+  }
+  const revertTempLeadTime = async (sku) => {
+    setSaving(true); setError('')
+    try {
+      const res = await fetch('/api/sheet-tools?op=inventory', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'revert-temp-leadtime', sku }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'ปรับกลับไม่สำเร็จ')
+      setItemModal(null)
+      await load()
+    } catch (e) { setError(e.message) } finally { setSaving(false) }
+  }
+
   // payload.balanceCorrection (ถ้ามี) มาจากช่อง "นับสต็อกจริง" ในป็อปอัพแก้ไขเดียวกัน —
   // บันทึกแยกเป็นรายการ adjust ใน stock_movements เสมอ (ประวัติแยกดูได้ที่ Stock Movement)
   // ไม่ใช่การเขียนทับ opening_balance ตรงๆ
@@ -629,7 +658,7 @@ export default function Inventory() {
                                 title="กดเพื่อดูประวัติรับเข้า-เบิกออก"
                                 style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', width: '100%', display: 'block' }}
                               >
-                                <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}</div>
+                                <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}{it.lead_time_temp_active && ' ⏱️'}</div>
                                 <div style={{ fontSize: 10, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{it.sku}</div>
                               </button>
                             </td>
@@ -713,7 +742,7 @@ export default function Inventory() {
                         title="กดเพื่อดูประวัติรับเข้า-เบิกออก"
                         style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', width: '100%', display: 'block', overflow: 'hidden' }}
                       >
-                        <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.display_name}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}</div>
+                        <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.display_name}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}{it.lead_time_temp_active && ' ⏱️'}</div>
                         <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{it.sku}</div>
                       </button>
                     </td>
@@ -797,6 +826,8 @@ export default function Inventory() {
           onSaveRecipe={saveRecipe}
           onDeleteRecipe={deleteRecipe}
           suggestedBufferPercent={itemModal === 'new' ? 30 : (packagingBufferSuggestion.get(String(itemModal.sku).toUpperCase()) ?? 30)}
+          onApplyTempLeadTime={applyTempLeadTime}
+          onRevertTempLeadTime={revertTempLeadTime}
         />
       )}
 
@@ -823,7 +854,7 @@ const iconBtnStyle = (color) => ({
   fontSize: 16, fontWeight: 800, cursor: 'pointer', lineHeight: 1,
 })
 
-function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPercentUsed = null, saving, onClose, onSave, recipes = [], productOptions = [], onSaveRecipe, onDeleteRecipe, suggestedBufferPercent = 30 }) {
+function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPercentUsed = null, saving, onClose, onSave, recipes = [], productOptions = [], onSaveRecipe, onDeleteRecipe, suggestedBufferPercent = 30, onApplyTempLeadTime, onRevertTempLeadTime }) {
   const isEdit = Boolean(initial)
   const isPackaging = (initial?.category || newCategory) === 'packaging'
   const [sku, setSku] = useState(initial?.sku || '')
@@ -837,6 +868,11 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
   const [leadProd, setLeadProd] = useState(initial?.lead_time_production ?? '')
   const [leadTransport, setLeadTransport] = useState(initial?.lead_time_transport ?? '')
   const [shipFreight, setShipFreight] = useState(initial?.ship_freight ?? false)
+  // ปรับ lead time ชั่วคราว (โรงงาน/ขนส่งช้ากว่าปกติเป็นพักๆ) แยกจากค่า lead time ปกติด้านบน — มีผลทันที
+  // ไม่ต้องกดบันทึกฟอร์มหลัก, ปรับกลับได้ทีหลังไม่ต้องจำเลขเดิม (เก็บสำรองไว้ให้ฝั่งเซิร์ฟเวอร์แล้ว)
+  const [tempFormOpen, setTempFormOpen] = useState(false)
+  const [tempProd, setTempProd] = useState('')
+  const [tempTransport, setTempTransport] = useState('')
   // เปิดมาแล้วมี lead time เดิมอยู่แล้ว = ใช้ค่าที่สูตรคำนวณให้เลยตั้งแต่เปิด ไม่ต้องรอแก้ lead time ก่อน
   const [safetyStock, setSafetyStock] = useState(
     initial?.computedSafety ?? initial?.safety_stock ?? ''
@@ -1016,6 +1052,45 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
                 </label>
               )}
             </div>
+            {isEdit && (onApplyTempLeadTime || onRevertTempLeadTime) && (
+              <div style={{ borderTop: '1px dashed var(--payi-border)', paddingTop: 8, marginTop: 2 }}>
+                {initial?.lead_time_temp_active ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 11.5, color: '#92400e', background: '#fef3c7', padding: '4px 8px', borderRadius: 8, fontWeight: 700 }}>
+                      ⏱️ ปรับชั่วคราวอยู่ (ปกติ: ผลิต {initial.lead_time_production_saved ?? 0} / ขนส่ง {initial.lead_time_transport_saved ?? 0} วัน)
+                    </div>
+                    <button type="button" onClick={() => onRevertTempLeadTime(sku)} style={{ border: '1px solid var(--payi-border)', borderRadius: 8, background: 'var(--payi-surface)', color: 'var(--payi-text-strong)', fontWeight: 700, fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
+                      ปรับกลับค่าเดิม
+                    </button>
+                  </div>
+                ) : tempFormOpen ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <label style={labelStyle}>ผลิตชั่วคราว (วัน)</label>
+                        <input type="number" value={tempProd} onChange={(e) => setTempProd(e.target.value)} style={inputStyle} placeholder={String(leadProd || 0)} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>ขนส่งชั่วคราว (วัน)</label>
+                        <input type="number" value={tempTransport} onChange={(e) => setTempTransport(e.target.value)} style={inputStyle} placeholder={String(leadTransport || 0)} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button type="button" onClick={() => onApplyTempLeadTime(sku, tempProd || 0, tempTransport || 0)} style={{ border: 'none', borderRadius: 8, background: 'var(--payi-gradient-primary)', color: '#fff', fontWeight: 800, fontSize: 12, padding: '7px 12px', cursor: 'pointer' }}>
+                        ใช้ค่าชั่วคราวนี้
+                      </button>
+                      <button type="button" onClick={() => setTempFormOpen(false)} style={{ border: '1px solid var(--payi-border)', borderRadius: 8, background: 'var(--payi-surface)', color: 'var(--payi-text-muted)', fontWeight: 700, fontSize: 12, padding: '7px 12px', cursor: 'pointer' }}>
+                        ยกเลิก
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setTempFormOpen(true)} style={{ border: '1px dashed var(--payi-border)', borderRadius: 8, background: 'transparent', color: 'var(--payi-text-muted)', fontWeight: 700, fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
+                    ปรับ Lead Time ชั่วคราว
+                  </button>
+                )}
+              </div>
+            )}
             {!isPackaging && (
               <div style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>
                 {dailyAvg

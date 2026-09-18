@@ -17,7 +17,12 @@ import {
 const ITEMS_SHEET = 'inventory_items'
 const MOVEMENTS_SHEET = 'stock_movements'
 // ต่อท้ายรายการเดิมเท่านั้น (ห้ามแทรกกลาง) — แถวเดิมใน Sheet อิงตำแหน่งคอลัมน์เดิมอยู่ เหมือน claims sheet
-const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category', 'units_per_batch', 'buffer_percent', 'order_group', 'retail_price']
+const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category', 'units_per_batch', 'buffer_percent', 'order_group', 'retail_price', 'lead_time_temp_active', 'lead_time_production_saved', 'lead_time_transport_saved']
+// lead_time_temp_*: ปรับ lead time ชั่วคราวได้ (เช่น ช่วงโรงงาน/ขนส่งช้ากว่าปกติ) โดยไม่ต้องจำเลขเดิมเอง
+// แล้วปรับกลับทีหลัง (owner ขอ 2026-09-18) — applyTempLeadTime/revertTempLeadTime ด้านล่าง เขียนทับ
+// lead_time_production/lead_time_transport ตรงๆ (ตัวเดียวกับที่ safety-stock formula ทุกจุดอ่านอยู่แล้ว —
+// เว็บ/cron แจ้งเตือน/บอทไลน์ ไม่ต้องแก้สูตรเลยสักที่) แล้วเก็บค่าเดิมสำรองไว้ใน _saved กับ temp_active='1'
+// กันเขียนทับ backup ซ้ำถ้ากดปรับชั่วคราวซ้อนหลายครั้งก่อนปรับกลับ
 // order_group: แท็กกลุ่มสินค้าสำหรับ "สั่งของ" เท่านั้น (เช่น PY051..PY051-J ทั้งไซส์/สีแท็ก "รองเท้าเพื่อสุขภาพ"
 // เดียวกัน) — ตั้งเอง ไม่ auto-derive จากชื่อ เพราะลองแล้วพบว่า deriveGroup (ตัวจับกลุ่มฝั่งยอดขาย) จับ
 // เคสพวกนี้ไม่ได้เลย (ไซส์เป็นตัวเลข "35-36" ไม่ใช่ M/L, สี "เนื้อ"/"ฟ้าเบบี้บลู" ไม่อยู่ใน COLOR_TOKENS)
@@ -138,6 +143,9 @@ export async function loadItemsWithBalance({ includeHidden = false } = {}) {
       lead_time_production: num(it.lead_time_production),
       lead_time_transport: num(it.lead_time_transport),
       ship_freight: String(it.ship_freight) === '1' || String(it.ship_freight).toLowerCase() === 'true',
+      lead_time_temp_active: String(it.lead_time_temp_active) === '1',
+      lead_time_production_saved: it.lead_time_production_saved === '' || it.lead_time_production_saved === undefined ? null : num(it.lead_time_production_saved),
+      lead_time_transport_saved: it.lead_time_transport_saved === '' || it.lead_time_transport_saved === undefined ? null : num(it.lead_time_transport_saved),
       units_per_batch: num(it.units_per_batch),
       buffer_percent: it.buffer_percent === '' || it.buffer_percent === undefined ? null : num(it.buffer_percent),
       active: truthyActive(it.active),
@@ -352,6 +360,50 @@ async function upsertItem(body, actorName) {
   }
   await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
   return { sku }
+}
+
+// ปรับ lead time ชั่วคราว (เช่น โรงงาน/ขนส่งช้ากว่าปกติเป็นพักๆ) — เขียนทับ lead_time_production/transport
+// ตรงๆ ตัวเดียวกับที่สูตร safety-stock ทุกจุดอ่าน (เว็บ/cron/บอทไลน์) เลยไม่ต้องแก้สูตรที่ไหนเลย แค่จำค่าเดิม
+// ไว้ก่อนทับครั้งแรก (ปรับซ้อนหลายครั้งไม่ทับ backup ซ้ำ) ให้ revertTempLeadTime เอาคืนได้เป๊ะ
+export async function applyTempLeadTime(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ปรับ lead time ได้')
+  const sku = String(body.sku || '').trim()
+  if (!sku) throw new Error('ต้องระบุ sku')
+  await ensureInventorySheets()
+  const items = await getSheet(ITEMS_SHEET)
+  const idx = items.findIndex((it) => String(it.sku) === sku)
+  if (idx === -1) throw new Error('ไม่พบสินค้านี้')
+  const row = items[idx]
+  const now = new Date().toISOString()
+  if (String(row.lead_time_temp_active) !== '1') {
+    row.lead_time_production_saved = row.lead_time_production || '0'
+    row.lead_time_transport_saved = row.lead_time_transport || '0'
+    row.lead_time_temp_active = '1'
+  }
+  row.lead_time_production = num(body.production)
+  row.lead_time_transport = num(body.transport)
+  row.updated_at = now
+  await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
+  return { sku, lead_time_production: num(row.lead_time_production), lead_time_transport: num(row.lead_time_transport) }
+}
+
+// ปรับกลับค่า lead time เดิมก่อนปรับชั่วคราว (ต้องเคยกด applyTempLeadTime ไว้ก่อน ไม่งั้นไม่มีอะไรให้ปรับกลับ)
+export async function revertTempLeadTime(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ปรับ lead time ได้')
+  const sku = String(body.sku || '').trim()
+  if (!sku) throw new Error('ต้องระบุ sku')
+  await ensureInventorySheets()
+  const items = await getSheet(ITEMS_SHEET)
+  const idx = items.findIndex((it) => String(it.sku) === sku)
+  if (idx === -1) throw new Error('ไม่พบสินค้านี้')
+  const row = items[idx]
+  if (String(row.lead_time_temp_active) !== '1') throw new Error('สินค้านี้ไม่มีการปรับ lead time ชั่วคราวอยู่')
+  row.lead_time_production = row.lead_time_production_saved || '0'
+  row.lead_time_transport = row.lead_time_transport_saved || '0'
+  row.lead_time_temp_active = '0'
+  row.updated_at = new Date().toISOString()
+  await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
+  return { sku, lead_time_production: num(row.lead_time_production), lead_time_transport: num(row.lead_time_transport) }
 }
 
 // boss กด "สั่งของ" (ปุ่มแยกจาก "แจ้งของเข้า" บนหน้า Stock Movement) — สร้างแถว pending ใหม่เสมอ
@@ -993,6 +1045,14 @@ export default async function opInventory(req, res) {
       const action = String(req.body?.action || '')
       if (action === 'upsert-item') {
         const result = await upsertItem(req.body, actorName)
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'apply-temp-leadtime') {
+        const result = await applyTempLeadTime(req.body, actorName, role)
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'revert-temp-leadtime') {
+        const result = await revertTempLeadTime(req.body, actorName, role)
         return res.status(200).json({ success: true, ...result })
       }
       if (action === 'add-movement') {
