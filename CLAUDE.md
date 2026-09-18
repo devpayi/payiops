@@ -313,26 +313,45 @@ Sheets rate limits.
       (`window.print()`) plus scoped print CSS (`.hr-print-area`/`.hr-no-print`, same
       visibility-toggle trick as any print-one-element approach) so printing only
       outputs the open record, not the sidebar/table behind it.
-    - **✅ DONE (2026-09-17) — proper document-style PDF layout.** Owner sent reference
-      images of real Thai HR paper forms (bordered sections, boxed headers, signature
-      line) and asked for that look instead of the plain vertical label/value list the
-      "สร้าง PDF" button was printing. Added `PROFILE_SECTIONS` (groups of Thai column
-      labels — ข้อมูลตำแหน่งงาน/เอกสารประจำตัว/ข้อมูลส่วนตัว/ที่อยู่/ครอบครัว/สุขภาพ/
-      บิดา-มารดา/ทหาร/การศึกษา/ประสบการณ์ทำงาน/ทักษะ/บุคคลอ้างอิง/บัญชีธนาคาร/ฉุกเฉิน,
-      union of both `APPLICANT_FULL_FIELDS` and `EMPLOYEE_FULL_FIELDS` labels since one
-      component serves both — **these Thai strings must be kept in sync by hand** with
-      the backend field-label lists in `api/_lib/hrPeople.js`, there's no shared import
-      between frontend and that backend-only file) and a new `PrintableProfile`
-      component: bordered card per section (mint header bar + 2-col label/value grid),
-      education/work-history JSON columns rendered as real tables instead of the bullet
-      list, any header not matched by a section (covers the dynamic Google-Form-sourced
-      `employees`/`applicants` views) falls into a catch-all "อื่นๆ" section, and a
-      signature-line footer. **On-screen drawer content is unchanged** (still the plain
-      scrollable list, good for quick scanning) — `PrintableProfile` is a second copy of
-      the same data rendered into a `.hr-print-only` block (`display:none` normally,
-      `display:block` only inside the existing `@media print` rule alongside
-      `.hr-print-area`/`.hr-no-print`), so screen and print show different layouts of
-      the same row without a second data fetch.
+    - **✅ DONE (2026-09-17) — first PDF pass: document-style sections.** Bordered card
+      per data-group with a mint header bar (superseded same week, see below — kept here
+      for history only).
+    - **✅ DONE (2026-09-18) — replaced with a locked-pattern PDF matching a real paper
+      form the owner sent.** Owner attached an actual Thai job-application PDF (3 pages:
+      ประวัติส่วนตัว with fixed labeled blanks + checkboxes; ข้อมูลการศึกษา/ประสบการณ์
+      ทำงาน/ทักษะคอมพิวเตอร์/ภาษา as fixed-row tables; ความสามารถอื่นๆ + signature block)
+      and asked for **that exact layout, locked** — "อันไหนไม่กรอกก็ว่างไว้" (blank
+      fields stay blank, the shape never changes). This is the opposite design from the
+      section-grouping approach above (which only showed groups that had data) — replaced
+      it entirely with `LockedApplicationForm`, a literal recreation of the reference
+      PDF's structure with our data spliced into fixed positions:
+      - `Blank`/`Chk`/`Line`/`FixedTable` — small layout primitives (dotted-underline
+        blank, ☐/☑ checkbox, a flex row of label+blank pairs, and a table that always
+        pads to a minimum row count with empty rows rather than shrinking to fit data).
+      - **Several of our fields don't map 1:1 onto the reference form's options** —
+        documented inline at each spot, not guessed silently: `residence_type`
+        (บ้านตัวเอง/บ้านญาติ/ห้องเช่า-บ้านเช่า/อื่นๆ) → reference's
+        (อาศัยกับครอบครัว/บ้านตัวเอง/บ้านเช่า/หอพัก) via best-effort match, "อื่นๆ"/"หอพัก"
+        never auto-checked; `military_status` and `marital_status` similarly best-effort
+        mapped, not exact vocabulary matches; เพศ isn't a field we collect at all —
+        derived from คำนำหน้า (นาย→ชาย, นาง/นางสาว→หญิง); ที่อยู่ปัจจุบัน is one address
+        blob in our data vs. the reference's separate เลขที่/หมู่ที่/ถนน boxes — the
+        whole address string goes into the "เลขที่" blank since we can't split it further.
+      - Education/work-history JSON arrays feed `FixedTable` rows directly (year/school/
+        major/cert, or from-to/company/position/salary/reason). Computer programs
+        (checkbox list) and the single overall `ความสามารถใช้คอมพิวเตอร์` level become one
+        table row per program, all sharing that same level (we don't collect a level
+        *per* program). English speak/read/write + other_language become up to 4 language
+        rows. Fields the reference form has no slot for at all (กิจกรรม/รางวัลระหว่าง
+        การศึกษา, สาขาที่ชอบ, ประวัติอาชญากรรม, โรคประจำตัว) are folded into the
+        reference's own catch-all "7. ข้อมูลเพิ่มเติม" free-text section rather than
+        silently dropped. `ความสามารถด้านอื่นๆ` checkboxes (ขับรถยนต์/มอไซค์/พิมพ์ดีด) have
+        no corresponding fields in our forms at all — always rendered unchecked.
+      - 3 pages via CSS `break-before: page` on the 2nd/3rd page wrapper divs (print-only
+        effect, screen just shows one continuous scroll — fine since only `.hr-print-only`
+        renders this component). Wired in in place of the old `PrintableProfile` inside
+        the same `.hr-print-only` block — everything else about the "สร้าง PDF" plumbing
+        (`.hr-print-area`/`.hr-no-print` visibility toggle, the button itself) unchanged.
     - `HRPeople.jsx` gained a 4th view `employees_full` ("พนักงาน (แบบเต็ม)"), form-link
       → `/employee.html`; existing `employees` view relabeled "พนักงาน (เดิม)" for
       clarity since there are now two employee sources. The old Google Form is NOT

@@ -50,108 +50,204 @@ const isUrl = (v) => /^https?:\/\//i.test(String(v || '').trim())
 // คอลัมน์ที่เป็นชื่อคน/หัวข้อหลัก — เดาจากชื่อ header เพื่อโชว์เป็นหัวแถวในตาราง
 const nameHint = (h) => /ชื่อ|name|พนักงาน|ผู้สมัคร/i.test(h) && !/บริษัท|เล่น|ผู้ติดต่อ|ฉุกเฉิน|company/i.test(h)
 
-// จัดกลุ่มหัวข้อสำหรับ PDF ให้หน้าตาเหมือนแบบฟอร์ม HR จริง (กล่องมีหัวข้อ + ตาราง 2 คอลัมน์)
-// แทนโชว์เป็น list เดี่ยวๆ ยาวเป็นหางว่าว — ใช้ label ไทยตรงตาม APPLICANT_FULL_FIELDS/
-// EMPLOYEE_FULL_FIELDS ใน api/_lib/hrPeople.js (คนละไฟล์ ไม่ import ข้ามกันได้ เพราะฝั่งนั้น
-// เป็น backend — ถ้าเปลี่ยน label ตรงนั้น ต้องมาแก้ที่นี่ด้วย)
-const PROFILE_SECTIONS = [
-  { title: 'ข้อมูลตำแหน่งงาน', headers: ['ตำแหน่งงานที่สมัคร', 'ตำแหน่งงาน', 'เงินเดือนที่ต้องการ', 'วันที่เริ่มงานได้', 'วันที่เริ่มงาน', 'สถานภาพการทำงานปัจจุบัน', 'เอกสารที่เตรียมมา'] },
-  { title: 'เอกสารประจำตัว', headers: ['เลขบัตรประชาชน', 'รูปบัตรประชาชน', 'ที่อยู่ตามทะเบียนบ้าน', 'รูปทะเบียนบ้าน'] },
-  { title: 'ข้อมูลส่วนตัว', headers: ['คำนำหน้า', 'ชื่อ-นามสกุล', 'ชื่อเล่น', 'อายุ', 'วันเดือนปีเกิด', 'สัญชาติ', 'เชื้อชาติ', 'ศาสนา', 'ภูมิลำเนาเดิม', 'จำนวนพี่น้อง', 'เป็นบุตรคนที่'] },
-  { title: 'ที่อยู่และการติดต่อ', headers: ['ที่อยู่ปัจจุบัน', 'ตำบล/แขวง', 'อำเภอ/เขต', 'จังหวัด', 'รหัสไปรษณีย์', 'โทรศัพท์บ้าน', 'โทรศัพท์มือถือ', 'Email'] },
-  { title: 'ที่พักอาศัย/ครอบครัว', headers: ['ประเภทที่อยู่อาศัย', 'อาศัยมาแล้ว (ปี)', 'สถานภาพครอบครัว', 'ชื่อคู่สมรส', 'อาชีพคู่สมรส', 'จำนวนบุตร'] },
-  { title: 'สุขภาพและประวัติ', headers: ['กรุ๊ปเลือด', 'น้ำหนัก (กก.)', 'ส่วนสูง (ซม.)', 'ประวัติอาชญากรรม', 'โรคประจำตัว/สุขภาพ'] },
-  { title: 'ข้อมูลบิดา-มารดา', headers: ['ชื่อบิดา', 'สถานะบิดา', 'อาชีพบิดา', 'ที่อยู่/จังหวัดบิดา', 'ชื่อมารดา', 'สถานะมารดา', 'อาชีพมารดา', 'ที่อยู่/จังหวัดมารดา'] },
-  { title: 'สถานะทางการทหาร', headers: ['สถานะทางการทหาร'] },
-  { title: 'ประวัติการศึกษา', headers: ['วุฒิการศึกษาที่ใช้สมัคร', 'วุฒิการศึกษาสูงสุด', 'ประวัติการศึกษา', 'กิจกรรม/รางวัลระหว่างการศึกษา', 'สาขาที่ชอบเป็นพิเศษ'] },
-  { title: 'ประสบการณ์การทำงาน', headers: ['ประวัติการทำงาน'] },
-  { title: 'ทักษะและความสามารถ', headers: ['ภาษาอังกฤษ (พูด)', 'ภาษาอังกฤษ (อ่าน)', 'ภาษาอังกฤษ (เขียน)', 'ภาษาอื่นๆ', 'ความสามารถใช้เครื่องใช้สำนักงาน', 'ความสามารถใช้คอมพิวเตอร์', 'โปรแกรมที่ใช้ได้'] },
-  { title: 'บุคคลอ้างอิง', headers: ['บุคคลอ้างอิง (ชื่อ/ความสัมพันธ์)', 'บุคคลอ้างอิง (อาชีพ)', 'บุคคลอ้างอิง (เบอร์โทร)', 'ทราบข่าวการสมัครงานจาก'] },
-  { title: 'บัญชีธนาคาร', headers: ['ธนาคาร', 'เลขบัญชี', 'ชื่อบัญชี'] },
-  { title: 'บุคคลที่ติดต่อได้กรณีฉุกเฉิน', headers: ['บุคคลที่ติดต่อได้กรณีฉุกเฉิน (ชื่อ)', 'ความสัมพันธ์', 'เบอร์โทรฉุกเฉิน'] },
-]
-
-function fieldValue(row, h) {
-  const rows = parseJsonRows(row[h])
-  if (rows) return null // ตารางแยกต่างหาก ไม่โชว์ในกริด label:value
-  return row[h] || ''
+// ==================== PDF: แบบฟอร์มล็อคแพตเทิร์นตายตัว ====================
+// บอส 2026-09-18 ส่งไฟล์ใบสมัครงานราชการ (3 หน้า, ช่องกรอก/checkbox ตายตัว) มาขอให้ทำ PDF
+// หน้าตาแบบนี้เป๊ะๆ — คนละแนวกับ PROFILE_SECTIONS เดิม (ที่จัดกลุ่มตามข้อมูลที่มี) ที่นี่กลับกัน:
+// เค้าโครง/ลำดับ/labeled blank ทุกอันตายตัวตามต้นฉบับเสมอ ไม่ว่าข้อมูลจะมีหรือไม่ — ช่องไหน
+// ไม่มีข้อมูลก็ปล่อยว่างไว้ (ไม่ซ่อนช่อง ไม่ยุบเลย์เอาต์) ตรงตามที่ขอ "อันไหนไม่กรอกก็ว่างไว้"
+// การ map มาจากฟิลด์ของเราไม่ตรง 1:1 กับต้นฉบับเป๊ะทุกจุด (เช่น ต้นฉบับแยกที่อยู่เป็นเลขที่/หมู่ที่/
+// ถนนคนละช่อง แต่ของเราเก็บที่อยู่เป็นข้อความก้อนเดียว) — จุดที่ map ไม่ตรงคอมเมนต์ไว้ในโค้ดแต่ละจุด
+const V = (v) => (v == null ? '' : String(v).trim())
+function Blank({ value, minWidth = 60, grow = 1 }) {
+  return (
+    <span style={{ display: 'inline-block', borderBottom: '1px dotted #333', minWidth, flex: grow, padding: '0 4px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      {V(value) || ' '}
+    </span>
+  )
+}
+function Chk({ label, checked }) {
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 16 }}><span style={{ fontFamily: 'monospace', fontSize: 14 }}>{checked ? '☑' : '☐'}</span>{label}</span>
+}
+function Line({ children }) {
+  return <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 6, marginBottom: 10, fontSize: 12.5 }}>{children}</div>
+}
+// ตารางแถวคงที่ (ไม่ยุบตามจำนวนข้อมูลจริง) — เติมแถวว่างจนครบ minRows เสมอ ตามต้นฉบับ
+function FixedTable({ cols, data, minRows }) {
+  const rows = [...data]
+  while (rows.length < minRows) rows.push({})
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5, marginBottom: 14 }}>
+      <thead>
+        <tr>
+          {cols.map((c) => (
+            <th key={c.key} style={{ border: '1px solid #333', padding: '4px 6px', background: '#f1f5f9', fontWeight: 700 }}>{c.label}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.slice(0, Math.max(minRows, rows.length)).map((r, i) => (
+          <tr key={i}>
+            {cols.map((c) => (
+              <td key={c.key} style={{ border: '1px solid #333', padding: '4px 6px', height: 20 }}>{V(r[c.key])}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
 }
 
-function PrintableProfile({ row, headers }) {
-  const headerSet = new Set(headers)
-  const usedHeaders = new Set()
-  const sections = PROFILE_SECTIONS
-    .map((sec) => ({ ...sec, headers: sec.headers.filter((h) => headerSet.has(h)) }))
-    .filter((sec) => sec.headers.length > 0)
-  sections.forEach((sec) => sec.headers.forEach((h) => usedHeaders.add(h)))
-  const leftoverHeaders = headers.filter((h) => h !== 'ประทับเวลา' && !usedHeaders.has(h))
-  const name = row['ชื่อ-นามสกุล'] || '-'
-  const position = row['ตำแหน่งงานที่สมัคร'] || row['ตำแหน่งงาน'] || '-'
-  const submittedAt = row['ประทับเวลา'] || ''
+function LockedApplicationForm({ row }) {
+  const fullName = [row['คำนำหน้า'], row['ชื่อ-นามสกุล']].filter(Boolean).join('')
+  // เพศไม่ได้เก็บเป็นฟิลด์ตรงๆ ในระบบเรา — เดาจากคำนำหน้าแทน (นาย=ชาย, นาง/นางสาว=หญิง)
+  const genderMale = row['คำนำหน้า'] === 'นาย'
+  const genderFemale = row['คำนำหน้า'] === 'นาง' || row['คำนำหน้า'] === 'นางสาว'
+  // residence_type ตัวเลือกของเรา (บ้านตัวเอง/บ้านญาติ/ห้องเช่า-บ้านเช่า/อื่นๆ) ไม่ตรง 1:1 กับ
+  // ต้นฉบับ (อาศัยกับครอบครัว/บ้านตัวเอง/บ้านเช่า/หอพัก) — map เท่าที่ใกล้เคียง ที่เหลือปล่อยว่าง
+  const residence = row['ประเภทที่อยู่อาศัย']
+  // สถานะทางการทหารของเรา (ได้รับการยกเว้น/ศึกษาวิชาทหาร (รด.)/ผ่านการเกณฑ์ทหารแล้ว/ไม่เกี่ยวข้อง)
+  // ก็ไม่ตรง 1:1 กับต้นฉบับ (ได้รับการยกเว้น/ปลดเป็นทหารกองหนุน/ยังไม่ได้รับการเกณฑ์) — map เท่าที่ใกล้เคียง
+  const military = row['สถานะทางการทหาร']
+  const marital = row['สถานภาพครอบครัว']
+  const idCard = row['เลขบัตรประชาชน']
+  // ผู้สมัคร (แบบเต็ม) ใช้ reference_*, พนักงาน (แบบเต็ม) ใช้ emergency_contact_* — โชว์อันที่มีข้อมูล
+  const contactName = row['บุคคลที่ติดต่อได้กรณีฉุกเฉิน (ชื่อ)'] || row['บุคคลอ้างอิง (ชื่อ/ความสัมพันธ์)']
+  const contactRelation = row['ความสัมพันธ์']
+  const contactOccupation = row['บุคคลอ้างอิง (อาชีพ)']
+  const contactPhone = row['เบอร์โทรฉุกเฉิน'] || row['บุคคลอ้างอิง (เบอร์โทร)']
+
+  const eduRows = (parseJsonRows(row['ประวัติการศึกษา']) || []).map((e) => ({
+    from: '', to: V(e.year), school: V(e.school), major: V(e.major), cert: V(e.level),
+  }))
+  const workRows = (parseJsonRows(row['ประวัติการทำงาน']) || []).map((w) => ({
+    from: V(w.from), to: V(w.to), org: V(w.company), position: V(w.position), salary: V(w.salary), reason: V(w.reason_left),
+  }))
+  const programs = (row['โปรแกรมที่ใช้ได้'] || '').split(',').map((s) => s.trim()).filter(Boolean)
+  const compLevel = row['ความสามารถใช้คอมพิวเตอร์']
+  const compRows = programs.map((p) => ({ program: p, level: compLevel }))
+  const langRows = [
+    row['ภาษาอังกฤษ (พูด)'] && { lang: 'อังกฤษ (พูด)', level: row['ภาษาอังกฤษ (พูด)'] },
+    row['ภาษาอังกฤษ (อ่าน)'] && { lang: 'อังกฤษ (อ่าน)', level: row['ภาษาอังกฤษ (อ่าน)'] },
+    row['ภาษาอังกฤษ (เขียน)'] && { lang: 'อังกฤษ (เขียน)', level: row['ภาษาอังกฤษ (เขียน)'] },
+    row['ภาษาอื่นๆ'] && { lang: row['ภาษาอื่นๆ'], level: '' },
+  ].filter(Boolean)
+  const otherAbility = row['ความสามารถใช้เครื่องใช้สำนักงาน']
+  const moreInfoLines = [
+    row['กิจกรรม/รางวัลระหว่างการศึกษา'] && `กิจกรรม/รางวัลระหว่างการศึกษา: ${row['กิจกรรม/รางวัลระหว่างการศึกษา']}`,
+    row['สาขาที่ชอบเป็นพิเศษ'] && `สาขาที่ชอบเป็นพิเศษ: ${row['สาขาที่ชอบเป็นพิเศษ']}`,
+    row['ประวัติอาชญากรรม'] && `ประวัติอาชญากรรม: ${row['ประวัติอาชญากรรม']}`,
+    row['โรคประจำตัว/สุขภาพ'] && `โรคประจำตัว/สุขภาพ: ${row['โรคประจำตัว/สุขภาพ']}`,
+  ].filter(Boolean)
+
+  const wrap = { fontFamily: '-apple-system, "Noto Sans Thai", Arial, sans-serif', color: '#111', fontSize: 12.5, lineHeight: 1.7 }
+  const pageBreak = { breakBefore: 'page' }
 
   return (
-    <div style={{ fontFamily: '-apple-system, "Noto Sans Thai", Arial, sans-serif', color: '#111827', fontSize: 13, lineHeight: 1.6 }}>
-      <div style={{ borderBottom: '3px solid #0b63d8', paddingBottom: 10, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 800, color: '#0b63d8', letterSpacing: '.06em', textTransform: 'uppercase' }}>PAYI · เอกสารประวัติบุคคล</div>
-          <div style={{ fontSize: 20, fontWeight: 800, marginTop: 2 }}>{name}</div>
-          <div style={{ fontSize: 13, color: '#475569' }}>ตำแหน่ง: {position}</div>
+    <div style={wrap}>
+      {/* หน้า 1 — ประวัติส่วนตัว */}
+      <div style={{ textAlign: 'right', fontSize: 11 }}>ใบสมัครเลขที่ <Blank value="" minWidth={80} grow={0} /></div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', margin: '8px 0 16px' }}>
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>ใบสมัครงาน</div>
+          <div style={{ fontSize: 11, color: '#555' }}>PAYI — เอกสารประวัติบุคคล</div>
         </div>
-        <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'right' }}>วันที่ส่งฟอร์ม<br />{submittedAt}</div>
+        <div style={{ width: 90, height: 110, border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#999', flexShrink: 0 }}>รูปถ่าย</div>
       </div>
 
-      {sections.map((sec) => (
-        <div key={sec.title} style={{ border: '1px solid #cbd5e1', borderRadius: 8, marginBottom: 12, overflow: 'hidden', breakInside: 'avoid' }}>
-          <div style={{ background: '#eaf3ff', color: '#0b63d8', fontWeight: 700, fontSize: 12, padding: '6px 12px' }}>{sec.title}</div>
-          {sec.headers.some((h) => parseJsonRows(row[h])) ? (
-            <div style={{ padding: 10 }}>
-              {sec.headers.map((h) => {
-                const rows = parseJsonRows(row[h])
-                if (!rows) return null
-                return (
-                  <table key={h} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 6 }}>
-                    <tbody>
-                      {rows.length ? rows.map((r, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                          <td style={{ padding: '4px 6px', color: '#475569' }}>{Object.values(r).filter(Boolean).join(' · ') || '—'}</td>
-                        </tr>
-                      )) : (
-                        <tr><td style={{ padding: '4px 6px', color: '#94a3b8' }}>— ไม่มีข้อมูล —</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                )
-              })}
-            </div>
-          ) : null}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
-            {sec.headers.filter((h) => !parseJsonRows(row[h])).map((h) => (
-              <div key={h} style={{ display: 'flex', borderTop: '1px solid #e2e8f0' }}>
-                <div style={{ width: '45%', padding: '6px 10px', color: '#64748b', fontSize: 11, borderRight: '1px solid #e2e8f0' }}>{displayLabel(h)}</div>
-                <div style={{ flex: 1, padding: '6px 10px', fontWeight: 500 }}>{fieldValue(row, h) || '—'}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>1. ประวัติส่วนตัว</div>
+      <Line><span>ชื่อ - สกุล :</span><Blank value={fullName} grow={1} /></Line>
+      <Line><span>เลขบัตรประจำตัวประชาชน</span><Blank value={idCard} grow={1} /></Line>
+      {/* ต้นฉบับแยกเลขที่/หมู่ที่/ถนน/ตำบล คนละช่อง — ของเราเก็บที่อยู่เป็นก้อนเดียว ใส่รวมไว้ที่ "เลขที่" */}
+      <Line><span>ที่อยู่ปัจจุบันเลขที่</span><Blank value={row['ที่อยู่ปัจจุบัน']} grow={2} /><span>ตำบล/แขวง</span><Blank value={row['ตำบล/แขวง']} /></Line>
+      <Line><span>อำเภอ/เขต</span><Blank value={row['อำเภอ/เขต']} /><span>จังหวัด</span><Blank value={row['จังหวัด']} /><span>รหัสไปรษณีย์</span><Blank value={row['รหัสไปรษณีย์']} minWidth={50} /></Line>
+      <Line>
+        <Chk label="อาศัยกับครอบครัว" checked={residence === 'บ้านญาติ'} />
+        <Chk label="บ้านตัวเอง" checked={residence === 'บ้านตัวเอง'} />
+        <Chk label="บ้านเช่า" checked={residence === 'ห้องเช่า/บ้านเช่า'} />
+        <Chk label="หอพัก" checked={false} />
+      </Line>
+      <Line><span>โทรศัพท์</span><Blank value={row['โทรศัพท์บ้าน']} /><span>มือถือ</span><Blank value={row['โทรศัพท์มือถือ']} /></Line>
+      <Line><span>E-mail</span><Blank value={row['Email']} grow={1} /></Line>
+      <Line><span>วัน เดือน ปีเกิด</span><Blank value={row['วันเดือนปีเกิด']} /><span>อายุ</span><Blank value={row['อายุ']} minWidth={40} grow={0} /><span>ปี เชื้อชาติ</span><Blank value={row['เชื้อชาติ']} /></Line>
+      <Line><span>สัญชาติ</span><Blank value={row['สัญชาติ']} /><span>ศาสนา</span><Blank value={row['ศาสนา']} /></Line>
+      <Line><span>บัตรประชาชนเลขที่</span><Blank value={idCard} /><span>บัตรหมดอายุ</span><Blank value="" /></Line>
+      <Line><span>ส่วนสูง</span><Blank value={row['ส่วนสูง (ซม.)']} minWidth={40} grow={0} /><span>ซม.</span><span>น้ำหนัก</span><Blank value={row['น้ำหนัก (กก.)']} minWidth={40} grow={0} /><span>กก.</span></Line>
 
-      {leftoverHeaders.length > 0 && (
-        <div style={{ border: '1px solid #cbd5e1', borderRadius: 8, marginBottom: 12, overflow: 'hidden', breakInside: 'avoid' }}>
-          <div style={{ background: '#eaf3ff', color: '#0b63d8', fontWeight: 700, fontSize: 12, padding: '6px 12px' }}>อื่นๆ</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-            {leftoverHeaders.map((h) => (
-              <div key={h} style={{ display: 'flex', borderTop: '1px solid #e2e8f0' }}>
-                <div style={{ width: '45%', padding: '6px 10px', color: '#64748b', fontSize: 11, borderRight: '1px solid #e2e8f0' }}>{displayLabel(h)}</div>
-                <div style={{ flex: 1, padding: '6px 10px', fontWeight: 500 }}>{row[h] || '—'}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <Line>
+        <span style={{ minWidth: 90 }}>ภาวะทางทหาร</span>
+        <Chk label="ได้รับการยกเว้น" checked={military === 'ได้รับการยกเว้น'} />
+        <Chk label="ปลดเป็นทหารกองหนุน" checked={military === 'ผ่านการเกณฑ์ทหารแล้ว'} />
+        <Chk label="ยังไม่ได้รับการเกณฑ์" checked={military === 'ศึกษาวิชาทหาร (รด.)'} />
+      </Line>
+      <Line>
+        <span style={{ minWidth: 90 }}>สถานภาพ</span>
+        <Chk label="โสด" checked={marital === 'โสด'} />
+        <Chk label="แต่งงาน" checked={marital === 'แต่งงาน'} />
+        <Chk label="หม้าย" checked={false} />
+        <Chk label="แยกกัน" checked={marital === 'แยกกันอยู่'} />
+      </Line>
+      <Line>
+        <span style={{ minWidth: 90 }}>เพศ</span>
+        <Chk label="ชาย" checked={genderMale} />
+        <Chk label="หญิง" checked={genderFemale} />
+      </Line>
 
-      <div style={{ marginTop: 32, display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-        <div>ลงชื่อ ................................................. ผู้กรอกข้อมูล</div>
-        <div>วันที่ ................./................./.................</div>
+      <div style={{ fontWeight: 700, margin: '14px 0 8px' }}>บุคคลที่สามารถติดต่อได้ (กรณีฉุกเฉิน)</div>
+      <Line><span>ชื่อ - สกุล</span><Blank value={contactName} grow={2} /><span>อาชีพ</span><Blank value={contactOccupation} /></Line>
+      <Line><span>สถานที่ทำงาน</span><Blank value="" grow={2} /><span>เกี่ยวข้องเป็น</span><Blank value={contactRelation} /></Line>
+      <Line><span>โทรศัพท์ (มือถือ)</span><Blank value={contactPhone} grow={1} /></Line>
+
+      {/* หน้า 2 — การศึกษา/ประสบการณ์ทำงาน/ทักษะ */}
+      <div style={pageBreak}>
+        <div style={{ fontWeight: 700, marginBottom: 6, marginTop: 24 }}>2. ข้อมูลการศึกษา</div>
+        <FixedTable minRows={5} data={eduRows} cols={[
+          { key: 'from', label: 'ปี พ.ศ. (จาก)' }, { key: 'to', label: 'ปี พ.ศ. (ถึง)' },
+          { key: 'school', label: 'สถาบันการศึกษา' }, { key: 'major', label: 'สาขาวิชา' },
+          { key: 'cert', label: 'ประกาศนียบัตร/ปริญญาบัตร' },
+        ]} />
+
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>3. ข้อมูลการทำงานและประสบการณ์ทำงาน</div>
+        <FixedTable minRows={5} data={workRows} cols={[
+          { key: 'from', label: 'ปี พ.ศ. (จาก)' }, { key: 'to', label: 'ปี พ.ศ. (ถึง)' },
+          { key: 'org', label: 'ชื่อและที่อยู่ของหน่วยงาน' }, { key: 'position', label: 'ตำแหน่งและหน้าที่โดยย่อ' },
+          { key: 'salary', label: 'เงินเดือน' }, { key: 'reason', label: 'สาเหตุที่ออกจากงาน' },
+        ]} />
+
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>4. ความสามารถทางด้านคอมพิวเตอร์</div>
+        <FixedTable minRows={4} data={compRows} cols={[
+          { key: 'program', label: 'โปรแกรม' }, { key: 'level', label: 'ระดับความสามารถ' },
+        ]} />
+
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>5. ความสามารถทางด้านภาษาต่างประเทศ</div>
+        <FixedTable minRows={4} data={langRows.map((l) => ({ lang: l.lang, level: l.level }))} cols={[
+          { key: 'lang', label: 'ภาษา' }, { key: 'level', label: 'ระดับความสามารถ' },
+        ]} />
+      </div>
+
+      {/* หน้า 3 — ความสามารถอื่นๆ/ข้อมูลเพิ่มเติม/ลายเซ็น */}
+      <div style={pageBreak}>
+        <div style={{ fontWeight: 700, marginBottom: 6, marginTop: 24 }}>6. ความสามารถด้านอื่นๆ</div>
+        {/* ไม่มีฟิลด์ตรงกับขับรถ/มอไซค์/พิมพ์ดีดในระบบเรา — checkbox กลุ่มนี้ไม่ติ๊กเสมอ (ไม่มีข้อมูล) */}
+        <Line><Chk label="สามารถขับขี่รถยนต์" checked={false} /><Chk label="มีพาหนะเป็นของตนเอง" checked={false} /></Line>
+        <Line><Chk label="สามารถขับขี่รถจักรยานยนต์" checked={false} /></Line>
+        <Line><span>ความสามารถอื่นๆ (โปรดระบุ)</span><Blank value={otherAbility} grow={1} /></Line>
+
+        <div style={{ fontWeight: 700, margin: '14px 0 6px' }}>7. ข้อมูลเพิ่มเติม (เช่น ประวัติการฝึกอบรม/คุณสมบัติอื่นๆ ที่เกี่ยวข้องกับตำแหน่งงาน)</div>
+        {moreInfoLines.length ? moreInfoLines.map((t, i) => (
+          <div key={i} style={{ borderBottom: '1px dotted #333', padding: '3px 0', minHeight: 18 }}>{t}</div>
+        )) : [0, 1, 2].map((i) => <div key={i} style={{ borderBottom: '1px dotted #333', padding: '3px 0', minHeight: 18 }}>&nbsp;</div>)}
+
+        <div style={{ marginTop: 28, fontSize: 12 }}>
+          ข้าพเจ้าขอรับรองว่าข้อความข้างต้นเป็นความจริงทุกประการ หากปรากฏในภายหลังว่าข้อความ
+          ที่ข้าพเจ้าได้กล่าวข้างต้นเป็นเท็จ บริษัทอาจพิจารณาเลิกจ้างข้าพเจ้าได้ โดยข้าพเจ้าจะไม่เรียกร้อง
+          ค่าชดเชยหรือค่าเสียหายใดๆ ทั้งสิ้น
+        </div>
+        <div style={{ marginTop: 40, textAlign: 'center', fontSize: 12 }}>
+          <div>ลายมือชื่อผู้สมัคร</div>
+          <div style={{ marginTop: 28 }}>.......................................................</div>
+          <div>({fullName || '......................................................'})</div>
+          <div style={{ marginTop: 6 }}>........... / ............... / ...........</div>
+        </div>
       </div>
     </div>
   )
@@ -206,7 +302,7 @@ function DetailDrawer({ row, headers, onClose }) {
           ))}
         </div>
         <div className="hr-print-only">
-          <PrintableProfile row={row} headers={headers} />
+          <LockedApplicationForm row={row} />
         </div>
       </div>
     </div>
