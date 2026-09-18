@@ -355,6 +355,11 @@ export default function Inventory() {
       const leadTimeTotal = (it.lead_time_production || 0) + (it.lead_time_transport || 0)
       const computedSafety = calcSuggestedSafety(dailyAvg, leadTimeTotal, it.ship_freight)
       const effectiveSafety = computedSafety !== null ? computedSafety : it.safety_stock
+      // กำลังปรับ lead time ชั่วคราวอยู่ — คำนวณ "ขั้นต่ำปกติ" คู่กันไว้ด้วย (จาก lead time ตัวจริงที่สำรองไว้)
+      // จะได้เทียบเห็นว่าต่างจากตอนนี้แค่ไหน ไม่ใช่เห็นแค่เลขเดียวแล้วไม่รู้ว่าค่าไหนคือของจริง (owner ขอ)
+      const normalLeadTimeTotal = it.lead_time_temp_active ? (it.lead_time_production_saved || 0) + (it.lead_time_transport_saved || 0) : leadTimeTotal
+      const normalComputedSafety = it.lead_time_temp_active ? calcSuggestedSafety(dailyAvg, normalLeadTimeTotal, it.ship_freight) : computedSafety
+      const normalSafety = it.lead_time_temp_active ? (normalComputedSafety !== null ? normalComputedSafety : it.safety_stock) : effectiveSafety
       // วัสดุแพ็คเกจจิ้ง — ไม่ track ยอดคงเหลือจริง (คนหน้างานเช็คสต็อกเอง) ระบบเก็บแค่ขั้นต่ำ/lead time
       // ไว้อ้างอิง ไม่คำนวณสถานะหมด/ใกล้หมดจากยอด balance ที่ไม่มีความหมาย (นิ่งอยู่ 0 ตลอด)
       const effectiveStatus = isPackaging ? null : statusOf(it.balance, effectiveSafety)
@@ -365,7 +370,7 @@ export default function Inventory() {
         : null)
       const dailyAvgBase = isPackaging ? (packagingAvg?.base || 0) : dailyAvg
       const bufferPercentUsed = isPackaging ? (packagingAvg?.bufferPercent ?? DEFAULT_BUFFER_PERCENT) : null
-      return { ...it, dailyAvg, dailyAvgBase, bufferPercentUsed, units90, abc, salesEstimated, leadTimeTotal, computedSafety, effectiveSafety, effectiveStatus, recommendedOrder }
+      return { ...it, dailyAvg, dailyAvgBase, bufferPercentUsed, units90, abc, salesEstimated, leadTimeTotal, computedSafety, effectiveSafety, effectiveStatus, recommendedOrder, normalSafety }
     })
   }, [items, salesBySku, allocatedSales, packagingDailyAvg])
 
@@ -713,8 +718,11 @@ export default function Inventory() {
                               </button>
                             </td>
                             <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                              <button onClick={() => setItemModal(it)} title="กดเพื่อแก้ไข" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: 'var(--payi-text-muted)', fontWeight: 800 }}>
+                              <button onClick={() => setItemModal(it)} title={it.lead_time_temp_active ? `ปกติ ${fmt(it.normalSafety)} — ตอนนี้ปรับชั่วคราวเป็น ${fmt(it.effectiveSafety)}` : 'กดเพื่อแก้ไข'} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: 'var(--payi-text-muted)', fontWeight: 800, display: 'block' }}>
                                 {fmt(it.effectiveSafety)} {it.unit}
+                                {it.lead_time_temp_active && it.normalSafety !== it.effectiveSafety && (
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: '#92400e' }}>ปกติ {fmt(it.normalSafety)}</div>
+                                )}
                               </button>
                             </td>
                             <td style={{ padding: '8px 10px' }}>
@@ -800,10 +808,13 @@ export default function Inventory() {
                     <td style={{ padding: '10px' }}>
                       <button
                         onClick={() => setItemModal(it)}
-                        title="กดเพื่อแก้ไข"
-                        style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: 'var(--payi-text-muted)' }}
+                        title={it.lead_time_temp_active ? `ปกติ ${fmt(it.normalSafety)} — ตอนนี้ปรับชั่วคราวเป็น ${fmt(it.effectiveSafety)}` : 'กดเพื่อแก้ไข'}
+                        style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: 'var(--payi-text-muted)', display: 'block', textAlign: 'left' }}
                       >
                         {fmt(it.effectiveSafety)}
+                        {it.lead_time_temp_active && it.normalSafety !== it.effectiveSafety && (
+                          <div style={{ fontSize: 10.5, color: '#92400e', fontWeight: 700 }}>ปกติ {fmt(it.normalSafety)}</div>
+                        )}
                       </button>
                     </td>
                     <td style={{ padding: '10px', color: 'var(--payi-text-muted)' }}>{it.unit}</td>
@@ -1177,6 +1188,11 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
                     <div style={{ fontSize: 11.5, color: '#92400e', background: '#fef3c7', padding: '4px 8px', borderRadius: 8, fontWeight: 700 }}>
                       ⏱️ ปรับชั่วคราวอยู่ (ปกติ: ผลิต {initial.lead_time_production_saved ?? 0} / ขนส่ง {initial.lead_time_transport_saved ?? 0} วัน)
                       {initial.lead_time_temp_until ? ` — จะกลับปกติเอง ${initial.lead_time_temp_until}` : ' — ไม่ได้ตั้งวันสิ้นสุด ต้องกดปรับกลับเอง'}
+                      {initial.normalSafety !== undefined && (
+                        <div style={{ marginTop: 4 }}>
+                          ขั้นต่ำ: ปกติ <b>{initial.normalSafety}</b> {initial?.unit} — ตอนนี้ (ชั่วคราว) <b>{initial.effectiveSafety}</b> {initial?.unit}
+                        </div>
+                      )}
                     </div>
                     <button type="button" onClick={() => onRevertTempLeadTime(sku)} style={{ border: '1px solid var(--payi-border)', borderRadius: 8, background: 'var(--payi-surface)', color: 'var(--payi-text-strong)', fontWeight: 700, fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
                       ปรับกลับค่าเดิม
@@ -1208,7 +1224,7 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
                     </div>
                   </div>
                 ) : (
-                  <button type="button" onClick={() => setTempFormOpen(true)} style={{ border: '1px dashed var(--payi-border)', borderRadius: 8, background: 'transparent', color: 'var(--payi-text-muted)', fontWeight: 700, fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
+                  <button type="button" onClick={() => { setTempProd(leadProd || 0); setTempTransport(leadTransport || 0); setTempFormOpen(true) }} style={{ border: '1px dashed var(--payi-border)', borderRadius: 8, background: 'transparent', color: 'var(--payi-text-muted)', fontWeight: 700, fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
                     ปรับ Lead Time ชั่วคราว
                   </button>
                 )}
