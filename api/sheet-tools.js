@@ -540,7 +540,7 @@ async function handleLeadtimeListCommand(event) {
   const items = await loadOrderableItems()
   const active = items.filter((it) => it.lead_time_temp_active)
   if (!active.length) {
-    return replyMessage(replyToken, [{ type: 'text', text: 'ไม่มีการปรับ lead time ชั่วคราวอยู่ตอนนี้ค่ะ\nพิมพ์ "leadtime <ชื่อสินค้า>" เพื่อปรับทีละตัว หรือ "leadtime ทั้งหมด" เพื่อปรับทุกสินค้าทีเดียว (เช่น ช่วงวันหยุดยาว)' }])
+    return replyMessage(replyToken, [{ type: 'text', text: 'ไม่มีการปรับ lead time ชั่วคราวอยู่ตอนนี้ค่ะ\nพิมพ์ "leadtime <ชื่อสินค้า>" เพื่อปรับทีละตัว หรือ "leadtime ทั้งหมด" เพื่อปรับสินค้าทุกตัวทีเดียว (ไม่รวมวัสดุแพ็คเกจจิ้ง — เช่น ช่วงวันหยุดยาว)' }])
   }
   const revertAllButton = { type: 'action', action: { type: 'postback', label: `↩️ ปรับกลับทั้งหมด (${active.length})`, data: 'leadtime-revert:__ALL__', displayText: 'ปรับกลับ lead time ทั้งหมด' } }
   const lines = active.slice(0, 9).map((it) => `• ${it.display_name}${it.lead_time_temp_until ? ` — จะกลับปกติเอง ${it.lead_time_temp_until}` : ' — ไม่ได้ตั้งวันสิ้นสุด'}`).join('\n')
@@ -564,7 +564,7 @@ async function handleLeadtimeBulkStart(event) {
   await upsertLeadtimeSession(lineUserId, LEADTIME_ALL_SENTINEL)
   await replyMessage(replyToken, [{
     type: 'text',
-    text: 'ปรับ lead time ชั่วคราว "ทั้งหมด" — บวกจำนวนวันเพิ่มจากค่าปกติเดิมของแต่ละสินค้า (ไม่ใช่ตั้งให้เท่ากันหมด)\n\nพิมพ์เลข 2 หรือ 3 ค่าคั่นด้วยช่องว่าง (เพิ่มวันผลิต เพิ่มวันขนส่ง [ปรับกี่วัน]) เช่น "3 5" (ไม่ระบุวัน ต้องกดปรับกลับเอง) หรือ "3 5 10" (10 วันแล้วกลับปกติเองอัตโนมัติ) ค่ะ',
+    text: 'ปรับ lead time ชั่วคราว "ทั้งหมด" (ไม่รวมวัสดุแพ็คเกจจิ้ง) — บวกจำนวนวันเพิ่มจากค่าปกติเดิมของแต่ละสินค้า (ไม่ใช่ตั้งให้เท่ากันหมด)\n\nพิมพ์เลข 2 หรือ 3 ค่าคั่นด้วยช่องว่าง (เพิ่มวันผลิต เพิ่มวันขนส่ง [ปรับกี่วัน]) เช่น "3 5" (ไม่ระบุวัน ต้องกดปรับกลับเอง) หรือ "3 5 10" (10 วันแล้วกลับปกติเองอัตโนมัติ) ค่ะ',
   }])
 }
 

@@ -938,6 +938,7 @@ function BulkLeadtimeModal({ activeCount, soonestUntil, saving, onClose, onApply
         <div style={{ fontSize: 12.5, color: 'var(--payi-text-muted)' }}>
           เผื่อช่วงวันหยุดยาว (เช่นตรุษจีน) ที่โรงงาน/ขนส่งช้ากว่าปกติพร้อมกันทุกสินค้า — กรอกจำนวนวันที่จะ
           "เพิ่ม" จากค่าปกติเดิมของแต่ละสินค้า (ไม่ใช่ตั้งทุกตัวให้เท่ากัน) มีผลกับสินค้าที่ยังไม่ถูกซ่อนทั้งหมด
+          (ไม่รวมวัสดุแพ็คเกจจิ้ง)
         </div>
         {activeCount > 0 && (
           <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', background: '#fef3c7', borderRadius: 8, padding: '8px 10px' }}>

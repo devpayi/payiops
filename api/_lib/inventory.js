@@ -419,7 +419,8 @@ export async function revertTempLeadTime(body, actorName, role) {
 // ปิดพร้อมกันหมดทุกสินค้า) — บวก "จำนวนวันเพิ่ม" เข้าไปบนฐานเดิมของแต่ละสินค้า ไม่ใช่เซ็ตทุกตัวให้เท่ากัน
 // (แต่ละสินค้ามี lead time ปกติไม่เท่ากันอยู่แล้ว วันหยุดแค่ต่อคิวเพิ่ม ไม่ได้ทำให้ทุกตัวเท่ากัน) ฐานที่บวก
 // ทับคือค่าที่ยังไม่ปรับ (saved ถ้าปรับชั่วคราวค้างอยู่แล้ว, ไม่งั้นใช้ค่าปัจจุบัน) กันบวกซ้อนถ้ากดสองครั้ง
-// ใช้ตรรกะเดียวกับ applyTempLeadTime ทีละแถว ครอบทุกสินค้าที่ active (รวม packaging ด้วย — วันหยุดกระทบหมด)
+// ใช้ตรรกะเดียวกับ applyTempLeadTime ทีละแถว ครอบทุกสินค้าที่ active — ไม่รวมวัสดุแพ็คเกจจิ้ง (owner ขอ
+// 2026-09-18: วันหยุดยาวกระทบแค่สินค้าจริงที่สั่งจากซัพพลายเออร์ ไม่ใช่สติกเกอร์/กล่องที่ซื้อในประเทศ)
 export async function applyTempLeadTimeBulk(body, actorName, role) {
   if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ปรับ lead time ได้')
   const extraProduction = num(body.extraProduction)
@@ -432,7 +433,7 @@ export async function applyTempLeadTimeBulk(body, actorName, role) {
   const now = new Date().toISOString()
   let count = 0
   for (const row of items) {
-    if (!row.sku || !truthyActive(row.active)) continue
+    if (!row.sku || !truthyActive(row.active) || row.category === 'packaging') continue
     const baseProduction = String(row.lead_time_temp_active) === '1' ? num(row.lead_time_production_saved) : num(row.lead_time_production)
     const baseTransport = String(row.lead_time_temp_active) === '1' ? num(row.lead_time_transport_saved) : num(row.lead_time_transport)
     if (String(row.lead_time_temp_active) !== '1') {
