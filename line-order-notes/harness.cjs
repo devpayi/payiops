@@ -12,6 +12,7 @@ const GROUP = 'Cgroup000000000000000000000000001';
 function makeEnv() {
   const store = {};       // sheet name -> rows
   const calls = [];       // captured LINE API calls
+  const cache = new Map();
   const props = { CHANNEL_ACCESS_TOKEN: 'tok', BOSS_USER_ID: BOSS };
   const sheet = name => {
     const rows = store[name];
@@ -50,6 +51,7 @@ function makeEnv() {
     SpreadsheetApp: { getActiveSpreadsheet: () => ss },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] ?? null }) },
     ContentService: { createTextOutput: t => ({ text: t }) },
+    CacheService: { getScriptCache: () => ({ get: k => (cache.has(k) ? cache.get(k) : null), put: (k, v) => { cache.set(k, v); } }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     ScriptApp: { getProjectTriggers: () => [], deleteTrigger() {}, newTrigger: () => { const t = { timeBased: () => t, atHour: () => t, nearMinute: () => t, everyDays: () => t, inTimezone: () => t, create: () => t }; return t; } },
     Utilities: {
@@ -498,6 +500,54 @@ const test = async (name, fn) => {
   await test('doGet reports the deployed version (so a deploy can be checked in a browser)', async () => {
     const env = makeEnv();
     assert.ok(/^ok \d{4}-\d{2}-\d{2}\.\d+$/.test(env.api.doGet({}).text));
+  });
+
+  const logText = env => (env.store.log || []).slice(1).map(r => r[1]).join('\n');
+
+  await test('log tab: wrong/missing WEBHOOK_KEY is recorded as FORBIDDEN once per cause, right key is not', async () => {
+    const env = makeEnv();
+    env.props.WEBHOOK_KEY = 'k';
+    post(env, [groupMsg('@เหมียวสั่งมา a')]);
+    assert.ok(logText(env).includes('FORBIDDEN') && logText(env).includes('missing'));
+    const n = env.store.log.length;
+    for (let i = 0; i < 10; i++) post(env, [groupMsg('@เหมียวสั่งมา a')]);
+    assert.strictEqual(env.store.log.length, n, 'repeats of the same rejection are not logged again');
+    post(env, [groupMsg('@เหมียวสั่งมา a')], { key: 'nope' });
+    assert.ok(logText(env).includes('wrong'));
+    const before = env.store.log.length;
+    post(env, [groupMsg('@เหมียวสั่งมา a')], { key: 'k' });
+    assert.ok(!logText(env).split('\n').slice(before - 1).some(l => l.includes('FORBIDDEN')));
+    assert.strictEqual(env.store.groups.length, 2);
+  });
+
+  await test('log tab: an internal error is recorded, the other events still run, LINE still gets ok', async () => {
+    const env = makeEnv();
+    post(env, [groupMsg('@เหมียวสั่งมา bind')]);
+    delete env.store.requests;
+    const out = post(env, [groupMsg('@เหมียวสั่งมา งาน1'), direct('myid', STAFF)]);
+    assert.strictEqual(out.text, 'ok');
+    assert.ok(logText(env).includes('ERROR'), 'the failure must be visible in the log tab');
+    assert.ok(lastText(env).includes(STAFF), 'the second event was still handled');
+  });
+
+  await test('chatter that does not call the bot touches no Sheet at all; a mistyped "#สัง" is logged; log stays bounded', async () => {
+    const env = makeEnv();
+    post(env, [groupMsg('@เหมียวสั่งมา bind')]);
+    const snap = () => JSON.stringify([env.store.requests, env.store.groups, env.store.processed_events, env.store.log]);
+    const before = snap();
+    for (let i = 0; i < 20; i++) post(env, [groupMsg('คุยเล่นเฉยๆ ' + i, { noMention: true })]);
+    const other = groupMsg('@somebody hi'); other.message.mention = { mentionees: [{ index: 0, length: 9, type: 'user', userId: 'Uother', isSelf: false }] };
+    post(env, [other]);
+    assert.strictEqual(snap(), before, 'no reads/writes for chatter or a mention of someone else');
+    post(env, [groupMsg('#สัง ข้าว', { noMention: true })]);
+    assert.ok(logText(env).includes('ignored'));
+    for (let i = 0; i < 450; i++) post(env, [groupMsg('@เหมียวสั่งมา x' + i)]);
+    assert.ok(env.store.log.length <= 401, 'log rows: ' + env.store.log.length);
+  });
+
+  await test('doPost run by hand (no event) does not throw', async () => {
+    const env = makeEnv();
+    assert.strictEqual(env.api.doPost(undefined).text, 'no event');
   });
 
   for (const [s, name, note] of results) console.log(s.padEnd(5), name, note ? '— ' + note : '');

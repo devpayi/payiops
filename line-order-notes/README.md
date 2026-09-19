@@ -39,6 +39,12 @@ Sheet: https://docs.google.com/spreadsheets/d/1R-Qq5PfJIlqEZd-x4Js3RZV1H5OEeQLTs
 - ลิงก์แอดเพื่อน: https://line.me/R/ti/p/%40061kworu (ไอดีบอท @061kworu) หรือใช้ QR จาก LINE Developers → Messaging API
 - เปลี่ยน token: LINE Developers → Messaging API → Channel access token (long-lived) → Reissue → วางใน `CHANNEL_ACCESS_TOKEN` (อันเก่าใช้ไม่ได้ทันที)
 
+## ดูว่าบอทรับข้อความแล้วเกิดอะไรขึ้น
+
+ดูแท็บ **`log`** ในชีต (สร้างเองอัตโนมัติ เก็บล่าสุดประมาณ 200–400 บรรทัด) จะจดเฉพาะตอนมีคนเรียกบอท: คำขอที่จด / ข้อความ `#` หรือ `/` ที่พิมพ์ผิดคำสั่ง / error / ข้อความที่ถูกปฏิเสธเพราะรหัส `WEBHOOK_KEY` ไม่ตรง (`FORBIDDEN` จดครั้งเดียวต่อ 10 นาที)
+ข้อความคุยทั่วไปในกลุ่มที่ไม่ได้เรียกบอท ระบบข้ามทันที ไม่อ่านไม่เขียนชีตเลย
+ถ้าไม่มีบรรทัดใหม่เลยหลังแท็กบอทในกลุ่ม แปลว่า LINE ไม่ได้ส่งเข้ามา (เช็ค Webhook URL และสวิตช์ Use webhook)
+
 ## ข้อจำกัดที่ต้องรู้
 
 - **ตรวจลายเซ็น LINE (HMAC) ไม่ได้** — Apps Script `doPost` มองไม่เห็น HTTP header ตัวป้องกันคือ URL ที่เดายาก + `WEBHOOK_KEY`
@@ -46,7 +52,7 @@ Sheet: https://docs.google.com/spreadsheets/d/1R-Qq5PfJIlqEZd-x4Js3RZV1H5OEeQLTs
   **ยังไม่เคยทดสอบครบวงจรกับ LINE จริง** ไม่จำเป็นสำหรับการใช้งานปกติ
 - ปุ่มบนการ์ดไม่หมดอายุ แต่กดซ้ำ/กดหลังงานถูกแก้ไขแล้วจะขึ้น "รายการเปลี่ยนแปลงหรือจัดการไปแล้ว" ไม่ทำรายการซ้ำ
 - ผูกได้ 1 กลุ่ม (กลุ่มแรกที่แท็กหลังล้างข้อมูล) กลุ่มอื่นแท็กแล้วบอทตอบว่ายังไม่เปิดใช้งาน ถ้าจะเปลี่ยนกลุ่ม ให้ลบแถวในแท็บ `groups` (เก็บหัวตารางไว้) แล้วแท็กในกลุ่มใหม่ ถ้าจะใช้หลายร้านต้องทำชีต+สคริปต์แยก
-- ทดสอบกับ mock ครบทุกเส้นทาง (26 กรณี) + ตรวจโครงสร้างการ์ดกับ LINE validate API แล้ว
+- ทดสอบกับ mock ครบทุกเส้นทาง (30 กรณี) + ตรวจโครงสร้างการ์ดกับ LINE validate API แล้ว
   แต่ปุ่มบนการ์ดใหม่ (ขนาด giga) ยังไม่เคยเห็นบนมือถือจริง
 
 ## ทดสอบในเครื่องโดยไม่ต้องใช้ LINE
@@ -54,6 +60,6 @@ Sheet: https://docs.google.com/spreadsheets/d/1R-Qq5PfJIlqEZd-x4Js3RZV1H5OEeQLTs
 แก้ `Code.gs` แล้วรันก่อน deploy ทุกครั้ง:
 
 ```bash
-node harness.cjs                       # จำลอง Sheet + LINE API ในเครื่อง 26 กรณี
+node harness.cjs                       # จำลอง Sheet + LINE API ในเครื่อง 30 กรณี
 LINE_TOKEN=<channel token> node harness.cjs   # + ส่งการ์ดทุกแบบให้ LINE validate API ตรวจ (ไม่ส่งข้อความจริง)
 ```

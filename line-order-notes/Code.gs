@@ -21,8 +21,9 @@
 const SHEET_REQUESTS = 'requests';
 const SHEET_GROUPS = 'groups';
 const SHEET_EVENTS = 'processed_events';
+const SHEET_LOG = 'log';
 const TZ = 'Asia/Bangkok';
-const VERSION = '2026-09-19.2'; // open the /exec URL in a browser to see which version is deployed
+const VERSION = '2026-09-19.4'; // open the /exec URL in a browser to see which version is deployed
 const STATUS_OPEN = 'OPEN', STATUS_ORDERED = 'ORDERED', STATUS_PICKUP = 'PICKUP',
       STATUS_DONE = 'DONE', STATUS_CANCELLED = 'CANCELLED';
 const PAGE_SIZE = 15, MAX_FLEX_BYTES = 45000;
@@ -58,24 +59,68 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  if (!e || !e.postData) return ContentService.createTextOutput('no event'); // run by hand from the editor
   const webhookKey = prop_('WEBHOOK_KEY');
   if (webhookKey && (!e.parameter || e.parameter.key !== webhookKey)) {
+    const cause = e.parameter && e.parameter.key ? 'wrong' : 'missing';
+    const cache = CacheService.getScriptCache();
+    if (!cache.get('forbidden-' + cause)) { // a rejected sender repeats every few seconds; log it once per 10 minutes
+      cache.put('forbidden-' + cause, '1', 600);
+      log_('FORBIDDEN: WEBHOOK_KEY is set but the webhook URL key is ' + cause + ' (further ones in the next 10 min are not logged)');
+    }
     return ContentService.createTextOutput('forbidden');
   }
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(25000);
     const body = JSON.parse(e.postData.contents);
-    (body.events || []).forEach(handleEvent_);
+    const events = body.events || [];
+    events.forEach(event => {
+      try { handleEvent_(event); } catch (err) { logError_(err); } // one bad event must not drop the others
+    });
   } catch (err) {
-    Logger.log('doPost error: ' + err);
+    logError_(err);
   } finally {
     try { lock.releaseLock(); } catch (err) { /* lock was never acquired */ }
   }
   return ContentService.createTextOutput('ok');
 }
 
+// The "log" tab is the only place a webhook outcome is visible (Apps Script returns "ok" to LINE either way).
+// Keeps roughly the latest 200-400 lines.
+function log_(message) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sh = ss.getSheetByName(SHEET_LOG);
+    if (!sh) { sh = ss.insertSheet(SHEET_LOG); sh.appendRow(['time', 'message']); }
+    sh.appendRow([new Date(), cell_(message)]);
+    if (sh.getLastRow() > 400) sh.deleteRows(2, 200);
+  } catch (err) {
+    Logger.log('log failed: ' + err);
+  }
+}
+
+function logError_(err) {
+  log_('ERROR ' + err + ' | ' + String(err && err.stack).split('\n').slice(0, 3).join(' < '));
+}
+
+// Decides from the event alone (no Sheet access) whether the bot has to act. Group chatter that does not
+// call the bot is dropped here, so a busy group causes no Sheet reads or writes.
+function isForBot_(event) {
+  if (event.type === 'postback') return true;
+  if (event.type !== 'message' || !event.message || event.message.type !== 'text') return false;
+  const source = event.source || {};
+  const text = event.message.text || '';
+  if (source.type === 'group') {
+    if (groupRequestText_(event, text) !== null) return true;
+    if (/^[#＃\/]/.test(text)) log_('group message ignored (starts with # or / but is not "#สั่ง"): "' + text.slice(0, 30) + '"');
+    return false;
+  }
+  return source.type === 'user';
+}
+
 function handleEvent_(event) {
+  if (!isForBot_(event)) return;
   const eventId = event.webhookEventId;
   if (eventId && alreadyProcessed_(eventId)) return;
   try {
@@ -103,7 +148,8 @@ function handleMessage_(event) {
   const source = event.source, text = event.message.text || '';
   if (source.type === 'group') {
     const request = groupRequestText_(event, text);
-    if (request === null) return; // ordinary chatter
+    if (request === null) return;
+    log_('group request: "' + request.slice(0, 30) + '"');
     handleGroupRequest_(event, source.groupId, request);
   } else if (source.type === 'user') {
     handleDirect_(event, source.userId, text.trim());
@@ -499,7 +545,7 @@ function callLine_(path, payload) {
     muteHttpExceptions: true,
   });
   if (res.getResponseCode() >= 300) {
-    Logger.log('LINE API error ' + res.getResponseCode() + ': ' + res.getContentText());
+    log_('LINE API error ' + res.getResponseCode() + ' on ' + path + ': ' + res.getContentText().slice(0, 200));
   }
 }
 
