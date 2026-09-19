@@ -60,16 +60,16 @@ export default async function handler(req, res) {
         if (year && !ym.startsWith(year)) continue
 
         let t = trend.get(ym)
-        if (!t) trend.set(ym, (t = { sales: 0, units: 0, orderIds: new Set() }))
+        if (!t) trend.set(ym, (t = { sales: 0, units: 0, orderIds: new Set(), salesOrderIds: new Set() }))
         if (orderId) t.orderIds.add(orderId)
-        if (!excluded) { t.sales += rev; t.units += qty }
+        if (!excluded) { t.sales += rev; t.units += qty; if (orderId) t.salesOrderIds.add(orderId) }
 
         let sm = store.get(ym)
         if (!sm) store.set(ym, (sm = new Map()))
         let s = sm.get(key)
-        if (!s) sm.set(key, (s = { store: key, business, platform, sales: 0, units: 0, orderIds: new Set() }))
+        if (!s) sm.set(key, (s = { store: key, business, platform, sales: 0, units: 0, orderIds: new Set(), salesOrderIds: new Set() }))
         if (orderId) s.orderIds.add(orderId)
-        if (!excluded) { s.sales += rev; s.units += qty }
+        if (!excluded) { s.sales += rev; s.units += qty; if (orderId) s.salesOrderIds.add(orderId) }
       }
     }
 
@@ -86,7 +86,7 @@ export default async function handler(req, res) {
       if (latestDay < daysInLatestMonth && (!year || latestMonth.startsWith(year))) {
         const pd = new Date(Date.UTC(ly, lm - 2, 1))
         const prevMonth = `${pd.getUTCFullYear()}-${String(pd.getUTCMonth() + 1).padStart(2, '0')}`
-        const prevTrend = { sales: 0, units: 0, orderIds: new Set() }
+        const prevTrend = { sales: 0, units: 0, orderIds: new Set(), salesOrderIds: new Set() }
         const prevStore = new Map()
         for (let i = 0; i < tabs.length; i++) {
           const left = vr[2 * i].values || []
@@ -104,11 +104,11 @@ export default async function handler(req, res) {
             if (Number(date.slice(8, 10)) > storeCapDay) continue
             const excluded = isCancelled(status) || isReturned(status)
             if (orderId) prevTrend.orderIds.add(orderId)
-            if (!excluded) { prevTrend.sales += rev; prevTrend.units += qty }
+            if (!excluded) { prevTrend.sales += rev; prevTrend.units += qty; if (orderId) prevTrend.salesOrderIds.add(orderId) }
             let s = prevStore.get(key)
-            if (!s) prevStore.set(key, (s = { store: key, business, platform, sales: 0, units: 0, orderIds: new Set(), capDay: storeCapDay }))
+            if (!s) prevStore.set(key, (s = { store: key, business, platform, sales: 0, units: 0, orderIds: new Set(), salesOrderIds: new Set(), capDay: storeCapDay }))
             if (orderId) s.orderIds.add(orderId)
-            if (!excluded) { s.sales += rev; s.units += qty }
+            if (!excluded) { s.sales += rev; s.units += qty; if (orderId) s.salesOrderIds.add(orderId) }
           }
         }
         partialMonth = {
@@ -117,21 +117,21 @@ export default async function handler(req, res) {
           daysInMonth: daysInLatestMonth,
           prevMonthCapped: {
             month: prevMonth,
-            trend: { sales: round2(prevTrend.sales), orders: prevTrend.orderIds.size, units: prevTrend.units },
-            byStore: [...prevStore.values()].map((s) => ({ store: s.store, business: s.business, platform: s.platform, sales: round2(s.sales), orders: s.orderIds.size, units: s.units, capDay: s.capDay })),
+            trend: { sales: round2(prevTrend.sales), orders: prevTrend.orderIds.size, salesOrders: prevTrend.salesOrderIds.size, units: prevTrend.units },
+            byStore: [...prevStore.values()].map((s) => ({ store: s.store, business: s.business, platform: s.platform, sales: round2(s.sales), orders: s.orderIds.size, salesOrders: s.salesOrderIds.size, units: s.units, capDay: s.capDay })),
           },
         }
       }
     }
 
     const trendArr = [...trend.entries()]
-      .map(([month, v]) => ({ month, sales: round2(v.sales), orders: v.orderIds.size, units: v.units }))
+      .map(([month, v]) => ({ month, sales: round2(v.sales), orders: v.orderIds.size, salesOrders: v.salesOrderIds.size, units: v.units }))
       .sort((a, b) => a.month.localeCompare(b.month))
 
     const byStore = {}
     for (const [ym, sm] of store.entries()) {
       byStore[ym] = [...sm.values()]
-        .map((s) => ({ store: s.store, business: s.business, platform: s.platform, sales: round2(s.sales), orders: s.orderIds.size, units: s.units }))
+        .map((s) => ({ store: s.store, business: s.business, platform: s.platform, sales: round2(s.sales), orders: s.orderIds.size, salesOrders: s.salesOrderIds.size, units: s.units }))
         .sort((a, b) => b.sales - a.sales)
     }
 

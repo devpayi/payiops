@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { DollarSign, ShoppingBag, Package, Megaphone, Loader2, Info } from 'lucide-react'
+import { DollarSign, ShoppingBag, Package, Megaphone, Loader2, Info, Receipt } from 'lucide-react'
 import { canManageMarketing } from '../../shared/roles.js'
 import Mascot from '../components/Mascot.jsx'
 import {
@@ -19,11 +19,15 @@ const PLATFORM_COLORS = {
 const CHART_COLORS = {
   sales: '#2f86cf',
   orders: '#e5342b',
+  aov: '#3f7f6f',
   grid: 'rgba(20, 22, 28, 0.10)',
 }
 const platColor = (p) => PLATFORM_COLORS[p] || '#94a3b8'
 const THAI_MONTH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 const monthLabel = (ym) => (ym === 'all' ? 'ทั้งหมด' : THAI_MONTH[parseInt(String(ym).slice(5, 7), 10) - 1] || ym)
+// AOV = ยอดขาย ÷ ออเดอร์ที่มียอด (salesOrders ไม่นับยกเลิก/ตีคืน) — ห้ามหารด้วย orders
+// เพราะ orders นับรวมยกเลิกไว้ใช้วางแผนงานแพ็ค จะทำให้ AOV ต่ำเกินจริง
+const withAov = (x) => (x ? { ...x, aov: x.salesOrders ? Math.round((x.sales / x.salesOrders) * 100) / 100 : 0 } : x)
 const periodLabel = (ym) => (ym === 'all' ? 'ทั้งหมด' : `เดือน${monthLabel(ym)}`)
 
 // ป้ายท้ายแท่ง: ค่า + %MoM (เทียบเดือนก่อนหน้า) — ใช้กับกราฟ "แยกร้าน" ทั้งยอดขายและออเดอร์
@@ -181,37 +185,38 @@ export default function MonthlyDashboard() {
   const trend = data?.trend || []
   const idx = trend.findIndex((t) => t.month === month)
   const cur = isAll
-    ? trend.reduce((a, t) => ({ sales: a.sales + t.sales, orders: a.orders + t.orders, units: a.units + t.units }), { sales: 0, orders: 0, units: 0 })
-    : (idx >= 0 ? trend[idx] : null)
+    ? withAov(trend.reduce((a, t) => ({ sales: a.sales + t.sales, orders: a.orders + t.orders, salesOrders: a.salesOrders + (t.salesOrders || 0), units: a.units + t.units }), { sales: 0, orders: 0, salesOrders: 0, units: 0 }))
+    : (idx >= 0 ? withAov(trend[idx]) : null)
   // เดือนล่าสุดที่ยังไม่ครบเดือน (เช่น อัพแค่ 1-19) เทียบเต็มเดือนก่อนหน้าจะดูตกหนักเกินจริงเพราะ
   // จำนวนวันไม่เท่ากัน — ใช้ partialMonth.prevMonthCapped (เดือนก่อนนับแค่วันที่ 1..latestDay
   // เท่ากัน) แทนเดือนก่อนแบบเต็มเดือน เฉพาะตอนกำลังดูเดือนที่ยังไม่ครบนี้เท่านั้น
   const partial = !isAll && data?.partialMonth?.month === month ? data.partialMonth : null
   const prev = isAll ? null : partial
-    ? { month: partial.prevMonthCapped.month, ...partial.prevMonthCapped.trend }
-    : (idx > 0 ? trend[idx - 1] : null)
+    ? withAov({ month: partial.prevMonthCapped.month, ...partial.prevMonthCapped.trend })
+    : (idx > 0 ? withAov(trend[idx - 1]) : null)
   const mom = (c, p) => (p > 0 ? Math.round(((c - p) / p) * 100) : null)
 
   // "ทั้งหมด" = รวมยอดทุกเดือนต่อร้าน (byStore มีแยกรายเดือนอยู่แล้ว รวมเองฝั่ง client)
   const stores = useMemo(() => {
     if (!data) return []
-    if (!isAll) return data.byStore?.[month] || []
+    if (!isAll) return (data.byStore?.[month] || []).map(withAov)
     const merged = new Map()
     for (const ym of data.months || []) {
       for (const s of data.byStore?.[ym] || []) {
         let m = merged.get(s.store)
-        if (!m) merged.set(s.store, (m = { store: s.store, business: s.business, platform: s.platform, sales: 0, units: 0, orders: 0 }))
-        m.sales += s.sales; m.units += s.units; m.orders += s.orders
+        if (!m) merged.set(s.store, (m = { store: s.store, business: s.business, platform: s.platform, sales: 0, units: 0, orders: 0, salesOrders: 0 }))
+        m.sales += s.sales; m.units += s.units; m.orders += s.orders; m.salesOrders += s.salesOrders || 0
       }
     }
-    return [...merged.values()].sort((a, b) => b.sales - a.sales)
+    return [...merged.values()].map(withAov).sort((a, b) => b.sales - a.sales)
   }, [data, month, isAll])
   const storesByOrders = useMemo(() => [...stores].sort((a, b) => b.orders - a.orders), [stores])
+  const storesByAov = useMemo(() => stores.filter((s) => s.salesOrders > 0).sort((a, b) => b.aov - a.aov), [stores])
   // ยอด/ออเดอร์เดือนก่อนหน้า ต่อร้าน — ไว้คำนวณ %MoM รายร้าน (ไม่มีถ้าเลือก "ทั้งหมด")
   const prevStoreMap = useMemo(() => {
     if (!prev) return new Map()
     const list = partial ? partial.prevMonthCapped.byStore : (data?.byStore?.[prev.month] || [])
-    return new Map(list.map((s) => [s.store, s]))
+    return new Map(list.map((s) => [s.store, withAov(s)]))
   }, [data, prev, partial])
   const platformShare = useMemo(() => {
     const m = {}
@@ -224,7 +229,7 @@ export default function MonthlyDashboard() {
       })
       .sort((a, b) => b.value - a.value)
   }, [stores])
-  const trendChart = useMemo(() => trend.map((t) => ({ label: monthLabel(t.month), sales: t.sales, orders: t.orders })), [trend])
+  const trendChart = useMemo(() => trend.map((t) => ({ label: monthLabel(t.month), sales: t.sales, orders: t.orders, aov: withAov(t).aov || null })), [trend])
 
   if (loading && !data) return <Center><Loader2 size={18} className="payi-spin" /> กำลังโหลดข้อมูล...</Center>
   if (error) return <Center danger><Info size={18} /> โหลดไม่สำเร็จ: {error}</Center>
@@ -232,6 +237,7 @@ export default function MonthlyDashboard() {
   const salesMoM = cur && prev ? mom(cur.sales, prev.sales) : null
   const ordersMoM = cur && prev ? mom(cur.orders, prev.orders) : null
   const unitsMoM = cur && prev ? mom(cur.units, prev.units) : null
+  const aovMoM = cur?.aov && prev?.aov ? Math.round(((cur.aov - prev.aov) / prev.aov) * 1000) / 10 : null
 
   const adsHas = ads ? (isAll ? Object.keys(ads).length > 0 : Object.prototype.hasOwnProperty.call(ads, month)) : false
   const adsCur = !adsHas ? null : isAll ? Object.values(ads).reduce((a, b) => a + b, 0) : ads[month]
@@ -270,6 +276,7 @@ export default function MonthlyDashboard() {
         <KpiCard title="ยอดขายรวม" value={fmtBaht(cur?.sales || 0)} subtitle={prev ? `${monthLabel(prev.month)}${partial ? ` (1-${partial.latestDay})` : ''}: ${fmtBaht(prev.sales)}` : periodLabel(month)} icon={DollarSign} trend={salesMoM !== null ? `${salesMoM >= 0 ? '+' : ''}${salesMoM}%` : null} isPositive={salesMoM === null || salesMoM >= 0} />
         <KpiCard title="จำนวนออเดอร์" value={fmt(cur?.orders || 0)} subtitle={prev ? `${monthLabel(prev.month)}${partial ? ` (1-${partial.latestDay})` : ''}: ${fmt(prev.orders)}` : periodLabel(month)} icon={ShoppingBag} trend={ordersMoM !== null ? `${ordersMoM >= 0 ? '+' : ''}${ordersMoM}%` : null} isPositive={ordersMoM === null || ordersMoM >= 0} />
         <KpiCard title="จำนวนชิ้น" value={fmt(cur?.units || 0)} subtitle={prev ? `${monthLabel(prev.month)}${partial ? ` (1-${partial.latestDay})` : ''}: ${fmt(prev.units)}` : periodLabel(month)} icon={Package} trend={unitsMoM !== null ? `${unitsMoM >= 0 ? '+' : ''}${unitsMoM}%` : null} isPositive={unitsMoM === null || unitsMoM >= 0} />
+        <KpiCard title="AOV (ยอดต่อออเดอร์)" value={cur?.aov ? fmtBaht(cur.aov) : '—'} subtitle={prev?.aov ? `${monthLabel(prev.month)}${partial ? ` (1-${partial.latestDay})` : ''}: ${fmtBaht(prev.aov)}` : 'ไม่นับออเดอร์ยกเลิก/ตีคืน'} icon={Receipt} trend={aovMoM !== null ? `${aovMoM >= 0 ? '+' : ''}${aovMoM}%` : null} isPositive={aovMoM === null || aovMoM >= 0} />
         {canSeeAds && (
           <KpiCard
             title="ค่า Ads (กรอกมือ)"
@@ -337,6 +344,24 @@ export default function MonthlyDashboard() {
           </ComposedChart>
         </ResponsiveContainer>
       </Card>
+
+      {/* AOV รายเดือน + แยกร้าน */}
+      <div className="app-two-col-fixed" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.6fr) minmax(240px, 1fr)', gap: 16, marginBottom: 20 }}>
+        <Card title="AOV รายเดือน" sub="ยอดขาย ÷ ออเดอร์ที่มียอด (ไม่นับยกเลิก/ตีคืน)">
+          <ResponsiveContainer width="100%" height={240}>
+            <ComposedChart data={trendChart} margin={{ top: 18, right: 12, left: 4, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--payi-text-muted)' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: '#888' }} axisLine={false} tickLine={false} domain={['dataMin - 20', 'dataMax + 20']} tickFormatter={(v) => `฿${Math.round(v)}`} />
+              <Tooltip content={<TooltipBox moneyKeys={['aov']} />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
+              <Line dataKey="aov" name="AOV" stroke={CHART_COLORS.aov} strokeWidth={2.5} dot={{ r: 3, fill: '#ffffff', strokeWidth: 2 }} label={{ position: 'top', fontSize: 10, fill: 'var(--payi-text-muted)', formatter: (v) => (v ? Math.round(v) : '') }} connectNulls />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card title="AOV แยกร้าน" sub={`${periodLabel(month)}${prev ? ` · %MoM เทียบ ${monthLabel(prev.month)}${partial ? ` (1-${partial.latestDay})` : ''}` : ''}`}>
+          <StoreRows items={storesByAov} dataKey="aov" prevMap={prevStoreMap} formatValue={fmtBaht} />
+        </Card>
+      </div>
 
       {/* Orders by store — ใช้วางแผนแพ็กของ/OT ต่อร้าน */}
       <Card title="จำนวนออเดอร์แยกร้าน" sub={`${periodLabel(month)} · ไว้วางแผนแพ็กของ/OT${prev ? ` · %MoM เทียบ ${monthLabel(prev.month)}${partial ? ` (1-${partial.latestDay})` : ''}` : ''}`}>
