@@ -377,6 +377,19 @@ Sheets rate limits.
       themselves** — a correct property value inside a losing specificity battle looks
       identical to "not deployed yet" from a screenshot, which is why root cause 2 took
       an extra round to find after root cause 1's fix visibly changed nothing.
+    - **✅ DONE (2026-09-19) — third (real) cause of "1/1 page": ancestor `position:fixed`.**
+      Even with `absolute` + `!important`, the print stayed 1 page: `.hr-print-area` lived
+      inside the drawer overlay (`position:fixed; inset:0`), and a fixed ancestor confines
+      descendants to one printed page. **Fix: `createPortal` the `LockedApplicationForm` to
+      `document.body` (`.hr-print-portal`) and in print hide every other body child with
+      `display:none`** (no more visibility/absolute tricks). Wizards likewise now insert
+      `.print-full-form` as a direct body child and hide `.wrap` in print. **Verified with
+      headless Chrome `--print-to-pdf` → 3 pages** (repeat this check for print changes:
+      `chrome --headless --no-pdf-header-footer --print-to-pdf=x.pdf file.html`, count
+      `/Type /Page`). Checkbox mapping widened so every wizard option lights a box:
+      บ้านตัวเอง/บ้านญาติ→อาศัยกับครอบครัว/บ้านเช่า/อื่นๆ→"หอพัก/อื่นๆ"; ทหาร ไม่เกี่ยวข้อง→
+      "ยังไม่ได้รับการเกณฑ์/ไม่เกี่ยวข้อง"; หย่าร้าง→"หม้าย/หย่าร้าง" (labels extended on the
+      paper pattern — small deviation from the reference, deliberate).
     - **✅ DONE (2026-09-18) — same locked-pattern PDF ported to the applicant/employee
       wizards' own done-screens too.** Owner tested the dashboard's "สร้าง PDF" and then
       asked why the wizard's own "พิมพ์ใบสมัคร (PDF)" button (on `apply.html`'s/

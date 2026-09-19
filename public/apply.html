@@ -60,13 +60,11 @@
   .print-btn { margin-top: 16px; padding: 11px 22px; border-radius: 10px; border: none; background: var(--mint); color: #fff; font-weight: 700; font-size: 14px; cursor: pointer; }
   .print-full-form { display: none; }
   @media print {
-    .no-print { display: none !important; }
-    body * { visibility: hidden !important; }
-    .print-full-form, .print-full-form * { visibility: visible !important; }
-    /* position:fixed ตัด content ที่ยาวเกิน 1 หน้าทิ้งหมด (fixed ผูกกับ viewport เดียว พิมพ์ได้
-       แค่หน้าแรก) — ใช้ absolute แทน ให้ไหลข้ามหน้าได้ตามความสูงจริงของเนื้อหา (บอส 2026-09-18:
-       "ขยายเต็มหน้า A4 ... หลายหน้าก็ต้องทำ") */
-    .print-full-form { display: block !important; position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; padding: 20px !important; box-sizing: border-box !important; }
+    /* ซ่อนทุกอย่างด้วย display:none (ไม่ใช้ visibility+absolute/fixed — ancestor แบบ fixed/ความสูงจำกัด
+       ขังเนื้อหาไว้แค่ 1 หน้ากระดาษ บั๊ก "1/1 หน้า" 2026-09-19) แล้วให้ฟอร์มไหลปกติเป็นลูกตรงของ body */
+    .wrap { display: none !important; }
+    .print-full-form { display: block !important; position: static !important; width: 100% !important; padding: 12mm !important; box-sizing: border-box !important; background: #fff !important; }
+    body { background: #fff !important; }
   }
 </style>
 </head>
@@ -550,15 +548,15 @@ function buildLockedFormHTML(a) {
     ${pLine(`<span>ชื่อ - สกุล :</span>${pBlank(fullName, 60, 1)}`)}
     ${pLine(`<span>ที่อยู่ปัจจุบันเลขที่</span>${pBlank(a.address, 60, 2)}<span>ตำบล/แขวง</span>${pBlank(a.sub_district, 60, 1)}`)}
     ${pLine(`<span>อำเภอ/เขต</span>${pBlank(a.district, 60, 1)}<span>จังหวัด</span>${pBlank(a.province, 60, 1)}<span>รหัสไปรษณีย์</span>${pBlank(a.postal_code, 50, 1)}`)}
-    ${pLine(pChk('อาศัยกับครอบครัว', residence === 'บ้านญาติ') + pChk('บ้านตัวเอง', residence === 'บ้านตัวเอง') + pChk('บ้านเช่า', residence === 'ห้องเช่า/บ้านเช่า') + pChk('หอพัก', false))}
+    ${pLine(pChk('อาศัยกับครอบครัว', residence === 'บ้านญาติ') + pChk('บ้านตัวเอง', residence === 'บ้านตัวเอง') + pChk('บ้านเช่า', residence === 'ห้องเช่า/บ้านเช่า') + pChk('หอพัก/อื่นๆ', residence === 'อื่นๆ'))}
     ${pLine(`<span>โทรศัพท์</span>${pBlank(a.home_phone, 60, 1)}<span>มือถือ</span>${pBlank(a.mobile_phone, 60, 1)}`)}
     ${pLine(`<span>E-mail</span>${pBlank(a.email, 60, 1)}`)}
     ${pLine(`<span>วัน เดือน ปีเกิด</span>${pBlank(a.birth_date, 60, 1)}<span>อายุ</span>${pBlank(a.age, 40, 0)}<span>ปี เชื้อชาติ</span>${pBlank(a.ethnicity, 60, 1)}`)}
     ${pLine(`<span>สัญชาติ</span>${pBlank(a.nationality, 60, 1)}<span>ศาสนา</span>${pBlank(a.religion, 60, 1)}`)}
     ${pLine(`<span>บัตรประชาชนเลขที่</span>${pBlank('', 60, 1)}<span>บัตรหมดอายุ</span>${pBlank('', 60, 1)}`)}
     ${pLine(`<span>ส่วนสูง</span>${pBlank('', 40, 0)}<span>ซม.</span><span>น้ำหนัก</span>${pBlank('', 40, 0)}<span>กก.</span>`)}
-    ${pLine(`<span style="min-width:90px">ภาวะทางทหาร</span>` + pChk('ได้รับการยกเว้น', military === 'ได้รับการยกเว้น') + pChk('ปลดเป็นทหารกองหนุน', military === 'ผ่านการเกณฑ์ทหารแล้ว') + pChk('ยังไม่ได้รับการเกณฑ์', military === 'ศึกษาวิชาทหาร (รด.)'))}
-    ${pLine(`<span style="min-width:90px">สถานภาพ</span>` + pChk('โสด', marital === 'โสด') + pChk('แต่งงาน', marital === 'แต่งงาน') + pChk('หม้าย', false) + pChk('แยกกัน', marital === 'แยกกันอยู่'))}
+    ${pLine(`<span style="min-width:90px">ภาวะทางทหาร</span>` + pChk('ได้รับการยกเว้น', military === 'ได้รับการยกเว้น') + pChk('ปลดเป็นทหารกองหนุน', military === 'ผ่านการเกณฑ์ทหารแล้ว') + pChk('ยังไม่ได้รับการเกณฑ์/ไม่เกี่ยวข้อง', military === 'ศึกษาวิชาทหาร (รด.)' || military === 'ไม่เกี่ยวข้อง/ไม่ระบุ'))}
+    ${pLine(`<span style="min-width:90px">สถานภาพ</span>` + pChk('โสด', marital === 'โสด') + pChk('แต่งงาน', marital === 'แต่งงาน') + pChk('หม้าย/หย่าร้าง', marital === 'หย่าร้าง') + pChk('แยกกัน', marital === 'แยกกันอยู่'))}
     ${pLine(`<span style="min-width:90px">เพศ</span>` + pChk('ชาย', genderMale) + pChk('หญิง', genderFemale))}
 
     <div style="font-weight:700;margin:14px 0 8px">บุคคลที่สามารถติดต่อได้ (กรณีฉุกเฉิน)</div>
@@ -643,8 +641,8 @@ async function submit() {
         </div>
         <button class="print-btn no-print" onclick="window.print()">พิมพ์ใบสมัคร (PDF)</button>
       </div>
-      <div class="print-full-form">${buildLockedFormHTML(answers)}</div>
       </main>`;
+    document.body.insertAdjacentHTML('beforeend', `<div class="print-full-form">${buildLockedFormHTML(answers)}</div>`);
   } catch (e) {
     cardBody.insertBefore(el('div', { class: 'err-box' }, e.message || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง'), cardBody.firstChild.nextSibling);
     btnNext.disabled = false;

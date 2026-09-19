@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { Users, UserPlus, Search, X, ExternalLink, RefreshCw, FilePlus2, Printer } from 'lucide-react'
 import KpiCard from '../components/KpiCard'
 
@@ -164,7 +165,7 @@ function LockedApplicationForm({ row }) {
         <Chk label="อาศัยกับครอบครัว" checked={residence === 'บ้านญาติ'} />
         <Chk label="บ้านตัวเอง" checked={residence === 'บ้านตัวเอง'} />
         <Chk label="บ้านเช่า" checked={residence === 'ห้องเช่า/บ้านเช่า'} />
-        <Chk label="หอพัก" checked={false} />
+        <Chk label="หอพัก/อื่นๆ" checked={residence === 'อื่นๆ'} />
       </Line>
       <Line><span>โทรศัพท์</span><Blank value={row['โทรศัพท์บ้าน']} /><span>มือถือ</span><Blank value={row['โทรศัพท์มือถือ']} /></Line>
       <Line><span>E-mail</span><Blank value={row['Email']} grow={1} /></Line>
@@ -177,13 +178,13 @@ function LockedApplicationForm({ row }) {
         <span style={{ minWidth: 90 }}>ภาวะทางทหาร</span>
         <Chk label="ได้รับการยกเว้น" checked={military === 'ได้รับการยกเว้น'} />
         <Chk label="ปลดเป็นทหารกองหนุน" checked={military === 'ผ่านการเกณฑ์ทหารแล้ว'} />
-        <Chk label="ยังไม่ได้รับการเกณฑ์" checked={military === 'ศึกษาวิชาทหาร (รด.)'} />
+        <Chk label="ยังไม่ได้รับการเกณฑ์/ไม่เกี่ยวข้อง" checked={military === 'ศึกษาวิชาทหาร (รด.)' || military === 'ไม่เกี่ยวข้อง/ไม่ระบุ'} />
       </Line>
       <Line>
         <span style={{ minWidth: 90 }}>สถานภาพ</span>
         <Chk label="โสด" checked={marital === 'โสด'} />
         <Chk label="แต่งงาน" checked={marital === 'แต่งงาน'} />
-        <Chk label="หม้าย" checked={false} />
+        <Chk label="หม้าย/หย่าร้าง" checked={marital === 'หย่าร้าง'} />
         <Chk label="แยกกัน" checked={marital === 'แยกกันอยู่'} />
       </Line>
       <Line>
@@ -271,25 +272,20 @@ function DetailDrawer({ row, headers, onClose }) {
   if (!row) return null
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }}>
+      {/* พิมพ์: ฟอร์มถูก portal ออกไปเป็นลูกตรงของ <body> (ดูด้านล่าง) แล้วซ่อนทุกอย่างอื่นด้วย display:none
+          — ห้ามใช้วิธีซ่อนด้วย visibility + จัด position ให้ drawer เอง เพราะ drawer อยู่ใต้ overlay
+          ที่เป็น position:fixed (ancestor แบบ fixed ขังเนื้อหาไว้แค่ 1 หน้ากระดาษ ต่อให้ลูกเป็น
+          absolute ก็ตาม — บั๊ก "1/1 หน้า" ที่เจอ 2026-09-19) */}
       <style>{`
         @media print {
-          body * { visibility: hidden !important; }
-          .hr-print-area, .hr-print-area * { visibility: visible !important; }
-          /* position:fixed ตัด content ที่ยาวเกิน 1 หน้าทิ้งหมด (fixed ผูกกับ viewport เดียว
-             พิมพ์ได้แค่หน้าแรก) — ใช้ absolute แทน ให้ไหลข้ามหน้าได้ตามความสูงจริงของเนื้อหา
-             ตัว div เดียวกันนี้มี inline style width:'min(460px,100vw)' อยู่ (ใช้ตอนโชว์บนจอเป็น
-             แผงเลื่อนด้านข้าง) — inline style ชนะ class ที่ไม่มี !important เสมอ ไม่ว่าจะอยู่ใน
-             @media print หรือไม่ก็ตาม เลยยังโดนบีบแคบครึ่งหน้าอยู่แม้จะแก้ position แล้ว —
-             ต้องใส่ !important ที่ width ด้วยถึงจะเอาชนะ inline ได้จริง */
-          .hr-print-area { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; height: auto !important; overflow: visible !important; padding: 20px !important; }
-          .hr-no-print { display: none !important; }
-          .hr-print-only { display: block !important; }
+          body > *:not(.hr-print-portal) { display: none !important; }
+          .hr-print-portal { display: block !important; position: static !important; width: 100% !important; padding: 12mm !important; box-sizing: border-box !important; }
         }
-        .hr-print-only { display: none; }
+        .hr-print-portal { display: none; }
       `}</style>
-      <div className="app-side-drawer hr-print-area" onClick={(e) => e.stopPropagation()}
+      <div className="app-side-drawer" onClick={(e) => e.stopPropagation()}
         style={{ background: 'var(--payi-surface)', width: 'min(460px,100vw)', height: '100%', overflowY: 'auto', padding: 24, boxSizing: 'border-box' }}>
-        <div className="hr-no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <strong style={{ fontSize: 16, color: 'var(--payi-text-strong)' }}>รายละเอียด</strong>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button onClick={() => window.print()} title="สร้าง PDF / พิมพ์"
@@ -299,7 +295,7 @@ function DetailDrawer({ row, headers, onClose }) {
             <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--payi-text-muted)' }}><X size={20} /></button>
           </div>
         </div>
-        <div className="hr-no-print" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {headers.map((h) => (
             <div key={h}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--payi-text-muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>{displayLabel(h)}</div>
@@ -307,10 +303,8 @@ function DetailDrawer({ row, headers, onClose }) {
             </div>
           ))}
         </div>
-        <div className="hr-print-only">
-          <LockedApplicationForm row={row} />
-        </div>
       </div>
+      {createPortal(<div className="hr-print-portal"><LockedApplicationForm row={row} /></div>, document.body)}
     </div>
   )
 }
