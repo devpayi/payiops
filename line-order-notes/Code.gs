@@ -38,14 +38,6 @@ function setupSheets() {
   ss.getSheetByName('Sheet1') && ss.deleteSheet(ss.getSheetByName('Sheet1'));
 }
 
-// Run once from the editor to wipe test data before real use. Keeps the header rows.
-function clearTestData() {
-  [SHEET_REQUESTS, SHEET_GROUPS, SHEET_EVENTS].forEach(name => {
-    const sh = sheet_(name);
-    if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
-  });
-}
-
 function ensureSheet_(ss, name, headers) {
   let sh = ss.getSheetByName(name);
   if (!sh) sh = ss.insertSheet(name);
@@ -153,6 +145,10 @@ function handleGroupRequest_(event, groupId, cleanText) {
   }
   if (!cleanText) {
     reply_(event.replyToken, 'แท็กบอทแล้วพิมพ์ของที่ต้องสั่งต่อท้ายได้เลยค่ะ เช่น สั่งกล่องส้น 10 ใบ');
+    return;
+  }
+  if (/^(ยกเลิก|cancel)$/i.test(cleanText)) { // a bare "cancel" with nothing quoted must not become a request
+    reply_(event.replyToken, 'ถ้าจะยกเลิก ให้กดตอบกลับ (Reply) ข้อความคำขอเดิม แล้วพิมพ์ ยกเลิก ค่ะ');
     return;
   }
   addRequest_(event, groupId, cleanText);

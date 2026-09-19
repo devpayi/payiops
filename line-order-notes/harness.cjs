@@ -68,7 +68,7 @@ function makeEnv() {
     },
   };
   vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync(CODE, 'utf8') + '\n;this.__api = {clearTestData, doPost, doGet, setupSheets, sendEveningSummary, sendMorningReminder, cell_, stripMentions_, openRows_};', ctx);
+  vm.runInContext(fs.readFileSync(CODE, 'utf8') + '\n;this.__api = { doPost, doGet, setupSheets, sendEveningSummary, sendMorningReminder, cell_, stripMentions_, openRows_};', ctx);
   ctx.__api.setupSheets();
   return { api: ctx.__api, store, calls, props };
 }
@@ -379,19 +379,6 @@ const test = async (name, fn) => {
     assert.strictEqual(replies(env).length, before);
   });
 
-  await test('clearTestData wipes rows but keeps headers; group can bind again', async () => {
-    const env = makeEnv();
-    post(env, [groupMsg('@เหมียวสั่งมา งานทดสอบ')]);
-    assert.ok(env.store.requests.length > 1 && env.store.groups.length > 1 && env.store.processed_events.length > 1);
-    env.api.clearTestData();
-    assert.strictEqual(env.store.requests.length, 1);
-    assert.strictEqual(env.store.groups.length, 1);
-    assert.strictEqual(env.store.processed_events.length, 1);
-    assert.strictEqual(env.store.requests[0][0], 'id');
-    post(env, [groupMsg('@เหมียวสั่งมา ใหม่')]);
-    assert.strictEqual(reqRows(env).length, 1);
-  });
-
   await test('only the first group can bind; another group tagging is refused and logs nothing', async () => {
     const env = makeEnv();
     post(env, [groupMsg('@เหมียวสั่งมา งานร้านจริง')]);
@@ -496,6 +483,16 @@ const test = async (name, fn) => {
     const page2 = replies(env).pop().payload.messages[0];
     assert.ok(cardData(page2).includes('a=undo'));
     assert.strictEqual(page2.contents.contents.length, 1);
+  });
+
+  await test('"@บอท ยกเลิก" / "#สั่ง ยกเลิก" without a quoted request logs nothing and explains how', async () => {
+    const env = makeEnv();
+    post(env, [groupMsg('@เหมียวสั่งมา bind')]);
+    post(env, [groupMsg('@เหมียวสั่งมา ยกเลิก')]);
+    assert.ok(lastText(env).includes('กดตอบกลับ (Reply)'));
+    post(env, [groupMsg('#สั่ง ยกเลิก', { noMention: true })]);
+    assert.ok(lastText(env).includes('กดตอบกลับ (Reply)'));
+    assert.strictEqual(reqRows(env).length, 1, 'only the bind request exists');
   });
 
   for (const [s, name, note] of results) console.log(s.padEnd(5), name, note ? '— ' + note : '');
