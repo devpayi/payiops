@@ -495,6 +495,11 @@ const test = async (name, fn) => {
     assert.strictEqual(reqRows(env).length, 1, 'only the bind request exists');
   });
 
+  await test('doGet reports the deployed version (so a deploy can be checked in a browser)', async () => {
+    const env = makeEnv();
+    assert.ok(/^ok \d{4}-\d{2}-\d{2}\.\d+$/.test(env.api.doGet({}).text));
+  });
+
   for (const [s, name, note] of results) console.log(s.padEnd(5), name, note ? '— ' + note : '');
   console.log('\n' + results.filter(r => r[0] === 'PASS').length + '/' + results.length + ' passed');
   process.exit(results.some(r => r[0] === 'FAIL') ? 1 : 0);

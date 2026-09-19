@@ -18,7 +18,8 @@ Sheet: https://docs.google.com/spreadsheets/d/1R-Qq5PfJIlqEZd-x4Js3RZV1H5OEeQLTs
 6. Deploy → New deployment → Web app → Execute as: **Me**, Who has access: **Anyone**
 7. คัดลอก URL ที่ลงท้าย `/exec` → LINE Developers → Messaging API → Webhook URL
    (ถ้าตั้ง `WEBHOOK_KEY` ให้ใส่ `https://script.google.com/macros/s/.../exec?key=<รหัส>`) → เปิด **Use webhook**
-8. แก้โค้ดภายหลัง: ต้อง Deploy → Manage deployments → ดินสอ → Version: New version ทุกครั้ง ไม่งั้นของเก่ายังทำงานอยู่
+8. เช็คว่า deploy เวอร์ชันล่าสุดแล้วหรือยัง: เปิดลิงก์ `/exec` ในเบราว์เซอร์ จะขึ้น `ok <เลขเวอร์ชัน>` (ถ้าขึ้นแค่ `ok` แปลว่ายังเป็นเวอร์ชันเก่า)
+9. แก้โค้ดภายหลัง: ต้อง Deploy → Manage deployments → ดินสอ → Version: New version ทุกครั้ง ไม่งั้นของเก่ายังทำงานอยู่
 
 **ปุ่ม Verify ใน LINE จะขึ้น "302 Found" เสมอ — ปกติ ไม่ใช่ error ของเรา** Apps Script ตอบ 302 redirect ทุกครั้ง
 แต่สคริปต์รันจบตั้งแต่ request แรก (บันทึกชีต + ตอบไลน์) event จริงจึงทำงานได้ ไม่ต้องสนใจปุ่ม Verify
@@ -45,7 +46,7 @@ Sheet: https://docs.google.com/spreadsheets/d/1R-Qq5PfJIlqEZd-x4Js3RZV1H5OEeQLTs
   **ยังไม่เคยทดสอบครบวงจรกับ LINE จริง** ไม่จำเป็นสำหรับการใช้งานปกติ
 - ปุ่มบนการ์ดไม่หมดอายุ แต่กดซ้ำ/กดหลังงานถูกแก้ไขแล้วจะขึ้น "รายการเปลี่ยนแปลงหรือจัดการไปแล้ว" ไม่ทำรายการซ้ำ
 - ผูกได้ 1 กลุ่ม (กลุ่มแรกที่แท็กหลังล้างข้อมูล) กลุ่มอื่นแท็กแล้วบอทตอบว่ายังไม่เปิดใช้งาน ถ้าจะเปลี่ยนกลุ่ม ให้ลบแถวในแท็บ `groups` (เก็บหัวตารางไว้) แล้วแท็กในกลุ่มใหม่ ถ้าจะใช้หลายร้านต้องทำชีต+สคริปต์แยก
-- ทดสอบกับ mock ครบทุกเส้นทาง (25 กรณี) + ตรวจโครงสร้างการ์ดกับ LINE validate API แล้ว
+- ทดสอบกับ mock ครบทุกเส้นทาง (26 กรณี) + ตรวจโครงสร้างการ์ดกับ LINE validate API แล้ว
   แต่ปุ่มบนการ์ดใหม่ (ขนาด giga) ยังไม่เคยเห็นบนมือถือจริง
 
 ## ทดสอบในเครื่องโดยไม่ต้องใช้ LINE
@@ -53,6 +54,6 @@ Sheet: https://docs.google.com/spreadsheets/d/1R-Qq5PfJIlqEZd-x4Js3RZV1H5OEeQLTs
 แก้ `Code.gs` แล้วรันก่อน deploy ทุกครั้ง:
 
 ```bash
-node harness.cjs                       # จำลอง Sheet + LINE API ในเครื่อง 25 กรณี
+node harness.cjs                       # จำลอง Sheet + LINE API ในเครื่อง 26 กรณี
 LINE_TOKEN=<channel token> node harness.cjs   # + ส่งการ์ดทุกแบบให้ LINE validate API ตรวจ (ไม่ส่งข้อความจริง)
 ```

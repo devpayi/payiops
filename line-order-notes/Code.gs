@@ -22,6 +22,7 @@ const SHEET_REQUESTS = 'requests';
 const SHEET_GROUPS = 'groups';
 const SHEET_EVENTS = 'processed_events';
 const TZ = 'Asia/Bangkok';
+const VERSION = '2026-09-19.2'; // open the /exec URL in a browser to see which version is deployed
 const STATUS_OPEN = 'OPEN', STATUS_ORDERED = 'ORDERED', STATUS_PICKUP = 'PICKUP',
       STATUS_DONE = 'DONE', STATUS_CANCELLED = 'CANCELLED';
 const PAGE_SIZE = 15, MAX_FLEX_BYTES = 45000;
@@ -53,7 +54,7 @@ function setupTriggers() {
 // ---------- webhook entry ----------
 
 function doGet(e) {
-  return ContentService.createTextOutput('ok');
+  return ContentService.createTextOutput('ok ' + VERSION);
 }
 
 function doPost(e) {
