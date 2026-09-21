@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ฟอร์มเปล่า (ปริ้นให้กรอกมือ)</title>
+<style>
+  body { margin: 0; background: #fff; font-family: -apple-system, "Noto Sans Thai", Arial, sans-serif; }
+  .bar { position: sticky; top: 0; display: flex; gap: 8px; align-items: center; padding: 10px 16px; background: #f1f5f9; border-bottom: 1px solid #cbd5e1; }
+  .bar button { padding: 8px 16px; border: 0; border-radius: 8px; background: #10b981; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .bar a { font-size: 13px; color: #475569; }
+  #form { max-width: 800px; margin: 0 auto; padding: 16px; }
+  @page { size: A4; margin: 12mm; }
+  @media print { .bar { display: none !important; } #form { max-width: none; padding: 0; } }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button>
+  <a href="?kind=applicant">ใบสมัครงาน</a><a href="?kind=employee">ประวัติพนักงาน</a>
+</div>
+<div id="form"></div>
+<script src="/hr-pdf-form.js"></script>
+<script>
+  // ฟอร์มเปล่า: ส่ง get ที่คืนค่าว่างเสมอ -> ทุกช่องว่าง ทุก checkbox ไม่ติ๊ก (สร้างจากคำถามใน wizard ชุดเดียวกับ PDF ที่กรอกแล้ว)
+  var kind = new URLSearchParams(location.search).get('kind') === 'employee' ? 'employee' : 'applicant';
+  document.getElementById('form').innerHTML = window.HRPdfForm.build(function () { return ''; }, kind, { blank: true });
+</script>
+</body>
+</html>

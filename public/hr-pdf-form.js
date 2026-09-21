@@ -48,7 +48,7 @@
   var MILITARY = { title: 'สถานะทางการทหาร', rows: [[C('military_status', '', ['ได้รับการยกเว้น', 'ศึกษาวิชาทหาร (รด.)', 'ผ่านการเกณฑ์ทหารแล้ว', 'ไม่เกี่ยวข้อง/ไม่ระบุ'])]] };
   var EDUCATION = { title: 'ประวัติการศึกษา', rows: [
     [C('education_level', 'วุฒิการศึกษาสูงสุด', ['ต่ำกว่า ม.6', 'ม.6 / ปวช.', 'ปวส. / อนุปริญญา', 'ปริญญาตรี', 'ปริญญาโท', 'ปริญญาเอก', 'อื่นๆ'])],
-    [{ t: 'table', key: 'education_history', minRows: 1, cols: [
+    [{ t: 'table', key: 'education_history', minRows: 1, blankRows: 3, cols: [
       ['level', 'ระดับการศึกษา'], ['school', 'สถาบันการศึกษา'], ['major', 'สาขาวิชาเอก'], ['year', 'ปีที่จบการศึกษา'], ['gpa', 'เกรดเฉลี่ย'],
     ] }],
     [T('education_activities', 'กิจกรรม/รางวัลระหว่างการศึกษา', 3)],
@@ -56,7 +56,7 @@
   ] };
   var WORK = { title: 'ประสบการณ์การทำงาน', rows: [
     [C('has_work_experience', 'มีประสบการณ์การทำงานมาก่อนหรือไม่', ['ไม่มี', 'มี'])],
-    [{ t: 'table', key: 'work_history', minRows: 2, cols: [
+    [{ t: 'table', key: 'work_history', minRows: 2, blankRows: 5, cols: [
       ['company', 'ชื่อสถานประกอบการ'], ['salary', 'เงินเดือน'], ['from', 'ทำงานตั้งแต่ (เดือน/ปี)'], ['to', 'ถึง (เดือน/ปี)'],
       ['position', 'หน้าที่/ตำแหน่ง'], ['reason_left', 'สาเหตุที่ออก'],
     ] }],
@@ -128,23 +128,28 @@
     applicant: { fs: 12.5, lh: 1.6, gap: 5, sec: 6, pad: 3, rowh: 20 },
     employee: { fs: 14, lh: 1.8, gap: 9, sec: 11, pad: 5, rowh: 26 },
   };
+  // ฟอร์มเปล่าไว้ปริ้นให้กรอกมือ — ช่องสูงขึ้น ตารางมีแถวว่างเพิ่ม ไม่ต้องพยายามให้พอดี 2-3 หน้า
+  var BLANK_SCALES = {
+    applicant: { fs: 13, lh: 1.9, gap: 14, sec: 14, pad: 6, rowh: 34, blank: true },
+    employee: { fs: 13, lh: 1.85, gap: 11, sec: 11, pad: 5, rowh: 28, blank: true },
+  };
   var S = SCALES.applicant;
 
   function blank(value, grow) {
-    return '<span style="display:inline-block;border-bottom:1px dotted #333;min-width:70px;flex:' + (grow || 1) + ';padding:0 4px;font-weight:600;min-height:1.5em;overflow-wrap:anywhere">' + (esc(value) || '&nbsp;') + '</span>';
+    return '<span style="display:inline-block;border-bottom:1px dotted #333;min-width:70px;flex:' + (grow || 1) + ';padding:0 4px;font-weight:600;min-height:' + (S.blank ? '2.2em' : '1.5em') + ';overflow-wrap:anywhere">' + (esc(value) || '&nbsp;') + '</span>';
   }
   function chk(label, checked) {
     return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:14px"><span style="font-family:monospace;font-size:' + (S.fs + 2) + 'px">' + (checked ? '☑' : '☐') + '</span>' + esc(label) + '</span>';
   }
   function line(inner) {
-    return '<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 8px;margin-bottom:' + S.gap + 'px;font-size:' + S.fs + 'px">' + inner + '</div>';
+    return '<div style="break-inside:avoid;display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 8px;margin-bottom:' + S.gap + 'px;font-size:' + S.fs + 'px">' + inner + '</div>';
   }
   function table(cols, rows, minRows) {
     var data = rows.slice();
     while (data.length < minRows) data.push({});
     var head = cols.map(function (c) { return '<th style="border:1px solid #333;padding:' + S.pad + 'px 6px;background:#f1f5f9;font-weight:700">' + esc(c[1]) + '</th>'; }).join('');
     var body = data.map(function (r) {
-      return '<tr>' + cols.map(function (c) { return '<td style="border:1px solid #333;padding:' + S.pad + 'px 6px;height:' + S.rowh + 'px">' + esc(r[c[0]]) + '</td>'; }).join('') + '</tr>';
+      return '<tr style="break-inside:avoid">' + cols.map(function (c) { return '<td style="border:1px solid #333;padding:' + S.pad + 'px 6px;height:' + S.rowh + 'px">' + esc(r[c[0]]) + '</td>'; }).join('') + '</tr>';
     }).join('');
     return '<table style="width:100%;border-collapse:collapse;font-size:' + (S.fs - 1) + 'px;margin-bottom:' + S.gap + 'px"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
   }
@@ -171,20 +176,20 @@
 
   function build(get, kind, override) {
     var isEmp = kind === 'employee';
-    S = Object.assign({}, SCALES[isEmp ? 'employee' : 'applicant'], override || {});
+    S = Object.assign({}, (override && override.blank ? BLANK_SCALES : SCALES)[isEmp ? 'employee' : 'applicant'], override || {});
     var out = '<div style="font-family:-apple-system,\'Noto Sans Thai\',Arial,sans-serif;color:#111;font-size:' + S.fs + 'px;line-height:' + S.lh + '">' +
       '<div style="text-align:center;margin:0 0 ' + S.sec + 'px"><div style="font-size:' + (S.fs + 5) + 'px;font-weight:800">' + (isEmp ? 'ประวัติพนักงาน' : 'ใบสมัครงาน') + '</div>' +
       '<div style="font-size:' + (S.fs - 1) + 'px;color:#555">PAYI</div></div>';
     var secs = SECTIONS[isEmp ? 'employee' : 'applicant'];
     secs.forEach(function (sec, i) {
       // section สุดท้ายไม่เว้นล่าง — กัน margin ล้นหน้ากระดาษจนได้หน้าว่างต่อท้าย
-      out += '<div style="break-inside:avoid;margin-bottom:' + (i === secs.length - 1 ? 0 : S.sec) + 'px"><div style="font-weight:700;margin:4px 0 ' + S.gap + 'px;border-bottom:1px solid #333">' + (i + 1) + '. ' + esc(sec.title) + '</div>';
+      out += '<div style="' + (S.blank ? '' : 'break-inside:avoid;') + 'margin-bottom:' + (i === secs.length - 1 ? 0 : S.sec) + 'px"><div style="break-after:avoid;font-weight:700;margin:4px 0 ' + S.gap + 'px;border-bottom:1px solid #333">' + (i + 1) + '. ' + esc(sec.title) + '</div>';
       sec.rows.forEach(function (row) {
         if (row.length === 1 && row[0].t === 'table') {
           var it = row[0];
           var rows = get(it.key);
           if (!Array.isArray(rows)) rows = [];
-          out += table(it.cols, rows.filter(function (r) { return r && typeof r === 'object'; }), it.minRows);
+          out += table(it.cols, rows.filter(function (r) { return r && typeof r === 'object'; }), S.blank ? it.blankRows || it.minRows : it.minRows);
           return;
         }
         out += line(row.map(function (it) {

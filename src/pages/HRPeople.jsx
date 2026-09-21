@@ -243,6 +243,12 @@ export default function HRPeople() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600, border: 'none', background: 'var(--payi-gradient-primary)', color: '#fff', textDecoration: 'none', marginLeft: 'auto' }}>
           <FilePlus2 size={15} /> เปิด{activeView.formLabel}
         </a>
+        {(view === 'applicants_full' || view === 'employees_full') && (
+          <a href={`/blank-form.html?kind=${view === 'employees_full' ? 'employee' : 'applicant'}`} target="_blank" rel="noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600, border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', color: 'var(--payi-text-strong)', textDecoration: 'none' }}>
+            <Printer size={15} /> ฟอร์ม PDF ว่าง (ปริ้นกรอกมือ)
+          </a>
+        )}
       </div>
       <p style={{ margin: '-8px 0 0', fontSize: 12, color: 'var(--payi-text-faint)' }}>
         ส่งลิงก์นี้ให้พนักงาน/ผู้สมัครกรอกได้เลย: <a href={activeView.formUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--payi-mint-strong)' }}>{activeView.formUrl}</a>
