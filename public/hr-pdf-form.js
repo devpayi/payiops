@@ -56,7 +56,7 @@
   ] };
   var WORK = { title: 'ประสบการณ์การทำงาน', rows: [
     [C('has_work_experience', 'มีประสบการณ์การทำงานมาก่อนหรือไม่', ['ไม่มี', 'มี'])],
-    [{ t: 'table', key: 'work_history', minRows: 3, cols: [
+    [{ t: 'table', key: 'work_history', minRows: 2, cols: [
       ['company', 'ชื่อสถานประกอบการ'], ['salary', 'เงินเดือน'], ['from', 'ทำงานตั้งแต่ (เดือน/ปี)'], ['to', 'ถึง (เดือน/ปี)'],
       ['position', 'หน้าที่/ตำแหน่ง'], ['reason_left', 'สาเหตุที่ออก'],
     ] }],
@@ -129,16 +129,16 @@
     return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:14px"><span style="font-family:monospace;font-size:14px">' + (checked ? '☑' : '☐') + '</span>' + esc(label) + '</span>';
   }
   function line(inner) {
-    return '<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 8px;margin-bottom:8px;font-size:12.5px">' + inner + '</div>';
+    return '<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 8px;margin-bottom:4px;font-size:11.5px">' + inner + '</div>';
   }
   function table(cols, rows, minRows) {
     var data = rows.slice();
     while (data.length < minRows) data.push({});
-    var head = cols.map(function (c) { return '<th style="border:1px solid #333;padding:4px 6px;background:#f1f5f9;font-weight:700">' + esc(c[1]) + '</th>'; }).join('');
+    var head = cols.map(function (c) { return '<th style="border:1px solid #333;padding:2px 6px;background:#f1f5f9;font-weight:700">' + esc(c[1]) + '</th>'; }).join('');
     var body = data.map(function (r) {
-      return '<tr>' + cols.map(function (c) { return '<td style="border:1px solid #333;padding:4px 6px;height:20px">' + esc(r[c[0]]) + '</td>'; }).join('') + '</tr>';
+      return '<tr>' + cols.map(function (c) { return '<td style="border:1px solid #333;padding:2px 6px;height:18px">' + esc(r[c[0]]) + '</td>'; }).join('') + '</tr>';
     }).join('');
-    return '<table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:8px"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
+    return '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:4px"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
   }
 
   function renderItem(it, get) {
@@ -163,11 +163,11 @@
 
   function build(get, kind) {
     var isEmp = kind === 'employee';
-    var out = '<div style="font-family:-apple-system,\'Noto Sans Thai\',Arial,sans-serif;color:#111;font-size:12.5px;line-height:1.7">' +
-      '<div style="text-align:center;margin:0 0 14px"><div style="font-size:18px;font-weight:800">' + (isEmp ? 'ประวัติพนักงาน' : 'ใบสมัครงาน') + '</div>' +
+    var out = '<div style="font-family:-apple-system,\'Noto Sans Thai\',Arial,sans-serif;color:#111;font-size:11.5px;line-height:1.45">' +
+      '<div style="text-align:center;margin:0 0 8px"><div style="font-size:17px;font-weight:800">' + (isEmp ? 'ประวัติพนักงาน' : 'ใบสมัครงาน') + '</div>' +
       '<div style="font-size:11px;color:#555">PAYI</div></div>';
     SECTIONS[isEmp ? 'employee' : 'applicant'].forEach(function (sec, i) {
-      out += '<div style="break-inside:avoid;margin-bottom:10px"><div style="font-weight:700;margin:6px 0 6px;border-bottom:1px solid #333">' + (i + 1) + '. ' + esc(sec.title) + '</div>';
+      out += '<div style="break-inside:avoid;margin-bottom:6px"><div style="font-weight:700;margin:4px 0 4px;border-bottom:1px solid #333">' + (i + 1) + '. ' + esc(sec.title) + '</div>';
       sec.rows.forEach(function (row) {
         if (row.length === 1 && row[0].t === 'table') {
           var it = row[0];
