@@ -98,6 +98,22 @@ function FixedTable({ cols, data, minRows }) {
   )
 }
 
+// รายการ "ป้าย: ค่า" — โชว์เฉพาะที่มีข้อมูลจริง (บอส 2026-09-21: ทุกคำถามในฟอร์มออนไลน์ต้องลง PDF
+// แต่ข้อไหนไม่มีคำตอบไม่ต้องลง) ต่างจากช่องใน layout ตายตัวด้านบนที่ปล่อยว่างไว้เสมอ
+function InfoList({ items }) {
+  const shown = items.filter(([, v]) => V(v))
+  if (!shown.length) return null
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 18px', fontSize: 12.5, marginBottom: 10 }}>
+      {shown.map(([label, v]) => (
+        <div key={label} style={{ borderBottom: '1px dotted #333', padding: '2px 0', breakInside: 'avoid' }}>
+          <span>{label} : </span><b>{V(v)}</b>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function LockedApplicationForm({ row }) {
   const fullName = [row['คำนำหน้า'], row['ชื่อ-นามสกุล']].filter(Boolean).join('')
   // เพศไม่ได้เก็บเป็นฟิลด์ตรงๆ ในระบบเรา — เดาจากคำนำหน้าแทน (นาย=ชาย, นาง/นางสาว=หญิง)
@@ -140,6 +156,36 @@ function LockedApplicationForm({ row }) {
     row['โรคประจำตัว/สุขภาพ'] && `โรคประจำตัว/สุขภาพ: ${row['โรคประจำตัว/สุขภาพ']}`,
   ].filter(Boolean)
 
+  const parentLine = (p) => {
+    const name = V(row[`ชื่อ${p}`])
+    const bits = [name, V(row[`สถานะ${p}`]) && `(${V(row[`สถานะ${p}`])})`, V(row[`อาชีพ${p}`]) && `อาชีพ ${V(row[`อาชีพ${p}`])}`, V(row[`ที่อยู่/จังหวัด${p}`])].filter(Boolean)
+    return bits.join(' ')
+  }
+  const attach = (v) => (isUrl(v) ? 'แนบไฟล์แล้ว (เก็บใน Google Drive)' : V(v))
+  const positionItems = [
+    ['ตำแหน่งที่สมัคร/ตำแหน่งงาน', row['ตำแหน่งงานที่สมัคร'] || row['ตำแหน่งงาน']],
+    ['เงินเดือนที่ต้องการ', row['เงินเดือนที่ต้องการ']],
+    ['วันที่เริ่มงาน', row['วันที่เริ่มงานได้'] || row['วันที่เริ่มงาน']],
+    ['สถานภาพการทำงานปัจจุบัน', row['สถานภาพการทำงานปัจจุบัน']],
+  ]
+  const familyItems = [
+    ['ชื่อคู่สมรส', row['ชื่อคู่สมรส']], ['อาชีพคู่สมรส', row['อาชีพคู่สมรส']],
+    ['จำนวนบุตร', row['จำนวนบุตร']], ['จำนวนพี่น้อง', row['จำนวนพี่น้อง']],
+    ['เป็นบุตรคนที่', row['เป็นบุตรคนที่']],
+    ['บิดา', parentLine('บิดา')], ['มารดา', parentLine('มารดา')],
+  ]
+  const otherItems = [
+    ['ชื่อเล่น', row['ชื่อเล่น']], ['ภูมิลำเนาเดิม', row['ภูมิลำเนาเดิม']],
+    ['อาศัยมาแล้ว (ปี)', row['อาศัยมาแล้ว (ปี)']],
+    ['วุฒิการศึกษา', row['วุฒิการศึกษาที่ใช้สมัคร'] || row['วุฒิการศึกษาสูงสุด']],
+    ['กรุ๊ปเลือด', row['กรุ๊ปเลือด']],
+    ['ที่อยู่ตามทะเบียนบ้าน', row['ที่อยู่ตามทะเบียนบ้าน']],
+    ['รูปบัตรประชาชน', attach(row['รูปบัตรประชาชน'])], ['รูปทะเบียนบ้าน', attach(row['รูปทะเบียนบ้าน'])],
+    ['ธนาคาร', row['ธนาคาร']], ['เลขบัญชี', row['เลขบัญชี']], ['ชื่อบัญชี', row['ชื่อบัญชี']],
+    ['เอกสารที่เตรียมมา', row['เอกสารที่เตรียมมา']],
+    ['ทราบข่าวการสมัครงานจาก', row['ทราบข่าวการสมัครงานจาก']],
+  ]
+
   const wrap = { fontFamily: '-apple-system, "Noto Sans Thai", Arial, sans-serif', color: '#111', fontSize: 12.5, lineHeight: 1.7 }
   const pageBreak = { breakBefore: 'page' }
 
@@ -155,6 +201,7 @@ function LockedApplicationForm({ row }) {
         <div style={{ width: 90, height: 110, border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#999', flexShrink: 0 }}>รูปถ่าย</div>
       </div>
 
+      <InfoList items={positionItems} />
       <div style={{ fontWeight: 700, marginBottom: 8 }}>1. ประวัติส่วนตัว</div>
       <Line><span>ชื่อ - สกุล :</span><Blank value={fullName} grow={1} /></Line>
       <Line><span>เลขบัตรประจำตัวประชาชน</span><Blank value={idCard} grow={1} /></Line>
@@ -237,6 +284,11 @@ function LockedApplicationForm({ row }) {
         {moreInfoLines.length ? moreInfoLines.map((t, i) => (
           <div key={i} style={{ borderBottom: '1px dotted #333', padding: '3px 0', minHeight: 18 }}>{t}</div>
         )) : [0, 1, 2].map((i) => <div key={i} style={{ borderBottom: '1px dotted #333', padding: '3px 0', minHeight: 18 }}>&nbsp;</div>)}
+
+        {familyItems.some(([, v]) => V(v)) && <div style={{ fontWeight: 700, margin: '14px 0 6px' }}>8. ข้อมูลครอบครัว</div>}
+        <InfoList items={familyItems} />
+        {otherItems.some(([, v]) => V(v)) && <div style={{ fontWeight: 700, margin: '14px 0 6px' }}>9. ข้อมูลอื่นๆ</div>}
+        <InfoList items={otherItems} />
 
         <div style={{ marginTop: 28, fontSize: 12 }}>
           ข้าพเจ้าขอรับรองว่าข้อความข้างต้นเป็นความจริงทุกประการ หากปรากฏในภายหลังว่าข้อความ

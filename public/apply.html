@@ -505,6 +505,17 @@ function pTable(cols, rows, minRows) {
   const body = data.map((r) => `<tr>${cols.map((c) => `<td style="border:1px solid #333;padding:4px 6px;height:20px">${esc(r[c.key])}</td>`).join('')}</tr>`).join('');
   return `<table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:14px"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
+// รายการ "ป้าย: ค่า" — โชว์เฉพาะที่มีข้อมูล (บอส 2026-09-21: ทุกคำถามต้องลง PDF แต่ข้อไหนไม่มีคำตอบไม่ต้องลง)
+function pJoin(v) { return Array.isArray(v) ? v.join(', ') : (v == null ? '' : String(v)); }
+function pInfo(items) {
+  const shown = items.filter((it) => String(it[1] == null ? '' : it[1]).trim());
+  if (!shown.length) return '';
+  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 18px;font-size:12.5px;margin-bottom:10px">${shown.map((it) => `<div style="border-bottom:1px dotted #333;padding:2px 0;break-inside:avoid"><span>${esc(it[0])} : </span><b>${esc(it[1])}</b></div>`).join('')}</div>`;
+}
+function pParent(a, p) {
+  const st = a[p + '_status'];
+  return [a[p + '_name'], st && `(${st})`, a[p + '_occupation'] && `อาชีพ ${a[p + '_occupation']}`, a[p + '_address']].filter(Boolean).join(' ');
+}
 function buildLockedFormHTML(a) {
   const fullName = `${a.title || ''}${a.full_name || ''}`;
   const genderMale = a.title === 'นาย';
@@ -514,7 +525,7 @@ function buildLockedFormHTML(a) {
   const marital = a.marital_status;
 
   const eduRow = (a.education_history || [])[0] || {};
-  const eduRows = eduRow.level || eduRow.school ? [{ from: '', to: esc(eduRow.year), school: esc(eduRow.school), major: esc(eduRow.major), cert: esc(eduRow.level) }] : [];
+  const eduRows = eduRow.level || eduRow.school ? [{ from: '', to: eduRow.year, school: eduRow.school, major: eduRow.major, cert: eduRow.level }] : [];
   const workRows = (a.work_history || []).map((w) => ({ from: w.from, to: w.to, org: w.company, position: w.position, salary: w.salary, reason: w.reason_left }));
   const programs = a.computer_programs || [];
   const compLevel = a.computer_level;
@@ -533,6 +544,10 @@ function buildLockedFormHTML(a) {
     a.health_condition && `โรคประจำตัว/สุขภาพ: ${a.health_condition}`,
   ].filter(Boolean);
 
+  const positionItems = [['ตำแหน่งที่สมัคร', a.position], ['เงินเดือนที่ต้องการ', a.expected_salary], ['วันที่เริ่มงานได้', a.available_date], ['สถานภาพการทำงานปัจจุบัน', a.current_status]];
+  const familyItems = [['ชื่อคู่สมรส', a.spouse_name], ['อาชีพคู่สมรส', a.spouse_occupation], ['จำนวนบุตร', a.children_count], ['จำนวนพี่น้อง', a.siblings], ['เป็นบุตรคนที่', a.birth_order], ['บิดา', pParent(a, 'father')], ['มารดา', pParent(a, 'mother')]];
+  const otherItems = [['ชื่อเล่น', a.nickname], ['ภูมิลำเนาเดิม', a.hometown], ['อาศัยมาแล้ว (ปี)', a.residence_years], ['วุฒิการศึกษาที่ใช้สมัคร', a.education_level], ['เอกสารที่เตรียมมา', pJoin(a.documents_ready)], ['ทราบข่าวการสมัครงานจาก', a.heard_from]];
+
   return `
   <div style="font-family:-apple-system,'Noto Sans Thai',Arial,sans-serif;color:#111;font-size:12.5px;line-height:1.7">
     <div style="text-align:right;font-size:11px">ใบสมัครเลขที่ ${pBlank('', 80, 0)}</div>
@@ -544,6 +559,7 @@ function buildLockedFormHTML(a) {
       <div style="width:90px;height:110px;border:1px solid #333;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999;flex-shrink:0">รูปถ่าย</div>
     </div>
 
+    ${pInfo(positionItems)}
     <div style="font-weight:700;margin-bottom:8px">1. ประวัติส่วนตัว</div>
     ${pLine(`<span>ชื่อ - สกุล :</span>${pBlank(fullName, 60, 1)}`)}
     ${pLine(`<span>ที่อยู่ปัจจุบันเลขที่</span>${pBlank(a.address, 60, 2)}<span>ตำบล/แขวง</span>${pBlank(a.sub_district, 60, 1)}`)}
@@ -586,6 +602,11 @@ function buildLockedFormHTML(a) {
 
       <div style="font-weight:700;margin:14px 0 6px">7. ข้อมูลเพิ่มเติม (เช่น ประวัติการฝึกอบรม/คุณสมบัติอื่นๆ ที่เกี่ยวข้องกับตำแหน่งงาน)</div>
       ${(moreInfoLines.length ? moreInfoLines : ['', '', '']).map((t) => `<div style="border-bottom:1px dotted #333;padding:3px 0;min-height:18px">${esc(t) || '&nbsp;'}</div>`).join('')}
+
+      ${familyItems.some((it) => String(it[1] == null ? '' : it[1]).trim()) ? '<div style="font-weight:700;margin:14px 0 6px">8. ข้อมูลครอบครัว</div>' : ''}
+      ${pInfo(familyItems)}
+      ${otherItems.some((it) => String(it[1] == null ? '' : it[1]).trim()) ? '<div style="font-weight:700;margin:14px 0 6px">9. ข้อมูลอื่นๆ</div>' : ''}
+      ${pInfo(otherItems)}
 
       <div style="margin-top:28px;font-size:12px">
         ข้าพเจ้าขอรับรองว่าข้อความข้างต้นเป็นความจริงทุกประการ หากปรากฏในภายหลังว่าข้อความ

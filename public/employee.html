@@ -552,6 +552,17 @@ function pTable(cols, rows, minRows) {
   const body = data.map((r) => `<tr>${cols.map((c) => `<td style="border:1px solid #333;padding:4px 6px;height:20px">${esc(r[c.key])}</td>`).join('')}</tr>`).join('');
   return `<table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:14px"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
+// รายการ "ป้าย: ค่า" — โชว์เฉพาะที่มีข้อมูล (บอส 2026-09-21: ทุกคำถามต้องลง PDF แต่ข้อไหนไม่มีคำตอบไม่ต้องลง)
+function pJoin(v) { return Array.isArray(v) ? v.join(', ') : (v == null ? '' : String(v)); }
+function pInfo(items) {
+  const shown = items.filter((it) => String(it[1] == null ? '' : it[1]).trim());
+  if (!shown.length) return '';
+  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 18px;font-size:12.5px;margin-bottom:10px">${shown.map((it) => `<div style="border-bottom:1px dotted #333;padding:2px 0;break-inside:avoid"><span>${esc(it[0])} : </span><b>${esc(it[1])}</b></div>`).join('')}</div>`;
+}
+function pParent(a, p) {
+  const st = a[p + '_status'];
+  return [a[p + '_name'], st && `(${st})`, a[p + '_occupation'] && `อาชีพ ${a[p + '_occupation']}`, a[p + '_address']].filter(Boolean).join(' ');
+}
 function buildLockedFormHTML(a) {
   const fullName = `${a.title || ''}${a.full_name || ''}`;
   const genderMale = a.title === 'นาย';
@@ -578,10 +589,11 @@ function buildLockedFormHTML(a) {
     a.favorite_subject && `สาขาที่ชอบเป็นพิเศษ: ${a.favorite_subject}`,
     a.criminal_record && `ประวัติอาชญากรรม: ${a.criminal_record}`,
     a.health_condition && `โรคประจำตัว/สุขภาพ: ${a.health_condition}`,
-    a.blood_type && `กรุ๊ปเลือด: ${a.blood_type}`,
-    (a.bank_name || a.bank_account_number) && `บัญชีธนาคาร: ${a.bank_name || ''} เลขบัญชี ${a.bank_account_number || ''} (${a.bank_account_name || ''})`,
-    a.house_registration_address && `ที่อยู่ตามทะเบียนบ้าน: ${a.house_registration_address}`,
   ].filter(Boolean);
+
+  const positionItems = [['ตำแหน่งงาน', a.position], ['วันที่เริ่มงาน', a.start_date]];
+  const familyItems = [['ชื่อคู่สมรส', a.spouse_name], ['อาชีพคู่สมรส', a.spouse_occupation], ['จำนวนบุตร', a.children_count], ['จำนวนพี่น้อง', a.siblings], ['เป็นบุตรคนที่', a.birth_order], ['บิดา', pParent(a, 'father')], ['มารดา', pParent(a, 'mother')]];
+  const otherItems = [['ชื่อเล่น', a.nickname], ['ภูมิลำเนาเดิม', a.hometown], ['อาศัยมาแล้ว (ปี)', a.residence_years], ['วุฒิการศึกษาสูงสุด', a.education_level], ['กรุ๊ปเลือด', a.blood_type], ['ที่อยู่ตามทะเบียนบ้าน', a.house_registration_address], ['รูปบัตรประชาชน', a.id_card_photo ? 'แนบไฟล์แล้ว' : ''], ['รูปทะเบียนบ้าน', a.house_registration_photo ? 'แนบไฟล์แล้ว' : ''], ['ธนาคาร', a.bank_name], ['เลขบัญชี', a.bank_account_number], ['ชื่อบัญชี', a.bank_account_name]];
 
   return `
   <div style="font-family:-apple-system,'Noto Sans Thai',Arial,sans-serif;color:#111;font-size:12.5px;line-height:1.7">
@@ -594,6 +606,7 @@ function buildLockedFormHTML(a) {
       <div style="width:90px;height:110px;border:1px solid #333;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999;flex-shrink:0">รูปถ่าย</div>
     </div>
 
+    ${pInfo(positionItems)}
     <div style="font-weight:700;margin-bottom:8px">1. ประวัติส่วนตัว</div>
     ${pLine(`<span>ชื่อ - สกุล :</span>${pBlank(fullName, 60, 1)}`)}
     ${pLine(`<span>เลขบัตรประจำตัวประชาชน</span>${pBlank(a.id_card_number, 60, 1)}`)}
@@ -637,6 +650,11 @@ function buildLockedFormHTML(a) {
 
       <div style="font-weight:700;margin:14px 0 6px">7. ข้อมูลเพิ่มเติม (เช่น ประวัติการฝึกอบรม/คุณสมบัติอื่นๆ ที่เกี่ยวข้องกับตำแหน่งงาน)</div>
       ${(moreInfoLines.length ? moreInfoLines : ['', '', '']).map((t) => `<div style="border-bottom:1px dotted #333;padding:3px 0;min-height:18px">${esc(t) || '&nbsp;'}</div>`).join('')}
+
+      ${familyItems.some((it) => String(it[1] == null ? '' : it[1]).trim()) ? '<div style="font-weight:700;margin:14px 0 6px">8. ข้อมูลครอบครัว</div>' : ''}
+      ${pInfo(familyItems)}
+      ${otherItems.some((it) => String(it[1] == null ? '' : it[1]).trim()) ? '<div style="font-weight:700;margin:14px 0 6px">9. ข้อมูลอื่นๆ</div>' : ''}
+      ${pInfo(otherItems)}
 
       <div style="margin-top:28px;font-size:12px">
         ข้าพเจ้าขอรับรองว่าข้อความข้างต้นเป็นความจริงทุกประการ หากปรากฏในภายหลังว่าข้อความ
