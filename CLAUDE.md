@@ -401,6 +401,21 @@ Sheets rate limits.
       `SECTIONS` in `hr-pdf-form.js` (key must match `answers` key) + `PDF_HEADERS` in HRPeople.jsx.**
       Layout is natural-flow (`break-inside: avoid` per section), no forced page breaks; verified with
       headless Chrome via a local http server (script src is absolute `/hr-pdf-form.js`, won't load from file://).
+    - **✅ DONE (2026-09-21) — "ลบ" = ย้ายไป "ประวัติที่ลบ" (soft delete, restorable) + read-range fix.**
+      Owner wanted delete but nothing lost. Drawer "ลบ" button (dev+boss, `window.confirm`) POSTs
+      `op=hr-people` `{action:'delete-person', view, row, ts}`: server re-reads that sheet row and
+      **refuses (409) unless col A timestamp still matches `ts`** (row numbers shift when someone submits
+      or deletes meanwhile), copies the whole row as JSON (keys = original headers, works for all 4 tabs
+      incl. Google-Form ones) into new tab **`deleted_people`** (`id, deleted_at, deleted_by, source_view,
+      name, timestamp, data_json`) FIRST, then `deleteDimension`s the source row (`deleteExternalRow` in
+      sheets.js) — a failure mid-way can only leave a duplicate, never lose data. New 5th view
+      "ประวัติที่ลบ" lists them with "กู้คืน" (`restore-person`: appends back by the source tab's headers,
+      leading-zero values get the `'` prefix again, removes the trash row). Drive photos are NOT touched.
+      **Also fixed: `__row` was `index-after-filter + 2`** (wrong whenever an empty row sat between data
+      rows) — now computed before filtering. **And the read range `A:Z` → `A:ZZ`** (+ `A1:ZZ1` header check
+      in `ensureExternalSheet`): the `*_full` tabs have 60-66 columns, everything past column Z (marital,
+      military, education, skills, references…) was silently missing from the dashboard/PDF ("checkbox
+      empty" bug). Verified end-to-end against a scratch tab (submit→delete→trash→restore, 60 columns intact).
     - **✅ DONE (2026-09-18) — same locked-pattern PDF ported to the applicant/employee
       wizards' own done-screens too.** Owner tested the dashboard's "สร้าง PDF" and then
       asked why the wizard's own "พิมพ์ใบสมัคร (PDF)" button (on `apply.html`'s/

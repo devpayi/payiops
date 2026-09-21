@@ -198,6 +198,17 @@ export async function ensureExternalSheet(spreadsheetId, sheetName, headers) {
   }
 }
 
+// ลบแถวจริงออกจากแท็บ (rowNumber = เลขแถวใน Sheets เริ่มที่ 1 รวมแถวหัวตาราง)
+export async function deleteExternalRow(spreadsheetId, sheetName, rowNumber) {
+  const meta = await withQuotaRetry(() => getClient().spreadsheets.get({ spreadsheetId }))
+  const tab = meta.data.sheets.find((s) => s.properties.title === sheetName)
+  if (!tab) throw new Error(`ไม่พบแท็บ ${sheetName}`)
+  await withQuotaRetry(() => getClient().spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: { requests: [{ deleteDimension: { range: { sheetId: tab.properties.sheetId, dimension: 'ROWS', startIndex: rowNumber - 1, endIndex: rowNumber } } }] },
+  }))
+}
+
 export async function appendExternalRows(spreadsheetId, sheetName, rows) {
   await withQuotaRetry(() => getClient().spreadsheets.values.append({
     spreadsheetId,

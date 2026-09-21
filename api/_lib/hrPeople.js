@@ -14,7 +14,7 @@
 // (ดู route ใน sheet-tools.js, เช็คก่อนถึง requireAuth เหมือน line-webhook) เพราะผู้สมัครงาน
 // ไม่มีบัญชีในระบบ ไม่เก็บรูป/ไฟล์ใดๆ (owner ตัดสินใจ 2026-09-11 — เก็บแค่ข้อความ ไม่เสี่ยงเรื่อง
 // พื้นที่เก็บไฟล์ฟรีไม่มี/ความเป็นส่วนตัวของรูปบัตร)
-import { getExternalSheet, ensureExternalSheet, appendExternalRows } from './sheets.js'
+import { getExternalSheet, ensureExternalSheet, appendExternalRows, deleteExternalRow } from './sheets.js'
 import { uploadToDrive } from './driveBridge.js'
 
 const HR_SHEET_ID = () => (process.env.HR_SHEET_ID || '').trim()
@@ -23,7 +23,13 @@ const TAB = {
   applicants: (process.env.HR_APPLICANT_TAB || 'applicants').trim(),
   applicants_full: (process.env.HR_APPLICANT_FULL_TAB || 'applicants_full').trim(),
   employees_full: (process.env.HR_EMPLOYEE_FULL_TAB || 'employees_full').trim(),
+  deleted: 'deleted_people', // ประวัติที่ลบ (ลบจากแดชบอร์ด = ย้ายมาเก็บที่นี่ ไม่หายจริง กู้คืนได้)
 }
+const SOURCE_VIEWS = ['employees', 'employees_full', 'applicants', 'applicants_full']
+// แถวที่ลบเก็บเป็น 1 แถวต่อ 1 คน: ข้อมูลเดิมทั้งแถวเป็น JSON (คีย์ = หัวคอลัมน์เดิม) — ใช้ได้กับทุกแท็บ
+// รวมแท็บ Google Form เดิมที่หัวคอลัมน์ไม่ตรงกับ *_FIELDS ของเรา และกู้คืนกลับตามหัวคอลัมน์ได้
+const TRASH_HEADERS = ['id', 'deleted_at', 'deleted_by', 'source_view', 'name', 'timestamp', 'data_json']
+const VIEW_LABEL = { employees: 'พนักงาน (เดิม)', employees_full: 'พนักงาน (แบบเต็ม)', applicants: 'ผู้สมัคร (แบบสั้น)', applicants_full: 'ผู้สมัคร (แบบเต็ม)' }
 // โฟลเดอร์ Drive ของบอสเอง (ไม่ใช่ของ Service Account) สำหรับรูปบัตร ปชช/ทะเบียนบ้านพนักงานใหม่ —
 // อัพโหลดผ่าน Apps Script bridge เท่านั้น (ดู driveBridge.js — Service Account ไม่มีโควต้าเก็บไฟล์)
 const EMPLOYEE_DOCS_FOLDER_ID = (process.env.HR_EMPLOYEE_DOCS_FOLDER_ID
@@ -31,7 +37,82 @@ const EMPLOYEE_DOCS_FOLDER_ID = (process.env.HR_EMPLOYEE_DOCS_FOLDER_ID
 
 const isEmptyRow = (row) => !row.some((cell) => String(cell ?? '').trim() !== '')
 
+// เลขขึ้นต้นด้วย 0 (เบอร์โทร/เลขบัตร) ต้องใส่ ' นำหน้าตอนเขียนกลับ ไม่งั้น Sheets ตัด 0 ทิ้ง — เหมือน TEXT_FORCE_KEYS
+const restoreCell = (v) => {
+  const s = String(v ?? '')
+  return /^0\d+$/.test(s) ? `'${s}` : s
+}
+const actorName = (req) => req.user?.name || req.user?.u || 'dev'
+
+async function opDeletePerson(req, res, sheetId) {
+  const { view, row, ts } = req.body || {}
+  const rowNo = Number(row)
+  if (!SOURCE_VIEWS.includes(view) || !Number.isInteger(rowNo) || rowNo < 2) {
+    return res.status(400).json({ success: false, error: 'ข้อมูลที่ส่งมาไม่ถูกต้อง' })
+  }
+  const tab = TAB[view]
+  try {
+    const [headerRows, dataRows] = await Promise.all([
+      getExternalSheet(sheetId, `${tab}!A1:ZZ1`),
+      getExternalSheet(sheetId, `${tab}!A${rowNo}:ZZ${rowNo}`),
+    ])
+    const headers = (headerRows[0] || []).map((h) => String(h ?? '').trim())
+    const cells = dataRows[0] || []
+    // กันลบผิดคน: ระหว่างที่เปิดหน้าจออยู่ อาจมีคนส่งฟอร์มเข้ามา/มีคนลบแถวอื่นจนเลขแถวเลื่อน
+    // ต้องเช็คว่าแถวนั้นยังเป็นคนเดิมจริง (ประทับเวลาตรงกัน) ก่อนลบ ไม่ตรง = ไม่ทำอะไรเลย
+    if (!cells.length || String(cells[0] ?? '').trim() !== String(ts ?? '').trim()) {
+      return res.status(409).json({ success: false, error: 'ข้อมูลเปลี่ยนไปแล้ว (มีการเพิ่ม/ลบรายการ) กรุณากดโหลดใหม่แล้วลองอีกครั้ง' })
+    }
+    const data = {}
+    headers.forEach((h, i) => { if (h) data[h] = String(cells[i] ?? '').trim() })
+    const nameHeader = headers.find((h) => h === 'ชื่อ-นามสกุล') || headers.find((h) => /ชื่อ/.test(h) && !/เล่น|บริษัท|ฉุกเฉิน/.test(h)) || ''
+    const json = JSON.stringify(data)
+    if (json.length > 45000) {
+      return res.status(413).json({ success: false, error: 'ข้อมูลรายการนี้ใหญ่เกินกว่าจะเก็บในประวัติที่ลบได้' })
+    }
+    await ensureExternalSheet(sheetId, TAB.deleted, TRASH_HEADERS)
+    const id = `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+    // เก็บลงประวัติที่ลบก่อน แล้วค่อยลบแถวจริง — ถ้าขั้นลบพลาด อย่างมากมีสำเนาซ้ำ ไม่มีทางข้อมูลหาย
+    await appendExternalRows(sheetId, TAB.deleted, [[id, new Date().toISOString(), actorName(req), view, nameHeader ? data[nameHeader] : '', String(ts ?? '').trim(), json]])
+    await deleteExternalRow(sheetId, tab, rowNo)
+    return res.status(200).json({ success: true, id })
+  } catch (e) {
+    console.error('opDeletePerson:', e.message)
+    return res.status(500).json({ success: false, error: 'ลบไม่สำเร็จ ลองใหม่อีกครั้ง' })
+  }
+}
+
+async function opRestorePerson(req, res, sheetId) {
+  const { id } = req.body || {}
+  if (!id) return res.status(400).json({ success: false, error: 'ข้อมูลที่ส่งมาไม่ถูกต้อง' })
+  try {
+    const values = await getExternalSheet(sheetId, `${TAB.deleted}!A:G`)
+    const idx = values.findIndex((r, i) => i > 0 && String(r[0] ?? '') === String(id))
+    if (idx < 0) return res.status(404).json({ success: false, error: 'ไม่พบรายการนี้ในประวัติที่ลบ (อาจถูกกู้คืนไปแล้ว)' })
+    const view = values[idx][3]
+    const json = values[idx][6]
+    if (!SOURCE_VIEWS.includes(view)) return res.status(400).json({ success: false, error: 'ประเภทข้อมูลไม่ถูกต้อง' })
+    const data = JSON.parse(json || '{}')
+    const headerRows = await getExternalSheet(sheetId, `${TAB[view]}!A1:ZZ1`)
+    const headers = (headerRows[0] || []).map((h) => String(h ?? '').trim())
+    await appendExternalRows(sheetId, TAB[view], [headers.map((h) => restoreCell(data[h]))])
+    await deleteExternalRow(sheetId, TAB.deleted, idx + 1)
+    return res.status(200).json({ success: true })
+  } catch (e) {
+    console.error('opRestorePerson:', e.message)
+    return res.status(500).json({ success: false, error: 'กู้คืนไม่สำเร็จ ลองใหม่อีกครั้ง' })
+  }
+}
+
 export default async function opHrPeople(req, res) {
+  if (req.method === 'POST') {
+    const sheetId = HR_SHEET_ID()
+    if (!sheetId) return res.status(503).json({ success: false, error: 'ระบบยังไม่ได้ตั้งค่า (HR_SHEET_ID)' })
+    const action = (req.body || {}).action
+    if (action === 'delete-person') return opDeletePerson(req, res, sheetId)
+    if (action === 'restore-person') return opRestorePerson(req, res, sheetId)
+    return res.status(400).json({ success: false, error: 'ไม่รู้จัก action นี้' })
+  }
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' })
 
   const view = TAB[req.query.view] ? req.query.view : 'employees'
@@ -41,13 +122,33 @@ export default async function opHrPeople(req, res) {
   }
 
   try {
+    if (view === 'deleted') {
+      await ensureExternalSheet(sheetId, TAB.deleted, TRASH_HEADERS)
+      const trash = await getExternalSheet(sheetId, `${TAB.deleted}!A:G`)
+      const delRows = trash.slice(1).filter((r) => !isEmptyRow(r)).map((r) => {
+        let original = {}
+        try { original = JSON.parse(r[6] || '{}') } catch { /* เสียหาย = โชว์ว่าง */ }
+        return {
+          __row: String(r[0] ?? ''), // id ของรายการที่ลบ
+          'วันที่ลบ': new Date(r[1] || 0).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }),
+          'ลบโดย': String(r[2] ?? ''),
+          'ประเภท': VIEW_LABEL[r[3]] || String(r[3] ?? ''),
+          'ชื่อ': String(r[4] ?? ''),
+          'ประทับเวลาเดิม': String(r[5] ?? ''),
+          __data: original,
+        }
+      }).reverse()
+      res.setHeader('Cache-Control', 'private, max-age=0, no-store')
+      return res.status(200).json({ success: true, configured: true, view, headers: ['วันที่ลบ', 'ลบโดย', 'ประเภท', 'ชื่อ', 'ประทับเวลาเดิม'], rows: delRows, count: delRows.length })
+    }
     const values = await getExternalSheet(sheetId, `${TAB[view]}!A:ZZ`)
     const [headers = [], ...dataRows] = values
     const cleanHeaders = headers.map((h) => String(h ?? '').trim())
     const rows = dataRows
-      .filter((row) => !isEmptyRow(row))
-      .map((row, i) => {
-        const obj = { __row: i + 2 }
+      .map((row, i) => ({ row, sheetRow: i + 2 })) // เลขแถวจริงในชีต ต้องคิดก่อนกรองแถวว่างออก ไม่งั้นเลขแถวเลื่อนผิด
+      .filter(({ row }) => !isEmptyRow(row))
+      .map(({ row, sheetRow }) => {
+        const obj = { __row: sheetRow }
         cleanHeaders.forEach((h, idx) => { obj[h || `col${idx + 1}`] = String(row[idx] ?? '').trim() })
         return obj
       })

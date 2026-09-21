@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { Users, UserPlus, Search, X, ExternalLink, RefreshCw, FilePlus2, Printer } from 'lucide-react'
+import { Users, UserPlus, Search, X, ExternalLink, RefreshCw, FilePlus2, Printer, Trash2, RotateCcw } from 'lucide-react'
 import KpiCard from '../components/KpiCard'
 
 const API = '/api/sheet-tools?op=hr-people'
@@ -10,6 +10,8 @@ const VIEWS = [
   { id: 'employees_full', label: 'พนักงาน (แบบเต็ม)', icon: Users, formLabel: 'ฟอร์มข้อมูลพนักงาน (แบบเต็ม บนมือถือ)', formUrl: '/employee.html' },
   { id: 'applicants', label: 'ผู้สมัครงาน (แบบสั้น)', icon: UserPlus, formLabel: 'ฟอร์มใบสมัครงาน (แบบสั้น)', formUrl: 'https://docs.google.com/forms/d/1sjhYp5tFwJlvuhpa5yT0DwPOVutZdmxXmBnENiWs_AM/viewform' },
   { id: 'applicants_full', label: 'ผู้สมัครงาน (แบบเต็ม)', icon: FilePlus2, formLabel: 'ฟอร์มใบสมัครงาน (แบบเต็ม บนมือถือ)', formUrl: '/apply.html' },
+  // ลบจากแดชบอร์ด = ย้ายมาเก็บที่นี่ (ไม่หายจริง) กู้คืนกลับได้ — ไม่มีฟอร์มของตัวเอง
+  { id: 'deleted', label: 'ประวัติที่ลบ', icon: Trash2 },
 ]
 
 // ตาราง employees_full/applicants_full มีคอลัมน์เยอะมาก (50-65 คอลัมน์) โชว์ทุกคอลัมน์ในตาราง
@@ -126,7 +128,7 @@ function LinkOrText({ value }) {
 
 // พิมพ์เฉพาะเนื้อหา drawer (ซ่อนทุกอย่างอื่นตอนสั่งพิมพ์) — ไม่ต้องใช้ library, ใช้ browser
 // print เดิม เหมือน public/apply.html แค่ scope ด้วย class .hr-print-area แทน
-function DetailDrawer({ row, headers, onClose }) {
+function DetailDrawer({ row, headers, onClose, onDelete, onRestore }) {
   if (!row) return null
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }}>
@@ -150,6 +152,18 @@ function DetailDrawer({ row, headers, onClose }) {
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--payi-text-strong)' }}>
               <Printer size={14} /> สร้าง PDF
             </button>
+            {onDelete && (
+              <button onClick={onDelete} title="ลบ (ย้ายไปประวัติที่ลบ กู้คืนได้)"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#b91c1c' }}>
+                <Trash2 size={14} /> ลบ
+              </button>
+            )}
+            {onRestore && (
+              <button onClick={onRestore} title="กู้คืนกลับไปที่เดิม"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--payi-mint-strong)' }}>
+                <RotateCcw size={14} /> กู้คืน
+              </button>
+            )}
             <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--payi-text-muted)' }}><X size={20} /></button>
           </div>
         </div>
@@ -205,10 +219,36 @@ export default function HRPeople() {
 
   useEffect(() => { load() }, [load])
 
+  const isTrash = view === 'deleted'
+  const post = (body) => fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json())
+
+  // ลบ = ย้ายไปประวัติที่ลบ (server เช็คว่าแถวยังเป็นคนเดิมจริงก่อนลบ กันเลขแถวเลื่อนจนลบผิดคน)
+  const deleteRow = async (row) => {
+    const name = row[nameColRef.current] || 'รายการนี้'
+    if (!window.confirm(`ลบ "${name}" ?\n\nข้อมูลจะถูกย้ายไปแท็บ "ประวัติที่ลบ" ยังกู้คืนได้`)) return
+    try {
+      const d = await post({ action: 'delete-person', view, row: row.__row, ts: row['ประทับเวลา'] })
+      if (!d.success) throw new Error(d.error || 'ลบไม่สำเร็จ')
+      setSelected(null)
+      load()
+    } catch (e) { window.alert(e.message) }
+  }
+  const restoreRow = async (row) => {
+    if (!window.confirm(`กู้คืน "${row['ชื่อ'] || 'รายการนี้'}" กลับไปที่เดิม?`)) return
+    try {
+      const d = await post({ action: 'restore-person', id: row.__row })
+      if (!d.success) throw new Error(d.error || 'กู้คืนไม่สำเร็จ')
+      setSelected(null)
+      load()
+    } catch (e) { window.alert(e.message) }
+  }
+
   const activeView = VIEWS.find((v) => v.id === view) || VIEWS[0]
   const headers = data.headers || []
   const rows = data.rows || []
   const nameCol = useMemo(() => headers.find(nameHint) || headers[1] || headers[0], [headers])
+  const nameColRef = useRef(nameCol)
+  nameColRef.current = nameCol
   // แบบเต็ม (employees_full/applicants_full) คอลัมน์เยอะเกินโชว์ในตารางไหว — โชว์แค่สรุป
   // แล้วให้กด "ดูทั้งหมด" เปิด Drawer แทน (Drawer ยังโชว์ headers ครบทุกคอลัมน์เหมือนเดิม)
   const summaryDef = SUMMARY_COLUMNS[view]
@@ -239,10 +279,12 @@ export default function HRPeople() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', color: 'var(--payi-text-muted)' }}>
           <RefreshCw size={14} />
         </button>
-        <a href={activeView.formUrl} target="_blank" rel="noreferrer"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600, border: 'none', background: 'var(--payi-gradient-primary)', color: '#fff', textDecoration: 'none', marginLeft: 'auto' }}>
-          <FilePlus2 size={15} /> เปิด{activeView.formLabel}
-        </a>
+        {!isTrash && (
+          <a href={activeView.formUrl} target="_blank" rel="noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600, border: 'none', background: 'var(--payi-gradient-primary)', color: '#fff', textDecoration: 'none', marginLeft: 'auto' }}>
+            <FilePlus2 size={15} /> เปิด{activeView.formLabel}
+          </a>
+        )}
         {(view === 'applicants_full' || view === 'employees_full') && (
           <a href={`/blank-form.html?kind=${view === 'employees_full' ? 'employee' : 'applicant'}`} target="_blank" rel="noreferrer"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600, border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', color: 'var(--payi-text-strong)', textDecoration: 'none' }}>
@@ -250,9 +292,15 @@ export default function HRPeople() {
           </a>
         )}
       </div>
-      <p style={{ margin: '-8px 0 0', fontSize: 12, color: 'var(--payi-text-faint)' }}>
-        ส่งลิงก์นี้ให้พนักงาน/ผู้สมัครกรอกได้เลย: <a href={activeView.formUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--payi-mint-strong)' }}>{activeView.formUrl}</a>
-      </p>
+      {isTrash ? (
+        <p style={{ margin: '-8px 0 0', fontSize: 12, color: 'var(--payi-text-faint)' }}>
+          รายการที่ลบจากแท็บอื่นจะมาอยู่ที่นี่ ข้อมูลครบทุกช่อง คลิกแถวเพื่อดู หรือกด "กู้คืน" เพื่อส่งกลับไปที่เดิม
+        </p>
+      ) : (
+        <p style={{ margin: '-8px 0 0', fontSize: 12, color: 'var(--payi-text-faint)' }}>
+          ส่งลิงก์นี้ให้พนักงาน/ผู้สมัครกรอกได้เลย: <a href={activeView.formUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--payi-mint-strong)' }}>{activeView.formUrl}</a>
+        </p>
+      )}
 
       {data.configured === false ? (
         <SetupHint />
@@ -283,7 +331,7 @@ export default function HRPeople() {
                   {tableCols.map((h) => (
                     <th key={h} style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '1px solid var(--payi-border)', color: 'var(--payi-text-muted)', fontWeight: 700, whiteSpace: 'nowrap', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.03em' }}>{displayLabel(h)}</th>
                   ))}
-                  {isSummaryView && <th style={{ padding: '10px 12px', borderBottom: '1px solid var(--payi-border)' }} />}
+                  {(isSummaryView || isTrash) && <th style={{ padding: '10px 12px', borderBottom: '1px solid var(--payi-border)' }} />}
                 </tr>
               </thead>
               <tbody>
@@ -299,6 +347,14 @@ export default function HRPeople() {
                           : isUrl(row[h]) ? <LinkOrText value={row[h]} /> : (row[h] || '—')}
                       </td>
                     ))}
+                    {isTrash && (
+                      <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                        <button onClick={(e) => { e.stopPropagation(); restoreRow(row) }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--payi-mint-strong)' }}>
+                          <RotateCcw size={13} /> กู้คืน
+                        </button>
+                      </td>
+                    )}
                     {isSummaryView && (
                       <td style={{ padding: '9px 12px' }}>
                         <button onClick={(e) => { e.stopPropagation(); setSelected(row) }}
@@ -318,7 +374,9 @@ export default function HRPeople() {
         </>
       )}
 
-      {selected && <DetailDrawer row={selected} headers={headers} onClose={() => setSelected(null)} />}
+      {selected && (isTrash
+        ? <DetailDrawer row={selected.__data || {}} headers={Object.keys(selected.__data || {})} onClose={() => setSelected(null)} onRestore={() => restoreRow(selected)} />
+        : <DetailDrawer row={selected} headers={headers} onClose={() => setSelected(null)} onDelete={() => deleteRow(selected)} />)}
     </div>
   )
 }
