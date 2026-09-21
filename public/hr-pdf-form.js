@@ -126,7 +126,7 @@
   // fs=ขนาดตัวอักษร px, lh=line-height, gap=ระยะระหว่างบรรทัดช่องกรอก, sec=ระยะระหว่างหัวข้อ, pad=padding เซลล์ตาราง
   var SCALES = {
     applicant: { fs: 12.5, lh: 1.6, gap: 5, sec: 6, pad: 3, rowh: 20 },
-    employee: { fs: 11.5, lh: 1.6, gap: 4, sec: 5, pad: 3, rowh: 20 },
+    employee: { fs: 14, lh: 1.8, gap: 9, sec: 11, pad: 5, rowh: 26 },
   };
   var S = SCALES.applicant;
 
