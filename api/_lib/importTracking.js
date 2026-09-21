@@ -378,9 +378,10 @@ async function upsertArrival(body) {
 
 // LINE "ชมพู <เลข SHIPPING> ... [ชื่อสินค้าไทย]" — สร้าง import_arrival จากเลขหลายตัวในครั้งเดียว (อ่าน/เขียนชีทรอบเดียว)
 // เจอในชีท LK -> เติมกล่อง/นน./ขนาด/ชื่อจีน ให้ ; ไม่เจอ -> สร้างแถวมีแค่ shipping_no + ธงให้กรอกมือ
+// skuHint = sku ที่รู้แน่ๆ แล้ว (เช่น มาจากแจ้งของเข้าทางไลน์) ใช้แทน alias — ไม่ต้องเดา
 // nameHint = ชื่อสินค้าที่คนพิมพ์ต่อท้าย (เช่น "ถุงเท้าส้น") — ใช้เป็น item_name แทนชื่อจีน + ลอง alias หา sku ให้
 // กันซ้ำด้วย shipping_no (มีอยู่แล้ว = ข้าม). ไม่ throw ทั้งฟังก์ชัน — ให้ webhook เงียบเสมอ
-export async function createArrivalsFromShipping(shippingNos, dateHint, nameHint) {
+export async function createArrivalsFromShipping(shippingNos, dateHint, nameHint, skuHint) {
   await ensureAll()
   const [rows, aliasMap] = await Promise.all([getSheet(ARRIVALS), loadAliasMap()])
   const existing = new Set(rows.filter((r) => r.id).map((r) => String(r.shipping_no || '').trim()).filter(Boolean))
@@ -410,10 +411,10 @@ export async function createArrivalsFromShipping(shippingNos, dateHint, nameHint
       row.weight_kg = lk.weight_kg || ''
       row.cbm = lk.cbm || ''
       row.note = `LK ${lk.tab}: ${lk.goods_zh || ''}`.trim()
-      row.sku = nameSku || aliasMap[aliasKey(row.item_name)] || ''
+      row.sku = skuHint || nameSku || aliasMap[aliasKey(row.item_name)] || ''
     } else {
       row.item_name = name || `SHIPPING ${s}`
-      row.sku = nameSku || ''
+      row.sku = skuHint || nameSku || ''
       row.note = `⚠ ไม่เจอในชีท LK (จากไลน์ ${today}) — เช็คเลขในกลุ่มไลน์อีกที / กรอกมือ`
     }
     rows.push(row)

@@ -1558,6 +1558,12 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
       done.push({ ...it, request })
     } catch (e) { failed.push(`${it.display_name}: ${e.message}`) }
   }
+  // มีเลขใบชมพูแต่ยังไม่เคยลงทะเบียนที่หน้าติดตามนำเข้า -> สร้างรายการให้เอง + บอทไปหาข้อมูลกล่อง/น้ำหนักจากชีท LK
+  // (owner ขอ 2026-09-21) เลขที่มีอยู่แล้วถูกข้ามอัตโนมัติ (dedupe ด้วย shipping_no) เงียบเสมอ ไม่ให้ล้มขั้นตอนแจ้งของเข้า
+  if (session.shipping_no && done.length) {
+    const one = done.length === 1 ? done[0] : null
+    try { await createArrivalsFromShipping([session.shipping_no], arrivalDate, one?.display_name || '', one?.sku || '') } catch (e) { console.error('stockin->arrival:', e.message) }
+  }
   await clearStockInSession(lineUserId)
 
   // ปุ่ม ✓/✗ แยกต่อรายการ (ของเข้าหลายรายการอาจตรงไม่หมดทุกอัน) + ปุ่ม "Approve ทั้งหมด" รวม
