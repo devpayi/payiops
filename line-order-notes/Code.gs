@@ -23,7 +23,7 @@ const SHEET_GROUPS = 'groups';
 const SHEET_EVENTS = 'processed_events';
 const SHEET_LOG = 'log';
 const TZ = 'Asia/Bangkok';
-const VERSION = '2026-09-19.4'; // open the /exec URL in a browser to see which version is deployed
+const VERSION = '2026-09-21.1'; // open the /exec URL in a browser to see which version is deployed
 const STATUS_OPEN = 'OPEN', STATUS_ORDERED = 'ORDERED', STATUS_PICKUP = 'PICKUP',
       STATUS_DONE = 'DONE', STATUS_CANCELLED = 'CANCELLED';
 const PAGE_SIZE = 15, MAX_FLEX_BYTES = 45000;
@@ -276,15 +276,14 @@ function handlePostback_(event) {
   }
   const row = findRowById_(data.id);
   if (!row || String(row.values[10]) !== String(data.v)) {
-    reply_(event.replyToken, 'รายการเปลี่ยนแปลงหรือจัดการไปแล้ว พิมพ์ "ต้องสั่ง" เพื่อดูรายการล่าสุด');
+    reply_(event.replyToken, 'รายการนี้เปลี่ยนแปลงหรือจัดการไปแล้ว');
     return;
   }
   const sh = sheet_(SHEET_REQUESTS);
-  const undoHint = ' (ย้อนกลับ: พิมพ์ "สั่งแล้ว")';
-  const map = { order: [STATUS_ORDERED, 'บันทึกว่าสั่งแล้ว' + undoHint], pickup: [STATUS_PICKUP, 'บันทึกว่ารอไปเอาแล้ว ไม่ต้องยืนยันรับของ' + undoHint], cancel: [STATUS_CANCELLED, 'ยกเลิกแล้ว'] };
+  const map = { order: [STATUS_ORDERED, 'บันทึกว่าสั่งแล้ว'], pickup: [STATUS_PICKUP, 'บันทึกว่ารอไปเอาแล้ว'], cancel: [STATUS_CANCELLED, 'ยกเลิกแล้ว'] };
   if (data.a === 'undo') {
     if (row.values[6] !== STATUS_ORDERED && row.values[6] !== STATUS_PICKUP) {
-      reply_(event.replyToken, 'รายการเปลี่ยนแปลงหรือจัดการไปแล้ว พิมพ์ "สั่งแล้ว" เพื่อดูรายการล่าสุด');
+      reply_(event.replyToken, 'รายการนี้เปลี่ยนแปลงหรือจัดการไปแล้ว');
       return;
     }
     sh.getRange(row.rowIndex, 7).setValue(STATUS_OPEN);

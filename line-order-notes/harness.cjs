@@ -208,7 +208,7 @@ const test = async (name, fn) => {
     const id = i => rows[i][0];
     post(env, [postback(`a=order&id=${id(0)}&v=1`)]);
     assert.strictEqual(reqRows(env)[0][6], 'ORDERED');
-    assert.ok(lastText(env).startsWith('บันทึกว่าสั่งแล้ว') && lastText(env).includes('ย้อนกลับ'));
+    assert.strictEqual(lastText(env), 'บันทึกว่าสั่งแล้ว', 'button replies state only the outcome, no command hints');
     post(env, [postback(`a=pickup&id=${id(1)}&v=1`)]);
     assert.strictEqual(reqRows(env)[1][6], 'PICKUP');
     post(env, [postback(`a=cancel&id=${id(2)}&v=1`)]);
@@ -548,6 +548,30 @@ const test = async (name, fn) => {
   await test('doPost run by hand (no event) does not throw', async () => {
     const env = makeEnv();
     assert.strictEqual(env.api.doPost(undefined).text, 'no event');
+  });
+
+  await test('every boss button reply is just the outcome: no command hints, no instructions', async () => {
+    const env = makeEnv();
+    post(env, [groupMsg('@เหมียวสั่งมา a1')]);
+    post(env, [groupMsg('@เหมียวสั่งมา b2')]);
+    post(env, [groupMsg('@เหมียวสั่งมา c3')]);
+    post(env, [groupMsg('@เหมียวสั่งมา d4')]);
+    const id = i => reqRows(env)[i][0];
+    const texts = [];
+    for (const a of ['order', 'pickup', 'snooze', 'cancel']) {
+      post(env, [postback(`a=${a}&id=${id(texts.length)}&v=1`)]);
+      texts.push(lastText(env));
+    }
+    post(env, [postback(`a=undo&id=${id(0)}&v=2`)]);
+    texts.push(lastText(env));
+    post(env, [postback(`a=order&id=${id(0)}&v=99`)]);
+    texts.push(lastText(env));
+    post(env, [direct('สั่งแล้ว')]);
+    post(env, [postback(`a=all&ids=${id(2)}:1`)]);
+    texts.push(lastText(env));
+    assert.deepStrictEqual(texts.slice(0, 4), ['บันทึกว่าสั่งแล้ว', 'บันทึกว่ารอไปเอาแล้ว', 'เลื่อนเตือนถึงพรุ่งนี้ 17:00 น.', 'ยกเลิกแล้ว']);
+    assert.strictEqual(texts[5], 'รายการนี้เปลี่ยนแปลงหรือจัดการไปแล้ว');
+    for (const t of texts) assert.ok(!/พิมพ์|คำสั่ง/.test(t), 'no instructions in: ' + t);
   });
 
   for (const [s, name, note] of results) console.log(s.padEnd(5), name, note ? '— ' + note : '');
