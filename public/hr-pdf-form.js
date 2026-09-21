@@ -122,23 +122,31 @@
     return str(v).split(',').map(function (s) { return s.trim(); }).filter(Boolean);
   }
 
+  // ขนาดตัวอักษร/ช่องไฟ ปรับให้แต่ละฟอร์มเต็ม 2 หน้า A4 พอดี (ฟอร์มพนักงานยาวกว่า เลยเล็กกว่านิดหน่อย)
+  // fs=ขนาดตัวอักษร px, lh=line-height, gap=ระยะระหว่างบรรทัดช่องกรอก, sec=ระยะระหว่างหัวข้อ, pad=padding เซลล์ตาราง
+  var SCALES = {
+    applicant: { fs: 12.5, lh: 1.6, gap: 5, sec: 6, pad: 3, rowh: 20 },
+    employee: { fs: 11.5, lh: 1.6, gap: 4, sec: 5, pad: 3, rowh: 20 },
+  };
+  var S = SCALES.applicant;
+
   function blank(value, grow) {
-    return '<span style="display:inline-block;border-bottom:1px dotted #333;min-width:70px;flex:' + (grow || 1) + ';padding:0 4px;font-weight:600;min-height:1.4em;overflow-wrap:anywhere">' + (esc(value) || '&nbsp;') + '</span>';
+    return '<span style="display:inline-block;border-bottom:1px dotted #333;min-width:70px;flex:' + (grow || 1) + ';padding:0 4px;font-weight:600;min-height:1.5em;overflow-wrap:anywhere">' + (esc(value) || '&nbsp;') + '</span>';
   }
   function chk(label, checked) {
-    return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:14px"><span style="font-family:monospace;font-size:14px">' + (checked ? '☑' : '☐') + '</span>' + esc(label) + '</span>';
+    return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:14px"><span style="font-family:monospace;font-size:' + (S.fs + 2) + 'px">' + (checked ? '☑' : '☐') + '</span>' + esc(label) + '</span>';
   }
   function line(inner) {
-    return '<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 8px;margin-bottom:4px;font-size:11.5px">' + inner + '</div>';
+    return '<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 8px;margin-bottom:' + S.gap + 'px;font-size:' + S.fs + 'px">' + inner + '</div>';
   }
   function table(cols, rows, minRows) {
     var data = rows.slice();
     while (data.length < minRows) data.push({});
-    var head = cols.map(function (c) { return '<th style="border:1px solid #333;padding:2px 6px;background:#f1f5f9;font-weight:700">' + esc(c[1]) + '</th>'; }).join('');
+    var head = cols.map(function (c) { return '<th style="border:1px solid #333;padding:' + S.pad + 'px 6px;background:#f1f5f9;font-weight:700">' + esc(c[1]) + '</th>'; }).join('');
     var body = data.map(function (r) {
-      return '<tr>' + cols.map(function (c) { return '<td style="border:1px solid #333;padding:2px 6px;height:18px">' + esc(r[c[0]]) + '</td>'; }).join('') + '</tr>';
+      return '<tr>' + cols.map(function (c) { return '<td style="border:1px solid #333;padding:' + S.pad + 'px 6px;height:' + S.rowh + 'px">' + esc(r[c[0]]) + '</td>'; }).join('') + '</tr>';
     }).join('');
-    return '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:4px"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
+    return '<table style="width:100%;border-collapse:collapse;font-size:' + (S.fs - 1) + 'px;margin-bottom:' + S.gap + 'px"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
   }
 
   function renderItem(it, get) {
@@ -161,13 +169,16 @@
     return '';
   }
 
-  function build(get, kind) {
+  function build(get, kind, override) {
     var isEmp = kind === 'employee';
-    var out = '<div style="font-family:-apple-system,\'Noto Sans Thai\',Arial,sans-serif;color:#111;font-size:11.5px;line-height:1.45">' +
-      '<div style="text-align:center;margin:0 0 8px"><div style="font-size:17px;font-weight:800">' + (isEmp ? 'ประวัติพนักงาน' : 'ใบสมัครงาน') + '</div>' +
-      '<div style="font-size:11px;color:#555">PAYI</div></div>';
-    SECTIONS[isEmp ? 'employee' : 'applicant'].forEach(function (sec, i) {
-      out += '<div style="break-inside:avoid;margin-bottom:6px"><div style="font-weight:700;margin:4px 0 4px;border-bottom:1px solid #333">' + (i + 1) + '. ' + esc(sec.title) + '</div>';
+    S = Object.assign({}, SCALES[isEmp ? 'employee' : 'applicant'], override || {});
+    var out = '<div style="font-family:-apple-system,\'Noto Sans Thai\',Arial,sans-serif;color:#111;font-size:' + S.fs + 'px;line-height:' + S.lh + '">' +
+      '<div style="text-align:center;margin:0 0 ' + S.sec + 'px"><div style="font-size:' + (S.fs + 5) + 'px;font-weight:800">' + (isEmp ? 'ประวัติพนักงาน' : 'ใบสมัครงาน') + '</div>' +
+      '<div style="font-size:' + (S.fs - 1) + 'px;color:#555">PAYI</div></div>';
+    var secs = SECTIONS[isEmp ? 'employee' : 'applicant'];
+    secs.forEach(function (sec, i) {
+      // section สุดท้ายไม่เว้นล่าง — กัน margin ล้นหน้ากระดาษจนได้หน้าว่างต่อท้าย
+      out += '<div style="break-inside:avoid;margin-bottom:' + (i === secs.length - 1 ? 0 : S.sec) + 'px"><div style="font-weight:700;margin:4px 0 ' + S.gap + 'px;border-bottom:1px solid #333">' + (i + 1) + '. ' + esc(sec.title) + '</div>';
       sec.rows.forEach(function (row) {
         if (row.length === 1 && row[0].t === 'table') {
           var it = row[0];
