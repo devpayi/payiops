@@ -184,7 +184,7 @@ export async function ensureExternalSheet(spreadsheetId, sheetName, headers) {
   }
   const res = await withQuotaRetry(() => getClient().spreadsheets.values.get({
     spreadsheetId,
-    range: `${sheetName}!A1:Z1`,
+    range: `${sheetName}!A1:ZZ1`,
   }))
   const current = res.data.values?.[0] || []
   const missingHeader = headers.some((h, i) => current[i] !== h)
@@ -261,7 +261,7 @@ export async function ensureSheet(sheetName, headers) {
 
   const res = await withQuotaRetry(() => getClient().spreadsheets.values.get({
     spreadsheetId: sheetId(),
-    range: `${sheetName}!A1:Z1`,
+    range: `${sheetName}!A1:ZZ1`,
   }))
   const current = res.data.values?.[0] || []
   const missingHeader = headers.some((h, i) => current[i] !== h)

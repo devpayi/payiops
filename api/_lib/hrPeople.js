@@ -41,7 +41,7 @@ export default async function opHrPeople(req, res) {
   }
 
   try {
-    const values = await getExternalSheet(sheetId, `${TAB[view]}!A:Z`)
+    const values = await getExternalSheet(sheetId, `${TAB[view]}!A:ZZ`)
     const [headers = [], ...dataRows] = values
     const cleanHeaders = headers.map((h) => String(h ?? '').trim())
     const rows = dataRows
