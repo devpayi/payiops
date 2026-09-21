@@ -51,259 +51,65 @@ const isUrl = (v) => /^https?:\/\//i.test(String(v || '').trim())
 // คอลัมน์ที่เป็นชื่อคน/หัวข้อหลัก — เดาจากชื่อ header เพื่อโชว์เป็นหัวแถวในตาราง
 const nameHint = (h) => /ชื่อ|name|พนักงาน|ผู้สมัคร/i.test(h) && !/บริษัท|เล่น|ผู้ติดต่อ|ฉุกเฉิน|company/i.test(h)
 
-// ==================== PDF: แบบฟอร์มล็อคแพตเทิร์นตายตัว ====================
-// บอส 2026-09-18 ส่งไฟล์ใบสมัครงานราชการ (3 หน้า, ช่องกรอก/checkbox ตายตัว) มาขอให้ทำ PDF
-// หน้าตาแบบนี้เป๊ะๆ — คนละแนวกับ PROFILE_SECTIONS เดิม (ที่จัดกลุ่มตามข้อมูลที่มี) ที่นี่กลับกัน:
-// เค้าโครง/ลำดับ/labeled blank ทุกอันตายตัวตามต้นฉบับเสมอ ไม่ว่าข้อมูลจะมีหรือไม่ — ช่องไหน
-// ไม่มีข้อมูลก็ปล่อยว่างไว้ (ไม่ซ่อนช่อง ไม่ยุบเลย์เอาต์) ตรงตามที่ขอ "อันไหนไม่กรอกก็ว่างไว้"
-// การ map มาจากฟิลด์ของเราไม่ตรง 1:1 กับต้นฉบับเป๊ะทุกจุด (เช่น ต้นฉบับแยกที่อยู่เป็นเลขที่/หมู่ที่/
-// ถนนคนละช่อง แต่ของเราเก็บที่อยู่เป็นข้อความก้อนเดียว) — จุดที่ map ไม่ตรงคอมเมนต์ไว้ในโค้ดแต่ละจุด
-const V = (v) => (v == null ? '' : String(v).trim())
-function Blank({ value, minWidth = 60, grow = 1 }) {
-  return (
-    <span style={{ display: 'inline-block', borderBottom: '1px dotted #333', minWidth, flex: grow, padding: '0 4px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-      {V(value) || ' '}
-    </span>
-  )
-}
-function Chk({ label, checked }) {
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 16 }}><span style={{ fontFamily: 'monospace', fontSize: 14 }}>{checked ? '☑' : '☐'}</span>{label}</span>
-}
-function Line({ children }) {
-  return <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 6, marginBottom: 10, fontSize: 12.5 }}>{children}</div>
-}
-// ตารางแถวคงที่ (ไม่ยุบตามจำนวนข้อมูลจริง) — เติมแถวว่างจนครบ minRows เสมอ ตามต้นฉบับ
-function FixedTable({ cols, data, minRows }) {
-  const rows = [...data]
-  while (rows.length < minRows) rows.push({})
-  return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5, marginBottom: 14 }}>
-      <thead>
-        <tr>
-          {cols.map((c) => (
-            <th key={c.key} style={{ border: '1px solid #333', padding: '4px 6px', background: '#f1f5f9', fontWeight: 700 }}>{c.label}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.slice(0, Math.max(minRows, rows.length)).map((r, i) => (
-          <tr key={i}>
-            {cols.map((c) => (
-              <td key={c.key} style={{ border: '1px solid #333', padding: '4px 6px', height: 20 }}>{V(r[c.key])}</td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
+// ==================== PDF ====================
+// ตัวสร้างฟอร์มอยู่ที่ public/hr-pdf-form.js (ไฟล์เดียวกับที่ apply.html/employee.html ใช้) — สร้างจาก
+// "คำถามในฟอร์ม" เท่านั้น: ทุกคำถามต้องมีในไฟล์ (ไม่มีคำตอบก็เว้นว่าง) อะไรที่ฟอร์มไม่ได้ถามไม่มีในไฟล์
+// ที่นี่แค่แปลง row (หัวคอลัมน์ภาษาไทยจากชีต) -> key เดียวกับที่ wizard ใช้ ให้ตรงกับ APPLICANT_FULL_FIELDS /
+// EMPLOYEE_FULL_FIELDS ใน api/_lib/hrPeople.js
+const PDF_HEADERS = {
+  position: ['ตำแหน่งงานที่สมัคร', 'ตำแหน่งงาน'], expected_salary: ['เงินเดือนที่ต้องการ'],
+  available_date: ['วันที่เริ่มงานได้'], start_date: ['วันที่เริ่มงาน'], current_status: ['สถานภาพการทำงานปัจจุบัน'],
+  documents_ready: ['เอกสารที่เตรียมมา'], id_card_number: ['เลขบัตรประชาชน'], id_card_photo: ['รูปบัตรประชาชน'],
+  house_registration_address: ['ที่อยู่ตามทะเบียนบ้าน'], house_registration_photo: ['รูปทะเบียนบ้าน'],
+  title: ['คำนำหน้า'], full_name: ['ชื่อ-นามสกุล'], nickname: ['ชื่อเล่น'], age: ['อายุ'], birth_date: ['วันเดือนปีเกิด'],
+  nationality: ['สัญชาติ'], ethnicity: ['เชื้อชาติ'], religion: ['ศาสนา'], hometown: ['ภูมิลำเนาเดิม'],
+  siblings: ['จำนวนพี่น้อง'], birth_order: ['เป็นบุตรคนที่'], address: ['ที่อยู่ปัจจุบัน'], sub_district: ['ตำบล/แขวง'],
+  district: ['อำเภอ/เขต'], province: ['จังหวัด'], postal_code: ['รหัสไปรษณีย์'], home_phone: ['โทรศัพท์บ้าน'],
+  mobile_phone: ['โทรศัพท์มือถือ'], email: ['Email'], residence_type: ['ประเภทที่อยู่อาศัย'],
+  residence_years: ['อาศัยมาแล้ว (ปี)'], marital_status: ['สถานภาพครอบครัว'], spouse_name: ['ชื่อคู่สมรส'],
+  spouse_occupation: ['อาชีพคู่สมรส'], children_count: ['จำนวนบุตร'], weight: ['น้ำหนัก (กก.)'], height: ['ส่วนสูง (ซม.)'],
+  blood_type: ['กรุ๊ปเลือด'], criminal_record: ['ประวัติอาชญากรรม'], health_condition: ['โรคประจำตัว/สุขภาพ'],
+  father_name: ['ชื่อบิดา'], father_status: ['สถานะบิดา'], father_address: ['ที่อยู่/จังหวัดบิดา'],
+  mother_name: ['ชื่อมารดา'], mother_status: ['สถานะมารดา'], mother_address: ['ที่อยู่/จังหวัดมารดา'],
+  military_status: ['สถานะทางการทหาร'], education_level: ['วุฒิการศึกษาที่ใช้สมัคร', 'วุฒิการศึกษาสูงสุด'],
+  education_history: ['ประวัติการศึกษา'], education_activities: ['กิจกรรม/รางวัลระหว่างการศึกษา'],
+  favorite_subject: ['สาขาที่ชอบเป็นพิเศษ'], work_history: ['ประวัติการทำงาน'],
+  english_speak: ['ภาษาอังกฤษ (พูด)'], english_read: ['ภาษาอังกฤษ (อ่าน)'], english_write: ['ภาษาอังกฤษ (เขียน)'],
+  other_language: ['ภาษาอื่นๆ'], office_skills: ['ความสามารถใช้เครื่องใช้สำนักงาน'], computer_level: ['ความสามารถใช้คอมพิวเตอร์'],
+  computer_programs: ['โปรแกรมที่ใช้ได้'], reference_name: ['บุคคลอ้างอิง (ชื่อ/ความสัมพันธ์)'],
+  reference_occupation: ['บุคคลอ้างอิง (อาชีพ)'], reference_phone: ['บุคคลอ้างอิง (เบอร์โทร)'], heard_from: ['ทราบข่าวการสมัครงานจาก'],
+  bank_name: ['ธนาคาร'], bank_account_number: ['เลขบัญชี'], bank_account_name: ['ชื่อบัญชี'],
+  emergency_contact_name: ['บุคคลที่ติดต่อได้กรณีฉุกเฉิน (ชื่อ)'], emergency_contact_relation: ['ความสัมพันธ์'],
+  emergency_contact_phone: ['เบอร์โทรฉุกเฉิน'], confirmed: ['ยืนยันข้อมูลถูกต้อง'],
 }
 
-// รายการ "ป้าย: ค่า" — โชว์เฉพาะที่มีข้อมูลจริง (บอส 2026-09-21: ทุกคำถามในฟอร์มออนไลน์ต้องลง PDF
-// แต่ข้อไหนไม่มีคำตอบไม่ต้องลง) ต่างจากช่องใน layout ตายตัวด้านบนที่ปล่อยว่างไว้เสมอ
-function InfoList({ items }) {
-  const shown = items.filter(([, v]) => V(v))
-  if (!shown.length) return null
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 18px', fontSize: 12.5, marginBottom: 10 }}>
-      {shown.map(([label, v]) => (
-        <div key={label} style={{ borderBottom: '1px dotted #333', padding: '2px 0', breakInside: 'avoid' }}>
-          <span>{label} : </span><b>{V(v)}</b>
-        </div>
-      ))}
-    </div>
-  )
+let hrPdfScript = null
+function loadHrPdfForm() {
+  if (window.HRPdfForm) return Promise.resolve()
+  if (!hrPdfScript) {
+    hrPdfScript = new Promise((resolve, reject) => {
+      const s = document.createElement('script')
+      s.src = '/hr-pdf-form.js'
+      s.onload = resolve
+      s.onerror = () => { hrPdfScript = null; reject(new Error('โหลดตัวสร้าง PDF ไม่สำเร็จ')) }
+      document.head.appendChild(s)
+    })
+  }
+  return hrPdfScript
 }
 
 function LockedApplicationForm({ row }) {
-  const fullName = [row['คำนำหน้า'], row['ชื่อ-นามสกุล']].filter(Boolean).join('')
-  // เพศไม่ได้เก็บเป็นฟิลด์ตรงๆ ในระบบเรา — เดาจากคำนำหน้าแทน (นาย=ชาย, นาง/นางสาว=หญิง)
-  const genderMale = row['คำนำหน้า'] === 'นาย'
-  const genderFemale = row['คำนำหน้า'] === 'นาง' || row['คำนำหน้า'] === 'นางสาว'
-  // residence_type ตัวเลือกของเรา (บ้านตัวเอง/บ้านญาติ/ห้องเช่า-บ้านเช่า/อื่นๆ) ไม่ตรง 1:1 กับ
-  // ต้นฉบับ (อาศัยกับครอบครัว/บ้านตัวเอง/บ้านเช่า/หอพัก) — map เท่าที่ใกล้เคียง ที่เหลือปล่อยว่าง
-  const residence = row['ประเภทที่อยู่อาศัย']
-  // สถานะทางการทหารของเรา (ได้รับการยกเว้น/ศึกษาวิชาทหาร (รด.)/ผ่านการเกณฑ์ทหารแล้ว/ไม่เกี่ยวข้อง)
-  // ก็ไม่ตรง 1:1 กับต้นฉบับ (ได้รับการยกเว้น/ปลดเป็นทหารกองหนุน/ยังไม่ได้รับการเกณฑ์) — map เท่าที่ใกล้เคียง
-  const military = row['สถานะทางการทหาร']
-  const marital = row['สถานภาพครอบครัว']
-  const idCard = row['เลขบัตรประชาชน']
-  // ผู้สมัคร (แบบเต็ม) ใช้ reference_*, พนักงาน (แบบเต็ม) ใช้ emergency_contact_* — โชว์อันที่มีข้อมูล
-  const contactName = row['บุคคลที่ติดต่อได้กรณีฉุกเฉิน (ชื่อ)'] || row['บุคคลอ้างอิง (ชื่อ/ความสัมพันธ์)']
-  const contactRelation = row['ความสัมพันธ์']
-  const contactOccupation = row['บุคคลอ้างอิง (อาชีพ)']
-  const contactPhone = row['เบอร์โทรฉุกเฉิน'] || row['บุคคลอ้างอิง (เบอร์โทร)']
-
-  const eduRows = (parseJsonRows(row['ประวัติการศึกษา']) || []).map((e) => ({
-    from: '', to: V(e.year), school: V(e.school), major: V(e.major), cert: V(e.level),
-  }))
-  const workRows = (parseJsonRows(row['ประวัติการทำงาน']) || []).map((w) => ({
-    from: V(w.from), to: V(w.to), org: V(w.company), position: V(w.position), salary: V(w.salary), reason: V(w.reason_left),
-  }))
-  const programs = (row['โปรแกรมที่ใช้ได้'] || '').split(',').map((s) => s.trim()).filter(Boolean)
-  const compLevel = row['ความสามารถใช้คอมพิวเตอร์']
-  const compRows = programs.map((p) => ({ program: p, level: compLevel }))
-  const langRows = [
-    row['ภาษาอังกฤษ (พูด)'] && { lang: 'อังกฤษ (พูด)', level: row['ภาษาอังกฤษ (พูด)'] },
-    row['ภาษาอังกฤษ (อ่าน)'] && { lang: 'อังกฤษ (อ่าน)', level: row['ภาษาอังกฤษ (อ่าน)'] },
-    row['ภาษาอังกฤษ (เขียน)'] && { lang: 'อังกฤษ (เขียน)', level: row['ภาษาอังกฤษ (เขียน)'] },
-    row['ภาษาอื่นๆ'] && { lang: row['ภาษาอื่นๆ'], level: '' },
-  ].filter(Boolean)
-  const otherAbility = row['ความสามารถใช้เครื่องใช้สำนักงาน']
-  const moreInfoLines = [
-    row['กิจกรรม/รางวัลระหว่างการศึกษา'] && `กิจกรรม/รางวัลระหว่างการศึกษา: ${row['กิจกรรม/รางวัลระหว่างการศึกษา']}`,
-    row['สาขาที่ชอบเป็นพิเศษ'] && `สาขาที่ชอบเป็นพิเศษ: ${row['สาขาที่ชอบเป็นพิเศษ']}`,
-    row['ประวัติอาชญากรรม'] && `ประวัติอาชญากรรม: ${row['ประวัติอาชญากรรม']}`,
-    row['โรคประจำตัว/สุขภาพ'] && `โรคประจำตัว/สุขภาพ: ${row['โรคประจำตัว/สุขภาพ']}`,
-  ].filter(Boolean)
-
-  const parentLine = (p) => {
-    const name = V(row[`ชื่อ${p}`])
-    const bits = [name, V(row[`สถานะ${p}`]) && `(${V(row[`สถานะ${p}`])})`, V(row[`อาชีพ${p}`]) && `อาชีพ ${V(row[`อาชีพ${p}`])}`, V(row[`ที่อยู่/จังหวัด${p}`])].filter(Boolean)
-    return bits.join(' ')
+  const [ready, setReady] = useState(!!window.HRPdfForm)
+  useEffect(() => { loadHrPdfForm().then(() => setReady(true)).catch(() => {}) }, [])
+  if (!ready) return null
+  const isEmployee = row['เลขบัตรประชาชน'] !== undefined
+  const get = (key) => {
+    const header = (PDF_HEADERS[key] || []).find((h) => row[h] !== undefined && row[h] !== '')
+    const v = header ? row[header] : ''
+    if (key === 'education_history' || key === 'work_history') return parseJsonRows(v) || []
+    return v
   }
-  const attach = (v) => (isUrl(v) ? 'แนบไฟล์แล้ว (เก็บใน Google Drive)' : V(v))
-  const positionItems = [
-    ['ตำแหน่งที่สมัคร/ตำแหน่งงาน', row['ตำแหน่งงานที่สมัคร'] || row['ตำแหน่งงาน']],
-    ['เงินเดือนที่ต้องการ', row['เงินเดือนที่ต้องการ']],
-    ['วันที่เริ่มงาน', row['วันที่เริ่มงานได้'] || row['วันที่เริ่มงาน']],
-    ['สถานภาพการทำงานปัจจุบัน', row['สถานภาพการทำงานปัจจุบัน']],
-  ]
-  const familyItems = [
-    ['ชื่อคู่สมรส', row['ชื่อคู่สมรส']], ['อาชีพคู่สมรส', row['อาชีพคู่สมรส']],
-    ['จำนวนบุตร', row['จำนวนบุตร']], ['จำนวนพี่น้อง', row['จำนวนพี่น้อง']],
-    ['เป็นบุตรคนที่', row['เป็นบุตรคนที่']],
-    ['บิดา', parentLine('บิดา')], ['มารดา', parentLine('มารดา')],
-  ]
-  const otherItems = [
-    ['ชื่อเล่น', row['ชื่อเล่น']], ['ภูมิลำเนาเดิม', row['ภูมิลำเนาเดิม']],
-    ['อาศัยมาแล้ว (ปี)', row['อาศัยมาแล้ว (ปี)']],
-    ['วุฒิการศึกษา', row['วุฒิการศึกษาที่ใช้สมัคร'] || row['วุฒิการศึกษาสูงสุด']],
-    ['กรุ๊ปเลือด', row['กรุ๊ปเลือด']],
-    ['ที่อยู่ตามทะเบียนบ้าน', row['ที่อยู่ตามทะเบียนบ้าน']],
-    ['รูปบัตรประชาชน', attach(row['รูปบัตรประชาชน'])], ['รูปทะเบียนบ้าน', attach(row['รูปทะเบียนบ้าน'])],
-    ['ธนาคาร', row['ธนาคาร']], ['เลขบัญชี', row['เลขบัญชี']], ['ชื่อบัญชี', row['ชื่อบัญชี']],
-    ['เอกสารที่เตรียมมา', row['เอกสารที่เตรียมมา']],
-    ['ทราบข่าวการสมัครงานจาก', row['ทราบข่าวการสมัครงานจาก']],
-  ]
-
-  const wrap = { fontFamily: '-apple-system, "Noto Sans Thai", Arial, sans-serif', color: '#111', fontSize: 12.5, lineHeight: 1.7 }
-  const pageBreak = { breakBefore: 'page' }
-
-  return (
-    <div style={wrap}>
-      {/* หน้า 1 — ประวัติส่วนตัว */}
-      <div style={{ textAlign: 'right', fontSize: 11 }}>ใบสมัครเลขที่ <Blank value="" minWidth={80} grow={0} /></div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', margin: '8px 0 16px' }}>
-        <div style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ fontSize: 18, fontWeight: 800 }}>ใบสมัครงาน</div>
-          <div style={{ fontSize: 11, color: '#555' }}>PAYI — เอกสารประวัติบุคคล</div>
-        </div>
-        <div style={{ width: 90, height: 110, border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#999', flexShrink: 0 }}>รูปถ่าย</div>
-      </div>
-
-      <InfoList items={positionItems} />
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>1. ประวัติส่วนตัว</div>
-      <Line><span>ชื่อ - สกุล :</span><Blank value={fullName} grow={1} /></Line>
-      <Line><span>เลขบัตรประจำตัวประชาชน</span><Blank value={idCard} grow={1} /></Line>
-      {/* ต้นฉบับแยกเลขที่/หมู่ที่/ถนน/ตำบล คนละช่อง — ของเราเก็บที่อยู่เป็นก้อนเดียว ใส่รวมไว้ที่ "เลขที่" */}
-      <Line><span>ที่อยู่ปัจจุบันเลขที่</span><Blank value={row['ที่อยู่ปัจจุบัน']} grow={2} /><span>ตำบล/แขวง</span><Blank value={row['ตำบล/แขวง']} /></Line>
-      <Line><span>อำเภอ/เขต</span><Blank value={row['อำเภอ/เขต']} /><span>จังหวัด</span><Blank value={row['จังหวัด']} /><span>รหัสไปรษณีย์</span><Blank value={row['รหัสไปรษณีย์']} minWidth={50} /></Line>
-      <Line>
-        <Chk label="อาศัยกับครอบครัว" checked={residence === 'บ้านญาติ'} />
-        <Chk label="บ้านตัวเอง" checked={residence === 'บ้านตัวเอง'} />
-        <Chk label="บ้านเช่า" checked={residence === 'ห้องเช่า/บ้านเช่า'} />
-        <Chk label="หอพัก/อื่นๆ" checked={residence === 'อื่นๆ'} />
-      </Line>
-      <Line><span>โทรศัพท์</span><Blank value={row['โทรศัพท์บ้าน']} /><span>มือถือ</span><Blank value={row['โทรศัพท์มือถือ']} /></Line>
-      <Line><span>E-mail</span><Blank value={row['Email']} grow={1} /></Line>
-      <Line><span>วัน เดือน ปีเกิด</span><Blank value={row['วันเดือนปีเกิด']} /><span>อายุ</span><Blank value={row['อายุ']} minWidth={40} grow={0} /><span>ปี เชื้อชาติ</span><Blank value={row['เชื้อชาติ']} /></Line>
-      <Line><span>สัญชาติ</span><Blank value={row['สัญชาติ']} /><span>ศาสนา</span><Blank value={row['ศาสนา']} /></Line>
-      <Line><span>บัตรประชาชนเลขที่</span><Blank value={idCard} /><span>บัตรหมดอายุ</span><Blank value="" /></Line>
-      <Line><span>ส่วนสูง</span><Blank value={row['ส่วนสูง (ซม.)']} minWidth={40} grow={0} /><span>ซม.</span><span>น้ำหนัก</span><Blank value={row['น้ำหนัก (กก.)']} minWidth={40} grow={0} /><span>กก.</span></Line>
-
-      <Line>
-        <span style={{ minWidth: 90 }}>ภาวะทางทหาร</span>
-        <Chk label="ได้รับการยกเว้น" checked={military === 'ได้รับการยกเว้น'} />
-        <Chk label="ปลดเป็นทหารกองหนุน" checked={military === 'ผ่านการเกณฑ์ทหารแล้ว'} />
-        <Chk label="ยังไม่ได้รับการเกณฑ์/ไม่เกี่ยวข้อง" checked={military === 'ศึกษาวิชาทหาร (รด.)' || military === 'ไม่เกี่ยวข้อง/ไม่ระบุ'} />
-      </Line>
-      <Line>
-        <span style={{ minWidth: 90 }}>สถานภาพ</span>
-        <Chk label="โสด" checked={marital === 'โสด'} />
-        <Chk label="แต่งงาน" checked={marital === 'แต่งงาน'} />
-        <Chk label="หม้าย/หย่าร้าง" checked={marital === 'หย่าร้าง'} />
-        <Chk label="แยกกัน" checked={marital === 'แยกกันอยู่'} />
-      </Line>
-      <Line>
-        <span style={{ minWidth: 90 }}>เพศ</span>
-        <Chk label="ชาย" checked={genderMale} />
-        <Chk label="หญิง" checked={genderFemale} />
-      </Line>
-
-      <div style={{ fontWeight: 700, margin: '14px 0 8px' }}>บุคคลที่สามารถติดต่อได้ (กรณีฉุกเฉิน)</div>
-      <Line><span>ชื่อ - สกุล</span><Blank value={contactName} grow={2} /><span>อาชีพ</span><Blank value={contactOccupation} /></Line>
-      <Line><span>สถานที่ทำงาน</span><Blank value="" grow={2} /><span>เกี่ยวข้องเป็น</span><Blank value={contactRelation} /></Line>
-      <Line><span>โทรศัพท์ (มือถือ)</span><Blank value={contactPhone} grow={1} /></Line>
-
-      {/* หน้า 2 — การศึกษา/ประสบการณ์ทำงาน/ทักษะ */}
-      <div style={pageBreak}>
-        <div style={{ fontWeight: 700, marginBottom: 6, marginTop: 24 }}>2. ข้อมูลการศึกษา</div>
-        <FixedTable minRows={5} data={eduRows} cols={[
-          { key: 'from', label: 'ปี พ.ศ. (จาก)' }, { key: 'to', label: 'ปี พ.ศ. (ถึง)' },
-          { key: 'school', label: 'สถาบันการศึกษา' }, { key: 'major', label: 'สาขาวิชา' },
-          { key: 'cert', label: 'ประกาศนียบัตร/ปริญญาบัตร' },
-        ]} />
-
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>3. ข้อมูลการทำงานและประสบการณ์ทำงาน</div>
-        <FixedTable minRows={5} data={workRows} cols={[
-          { key: 'from', label: 'ปี พ.ศ. (จาก)' }, { key: 'to', label: 'ปี พ.ศ. (ถึง)' },
-          { key: 'org', label: 'ชื่อและที่อยู่ของหน่วยงาน' }, { key: 'position', label: 'ตำแหน่งและหน้าที่โดยย่อ' },
-          { key: 'salary', label: 'เงินเดือน' }, { key: 'reason', label: 'สาเหตุที่ออกจากงาน' },
-        ]} />
-
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>4. ความสามารถทางด้านคอมพิวเตอร์</div>
-        <FixedTable minRows={4} data={compRows} cols={[
-          { key: 'program', label: 'โปรแกรม' }, { key: 'level', label: 'ระดับความสามารถ' },
-        ]} />
-
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>5. ความสามารถทางด้านภาษาต่างประเทศ</div>
-        <FixedTable minRows={4} data={langRows.map((l) => ({ lang: l.lang, level: l.level }))} cols={[
-          { key: 'lang', label: 'ภาษา' }, { key: 'level', label: 'ระดับความสามารถ' },
-        ]} />
-      </div>
-
-      {/* หน้า 3 — ความสามารถอื่นๆ/ข้อมูลเพิ่มเติม/ลายเซ็น */}
-      <div style={pageBreak}>
-        <div style={{ fontWeight: 700, marginBottom: 6, marginTop: 24 }}>6. ความสามารถด้านอื่นๆ</div>
-        {/* ไม่มีฟิลด์ตรงกับขับรถ/มอไซค์/พิมพ์ดีดในระบบเรา — checkbox กลุ่มนี้ไม่ติ๊กเสมอ (ไม่มีข้อมูล) */}
-        <Line><Chk label="สามารถขับขี่รถยนต์" checked={false} /><Chk label="มีพาหนะเป็นของตนเอง" checked={false} /></Line>
-        <Line><Chk label="สามารถขับขี่รถจักรยานยนต์" checked={false} /></Line>
-        <Line><span>ความสามารถอื่นๆ (โปรดระบุ)</span><Blank value={otherAbility} grow={1} /></Line>
-
-        <div style={{ fontWeight: 700, margin: '14px 0 6px' }}>7. ข้อมูลเพิ่มเติม (เช่น ประวัติการฝึกอบรม/คุณสมบัติอื่นๆ ที่เกี่ยวข้องกับตำแหน่งงาน)</div>
-        {moreInfoLines.length ? moreInfoLines.map((t, i) => (
-          <div key={i} style={{ borderBottom: '1px dotted #333', padding: '3px 0', minHeight: 18 }}>{t}</div>
-        )) : [0, 1, 2].map((i) => <div key={i} style={{ borderBottom: '1px dotted #333', padding: '3px 0', minHeight: 18 }}>&nbsp;</div>)}
-
-        {familyItems.some(([, v]) => V(v)) && <div style={{ fontWeight: 700, margin: '14px 0 6px' }}>8. ข้อมูลครอบครัว</div>}
-        <InfoList items={familyItems} />
-        {otherItems.some(([, v]) => V(v)) && <div style={{ fontWeight: 700, margin: '14px 0 6px' }}>9. ข้อมูลอื่นๆ</div>}
-        <InfoList items={otherItems} />
-
-        <div style={{ marginTop: 28, fontSize: 12 }}>
-          ข้าพเจ้าขอรับรองว่าข้อความข้างต้นเป็นความจริงทุกประการ หากปรากฏในภายหลังว่าข้อความ
-          ที่ข้าพเจ้าได้กล่าวข้างต้นเป็นเท็จ บริษัทอาจพิจารณาเลิกจ้างข้าพเจ้าได้ โดยข้าพเจ้าจะไม่เรียกร้อง
-          ค่าชดเชยหรือค่าเสียหายใดๆ ทั้งสิ้น
-        </div>
-        <div style={{ marginTop: 40, textAlign: 'center', fontSize: 12 }}>
-          <div>ลายมือชื่อผู้สมัคร</div>
-          <div style={{ marginTop: 28 }}>.......................................................</div>
-          <div>({fullName || '......................................................'})</div>
-          <div style={{ marginTop: 6 }}>........... / ............... / ...........</div>
-        </div>
-      </div>
-    </div>
-  )
+  return <div dangerouslySetInnerHTML={{ __html: window.HRPdfForm.build(get, isEmployee ? 'employee' : 'applicant') }} />
 }
 
 function LinkOrText({ value }) {

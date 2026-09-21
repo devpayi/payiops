@@ -390,6 +390,17 @@ Sheets rate limits.
       บ้านตัวเอง/บ้านญาติ→อาศัยกับครอบครัว/บ้านเช่า/อื่นๆ→"หอพัก/อื่นๆ"; ทหาร ไม่เกี่ยวข้อง→
       "ยังไม่ได้รับการเกณฑ์/ไม่เกี่ยวข้อง"; หย่าร้าง→"หม้าย/หย่าร้าง" (labels extended on the
       paper pattern — small deviation from the reference, deliberate).
+    - **✅ DONE (2026-09-21) — PDF rebuilt as question-driven, single shared file
+      `public/hr-pdf-form.js`.** Boss rule: every question the wizard asks MUST appear in the
+      PDF (required or not, blank if unanswered); anything the wizard does NOT ask must NOT
+      appear (removed: ใบสมัครเลขที่, photo box, เพศ, บัตรหมดอายุ, ขับรถ checkboxes, signature block, the
+      old paper-form mapping labels). Checkbox options = the wizard's exact options. **This replaces
+      the 3 hand-duplicated copies** — `apply.html`/`employee.html` load `<script src="/hr-pdf-form.js">`
+      and call `HRPdfForm.build(get, kind)`; `HRPeople.jsx` injects the same script on drawer open and
+      maps sheet headers→keys via `PDF_HEADERS`. **When a wizard question is added/changed, edit
+      `SECTIONS` in `hr-pdf-form.js` (key must match `answers` key) + `PDF_HEADERS` in HRPeople.jsx.**
+      Layout is natural-flow (`break-inside: avoid` per section), no forced page breaks; verified with
+      headless Chrome via a local http server (script src is absolute `/hr-pdf-form.js`, won't load from file://).
     - **✅ DONE (2026-09-18) — same locked-pattern PDF ported to the applicant/employee
       wizards' own done-screens too.** Owner tested the dashboard's "สร้าง PDF" and then
       asked why the wizard's own "พิมพ์ใบสมัคร (PDF)" button (on `apply.html`'s/
