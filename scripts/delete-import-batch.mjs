@@ -60,6 +60,10 @@ const requests = hits
 await api.spreadsheets.batchUpdate({ spreadsheetId: process.env.SHEET_ID, requestBody: { requests } })
 console.log(`ลบแล้ว ${requests.length} แถว`)
 
-const after = (await batchGetValues([`${TAB}!A:V`]))[0]?.values || []
+// ตรวจซ้ำต้องยิง API ตรง ไม่ผ่าน batchGetValues — ตัวนั้น cache ผลไว้ 20 วินาที (BATCH_CACHE_MS
+// ใน api/_lib/sheets.js) จึงคืนสแนปช็อต "ก่อนลบ" ที่อ่านไว้ตอนต้นสคริปต์ แล้วรายงานว่ายังไม่ลบ
+// ทั้งที่ลบไปแล้วจริง
+const after = (await api.spreadsheets.values.get({ spreadsheetId: process.env.SHEET_ID, range: `${TAB}!A:V` })).data.values || []
 const left = after.slice(1).filter((r) => r[16] === IMPORT_ID).length
 console.log(`ตรวจซ้ำ: เหลือแถวของ ${IMPORT_ID} อีก ${left} แถว | แถวทั้งหมดในแท็บ ${values.length - 1} → ${after.length - 1}`)
+if (left) { console.error('ยังลบไม่หมด — ตรวจดูก่อนรันซ้ำ'); process.exit(1) }
