@@ -454,11 +454,11 @@ Sheets rate limits.
 - **`ContentOSPrototype.jsx`** ("Content OS Prototype") — **UI-only prototype, no API
   calls, no backend.** Not usable yet.
 
-**Removed (undated, found stale 2026-08-26):** `WorkforceOT.jsx` component file still
-exists on disk but is **not imported/lazy-loaded in `App.jsx` at all** — Manpower & OT
-was removed from the sidebar (commit `a6685a9`); treat it as dead code, same as
-`PackingView.jsx` which has since been deleted outright (was previously noted here as
-"dead/unused, do not wire up" — now actually gone from `src/pages/`).
+**Removed (2026-09-23):** `WorkforceOT.jsx` deleted — Manpower & OT left the sidebar
+earlier (commit `a6685a9`); its last entry point was a `?ot-preview` URL switch in
+`src/main.jsx` that rendered it *before* the login gate, removed too. `PackingView.jsx`
+was deleted earlier the same way. (`op=workforce` in `sheet-tools.js` left untouched —
+not audited for other callers.)
 
 **Removed (2026-07-21, owner decision):**
 - **`SalesView.jsx`** ("Off-Platform Sales") — was localStorage-first, never migrated to
@@ -589,7 +589,7 @@ a new one.
    `claimImport.js`/`claimsSchema.js`) are all gone; fully moved to **payi-floor**
    (see the `app-portfolio-plan` note — payi-floor is แตง's live app). No trace left in
    `src/`/`api/` except historical comments citing the old `claims` sheet as a schema
-   precedent, and a stale `test/claims.test.js` that should eventually be deleted too.
+   precedent (`test/claims.test.js` is gone too).
 4. ✅ **DONE — Dashboard IA split** — `Dashboard สรุปยอดขาย` (Executive/Monthly) and
    `Dashboard สินค้า` (Products/ProductTrends) are both live, separate top-level menu
    items.
