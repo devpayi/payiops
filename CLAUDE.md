@@ -527,6 +527,18 @@ backing code. Lower priority (see TODO #9).
 - `monthly.js` — monthly sales by store (`requireAuth`)
 - `products.js` / `product-trends.js` — product-family aggregation + MoM trends (`requireAuth`)
 - `import-orders.js` (`?view=log|mapping-options|map-product|validate-dates` + POST map→alias-match→dedup→route to `raw_orders_YYYY_MM` + log; DELETE by import batch) (`requireDev` — dev-only, this is the destructive one). Now also resolves `province` on import — direct column or postal-code fallback via `ZIP_TO_PROVINCE`, see TODO #12.
+  **Fixed 2026-09-23 — cross-batch `L<n>` key collision.** Shopee files have no item id, so
+  lines get `L1, L2…` per order; the server counter reset every request while `Upload.jsx`
+  sends 2,000-row batches, so an order straddling a batch got `L1` twice for different
+  products → upsert overwrote the wrong row (silent revenue loss) or left 2 rows with one
+  key. Now `Upload.jsx` numbers the whole file first (`assignOrderLines` in
+  `shared/orderLines.js`, sent as `_payi_line`); `pick()`/`normalize()`/`isoDate` moved to
+  `shared/` so both sides count identically — keys for non-straddling orders are unchanged.
+  Orders that already have a duplicated `order_key` in the sheet are **skipped whole** on
+  re-import and listed in the result (`ambiguousOrders`) — clean them by hand (delete that
+  order's rows, re-upload). **Gotcha:** client code can't import anything under `api/` —
+  the dev middleware in `vite.config.js` swallows every `/api/*` URL (404); put shared code
+  in `shared/`.
 - `planner-sales.js` — ABC classification + sales average over a `?days=N` window (default 90; Inventory/Stock Movement/Planner Control all call `?days=30` as of 2026-07-25), 6h in-memory cache per `days` value (`requireAuth`). Decomposes Set/bundle SKU sales into real component demand via `set_recipes` sheet, and resolves renamed SKUs via `sku_redirects` — both now Sheets-backed through `_lib/skuMapping.js`, see TODO #7 sub-note and Files section
 - `marketing.js` (`?kind=events|inputs|basket` — multiplexes `_lib/marketingEvents.js` / `_lib/marketingInputs.js` / `_lib/marketingBasket.js`, each with its own `requireManager`/`canManageMarketing`)
 - `sheet-tools.js` (`?op=summary|sheet|append|overwrite|workforce|planner|hr|hr-people|inventory|import-tracking|cfo|demographic|fulfillment|line-webhook`) — the biggest file; HR, workforce/OT, planner CRUD, generic sheet tools, CFO, Demographic, and the LINE webhook all live here to stay under the function cap. `line-webhook` op is unauthenticated (verified via LINE signature instead, see `_lib/line.js`); it and a `&cron=low-stock`/`holiday-reminder` mode (Vercel Cron) both bypass `requireAuth` by design. `op=inventory` (added 2026-07-21) delegates to `_lib/inventory.js` — `stock` role has full access, `staff` also now sees Inventory/Stock Movement (in `STAFF_TABS`). `op=import-tracking` (added 2026-07-24) delegates to `_lib/importTracking.js` — **DEV-ONLY since 2026-09-01** (was dev+boss). `op=cfo` → `_lib/cfo.js`, `op=demographic` → `_lib/demographic.js`, `op=fulfillment` → `_lib/fulfillment.js` (added 2026-09-02) — all three **DEV-ONLY** (see the role note near the top of this doc + TODO #14/#15)

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { UploadCloud, FileSpreadsheet, CheckCircle2, AlertTriangle, Loader2, RefreshCw, Trash2, X } from 'lucide-react'
+import { assignOrderLines } from '../../shared/orderLines.js'
 
 const API = '/api'
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH')
@@ -239,15 +240,17 @@ export default function Upload() {
     const active = queue.filter((x) => x.status !== 'error' && x.rows.length)
     if (!active.length) return
     setImporting(true); setResult(null)
-    let imported = 0, updated = 0, mapped = 0, skipped = 0, skippedInvalid = 0
+    let imported = 0, updated = 0, mapped = 0, skipped = 0, skippedInvalid = 0, skippedAmbiguous = 0
     const tabs = new Set()
     const unmappedSamples = []
+    const ambiguousOrders = []
     try {
       for (let f = 0; f < queue.length; f++) {
         const item = queue[f]
         if (item.status === 'error' || !item.rows.length) continue
         setQueue((q) => q.map((x) => x.name === item.name ? { ...x, status: 'importing' } : x))
-        const slim = item.rows.map(slimRow)
+        // นับเลขบรรทัดออเดอร์ครบทั้งไฟล์ก่อนแบ่ง batch (ดู shared/orderLines.js)
+        const slim = assignOrderLines(item.rows.map(slimRow))
         const batches = []
         for (let i = 0; i < slim.length; i += BATCH_SIZE) batches.push(slim.slice(i, i + BATCH_SIZE))
         let fileErr = ''
@@ -261,7 +264,8 @@ export default function Upload() {
           const d = await readApiResponse(r)
           if (!r.ok || !d.success) { fileErr = d.error || `นำเข้าไม่สำเร็จ (${r.status})`; break }
           imported += d.imported || 0; updated += d.updated || 0; mapped += d.mapped || 0
-          skipped += d.skipped || 0; skippedInvalid += d.skippedInvalid || 0
+          skipped += d.skipped || 0; skippedInvalid += d.skippedInvalid || 0; skippedAmbiguous += d.skippedAmbiguous || 0
+          for (const o of d.ambiguousOrders || []) if (!ambiguousOrders.includes(o)) ambiguousOrders.push(o)
           for (const t of d.tabs || []) tabs.add(t)
           for (const s of (d.unmappedSamples || [])) {
             const k = `${s.productName}|${s.variation}`
@@ -270,7 +274,7 @@ export default function Upload() {
         }
         setQueue((q) => q.map((x) => x.name === item.name ? { ...x, status: fileErr ? 'error' : 'done', note: fileErr } : x))
       }
-      setResult({ success: true, imported, updated, mapped, skipped, skippedInvalid, unmappedSamples, tabs: [...tabs] })
+      setResult({ success: true, imported, updated, mapped, skipped, skippedInvalid, skippedAmbiguous, ambiguousOrders, unmappedSamples, tabs: [...tabs] })
       loadLog()
     } catch (e) {
       setResult({ success: false, error: e.message })
@@ -374,12 +378,15 @@ export default function Upload() {
         }
       }
 
+      // นับเลขบรรทัดออเดอร์ครบทั้งไฟล์ก่อนแบ่ง batch (ดู shared/orderLines.js)
+      const lined = assignOrderLines(slim)
       const batches = []
-      for (let i = 0; i < slim.length; i += BATCH_SIZE) batches.push(slim.slice(i, i + BATCH_SIZE))
+      for (let i = 0; i < lined.length; i += BATCH_SIZE) batches.push(lined.slice(i, i + BATCH_SIZE))
 
-      let imported = 0, updated = 0, mapped = 0, skipped = 0, skippedInvalid = 0
+      let imported = 0, updated = 0, mapped = 0, skipped = 0, skippedInvalid = 0, skippedAmbiguous = 0
       const tabs = new Set()
       const unmappedSamples = []
+      const ambiguousOrders = []
       for (let i = 0; i < batches.length; i++) {
         setResult({ success: true, inProgress: true, note: `กำลังนำเข้า batch ${i + 1}/${batches.length}...` })
         const r = await fetch(`${API}/import-orders`, {
@@ -398,6 +405,8 @@ export default function Upload() {
         mapped += d.mapped || 0
         skipped += d.skipped || 0
         skippedInvalid += d.skippedInvalid || 0
+        skippedAmbiguous += d.skippedAmbiguous || 0
+        for (const o of d.ambiguousOrders || []) if (!ambiguousOrders.includes(o)) ambiguousOrders.push(o)
         for (const t of d.tabs || []) tabs.add(t)
         for (const s of (d.unmappedSamples || [])) {
           const dupeKey = `${s.productName}|${s.variation}`
@@ -405,7 +414,7 @@ export default function Upload() {
         }
       }
 
-      setResult({ success: true, imported, updated, mapped, skipped, skippedInvalid, unmappedSamples, tabs: [...tabs] })
+      setResult({ success: true, imported, updated, mapped, skipped, skippedInvalid, skippedAmbiguous, ambiguousOrders, unmappedSamples, tabs: [...tabs] })
       setFile(null); setRows([]); setHeaders([]); setExpectedMonth(''); setMultiMonth(false); setMonthBreakdown(null); setBreakdownConfirmed(false); loadLog()
     } catch (e) {
       setResult({ success: false, error: e.message })
@@ -618,6 +627,12 @@ export default function Upload() {
               : result.success
                 ? `นำเข้าสำเร็จ ${fmt(result.imported)} แถว${result.updated ? ` · อัปเดตของเดิม ${fmt(result.updated)}` : ''} · จับคู่ SKU ได้ ${fmt(result.mapped)} · ข้ามซ้ำ (ไม่เปลี่ยน) ${fmt(result.skipped - (result.skippedInvalid || 0))}${result.skippedInvalid ? ` · ข้อมูลไม่ครบ ${fmt(result.skippedInvalid)}` : ''}`
                 : `ผิดพลาด: ${result.error}`}
+            {result.success && !result.inProgress && result.skippedAmbiguous > 0 && (
+              <div style={{ marginTop: 8, color: '#92400e' }}>
+                ข้าม {fmt(result.skippedAmbiguous)} แถว — ออเดอร์เหล่านี้ในชีตมีรหัสรายการ (order_key) ซ้ำกันอยู่แล้ว ระบบไม่แตะเพื่อกันยอดเพี้ยน
+                ให้ลบแถวของออเดอร์นั้นในชีตแล้วอัปไฟล์นี้ใหม่: {result.ambiguousOrders.join(', ')}
+              </div>
+            )}
             {result.success && !result.inProgress && result.unmappedSamples?.length > 0 && (
               <div style={{ marginTop: 8, color: '#92400e' }}>
                 สินค้าที่ยังไม่จับคู่ SKU:

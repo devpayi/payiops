@@ -7,8 +7,8 @@ import { getSheet, appendRows, batchGetValues, batchUpdateValues, overwriteSheet
 import { isoDate } from './_lib/dates.js'
 import ZIP_TO_PROVINCE from './_lib/zipToProvince.js'
 import { createHash } from 'node:crypto'
+import { normalize, pick, LINE_FIELD } from '../shared/orderLines.js'
 
-const normalize = (s) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
 
 // buyer_hash — เก็บ hash ของ username ผู้ซื้อ ไม่เก็บชื่อจริง (ชีตเคย link-public) แค่พอให้จับ
 // "ลูกค้าคนเดิม" ได้ (hash เท่ากัน = คนเดียวกัน ภายในแพลตฟอร์มเดียวกัน). pepper กันเดา rainbow ของ
@@ -33,22 +33,7 @@ const forceText = (v) => { const s = String(v ?? ''); return s ? `'${s}` : s }
 // ความคุ้มของ fulfillment, และ % ลูกค้าซื้อซ้ำ (append-only เดียวกับ province — แถวเก่าจะว่าง ไม่ backfill)
 const RAW_HEADERS = ['order_key', 'order_id', 'order_item_id', 'date', 'platform', 'business', 'sku_platform', 'product_name', 'variation_name', 'master_sku', 'display_name', 'qty', 'revenue', 'order_status', 'imported_at', 'source_file', 'import_id', 'alias_key', 'province', 'shipping_option', 'fulfillment_type', 'buyer_hash']
 
-function pick(row, keys) {
-  const entries = Object.entries(row)
-  // pass 1: exact header match (avoids grabbing an unrelated column that merely
-  // contains a candidate word as a substring, e.g. "สถานะการคืนเงินหรือคืนสินค้า"
-  // matching the "สินค้า" candidate before the real "ชื่อสินค้า" column is checked)
-  for (const [k, v] of entries) {
-    const nk = normalize(k)
-    if (keys.some((c) => nk === normalize(c))) return v
-  }
-  // pass 2: substring fallback for loosely-named columns
-  for (const [k, v] of entries) {
-    const nk = normalize(k)
-    if (keys.some((c) => nk.includes(normalize(c)))) return v
-  }
-  return ''
-}
+// pick() / normalize() ย้ายไป shared/orderLines.js — client ใช้ตัวเดียวกันนับเลขบรรทัดออเดอร์
 
 // เดาแพลตฟอร์มจาก "รูปร่างคอลัมน์" ของไฟล์ export แต่ละแพลตฟอร์ม (เชื่อถือได้กว่าหาคำว่า
 // "tiktok"/"shopee" ในเนื้อหา — ไฟล์ TikTok Shop จริงไม่มีคำว่า "tiktok" อยู่ในหัวคอลัมน์เลย
@@ -294,6 +279,9 @@ export default async function handler(req, res) {
 
       // ไฟล์ export บางแพลตฟอร์ม (เช่น Shopee) ไม่มีคอลัมน์ item id แยกต่างหาก —
       // ถ้าไม่มี ให้ไล่เลขบรรทัดต่อออเดอร์ กันไม่ให้ order ที่มีหลายสินค้าถูกมองว่าเป็นแถวซ้ำ
+      // Upload.jsx นับมาให้แล้วทั้งไฟล์ (LINE_FIELD, ดู shared/orderLines.js) — ใช้อันนั้นก่อน เพราะ
+      // itemCounter ข้างล่างเห็นแค่ batch นี้ ออเดอร์ที่คร่อม batch จะได้ L1 ซ้ำ; ตัวนับเดิมเหลือไว้กัน client เก่า
+      if (!orderItemId && row[LINE_FIELD]) orderItemId = String(row[LINE_FIELD])
       if (!orderItemId) {
         const n = (itemCounter.get(orderId) || 0) + 1
         itemCounter.set(orderId, n)
@@ -328,7 +316,8 @@ export default async function handler(req, res) {
     // เจอ order_key ซ้ำ = อัปเดตแถวเดิม (สถานะ/ยอด/จำนวน/จังหวัด ฯลฯ) ไม่ใช่ข้าม — ทำให้อัพไฟล์เต็ม
     // ทับได้เลย ออเดอร์ที่เปลี่ยนสถานะ/ถูกยกเลิกหลังจากนั้นจะถูกแก้ให้อัตโนมัติ ไม่ต้องลบทั้งเดือนก่อน
     const tabs = [...byMonth.keys()]
-    let skippedDup = 0, imported = 0, updated = 0
+    let skippedDup = 0, imported = 0, updated = 0, skippedAmbiguous = 0
+    const ambiguousOrders = []
     // คอลัมน์ที่เทียบว่า "เปลี่ยนไหม" — ทุกคอลัมน์ ยกเว้น (ก) ระบุตัวตนแถว 0-5 ที่ไม่มีทางเปลี่ยนสำหรับ
     // order_key เดิม (order_key/order_id/order_item_id/date/platform/business) และ (ข) meta การนำเข้า
     // 14-16 (imported_at/source_file/import_id) ที่ต่างทุกครั้งอยู่แล้ว จึงเทียบ 6-13 + 17-21:
@@ -345,10 +334,23 @@ export default async function handler(req, res) {
       const body = rows.slice(1)
       const idxByKey = new Map()
       body.forEach((row, j) => { if (row[0]) idxByKey.set(row[0], j) })
+      // ออเดอร์ที่ในชีตมี order_key ซ้ำกันอยู่แล้ว (ผลจากบั๊กเลขบรรทัดคร่อม batch ก่อนแก้) — แต่ละแถวเป็นสินค้า
+      // คนละตัวจริง ห้ามแตะอัตโนมัติ: upsert จะเขียนทับแถวผิดตัว และ L ที่นับใหม่ถูกต้องจะต่อแถวเพิ่มเป็นยอดเบิ้ล
+      // ข้ามทั้งออเดอร์ แล้วแจ้งเลขออเดอร์ให้เคลียร์เอง (ลบแถวของออเดอร์นั้นในชีตแล้วอัปไฟล์ใหม่)
+      const orderPrefix = (key) => String(key).slice(0, String(key).lastIndexOf(':'))
+      const keyCount = new Map()
+      for (const row of body) if (row[0]) keyCount.set(row[0], (keyCount.get(row[0]) || 0) + 1)
+      const brokenOrders = new Set([...keyCount].filter(([, c]) => c > 1).map(([k]) => orderPrefix(k)))
 
       const updates = []
       const newRows = []
       for (const r of byMonth.get(tab)) {
+        const prefix = orderPrefix(r.orderKey)
+        if (brokenOrders.has(prefix)) {
+          skippedAmbiguous++
+          if (ambiguousOrders.length < 20 && !ambiguousOrders.includes(prefix)) ambiguousOrders.push(prefix)
+          continue
+        }
         const j = idxByKey.get(r.orderKey)
         if (j == null) { newRows.push(r.arr); continue }
         const cur = body[j] || []
@@ -368,7 +370,7 @@ export default async function handler(req, res) {
       await appendRows('import_log', [[importId, fileName, bizSel || (byMonth.size ? '' : ''), platformSel === 'auto' ? '' : platformSel, imported, mapped, imported - mapped, importedAt, tabs.join(','), 'active']])
     } catch { /* ignore */ }
 
-    res.status(200).json({ success: true, importId, imported, updated, mapped, skipped: skippedDup + skippedInvalid, skippedDup, skippedInvalid, unmappedSamples, tabs })
+    res.status(200).json({ success: true, importId, imported, updated, mapped, skipped: skippedDup + skippedInvalid, skippedDup, skippedInvalid, skippedAmbiguous, ambiguousOrders, unmappedSamples, tabs })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })
   }
