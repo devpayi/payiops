@@ -888,6 +888,7 @@ export default function App() {
                   <button
                     key={item.id}
                     data-nav-id={item.id}
+                    data-active={isActive ? 'true' : undefined}
                     title={sidebarExpanded ? undefined : item.label}
                     onClick={() => setActiveTab(item.id)}
                     style={{

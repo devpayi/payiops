@@ -535,7 +535,7 @@
 }
 
 /* HR navigation and hero composition */
-body:has(.hr-page) .payi-sidebar-nav [data-nav-id="HR"] {
+.payi-sidebar-nav [data-nav-id="HR"][data-active="true"] {
   background:
     radial-gradient(circle at 84% 18%, rgba(255, 255, 255, .7) 0 1px, transparent 3px),
     linear-gradient(135deg, #8060a1 0%, #a774c4 54%, #d49cda 100%) !important;
@@ -1225,7 +1225,7 @@ body:has(.hr-page) .payi-main-content > .payi-topbar > div:last-child {
 }
 
 /* Small toy-color accents: decorative only; data/status colors stay unchanged. */
-body:has(.hr-page) .payi-sidebar-nav [data-nav-id="HR"] {
+.payi-sidebar-nav [data-nav-id="HR"][data-active="true"] {
   background: linear-gradient(110deg, #168861 0%, #247b70 52%, #69508c 100%) !important;
   box-shadow:
     0 6px 16px rgba(43, 103, 88, .2),
