@@ -34,20 +34,19 @@ function BoardCard({ item }) {
   )
 }
 
-function TargetCard({ target, sales }) {
+function TargetCard({ target, sales, okr }) {
   const months = sales || []
-  const total = months.reduce((s, m) => s + m.revenue, 0)
-  const avg = months.length ? total / months.length : 0
-  const gap = target.monthly - avg
-  const max = Math.max(target.monthly, ...months.map((m) => m.revenue)) * 1.08
+  const max = Math.max(...months.map((m) => m.revenue), 1) * 1.1
+  const runRate = okr?.objective.runRate || 0
+  const gap = target.total - runRate
   return (
     <div style={card}>
-      <h3 style={sectionTitle}>เป้า {target.year}: {mb(target.total)} บาท</h3>
+      <h3 style={sectionTitle}>เป้าทั้งปี {target.year}: {mb(target.total)} บาท</h3>
       <div className="app-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12, marginBottom: 18 }}>
         {[
-          ['ต้องขายเดือนละ', thb(target.monthly), 'var(--payi-text-strong)'],
-          [`เฉลี่ยจริง ${months.length} เดือนล่าสุด`, thb(avg), 'var(--payi-text-strong)'],
-          ['ยังขาดต่อเดือน', gap > 0 ? `${thb(gap)} (${Math.round((gap / target.monthly) * 100)}%)` : 'ถึงเป้าแล้ว', gap > 0 ? '#c2410c' : '#16a34a'],
+          ['เป้าทั้งปี', mb(target.total), 'var(--payi-text-strong)'],
+          ['ถ้าขายเท่าตอนนี้ทั้งปี', `≈ ${mb(runRate)}`, 'var(--payi-text-strong)'],
+          ['ยังขาด', gap > 0 ? `≈ ${mb(gap)} (${Math.round((gap / target.total) * 100)}%)` : 'ถึงเป้าแล้ว', gap > 0 ? '#c2410c' : '#16a34a'],
         ].map(([label, value, color]) => (
           <div key={label} style={{ background: 'var(--payi-bg, #f8fafc)', borderRadius: 12, padding: '12px 14px' }}>
             <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>{label}</div>
@@ -55,18 +54,16 @@ function TargetCard({ target, sales }) {
           </div>
         ))}
       </div>
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', gap: 8, height: 180, padding: '0 4px', borderBottom: '1px solid var(--payi-line, #e5e7eb)' }}>
-        <div title={`เป้าเดือนละ ${thb(target.monthly)}`} style={{ position: 'absolute', left: 0, right: 0, bottom: `${(target.monthly / max) * 100}%`, borderTop: '2px dashed #c2410c' }}>
-          <span style={{ position: 'absolute', right: 0, top: -18, fontSize: 10, fontWeight: 700, color: '#c2410c' }}>เป้า 12.5 ล้าน/เดือน</span>
-        </div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 8 }}>ยอดจริงรายเดือนปี 2026</div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 150, padding: '0 4px', borderBottom: '1px solid var(--payi-line, #e5e7eb)' }}>
         {months.map((m) => (
           <div key={m.month} title={`${m.month}: ${thb(m.revenue)}`} style={{ flex: 1, minWidth: 0, height: `${(m.revenue / max) * 100}%`, background: 'linear-gradient(180deg, rgba(85,102,230,0.9), rgba(85,102,230,0.55))', borderRadius: '6px 6px 0 0' }} />
         ))}
       </div>
       <div style={{ display: 'flex', gap: 8, padding: '6px 4px 0' }}>
-        {months.map((m) => <div key={m.month} style={{ flex: 1, minWidth: 0, textAlign: 'center', fontSize: 10, color: 'var(--payi-text-muted)' }}>{m.month.slice(5)}/{m.month.slice(2, 4)}</div>)}
+        {months.map((m) => <div key={m.month} style={{ flex: 1, minWidth: 0, textAlign: 'center', fontSize: 10, color: 'var(--payi-text-muted)' }}>{m.month.slice(5)}/{m.month.slice(2, 4)}<br />{mb(m.revenue)}</div>)}
       </div>
-      <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 10 }}>ยอดจริงปี 2026 จาก raw_orders (ไม่นับยกเลิก สูตรเดียวกับ Dashboard) · เห็นเฉพาะ CEO และหัวหน้าฝ่าย</div>
+      <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 10 }}>เป้าเป็นรายปี ไม่ได้แบ่งรายเดือน · "ถ้าขายเท่าตอนนี้ทั้งปี" = ยอดเฉลี่ย 3 เดือนล่าสุด × 12 (ไม่นับยกเลิก สูตรเดียวกับ Dashboard) · เห็นเฉพาะ CEO และหัวหน้าฝ่าย</div>
     </div>
   )
 }
@@ -83,14 +80,14 @@ function KrRow({ kr }) {
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(110px,1.2fr) minmax(120px,2fr) auto', gap: 12, alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--payi-line, #eef2f7)' }}>
       <div>
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{kr.name}</div>
-        <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>สัดส่วน {Math.round(kr.share * 100)}% · เป้าปี {mb(kr.target)}</div>
+        <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>สัดส่วนยอดปีนี้ {Math.round(kr.share * 100)}%</div>
       </div>
       <div>
         <div style={{ height: 8, borderRadius: 999, background: 'var(--payi-bg, #f1f5f9)', overflow: 'hidden' }}>
           <div style={{ width: `${Math.min(100, kr.pct * 100)}%`, height: '100%', background: st.color, borderRadius: 999 }} />
         </div>
         <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 4 }}>
-          ตอนนี้ {thb(kr.actual)}/เดือน · เป้า {thb(kr.monthlyTarget)}/เดือน{kr.growthNeeded != null && kr.growthNeeded > 0 ? ` · ต้องโต ${Math.round(kr.growthNeeded * 100)}%` : ''}
+          ถ้าขายเท่าตอนนี้ทั้งปี ≈ {mb(kr.runRate)} · เป้า {mb(kr.target)}{kr.growthNeeded != null && kr.growthNeeded > 0 ? ` · ต้องโต ${Math.round(kr.growthNeeded * 100)}%` : ''}
         </div>
       </div>
       <span style={{ ...chip(st.bg, st.color) }}>{Math.round(kr.pct * 100)}% {st.label}</span>
@@ -118,7 +115,7 @@ function OkrCard({ okr }) {
         </div>
       ))}
       <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 12 }}>
-        เป้าย่อยตั้งต้น = แบ่ง 150 ล้านตามสัดส่วนยอดจริงปี 2026 · ความคืบหน้า = ยอดเฉลี่ย {o.basis.join(', ')} เทียบเป้าต่อเดือน · ≥90% ถึงเป้า, 60–90% ใกล้เป้า, ต่ำกว่า 60% ห่างเป้า (ปี 2027 ยังไม่เริ่ม — วัดจากยอดปัจจุบัน) · ยังไม่ได้กำหนดคนรับผิดชอบรายช่องทาง (Platform = รอ 3)
+        เป้าย่อยตั้งต้น = แบ่ง 150 ล้านตามสัดส่วนยอดจริงปี 2026 · ความคืบหน้า = ยอดเฉลี่ย {o.basis.join(', ')} คิดทั้งปี เทียบเป้าปี · ≥90% ถึงเป้า, 60–90% ใกล้เป้า, ต่ำกว่า 60% ห่างเป้า (ปี 2027 ยังไม่เริ่ม — วัดจากยอดปัจจุบัน) · ยังไม่ได้กำหนดคนรับผิดชอบรายช่องทาง (Platform = รอ 3)
       </div>
     </div>
   )
@@ -185,7 +182,7 @@ export default function Workspace({ onOpenTab }) {
         </div>
       )}
 
-      {target && <TargetCard target={target} sales={sales} />}
+      {target && <TargetCard target={target} sales={sales} okr={okr} />}
       {okr && <OkrCard okr={okr} />}
 
       <div>

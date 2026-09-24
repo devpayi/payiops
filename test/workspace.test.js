@@ -33,6 +33,6 @@ test('OKR splits the company target by real sales share and scores progress', as
   const okr = buildOkr([m('2026-01', 70, 30), m('2026-02', 70, 30), m('2026-03', 70, 30)], 2400)
   assert.equal(okr.platforms[0].name, 'Shopee')
   assert.equal(okr.platforms[0].target, 1680) // 70% of 2400
-  assert.equal(okr.objective.status, 'off') // 100/month vs 200/month target = 50%
+  assert.equal(okr.objective.status, 'off') // run-rate 1200/yr vs 2400 target = 50%
   assert.equal(okr.platforms.reduce((s, k) => s + k.target, 0), 2400)
 })

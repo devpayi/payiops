@@ -141,7 +141,7 @@ async function monthlySales() {
 }
 
 // โครงจาก CMO/COO app #58 OKR: เป้าบริษัท → เป้าย่อยต่อช่องทาง/ร้าน (ค่าตั้งต้น = สัดส่วนยอดจริงปีนี้)
-// ความคืบหน้า = ยอดเฉลี่ย 3 เดือนล่าสุด ÷ เป้าต่อเดือน; ≥90% ถึงเป้า, 60–90% ใกล้เป้า, <60% ห่างเป้า
+// เป้าเป็นรายปีเท่านั้น (ไม่ได้ตั้งรายเดือนแบบเป๊ะ) — ความคืบหน้า = อัตรายอดปัจจุบันคิดทั้งปี (เฉลี่ย 3 เดือนล่าสุด × 12) ÷ เป้าปี; ≥90% ถึงเป้า, 60–90% ใกล้เป้า, <60% ห่างเป้า
 const statusOf = (pct) => (pct >= 0.9 ? 'on' : pct >= 0.6 ? 'risk' : 'off')
 export function buildOkr(months, total = TARGET_2027) {
   if (!months?.length) return null
@@ -155,15 +155,15 @@ export function buildOkr(months, total = TARGET_2027) {
   const all = months.reduce((s, m) => s + m.revenue, 0)
   const krs = (dim) => Object.entries(ytd(dim)).sort((a, b) => b[1] - a[1]).map(([name, v]) => {
     const share = v / all
-    const monthlyTarget = (total * share) / 12
-    const actual = avg((m) => m[dim][name] || 0)
-    const pct = actual / monthlyTarget
-    return { name, share, target: Math.round(total * share), monthlyTarget: Math.round(monthlyTarget), actual: Math.round(actual), pct, status: statusOf(pct), growthNeeded: actual ? monthlyTarget / actual - 1 : null }
+    const target = total * share
+    const runRate = avg((m) => m[dim][name] || 0) * 12
+    const pct = runRate / target
+    return { name, share, target: Math.round(target), runRate: Math.round(runRate), pct, status: statusOf(pct), growthNeeded: runRate ? target / runRate - 1 : null }
   })
-  const actual = avg((m) => m.revenue)
-  const pct = actual / (total / 12)
+  const runRate = avg((m) => m.revenue) * 12
+  const pct = runRate / total
   return {
-    objective: { title: `ยอดขายปี 2027 = ${total / 1_000_000} ล้านบาท`, monthlyTarget: Math.round(total / 12), actual: Math.round(actual), pct, status: statusOf(pct), basis: recent.map((m) => m.month) },
+    objective: { title: `ยอดขายปี 2027 = ${total / 1_000_000} ล้านบาท`, target: total, runRate: Math.round(runRate), pct, status: statusOf(pct), basis: recent.map((m) => m.month) },
     platforms: krs('platform'),
     businesses: krs('business'),
   }
@@ -184,7 +184,7 @@ export default async function opWorkspace(req, res) {
       people: PEOPLE.map((p) => ({ key: p.key, name: p.name, account: p.account })),
       departments: departmentsView(key),
       pending: PENDING_SLOTS,
-      target: me.canSeeCompany ? { year: 2027, total: TARGET_2027, monthly: TARGET_2027 / 12 } : null,
+      target: me.canSeeCompany ? { year: 2027, total: TARGET_2027 } : null,
       sales: sales?.map(({ month, revenue }) => ({ month, revenue })) || null,
       okr: sales ? buildOkr(sales) : null,
     })
