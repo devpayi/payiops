@@ -221,6 +221,99 @@ async function addCheckin(req, res, key) {
   return res.status(200).json({ success: true, id })
 }
 
+// ── สรุปก่อนเริ่มงาน (บอส/CEO เท่านั้น รุ่นแรก) ──
+// ตอบ 4 คำถาม: ตอนนี้เป็นไง / อะไรเปลี่ยนมากสุด / วันนี้ควรดูอะไร / ไปดูต่อที่ไหน
+// เทียบ "ช่วงเวลาเดียวกัน" เสมอ (วันที่ 1 ถึงวันล่าสุดที่มีข้อมูลเดือนนี้ เทียบวันเดียวกันของเดือนก่อน)
+// ไม่สรุปเหตุผล ("เพราะคอนเทนต์ไม่ดี") แค่ชี้ว่าตัวเลขไหนขยับมากที่สุด ให้คนไปดูต่อเอง
+const briefCache = new Map()
+async function loadMonth(tab) {
+  const cached = briefCache.get(tab)
+  if (cached && Date.now() - cached.at < 15 * 60_000) return cached.data
+  const [dnVr] = await Promise.all([batchGetValues([`${tab}!D:N`])])
+  const rows = (dnVr[0]?.values || []).slice(1)
+  const data = rows.map((r) => ({ date: r[0] || '', platform: r[1] || '', business: r[2] || '', masterSku: r[6] || '', name: r[7] || '', qty: num(r[8]), revenue: num(r[9]), status: r[10] || '' })).filter((r) => r.date)
+  briefCache.set(tab, { at: Date.now(), data })
+  return data
+}
+const ymd = (d) => d.toISOString().slice(0, 10)
+const addDays = (dateStr, n) => { const d = new Date(dateStr + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return ymd(d) }
+const prevMonthTab = (tab) => {
+  const [y, m] = tab.slice(11).split('_').map(Number)
+  const d = new Date(Date.UTC(y, m - 2, 1))
+  return `raw_orders_${d.getUTCFullYear()}_${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+}
+function sumBy(rows, keyFn) {
+  const out = new Map()
+  for (const r of rows) { if (isCancelled(r.status)) continue; const k = keyFn(r); if (!k) continue; out.set(k, (out.get(k) || 0) + r.revenue) }
+  return out
+}
+let briefingCache = null
+export async function buildBriefing() {
+  if (briefingCache && Date.now() - briefingCache.at < 15 * 60_000) return briefingCache.data
+  const meta = await getMetaCached()
+  const tabs = meta.sheets.map((s) => s.properties.title).filter((t) => /^raw_orders_\d{4}_\d{2}$/.test(t)).sort()
+  // เดือนล่าสุดที่ "สร้างแท็บไว้แล้ว" อาจยังไม่มีออเดอร์เลย (เพิ่งขึ้นเดือนใหม่ ยังไม่ import) — ไล่ย้อนหา
+  // แท็บล่าสุดที่มีข้อมูลจริงแทน ไม่งั้นหน้าสรุปจะว่างเปล่าทั้งที่มีข้อมูลเดือนก่อนให้ดู
+  let thisTab = null, thisRows = []
+  for (let i = tabs.length - 1; i >= 0; i--) {
+    const rows = await loadMonth(tabs[i])
+    if (rows.length) { thisTab = tabs[i]; thisRows = rows; break }
+  }
+  if (!thisTab) return null
+  const latestDate = thisRows.reduce((max, r) => (r.date > max ? r.date : max), '')
+  if (!latestDate) return null
+  const dayNum = Number(latestDate.slice(8, 10))
+  const monthStart = latestDate.slice(0, 8) + '01'
+  const prevTab = prevMonthTab(thisTab)
+  const prevRows = tabs.includes(prevTab) || (await getMetaCached()).sheets.some((s) => s.properties.title === prevTab) ? await loadMonth(prevTab) : []
+  const prevMonthStart = prevTab.slice(11).replace('_', '-') + '-01'
+  const prevComparable = prevRows.filter((r) => r.date >= prevMonthStart && r.date <= addDays(prevMonthStart, dayNum - 1))
+
+  const today = latestDate, yesterday = addDays(latestDate, -1)
+  const revOn = (rows, d) => rows.filter((r) => r.date === d && !isCancelled(r.status)).reduce((s, r) => s + r.revenue, 0)
+  const mtd = thisRows.filter((r) => r.date >= monthStart && !isCancelled(r.status)).reduce((s, r) => s + r.revenue, 0)
+  const mtdPrev = prevComparable.reduce((s, r) => s + r.revenue, 0)
+
+  const movers = (keyFn) => {
+    const cur = sumBy(thisRows.filter((r) => r.date >= monthStart), keyFn)
+    const prev = sumBy(prevComparable, keyFn)
+    const keys = new Set([...cur.keys(), ...prev.keys()])
+    return [...keys].map((k) => ({ name: k, now: Math.round(cur.get(k) || 0), before: Math.round(prev.get(k) || 0), delta: Math.round((cur.get(k) || 0) - (prev.get(k) || 0)) }))
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+  }
+  const platformMovers = movers((r) => r.platform)
+  const productMovers = movers((r) => r.name).slice(0, 5)
+
+  let lowStock = []
+  try { const { computeLowStockList } = await import('./inventory.js'); lowStock = (await computeLowStockList()).sort((a, b) => (b.recommendedOrder || 0) - (a.recommendedOrder || 0)) } catch { /* ไม่มีสต็อกให้เช็คก็ข้าม ไม่ทำให้หน้าพัง */ }
+
+  const platformLatest = {}
+  for (const r of thisRows) if (r.platform && (!platformLatest[r.platform] || r.date > platformLatest[r.platform])) platformLatest[r.platform] = r.date
+
+  briefingCache = {
+    at: Date.now(),
+    data: {
+      asOfDate: latestDate,
+      today: { revenue: Math.round(revOn(thisRows, today)) },
+      yesterday: { revenue: Math.round(revOn(thisRows, yesterday)) },
+      mtd: { revenue: Math.round(mtd), comparableDays: dayNum, prevMonthComparable: Math.round(mtdPrev), deltaPct: mtdPrev ? (mtd - mtdPrev) / mtdPrev : null, prevMonthLabel: prevMonthStart.slice(0, 7) },
+      platformMovers, productMovers,
+      lowStock: { count: lowStock.length, top: lowStock.slice(0, 5) },
+      dataStatus: {
+        latestMonthTab: thisTab, comparableDays: dayNum,
+        platformLatestDate: platformLatest,
+        archivedMonths: meta.sheets.filter((s) => s.properties.archived).map((s) => s.properties.title),
+        unconnected: [
+          { source: 'ไลฟ์ (payi-webapp)', state: 'มีข้อมูลจริง ยังไม่เชื่อมเข้ามา', detail: 'มียอดต่อรอบ ต่อคนไลฟ์ ต่อทีม และตารางแคมเปญอยู่แล้วในฐานข้อมูลแยก' },
+          { source: 'Affiliate / KOL', state: 'ยังไม่มีที่เก็บ', detail: 'ยังไม่มีระบบบันทึกยอดต่อคนที่ใดเลย' },
+          { source: 'Content', state: 'ยังไม่มีที่เก็บ', detail: 'ยังไม่มีระบบเก็บผลตอบรับคอนเทนต์' },
+        ],
+      },
+    },
+  }
+  return briefingCache.data
+}
+
 export default async function opWorkspace(req, res) {
   try {
     const role = normalizeRole(req.user?.role)
@@ -245,6 +338,7 @@ export default async function opWorkspace(req, res) {
       sales: sales?.map(({ month, revenue }) => ({ month, revenue })) || null,
       okr: sales ? buildOkr(sales) : null,
       tracker: summarize(visibleBoard(key), checkins),
+      briefing: key === 'boss' || key === 'dev' ? await buildBriefing().catch(() => null) : null,
     })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })

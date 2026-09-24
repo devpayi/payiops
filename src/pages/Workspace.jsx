@@ -121,6 +121,92 @@ function TrackerCard({ tracker }) {
   )
 }
 
+const pct1 = (v) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${Math.round(v * 100)}%`)
+const moverColor = (delta) => (delta >= 0 ? '#16a34a' : '#dc2626')
+
+function MoverRow({ m }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 10, alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--payi-line, #eef2f7)' }}>
+      <div style={{ fontSize: 13, color: 'var(--payi-text-strong)', fontWeight: 600 }}>{m.name}</div>
+      <div style={{ textAlign: 'right' }}>
+        <span style={{ fontSize: 13, fontWeight: 800, color: moverColor(m.delta) }}>{m.delta >= 0 ? '+' : ''}{thb(m.delta)}</span>
+        <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>{thb(m.before)} → {thb(m.now)}</div>
+      </div>
+    </div>
+  )
+}
+
+function BriefingCard({ briefing }) {
+  const [showStatus, setShowStatus] = useState(false)
+  if (!briefing) return null
+  const { mtd, today, yesterday, platformMovers, productMovers, lowStock, dataStatus, asOfDate } = briefing
+  return (
+    <div style={card}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+        <h3 style={sectionTitle}>สรุปก่อนเริ่มงาน</h3>
+        <button type="button" onClick={() => setShowStatus((v) => !v)} style={{ fontSize: 11, color: 'var(--payi-text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>สถานะข้อมูล</button>
+      </div>
+
+      {showStatus && (
+        <div style={{ background: 'var(--payi-bg, #f8fafc)', borderRadius: 12, padding: '12px 14px', marginBottom: 16, fontSize: 12, color: 'var(--payi-text)', display: 'grid', gap: 8 }}>
+          <div>ข้อมูลล่าสุด <b>{asOfDate}</b> (เดือน {dataStatus.latestMonthTab.slice(11)}) — เทียบกับช่วง {dataStatus.comparableDays} วันแรกของเดือนก่อนเสมอ ไม่เทียบเดือนเต็มกับเดือนที่ยังไม่จบ</div>
+          <div>ข้อมูลถึงวันที่ต่อช่องทาง: {Object.entries(dataStatus.platformLatestDate).map(([p, d]) => `${p} ${d}`).join(' · ')}</div>
+          {dataStatus.archivedMonths.length > 0 && <div>เดือนเก่า ({dataStatus.archivedMonths.map((t) => t.slice(11)).join(', ')}) ย้ายไปไฟล์เก็บแยก แต่ยังรวมในยอดทั้งหมดตามปกติ</div>}
+          <div style={{ borderTop: '1px solid var(--payi-line, #e5e7eb)', paddingTop: 8 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>ข้อมูลที่ยังไม่รวมในหน้านี้</div>
+            {dataStatus.unconnected.map((u) => (
+              <div key={u.source} style={{ marginBottom: 4 }}>
+                <b>{u.source}</b> — <span style={{ color: u.state.includes('มีข้อมูลจริง') ? '#c2410c' : 'var(--payi-text-muted)' }}>{u.state}</span>
+                <div style={{ color: 'var(--payi-text-muted)' }}>{u.detail}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 8 }}>ตอนนี้เป็นอย่างไร</div>
+      <div className="app-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 12, marginBottom: 18 }}>
+        {[
+          ['เมื่อวาน', thb(yesterday.revenue), null],
+          ['วันที่ ' + asOfDate.slice(8, 10), thb(today.revenue), null],
+          [`สะสมเดือนนี้ (${mtd.comparableDays} วัน)`, thb(mtd.revenue), null],
+          [`ช่วงเดียวกันเดือน ${mtd.prevMonthLabel.slice(5)}`, `${thb(mtd.prevMonthComparable)} (${pct1(mtd.deltaPct)})`, mtd.deltaPct >= 0 ? '#16a34a' : '#dc2626'],
+        ].map(([label, value, color]) => (
+          <div key={label} style={{ background: 'var(--payi-bg, #f8fafc)', borderRadius: 12, padding: '12px 14px' }}>
+            <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>{label}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: color || 'var(--payi-text-strong)', marginTop: 4 }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px,1fr))', gap: 20, marginBottom: 8 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>อะไรเปลี่ยนมากที่สุด — ช่องทาง</div>
+          {platformMovers.map((m) => <MoverRow key={m.name} m={m} />)}
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>อะไรเปลี่ยนมากที่สุด — สินค้า</div>
+          {productMovers.length ? productMovers.map((m) => <MoverRow key={m.name} m={m} />) : <div style={{ fontSize: 12, color: 'var(--payi-text-faint)', padding: '8px 0' }}>ไม่มีข้อมูล</div>}
+        </div>
+      </div>
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginTop: 16 }}>อะไรควรสนใจวันนี้</div>
+      {lowStock.count > 0 ? (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ fontSize: 13, color: '#c2410c', fontWeight: 700 }}>สต็อกเสี่ยงหมด {lowStock.count} รายการ</div>
+          {lowStock.top.map((it) => (
+            <div key={it.sku} style={{ fontSize: 12, color: 'var(--payi-text)', padding: '4px 0' }}>
+              {it.display_name} ({it.sku}) — เหลือ {it.balance} {it.unit} {it.recommendedOrder ? `· แนะนำสั่ง ${it.recommendedOrder}` : ''}
+            </div>
+          ))}
+        </div>
+      ) : <div style={{ fontSize: 13, color: 'var(--payi-text-muted)', marginTop: 6 }}>ไม่มีสินค้าเสี่ยงหมดตอนนี้</div>}
+
+      <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 14 }}>ตัวเลขบอกแค่ว่าอะไรเปลี่ยนมากที่สุด ไม่ได้บอกสาเหตุ — กดดูรายละเอียดต่อได้ที่ "ทางลัด" ด้านบน</div>
+    </div>
+  )
+}
+
 function TargetCard({ target, sales, okr }) {
   const months = sales || []
   const max = Math.max(...months.map((m) => m.revenue), 1) * 1.1
@@ -226,7 +312,7 @@ export default function Workspace({ onOpenTab }) {
 
   if (error) return <div style={{ ...card, color: 'var(--payi-danger)' }}>{error}</div>
   if (!data) return <div style={{ padding: 40, color: 'var(--payi-text-muted)' }}>กำลังโหลด...</div>
-  const { me, people, departments, pending, target, sales, okr, tracker } = data
+  const { me, people, departments, pending, target, sales, okr, tracker, briefing } = data
   const mine = tracker.filter((t) => t.owners.includes(me.key))
   const reload = () => setReloadKey((k) => k + 1)
 
@@ -271,6 +357,8 @@ export default function Workspace({ onOpenTab }) {
           </div>
         </div>
       )}
+
+      {briefing && <BriefingCard briefing={briefing} />}
 
       {tracker.length > mine.length && <TrackerCard tracker={tracker} />}
 
