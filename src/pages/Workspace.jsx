@@ -71,6 +71,59 @@ function TargetCard({ target, sales }) {
   )
 }
 
+const STATUS = {
+  on: { label: 'ถึงเป้า', color: '#16a34a', bg: 'rgba(22,163,74,0.1)' },
+  risk: { label: 'ใกล้เป้า', color: '#c2410c', bg: 'rgba(234,88,12,0.1)' },
+  off: { label: 'ห่างเป้า', color: '#dc2626', bg: 'rgba(220,38,38,0.1)' },
+}
+
+function KrRow({ kr }) {
+  const st = STATUS[kr.status]
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(110px,1.2fr) minmax(120px,2fr) auto', gap: 12, alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--payi-line, #eef2f7)' }}>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{kr.name}</div>
+        <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>สัดส่วน {Math.round(kr.share * 100)}% · เป้าปี {mb(kr.target)}</div>
+      </div>
+      <div>
+        <div style={{ height: 8, borderRadius: 999, background: 'var(--payi-bg, #f1f5f9)', overflow: 'hidden' }}>
+          <div style={{ width: `${Math.min(100, kr.pct * 100)}%`, height: '100%', background: st.color, borderRadius: 999 }} />
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 4 }}>
+          ตอนนี้ {thb(kr.actual)}/เดือน · เป้า {thb(kr.monthlyTarget)}/เดือน{kr.growthNeeded != null && kr.growthNeeded > 0 ? ` · ต้องโต ${Math.round(kr.growthNeeded * 100)}%` : ''}
+        </div>
+      </div>
+      <span style={{ ...chip(st.bg, st.color) }}>{Math.round(kr.pct * 100)}% {st.label}</span>
+    </div>
+  )
+}
+
+function OkrCard({ okr }) {
+  const o = okr.objective
+  const st = STATUS[o.status]
+  return (
+    <div style={card}>
+      <h3 style={sectionTitle}>แตกเป้า (OKR)</h3>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10, alignItems: 'center', padding: '12px 14px', borderRadius: 12, background: st.bg }}>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>เป้าหมายบริษัท</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--payi-text-strong)' }}>{o.title}</div>
+        </div>
+        <span style={chip('#fff', st.color)}>{Math.round(o.pct * 100)}% {st.label}</span>
+      </div>
+      {[['แยกตามช่องทาง', okr.platforms], ['แยกตามร้าน', okr.businesses]].map(([title, list]) => (
+        <div key={title} style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 2 }}>{title}</div>
+          {list.map((kr) => <KrRow key={kr.name} kr={kr} />)}
+        </div>
+      ))}
+      <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 12 }}>
+        เป้าย่อยตั้งต้น = แบ่ง 150 ล้านตามสัดส่วนยอดจริงปี 2026 · ความคืบหน้า = ยอดเฉลี่ย {o.basis.join(', ')} เทียบเป้าต่อเดือน · ≥90% ถึงเป้า, 60–90% ใกล้เป้า, ต่ำกว่า 60% ห่างเป้า (ปี 2027 ยังไม่เริ่ม — วัดจากยอดปัจจุบัน) · ยังไม่ได้กำหนดคนรับผิดชอบรายช่องทาง (Platform = รอ 3)
+      </div>
+    </div>
+  )
+}
+
 export default function Workspace({ onOpenTab }) {
   const [as, setAs] = useState('dev')
   const [data, setData] = useState(null)
@@ -88,7 +141,7 @@ export default function Workspace({ onOpenTab }) {
 
   if (error) return <div style={{ ...card, color: 'var(--payi-danger)' }}>{error}</div>
   if (!data) return <div style={{ padding: 40, color: 'var(--payi-text-muted)' }}>กำลังโหลด...</div>
-  const { me, people, departments, pending, target, sales } = data
+  const { me, people, departments, pending, target, sales, okr } = data
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', display: 'grid', gap: 18 }}>
@@ -133,6 +186,7 @@ export default function Workspace({ onOpenTab }) {
       )}
 
       {target && <TargetCard target={target} sales={sales} />}
+      {okr && <OkrCard okr={okr} />}
 
       <div>
         <h3 style={sectionTitle}>{me.seesAllDepts ? 'ทุกฝ่าย' : 'ฝ่ายของฉัน'}</h3>

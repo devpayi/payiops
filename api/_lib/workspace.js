@@ -111,6 +111,7 @@ function departmentsView(viewerKey) {
 }
 
 // ยอดขายรายเดือน (ไม่นับยกเลิก) จาก raw_orders_* — สูตรเดียวกับ Dashboard เดิม; cache 30 นาที
+// แยกช่องทาง (E=platform) และร้าน (F=business) ด้วย เพื่อแตกเป้าแบบ OKR
 const isCancelled = (s) => /ยกเลิก|cancel/i.test(String(s || ''))
 const num = (v) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0
 let salesCache = null
@@ -118,14 +119,54 @@ async function monthlySales() {
   if (salesCache && Date.now() - salesCache.at < 30 * 60_000) return salesCache.data
   const meta = await getMetaCached()
   const tabs = meta.sheets.map((s) => s.properties.title).filter((t) => /^raw_orders_\d{4}_\d{2}$/.test(t)).sort()
-  const vr = await batchGetValues(tabs.map((t) => `${t}!L:N`))
-  const months = tabs.map((t, i) => {
-    let revenue = 0
-    for (const r of (vr[i].values || []).slice(1)) if (!isCancelled(r[2])) revenue += num(r[1])
-    return { month: t.slice(11).replace('_', '-'), revenue: Math.round(revenue) }
-  }).filter((m) => m.revenue > 0)
-  salesCache = { at: Date.now(), data: months }
-  return months
+  const vr = await batchGetValues(tabs.flatMap((t) => [`${t}!E:F`, `${t}!L:N`]))
+  const months = []
+  tabs.forEach((t, i) => {
+    const ef = vr[2 * i].values || [], ln = vr[2 * i + 1].values || []
+    const m = { month: t.slice(11).replace('_', '-'), revenue: 0, platform: {}, business: {} }
+    for (let j = 1; j < ln.length; j++) {
+      const r = ln[j] || []
+      if (isCancelled(r[2])) continue
+      const rev = num(r[1]); const [plat = '', biz = ''] = ef[j] || []
+      m.revenue += rev
+      if (plat) m.platform[plat] = (m.platform[plat] || 0) + rev
+      if (biz) m.business[biz] = (m.business[biz] || 0) + rev
+    }
+    if (m.revenue > 0) months.push(m)
+  })
+  const round = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Math.round(v)]))
+  const data = months.map((m) => ({ ...m, revenue: Math.round(m.revenue), platform: round(m.platform), business: round(m.business) }))
+  salesCache = { at: Date.now(), data }
+  return data
+}
+
+// โครงจาก CMO/COO app #58 OKR: เป้าบริษัท → เป้าย่อยต่อช่องทาง/ร้าน (ค่าตั้งต้น = สัดส่วนยอดจริงปีนี้)
+// ความคืบหน้า = ยอดเฉลี่ย 3 เดือนล่าสุด ÷ เป้าต่อเดือน; ≥90% ถึงเป้า, 60–90% ใกล้เป้า, <60% ห่างเป้า
+const statusOf = (pct) => (pct >= 0.9 ? 'on' : pct >= 0.6 ? 'risk' : 'off')
+export function buildOkr(months, total = TARGET_2027) {
+  if (!months?.length) return null
+  const recent = months.slice(-3)
+  const avg = (fn) => recent.reduce((s, m) => s + fn(m), 0) / recent.length
+  const ytd = (dim) => {
+    const sum = {}
+    for (const m of months) for (const [k, v] of Object.entries(m[dim])) sum[k] = (sum[k] || 0) + v
+    return sum
+  }
+  const all = months.reduce((s, m) => s + m.revenue, 0)
+  const krs = (dim) => Object.entries(ytd(dim)).sort((a, b) => b[1] - a[1]).map(([name, v]) => {
+    const share = v / all
+    const monthlyTarget = (total * share) / 12
+    const actual = avg((m) => m[dim][name] || 0)
+    const pct = actual / monthlyTarget
+    return { name, share, target: Math.round(total * share), monthlyTarget: Math.round(monthlyTarget), actual: Math.round(actual), pct, status: statusOf(pct), growthNeeded: actual ? monthlyTarget / actual - 1 : null }
+  })
+  const actual = avg((m) => m.revenue)
+  const pct = actual / (total / 12)
+  return {
+    objective: { title: `ยอดขายปี 2027 = ${total / 1_000_000} ล้านบาท`, monthlyTarget: Math.round(total / 12), actual: Math.round(actual), pct, status: statusOf(pct), basis: recent.map((m) => m.month) },
+    platforms: krs('platform'),
+    businesses: krs('business'),
+  }
 }
 
 export default async function opWorkspace(req, res) {
@@ -144,7 +185,8 @@ export default async function opWorkspace(req, res) {
       departments: departmentsView(key),
       pending: PENDING_SLOTS,
       target: me.canSeeCompany ? { year: 2027, total: TARGET_2027, monthly: TARGET_2027 / 12 } : null,
-      sales,
+      sales: sales?.map(({ month, revenue }) => ({ month, revenue })) || null,
+      okr: sales ? buildOkr(sales) : null,
     })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })
