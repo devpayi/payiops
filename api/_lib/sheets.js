@@ -64,7 +64,7 @@ async function withQuotaRetry(fn, { retries = 2, baseDelayMs = 300 } = {}) {
 // ── ไฟล์เก็บออเดอร์เดือนเก่า (ARCHIVE_SHEET_ID) ──
 // Google Sheets รับได้ 10 ล้านช่องต่อไฟล์ — mona-ops-db ใช้ไป 8.3 ล้าน (ก.ย. 2026) ส่วนใหญ่เป็น raw_orders_*
 // จึงย้ายแท็บออเดอร์เดือนเก่าไปไว้อีกไฟล์ แล้วให้ทุกตัวอ่านเห็นเหมือนยังอยู่ไฟล์เดียว:
-//   - getMeta() ต่อท้ายรายชื่อแท็บ raw_orders_* ที่มีแค่ในไฟล์เก็บ (properties.archived = true)
+//   - getMeta() ใส่รายชื่อแท็บ raw_orders_* ที่มีแค่ในไฟล์เก็บไว้หน้าสุด (properties.archived = true)
 //   - batchGetValues()/getSheet() ส่ง range ของแท็บพวกนั้นไปอ่านที่ไฟล์เก็บ
 //   - เขียนแท็บพวกนั้นไม่ได้ (assertWritable) — เดือนเก่าเป็นข้อมูลปิดแล้ว
 // แท็บที่มีทั้งสองไฟล์ (ระหว่างคัดลอก) อ่านจากไฟล์หลักเท่านั้น → ยอดไม่นับซ้ำ
@@ -104,11 +104,13 @@ export async function getMeta() {
   // → เทียบยอดกับตอนไม่ตั้งค่าได้ก่อนลบแท็บเดือนเก่าออกจากไฟล์หลักจริง
   if (process.env.ARCHIVE_PREFER_ARCHIVE === '1') {
     archivedTabs = new Set(arcTitles)
-    return { ...res.data, sheets: [...(res.data.sheets || []).filter((s) => !archivedTabs.has(s.properties.title)), ...arcTitles.sort().map((title) => ({ properties: { title, archived: true } }))] }
+    return { ...res.data, sheets: [...arcTitles.sort().map((title) => ({ properties: { title, archived: true } })), ...(res.data.sheets || []).filter((s) => !archivedTabs.has(s.properties.title))] }
   }
   const only = arcTitles.filter((t) => !mainTitles.has(t)).sort()
   archivedTabs = new Set(only)
-  return { ...res.data, sheets: [...(res.data.sheets || []), ...only.map((title) => ({ properties: { title, archived: true } }))] }
+  // ใส่ไว้หน้าสุด: แท็บในไฟล์เก็บคือเดือนเก่าสุด — คงลำดับ ม.ค.→ธ.ค. เหมือนตอนอยู่ไฟล์เดียว (บางตัวอ่าน
+  // เลือกชื่อสินค้าจากแถวแรกที่เจอ ถ้าลำดับเปลี่ยน ป้ายชื่อจะเปลี่ยนตาม)
+  return { ...res.data, sheets: [...only.map((title) => ({ properties: { title, archived: true } })), ...(res.data.sheets || [])] }
 }
 
 // cache ของ getMeta() แยกจาก sheetCache — ensureSheet() เดิมเรียก getMeta() สดทุกครั้ง (ไม่มี cache เลย)
