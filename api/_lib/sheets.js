@@ -61,10 +61,54 @@ async function withQuotaRetry(fn, { retries = 2, baseDelayMs = 300 } = {}) {
   }
 }
 
+// ── ไฟล์เก็บออเดอร์เดือนเก่า (ARCHIVE_SHEET_ID) ──
+// Google Sheets รับได้ 10 ล้านช่องต่อไฟล์ — mona-ops-db ใช้ไป 8.3 ล้าน (ก.ย. 2026) ส่วนใหญ่เป็น raw_orders_*
+// จึงย้ายแท็บออเดอร์เดือนเก่าไปไว้อีกไฟล์ แล้วให้ทุกตัวอ่านเห็นเหมือนยังอยู่ไฟล์เดียว:
+//   - getMeta() ต่อท้ายรายชื่อแท็บ raw_orders_* ที่มีแค่ในไฟล์เก็บ (properties.archived = true)
+//   - batchGetValues()/getSheet() ส่ง range ของแท็บพวกนั้นไปอ่านที่ไฟล์เก็บ
+//   - เขียนแท็บพวกนั้นไม่ได้ (assertWritable) — เดือนเก่าเป็นข้อมูลปิดแล้ว
+// แท็บที่มีทั้งสองไฟล์ (ระหว่างคัดลอก) อ่านจากไฟล์หลักเท่านั้น → ยอดไม่นับซ้ำ
+// ไม่ตั้ง ARCHIVE_SHEET_ID = ทำงานเหมือนเดิมทุกอย่าง (ไม่ยิง API เพิ่ม)
+const archiveSheetId = () => (process.env.ARCHIVE_SHEET_ID || '').trim()
+const isOrderTab = (title) => /^raw_orders_/.test(title)
+let archivedTabs = new Set() // แท็บออเดอร์ที่อยู่แค่ในไฟล์เก็บ — อัปเดตทุกครั้งที่ getMeta() ทำงาน
+
+export function tabOfRange(range) {
+  const r = String(range)
+  const bang = r.lastIndexOf('!')
+  return (bang >= 0 ? r.slice(0, bang) : r).replace(/^'|'$/g, '').replace(/''/g, "'")
+}
+
+async function archivedTabSet() {
+  if (!archiveSheetId()) return archivedTabs
+  await getMetaCached()
+  return archivedTabs
+}
+
+async function assertWritable(sheetNames) {
+  if (!archiveSheetId()) return
+  const archived = await archivedTabSet()
+  for (const name of sheetNames) {
+    if (archived.has(name)) throw new Error(`${name} ย้ายไปไฟล์เก็บออเดอร์เก่าแล้ว — นำเข้า/แก้/ลบข้อมูลเดือนนี้ไม่ได้`)
+  }
+}
+
 // metadata ของ spreadsheet (รายชื่อ tab ฯลฯ)
 export async function getMeta() {
   const res = await withQuotaRetry(() => getClient().spreadsheets.get({ spreadsheetId: sheetId() }))
-  return res.data
+  if (!archiveSheetId()) return res.data
+  const arc = await withQuotaRetry(() => getClient().spreadsheets.get({ spreadsheetId: archiveSheetId(), fields: 'sheets.properties.title' }))
+  const mainTitles = new Set((res.data.sheets || []).map((s) => s.properties.title))
+  const arcTitles = (arc.data.sheets || []).map((s) => s.properties.title).filter(isOrderTab)
+  // ARCHIVE_PREFER_ARCHIVE=1 ใช้ตรวจในเครื่องเท่านั้น (ห้ามตั้งบน Vercel): อ่านจากไฟล์เก็บแม้ไฟล์หลักยังมีแท็บนั้น
+  // → เทียบยอดกับตอนไม่ตั้งค่าได้ก่อนลบแท็บเดือนเก่าออกจากไฟล์หลักจริง
+  if (process.env.ARCHIVE_PREFER_ARCHIVE === '1') {
+    archivedTabs = new Set(arcTitles)
+    return { ...res.data, sheets: [...(res.data.sheets || []).filter((s) => !archivedTabs.has(s.properties.title)), ...arcTitles.sort().map((title) => ({ properties: { title, archived: true } }))] }
+  }
+  const only = arcTitles.filter((t) => !mainTitles.has(t)).sort()
+  archivedTabs = new Set(only)
+  return { ...res.data, sheets: [...(res.data.sheets || []), ...only.map((title) => ({ properties: { title, archived: true } }))] }
 }
 
 // cache ของ getMeta() แยกจาก sheetCache — ensureSheet() เดิมเรียก getMeta() สดทุกครั้ง (ไม่มี cache เลย)
@@ -103,13 +147,28 @@ function invalidateBatchCache(sheetNames) {
   for (const key of batchCache.keys()) if (names.some((n) => key.includes(n))) batchCache.delete(key)
 }
 export async function batchGetValues(ranges) {
-  const key = ranges.join('')
+  if (!archiveSheetId()) return batchGetFrom(sheetId(), ranges)
+  const archived = await archivedTabSet()
+  const toArchive = ranges.map((r) => archived.has(tabOfRange(r)))
+  if (!toArchive.some(Boolean)) return batchGetFrom(sheetId(), ranges)
+  const mainRanges = ranges.filter((_, i) => !toArchive[i])
+  const archiveRanges = ranges.filter((_, i) => toArchive[i])
+  const [fromMain, fromArchive] = await Promise.all([
+    mainRanges.length ? batchGetFrom(sheetId(), mainRanges) : [],
+    batchGetFrom(archiveSheetId(), archiveRanges),
+  ])
+  let m = 0, a = 0
+  return ranges.map((_, i) => (toArchive[i] ? fromArchive[a++] : fromMain[m++]))
+}
+
+async function batchGetFrom(spreadsheetId, ranges) {
+  const key = spreadsheetId + '' + ranges.join('')
   const cached = batchCache.get(key)
   if (cached && Date.now() - cached.at < BATCH_CACHE_MS) return cached.data
   if (batchInflight.has(key)) return batchInflight.get(key)
 
   const pending = withQuotaRetry(() => getClient().spreadsheets.values.batchGet({
-    spreadsheetId: sheetId(),
+    spreadsheetId,
     ranges,
   })).then((res) => {
     batchCache.set(key, { at: Date.now(), data: res.data.valueRanges })
@@ -129,10 +188,10 @@ export async function getSheet(sheetName) {
   if (sheetInflight.has(sheetName)) return sheetInflight.get(sheetName)
 
   const version = sheetVersion.get(sheetName) || 0
-  const pending = withQuotaRetry(() => getClient().spreadsheets.values.get({
-    spreadsheetId: sheetId(),
+  const pending = (archiveSheetId() && isOrderTab(sheetName) ? archivedTabSet() : Promise.resolve(archivedTabs)).then((archived) => withQuotaRetry(() => getClient().spreadsheets.values.get({
+    spreadsheetId: archived.has(sheetName) ? archiveSheetId() : sheetId(),
     range: `${sheetName}!A:Z`,
-  })).then((res) => {
+  }))).then((res) => {
     const [headers, ...rows] = res.data.values || []
     const parsed = headers
       ? rows.map(row => Object.fromEntries(headers.map((h, i) => [h, row[i] ?? ''])))
@@ -153,6 +212,7 @@ export async function getSheet(sheetName) {
 // ใช้แก้แถวเดิมแบบเจาะจงโดยไม่ต้อง clear+rewrite ทั้งชีต (เบากว่า/ปลอดภัยกว่า overwriteSheet)
 export async function batchUpdateValues(data) {
   if (!data || !data.length) return
+  await assertWritable(new Set(data.map((d) => tabOfRange(d.range))))
   await withQuotaRetry(() => getClient().spreadsheets.values.batchUpdate({
     spreadsheetId: sheetId(),
     requestBody: { valueInputOption: 'USER_ENTERED', data },
@@ -220,6 +280,7 @@ export async function appendExternalRows(spreadsheetId, sheetName, rows) {
 
 // เขียนต่อท้าย (append)
 export async function appendRows(sheetName, rows) {
+  await assertWritable([sheetName])
   await withQuotaRetry(() => getClient().spreadsheets.values.append({
     spreadsheetId: sheetId(),
     range: `${sheetName}!A1`,
@@ -253,6 +314,7 @@ export async function appendRowsVerified(sheetName, rows, idField, idValues, att
 // เขียนทับทั้ง sheet (สำหรับ product_master)
 export async function ensureSheet(sheetName, headers) {
   if (ensuredSheets.has(sheetName)) return
+  await assertWritable([sheetName])
   const meta = await getMetaCached()
   const exists = meta.sheets.some((s) => s.properties.title === sheetName)
   if (!exists) {
@@ -297,6 +359,7 @@ export async function ensureSheet(sheetName, headers) {
 export async function ensureSheets(list) {
   const notYetEnsured = list.filter(([name]) => !ensuredSheets.has(name))
   if (!notYetEnsured.length) return
+  await assertWritable(notYetEnsured.map(([name]) => name))
 
   const meta = await getMetaCached()
   const existingNames = new Set(meta.sheets.map((s) => s.properties.title))
@@ -333,6 +396,7 @@ export async function ensureSheets(list) {
 }
 
 export async function overwriteSheet(sheetName, headers, rows) {
+  await assertWritable([sheetName])
   await withQuotaRetry(() => getClient().spreadsheets.values.clear({
     spreadsheetId: sheetId(),
     range: `${sheetName}!A:Z`,
