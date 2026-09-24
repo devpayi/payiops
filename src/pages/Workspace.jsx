@@ -165,7 +165,7 @@ function BriefingCard({ briefing }) {
     )
   }
 
-  const { mtd, daily, platformMovers, productMovers, lowStock, dataStatus, narrative, asOfLabel, rangeLabel, prevRangeLabel, dayCapped, comparisonIncomplete, prevDataThrough, comparableDays } = briefing
+  const { mtd, daily, platformMovers, productMovers, lowStock, dataStatus, narrative, asOfLabel, rangeLabel, prevRangeLabel, dayCapped, comparisonUncertain, prevDataThrough, comparableDays } = briefing
   const platTop = showAllMovers ? platformMovers : platformMovers.slice(0, 3)
   const prodTop = showAllMovers ? productMovers : productMovers.slice(0, 3)
   const hasMore = platformMovers.length > 3 || productMovers.length > 3
@@ -200,8 +200,8 @@ function BriefingCard({ briefing }) {
       <div style={{ background: 'var(--payi-bg, #f8fafc)', borderRadius: 12, padding: '14px 16px', marginBottom: 8 }}>
         <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>ยอดสะสม {rangeLabel}</div>
         <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--payi-text-strong)', marginTop: 2 }}>{thb(mtd.revenue)}</div>
-        {comparisonIncomplete ? (
-          <div style={{ fontSize: 12, color: '#c2410c', marginTop: 4 }}>ข้อมูล{prevRangeLabel}ยังไม่ครบสำหรับเปรียบเทียบ (มีถึงแค่ {prevDataThrough}) — ยังไม่คำนวณ %</div>
+        {comparisonUncertain ? (
+          <div style={{ fontSize: 12, color: '#c2410c', marginTop: 4 }}>ยังยืนยันความครบของข้อมูล{prevRangeLabel}ไม่ได้ (ไม่มีแถวหลังวันที่ {prevDataThrough} — อาจเป็นเพราะยังไม่ได้นำเข้า หรือวันนั้นไม่มีออเดอร์จริง) — ยังไม่คำนวณ %</div>
         ) : prevRangeLabel ? (
           <div style={{ fontSize: 12, color: mtd.deltaPct >= 0 ? '#16a34a' : '#dc2626', marginTop: 4 }}>
             เฉพาะ {rangeLabel} {thb(mtd.windowRevenue)} เทียบ {prevRangeLabel} {thb(mtd.prevRevenue)}: {pct1(mtd.deltaPct)}

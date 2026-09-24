@@ -107,14 +107,14 @@ test('computeBriefing works with no previous month at all', async () => {
   assert.equal(b.lowStock.stockUpdatedAt, '2026-01-04T09:00:00Z')
 })
 
-test('computeBriefing flags an incomplete previous month instead of a false percentage', async () => {
+test('computeBriefing withholds % when it cannot confirm the previous month is complete', async () => {
   const { computeBriefing } = await import('../api/_lib/workspace.js')
   const row = (date, revenue) => ({ date, platform: 'Shopee', name: 'A', revenue, status: 'สำเร็จ' })
   // เดือนนี้มีข้อมูลถึงวันที่ 24, เดือนก่อนมีแถวแค่วันที่ 1 (import ไม่ครบ ไม่ใช่ขายไม่ได้)
   const thisRows = [row('2026-08-01', 100), row('2026-08-24', 100)]
   const prevRows = [row('2026-07-01', 50)]
   const b = computeBriefing({ thisTab: 'raw_orders_2026_08', thisRows, prevTab: 'raw_orders_2026_07', prevRows, lowStock: null, archivedMonths: [] })
-  assert.equal(b.comparisonIncomplete, true)
+  assert.equal(b.comparisonUncertain, true)
   assert.equal(b.prevDataThrough, '2026-07-01')
   assert.equal(b.mtd.deltaPct, null) // ไม่โชว์ % เทียม จากข้อมูลที่ยังไม่ครบ
   assert.equal(b.narrative, '')

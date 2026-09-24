@@ -295,15 +295,18 @@ export function computeBriefing({ thisTab, thisRows, prevTab, prevRows, lowStock
   const prevWindow = prevMonthStart ? prevRows.filter((r) => r.date >= prevMonthStart && r.date <= prevWindowEnd && !isCancelled(r.status)) : []
 
   // เดือนก่อนอาจมีแท็บสร้างไว้แต่ import ไม่ครบ (เช่น มีแค่วันที่ 1) — เช็คจาก "มีแถวอยู่จริง" ไม่ใช่ยอดขาย
-  // (ยอด 0 วันนั้นอาจเป็นเรื่องจริง แต่ "ไม่มีแถวเลย" หลังจุดหนึ่งแปลว่าข้อมูลขาด ไม่ใช่ขายไม่ได้)
+  // แต่ "ไม่มีแถวเลยหลังจุดหนึ่ง" ก็ยัง "พิสูจน์ว่าข้อมูลขาด" ไม่ได้ร้อยเปอร์เซ็นต์ — วันนั้นอาจขายไม่ได้จริง
+  // ก็ได้ (ไม่มีออเดอร์ = ไม่มีแถว เหมือนกัน) สัญญาณนี้แค่ทำให้ "มั่นใจว่าข้อมูลครบ" ไม่ได้เท่านั้น จึงต้อง
+  // พูดว่า "ยังยืนยันความครบไม่ได้" ไม่ใช่ฟันธงว่า "ข้อมูลขาด" — และด้วยเหตุผลเดียวกัน มีแถวครบทุกวันก็ไม่ได้
+  // ยืนยันว่า import ครบเหมือนกัน (แค่ไม่มีสัญญาณให้สงสัย)
   const prevMaxRowDate = prevRows.reduce((max, r) => (r.date > max ? r.date : max), '')
-  const comparisonIncomplete = !!(prevMonthStart && prevMaxRowDate && prevMaxRowDate < prevWindowEnd)
+  const comparisonUncertain = !!(prevMonthStart && prevMaxRowDate && prevMaxRowDate < prevWindowEnd)
 
   const revenueOf = (rows) => Math.round(rows.reduce((s, r) => s + r.revenue, 0))
   const mtdRevenue = revenueOf(thisFullMtd)
   const windowRevenue = revenueOf(thisWindow)
   const prevRevenue = revenueOf(prevWindow)
-  const deltaPct = comparisonIncomplete ? null : pctOf(windowRevenue - prevRevenue, prevRevenue)
+  const deltaPct = comparisonUncertain ? null : pctOf(windowRevenue - prevRevenue, prevRevenue)
 
   // ช่องทาง/สินค้าที่ไม่มีแถวเลยในเดือนก่อน (ทั้งเดือน ไม่ใช่แค่ช่วงเทียบ) — ไม่รู้ว่าไม่มีเพราะไม่ได้ขาย
   // จริง หรือเพราะยังไม่เคยเก็บช่องทางนั้น (เช่น Lazada เริ่มขายเดือนนี้เป็นเดือนแรก) ต้องบอก ไม่ใช่โชว์
@@ -314,7 +317,7 @@ export function computeBriefing({ thisTab, thisRows, prevTab, prevRows, lowStock
   }
   const platformMovers = markGaps(movers(thisWindow, prevWindow, (r) => r.platform), (r) => r.platform)
   const productMovers = markGaps(movers(thisWindow, prevWindow, (r) => r.name), (r) => r.name)
-  const narrative = comparisonIncomplete ? '' : buildNarrative(deltaPct, platformMovers.find((m) => !m.noBaseline) || platformMovers[0])
+  const narrative = comparisonUncertain ? '' : buildNarrative(deltaPct, platformMovers.find((m) => !m.noBaseline) || platformMovers[0])
 
   // ยอดรายวัน: เดือนที่ latestDate อยู่ต้นเดือน (เช่น วันที่ 1) แปลว่า "เมื่อวาน" อยู่เดือนก่อน ต้องมองข้าม
   // เดือนไปหาด้วย ไม่งั้นได้ 0 ทั้งที่มีข้อมูลจริง
@@ -331,7 +334,7 @@ export function computeBriefing({ thisTab, thisRows, prevTab, prevRows, lowStock
     prevRangeLabel: prevMonthStart ? thaiRange(prevMonthStart, comparableDays) : null,
     comparableDays,
     dayCapped: prevMonthStart ? comparableDays < dayNum : false,
-    comparisonIncomplete, prevDataThrough: comparisonIncomplete ? prevMaxRowDate : null,
+    comparisonUncertain, prevDataThrough: comparisonUncertain ? prevMaxRowDate : null,
     daily: { date: latestDate, label: thaiDate(latestDate), revenue: Math.round(dayRevenue(latestDate)), prevDate, prevLabel: thaiDate(prevDate), prevDayRevenue: Math.round(dayRevenue(prevDate)) },
     mtd: { revenue: mtdRevenue, windowRevenue, prevRevenue, deltaPct, prevMonthLabel: prevMonthStart ? prevMonthStart.slice(0, 7) : null },
     narrative,
