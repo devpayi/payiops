@@ -73,6 +73,16 @@ rows are blank there. `Upload.jsx`'s `RELEVANT_HEADER_HINTS` had to be widened e
 time so the client-side column filter stops stripping them before upload. **DELETE
 `?importId=` reads `A:Z`** (was `A:R` — that silently wiped province+ on any
 import-batch delete; fixed 2026-09-01).
+**Old order months live in a second spreadsheet (2026-09-24).** mona-ops-db hit 8.3M of
+Google Sheets' 10M-cell cap, so `raw_orders_2026_01`–`_08` were copied to
+"mona-ops-archive" (env `ARCHIVE_SHEET_ID`, shared read-only with both service
+accounts). `api/_lib/sheets.js` makes it transparent: `getMeta()` appends archived order
+tabs (`properties.archived`), `batchGetValues()`/`getSheet()` route their ranges there,
+every writer refuses them (`assertWritable`). A tab present in both files is read from the
+main file (no double count). **payi-floor's `api/_lib/sheets.js` has the same code — change
+both together.** Verify with `scripts/archive-orders-verify.mjs compare|totals`
+(`ARCHIVE_PREFER_ARCHIVE=1` = local-only switch to force archive reads). To re-import an
+archived month, move its tab back to the main file first.
 `product_aliases`: master_sku, display_name, business, platform, alias_product_name,
 alias_variation, alias_key, created_at (+ optional `product_group` override column).
 `users`: scrypt-hashed passwords, `role` column (dev/boss/staff/stock/marketing/finance,
