@@ -8,7 +8,7 @@ import Sparkline from './components/Sparkline.jsx'
 
 const getMeUser = () => { try { return JSON.parse(localStorage.getItem('payi-user') || 'null') } catch { return null } }
 import {
-  Bell, Search, UserCircle2, ShoppingBag, Package, TrendingUp, Percent,
+  Bell, Search, UserCircle2, Target, ShoppingBag, Package, TrendingUp, Percent,
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
   LayoutDashboard, UploadCloud, Radar, Megaphone, Boxes,
   ArrowLeftRight, BookOpen, Link2,
@@ -38,6 +38,7 @@ const WhtCert = lazy(() => import('./pages/WhtCert'))
 const CfoDashboard = lazy(() => import('./pages/CfoDashboard'))
 const DemographicDashboard = lazy(() => import('./pages/DemographicDashboard'))
 const Fulfillment = lazy(() => import('./pages/Fulfillment'))
+const Workspace = lazy(() => import('./pages/Workspace'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 const API_BASE = '/api'
@@ -85,6 +86,7 @@ const PLATFORM_COLORS = { 'Shopee': '#D9784A', 'TikTok Shop': '#6a63e8', 'Lazada
 // ไอคอนแยกตามแต่ละเมนูจริง (ก่อนหน้านี้บางไอคอนถูกใช้ซ้ำกันถึง 4 เมนู เช่น Tasks/StockMovement
 // ทำให้แยกเมนูจากไอคอนไม่ออกตอน sidebar ย่อเหลือแต่ไอคอน) — ทุกเมนูมีไอคอนของตัวเอง ไม่ซ้ำกันเลย
 const Icons = {
+  Workspace: Target,
   Executive: LayoutDashboard,
   Products: Package,
   ImportOrders: UploadCloud,
@@ -107,7 +109,7 @@ const Icons = {
 }
 
 const KNOWN_TABS = new Set([
-  'Home', 'Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends',
+  'Home', 'Workspace', 'Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends',
   'AdsChannels', 'ContentOS', 'MarketingRadar', 'Inventory',
   'Import Tracking', 'WHT Cert', 'Stock Movement', 'HR', 'HR People', 'CFO', 'Demographic', 'Fulfillment',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings',
@@ -117,6 +119,7 @@ const menuGroups = [
   {
     title: 'ภาพรวมธุรกิจ',
     items: [
+      { id: 'Workspace', label: 'Workspace (ทดลอง)', renderIcon: Icons.Workspace, dotColor: '#0ea5e9' },
       { id: 'Executive', label: 'Dashboard สรุปยอดขาย', renderIcon: Icons.Executive, group: ['Executive', 'Daily', 'Monthly'] },
       { id: 'Products', label: 'Dashboard สินค้า', renderIcon: Icons.Products, group: ['Products', 'ProductTrends'] }
     ]
@@ -737,6 +740,11 @@ export default function App() {
     : { title: 'Revenue Trend', label: 'Revenue', dataKey: 'revenue', formatter: (value) => [`฿${fmt(value)}`, 'Revenue'], gradientFrom: 'var(--payi-mint)' };
 
   const pageMeta = {
+    Workspace: {
+      title: 'Workspace',
+      eyebrow: 'เป้า 2027',
+      subtitle: 'งานของฉัน ฝ่าย และเป้า 150 ล้าน — ตัวอย่างที่เห็นเฉพาะ Dev ก่อนเปิดใช้จริง'
+    },
     Executive: {
       title: 'Dashboard สรุปยอดขาย',
       eyebrow: 'Overview',
@@ -1451,6 +1459,7 @@ export default function App() {
 
         {/* แท็บพวกนี้ mount ค้างไว้เมื่อเคยเปิดแล้ว (ซ่อนด้วย CSS แทนการ unmount) กัน fetch ข้อมูลซ้ำทุกครั้งที่กดสลับแท็บไปมา */}
         {[
+          ['Workspace', isDev ? <Workspace onOpenTab={setActiveTab} /> : <DevOnlyLock label="Workspace" />],
           ['Daily', <DailyDashboard />],
           ['Monthly', <MonthlyDashboard />],
           ['Products', <ProductDashboard />],
