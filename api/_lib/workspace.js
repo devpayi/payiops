@@ -4,7 +4,7 @@
 // ตอนนี้เปิดให้ dev เท่านั้น (?as= สลับดูมุมของแต่ละคน) — ยังไม่เปิดให้ role อื่นจนกว่าโมจะอนุมัติ
 import { authEnabled } from './auth.js'
 import { normalizeRole, canAccessTab } from '../../shared/roles.js'
-import { getMetaCached, batchGetValues } from './sheets.js'
+import { getMetaCached, batchGetValues, getSheet, appendRows, ensureSheet } from './sheets.js'
 
 export const TARGET_2027 = 150_000_000
 
@@ -169,6 +169,58 @@ export function buildOkr(months, total = TARGET_2027) {
   }
 }
 
+// ── check-in รายสัปดาห์ต่อหัวข้อบนกระดาน (โครงจากแอป #58 OKR check-in) ──
+// แท็บ workspace_checkins: append-only (แก้ = ส่งอัปเดตใหม่ ไม่เขียนทับของเก่า) — คอลัมน์ต่อท้ายเท่านั้น
+const CHECKIN_TAB = 'workspace_checkins'
+const CHECKIN_HEADERS = ['id', 'board_no', 'author_key', 'author_name', 'status', 'done_text', 'next_text', 'blocker', 'created_at', 'account_user']
+export const CHECKIN_STATUS = ['on', 'stuck', 'done']
+const STALE_DAYS = 7
+
+// หัวข้อที่คนนี้มองเห็น: CEO/dev ทุกข้อ, หัวหน้าฝ่ายเห็นข้อของฝ่ายตัวเอง + ข้อที่ตัวเองถือ, คนทั่วไปเห็นเฉพาะที่ตัวเองถือ
+export function visibleBoard(key) {
+  const me = profileFor(key)
+  if (!me) return []
+  if (me.seesAllDepts) return BOARD
+  return BOARD.filter((b) => b.owners.includes(key) || me.headOf.includes(b.dept))
+}
+export const canCheckin = (key, boardNo) => key === 'dev' || BOARD.some((b) => b.no === boardNo && b.owners.includes(key))
+
+async function loadCheckins() {
+  const meta = await getMetaCached()
+  if (!meta.sheets.some((s) => s.properties.title === CHECKIN_TAB)) return []
+  return (await getSheet(CHECKIN_TAB)).filter((r) => r.id)
+}
+
+export function summarize(board, checkins, now = Date.now()) {
+  return board.map((b) => {
+    const rows = checkins.filter((c) => Number(c.board_no) === b.no).sort((x, y) => String(y.created_at).localeCompare(String(x.created_at)))
+    const last = rows[0] || null
+    const ageDays = last ? Math.floor((now - Date.parse(last.created_at)) / 86_400_000) : null
+    const waiting = b.owners.every((o) => /^รอ \d$/.test(o))
+    return { ...b, ownerNames: b.owners.map(nameOf), last, history: rows.slice(0, 5), ageDays, stale: !waiting && (!last || ageDays > STALE_DAYS), waiting }
+  })
+}
+
+async function addCheckin(req, res, key) {
+  const body = req.body || {}
+  const boardNo = Number(body.board_no)
+  if (!BOARD.some((b) => b.no === boardNo)) return res.status(400).json({ success: false, error: 'ไม่พบหัวข้อนี้' })
+  if (!canCheckin(key, boardNo)) return res.status(403).json({ success: false, error: 'อัปเดตได้เฉพาะหัวข้อที่ตัวเองรับผิดชอบ' })
+  const status = String(body.status || '')
+  if (!CHECKIN_STATUS.includes(status)) return res.status(400).json({ success: false, error: 'เลือกสถานะก่อน' })
+  const clip = (v) => String(v || '').trim().slice(0, 1000)
+  const done = clip(body.done), next = clip(body.next), blocker = clip(body.blocker)
+  if (!done && !next) return res.status(400).json({ success: false, error: 'กรอกอย่างน้อย "ทำอะไรไปแล้ว" หรือ "ขั้นต่อไป"' })
+  if (status === 'stuck' && !blocker) return res.status(400).json({ success: false, error: 'สถานะติด — บอกด้วยว่าติดอะไร' })
+  const createdAt = new Date().toISOString()
+  const id = `CI${createdAt.replace(/\D/g, '').slice(0, 14)}${Math.random().toString(36).slice(2, 6)}`
+  // ขึ้นต้น ' กัน Sheets แปลงข้อความเป็นสูตร/ตัวเลข
+  const txt = (v) => (v ? `'${v}` : '')
+  await ensureSheet(CHECKIN_TAB, CHECKIN_HEADERS)
+  await appendRows(CHECKIN_TAB, [[id, boardNo, key, nameOf(key), status, txt(done), txt(next), txt(blocker), createdAt, req.user?.username || '']])
+  return res.status(200).json({ success: true, id })
+}
+
 export default async function opWorkspace(req, res) {
   try {
     const role = normalizeRole(req.user?.role)
@@ -177,6 +229,11 @@ export default async function opWorkspace(req, res) {
     const key = String(req.query.as || req.user?.username || 'dev')
     const me = profileFor(key)
     if (!me) return res.status(404).json({ success: false, error: `ไม่พบ ${key} ในรายชื่อ Workspace` })
+    if (req.method === 'POST') {
+      if ((req.body || {}).action === 'checkin') return addCheckin(req, res, key)
+      return res.status(400).json({ success: false, error: 'action ไม่ถูกต้อง' })
+    }
+    const checkins = await loadCheckins()
     const sales = me.canSeeCompany ? await monthlySales() : null
     res.status(200).json({
       success: true,
@@ -187,6 +244,7 @@ export default async function opWorkspace(req, res) {
       target: me.canSeeCompany ? { year: 2027, total: TARGET_2027 } : null,
       sales: sales?.map(({ month, revenue }) => ({ month, revenue })) || null,
       okr: sales ? buildOkr(sales) : null,
+      tracker: summarize(visibleBoard(key), checkins),
     })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })

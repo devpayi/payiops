@@ -36,3 +36,30 @@ test('OKR splits the company target by real sales share and scores progress', as
   assert.equal(okr.objective.status, 'off') // run-rate 1200/yr vs 2400 target = 50%
   assert.equal(okr.platforms.reduce((s, k) => s + k.target, 0), 2400)
 })
+
+test('check-in visibility: CEO all, head own dept, member own items only', async () => {
+  const { visibleBoard, canCheckin } = await import('../api/_lib/workspace.js')
+  assert.equal(visibleBoard('boss').length, 19)
+  assert.deepEqual(visibleBoard('tang').map((b) => b.no), [14, 18])
+  assert.deepEqual(visibleBoard('maprang').map((b) => b.no), [13])
+  assert.equal(visibleBoard('fah').length, 0)
+  assert.equal(canCheckin('toon', 2), true)
+  assert.equal(canCheckin('toon', 1), false) // เกด's item
+})
+
+test('tracker flags stuck, stale and waiting items', async () => {
+  const { summarize, BOARD } = await import('../api/_lib/workspace.js')
+  const now = Date.parse('2026-10-01T00:00:00Z')
+  const rows = [
+    { id: 'a', board_no: '2', status: 'on', created_at: '2026-09-29T00:00:00Z' },
+    { id: 'b', board_no: '3', status: 'stuck', blocker: 'x', created_at: '2026-09-20T00:00:00Z' },
+    { id: 'c', board_no: '2', status: 'stuck', created_at: '2026-09-01T00:00:00Z' },
+  ]
+  const t = Object.fromEntries(summarize(BOARD, rows, now).map((x) => [x.no, x]))
+  assert.equal(t[2].last.id, 'a') // newest wins
+  assert.equal(t[2].stale, false)
+  assert.equal(t[3].stale, true) // 11 days
+  assert.equal(t[4].stale, true) // never updated
+  assert.equal(t[6].waiting, true) // รอ 1
+  assert.equal(t[6].stale, false)
+})

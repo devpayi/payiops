@@ -22,14 +22,101 @@ const TAB_LABELS = {
   ContentOS: 'Content OS', Inventory: 'Inventory', 'Stock Movement': 'Stock Movement', 'WHT Cert': 'ใบหัก ณ ที่จ่าย',
 }
 
-function BoardCard({ item }) {
+const CI = {
+  on: { label: 'ไปได้', color: '#2563eb', bg: 'rgba(37,99,235,0.1)' },
+  stuck: { label: 'ติด', color: '#dc2626', bg: 'rgba(220,38,38,0.1)' },
+  done: { label: 'เสร็จ', color: '#16a34a', bg: 'rgba(22,163,74,0.1)' },
+}
+const ago = (d) => (d == null ? '' : d === 0 ? 'วันนี้' : `${d} วันก่อน`)
+const input = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--payi-line, #e5e7eb)', fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }
+
+function CheckinForm({ item, asKey, onSaved, onCancel }) {
+  const [status, setStatus] = useState(item.last?.status || 'on')
+  const [done, setDone] = useState('')
+  const [next, setNext] = useState('')
+  const [blocker, setBlocker] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const submit = async () => {
+    setSaving(true); setError('')
+    try {
+      const r = await fetch(`/api/sheet-tools?op=workspace&as=${encodeURIComponent(asKey)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'checkin', board_no: item.no, status, done, next, blocker }),
+      })
+      const d = await r.json()
+      if (!d.success) { setError(d.error || 'บันทึกไม่สำเร็จ'); return }
+      onSaved()
+    } catch (e) { setError(e.message) } finally { setSaving(false) }
+  }
   return (
-    <div style={{ ...card, padding: 14, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-      <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--payi-gradient-primary)', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 14, flexShrink: 0 }}>{item.no}</div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{item.title}</div>
-        <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginTop: 4 }}>ฝ่าย {item.dept} · {item.ownerNames.join(' + ')}</div>
+    <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {Object.entries(CI).map(([k, v]) => (
+          <button key={k} type="button" onClick={() => setStatus(k)} style={{ flex: 1, padding: '7px 0', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700, border: `1px solid ${status === k ? v.color : 'var(--payi-line, #e5e7eb)'}`, background: status === k ? v.bg : 'transparent', color: status === k ? v.color : 'var(--payi-text)' }}>{v.label}</button>
+        ))}
       </div>
+      <textarea rows={2} style={input} placeholder="สัปดาห์นี้ทำอะไรไปแล้ว" value={done} onChange={(e) => setDone(e.target.value)} />
+      <textarea rows={2} style={input} placeholder="ขั้นต่อไป" value={next} onChange={(e) => setNext(e.target.value)} />
+      <textarea rows={2} style={{ ...input, borderColor: status === 'stuck' ? '#fca5a5' : undefined }} placeholder={status === 'stuck' ? 'ติดอะไร (ต้องกรอก)' : 'ติดอะไรไหม (ถ้ามี)'} value={blocker} onChange={(e) => setBlocker(e.target.value)} />
+      {error && <div style={{ fontSize: 12, color: 'var(--payi-danger)' }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button type="button" onClick={onCancel} style={{ padding: '7px 14px', borderRadius: 10, border: '1px solid var(--payi-line, #e5e7eb)', background: 'transparent', cursor: 'pointer', fontSize: 13 }}>ยกเลิก</button>
+        <button type="button" disabled={saving} onClick={submit} className="payi-btn-primary" style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1 }}>{saving ? 'กำลังบันทึก...' : 'บันทึก'}</button>
+      </div>
+    </div>
+  )
+}
+
+function BoardCard({ item, asKey, onSaved }) {
+  const [open, setOpen] = useState(false)
+  const last = item.last
+  return (
+    <div style={{ ...card, padding: 14 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--payi-gradient-primary)', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 14, flexShrink: 0 }}>{item.no}</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{item.title}</div>
+          <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginTop: 4 }}>ฝ่าย {item.dept} · {item.ownerNames.join(' + ')}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 8 }}>
+            {last ? <span style={chip(CI[last.status]?.bg, CI[last.status]?.color)}>{CI[last.status]?.label}</span> : <span style={chip('var(--payi-bg, #f1f5f9)', 'var(--payi-text-muted)')}>ยังไม่เคยอัปเดต</span>}
+            {last && <span style={{ fontSize: 11, color: item.stale ? '#c2410c' : 'var(--payi-text-muted)' }}>อัปเดต {ago(item.ageDays)}{item.stale ? ' — ถึงรอบอัปเดตแล้ว' : ''}</span>}
+          </div>
+          {last?.next_text && <div style={{ fontSize: 12, color: 'var(--payi-text)', marginTop: 6 }}>ขั้นต่อไป: {last.next_text}</div>}
+          {last?.status === 'stuck' && last.blocker && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4 }}>ติด: {last.blocker}</div>}
+        </div>
+      </div>
+      {open
+        ? <CheckinForm item={item} asKey={asKey} onCancel={() => setOpen(false)} onSaved={() => { setOpen(false); onSaved() }} />
+        : <button type="button" onClick={() => setOpen(true)} style={{ marginTop: 10, width: '100%', padding: '7px 0', borderRadius: 10, border: '1px dashed var(--payi-line, #cbd5e1)', background: 'transparent', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--payi-text-strong)' }}>อัปเดตสัปดาห์นี้</button>}
+    </div>
+  )
+}
+
+function TrackerCard({ tracker }) {
+  const rank = (t) => (t.waiting ? 4 : t.last?.status === 'stuck' ? 0 : t.stale ? 1 : t.last?.status === 'done' ? 3 : 2)
+  const rows = [...tracker].sort((a, b) => rank(a) - rank(b) || a.no - b.no)
+  const stuck = tracker.filter((t) => t.last?.status === 'stuck').length
+  const stale = tracker.filter((t) => t.stale).length
+  return (
+    <div style={card}>
+      <h3 style={sectionTitle}>ติดตามหัวข้อ ({tracker.length}) · ติด {stuck} · ไม่อัปเดตเกิน 7 วัน {stale}</h3>
+      {rows.map((t) => (
+        <div key={t.no} style={{ display: 'grid', gridTemplateColumns: '28px minmax(0,1fr) auto', gap: 10, alignItems: 'start', padding: '9px 0', borderTop: '1px solid var(--payi-line, #eef2f7)', opacity: t.waiting ? 0.55 : 1 }}>
+          <div style={{ fontWeight: 800, color: 'var(--payi-text-muted)', fontSize: 13 }}>{t.no}</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{t.title} <span style={{ fontWeight: 400, color: 'var(--payi-text-muted)' }}>— {t.ownerNames.join(' + ')}</span></div>
+            {t.last?.status === 'stuck' && t.last.blocker && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 2 }}>ติด: {t.last.blocker}</div>}
+            {t.last?.next_text && t.last.status !== 'stuck' && <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginTop: 2 }}>ขั้นต่อไป: {t.last.next_text}</div>}
+          </div>
+          <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+            {t.waiting ? <span style={chip('var(--payi-bg, #f1f5f9)', 'var(--payi-text-muted)')}>รอคน</span>
+              : t.last ? <span style={chip(CI[t.last.status]?.bg, CI[t.last.status]?.color)}>{CI[t.last.status]?.label}</span>
+              : <span style={chip('#fff7ed', '#c2410c')}>ยังไม่เคยอัปเดต</span>}
+            {t.last && <div style={{ fontSize: 11, color: t.stale ? '#c2410c' : 'var(--payi-text-faint)', marginTop: 3 }}>{ago(t.ageDays)}</div>}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -125,6 +212,7 @@ export default function Workspace({ onOpenTab }) {
   const [as, setAs] = useState('dev')
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -134,11 +222,13 @@ export default function Workspace({ onOpenTab }) {
       .then((d) => { if (!alive) return; if (d.success) setData(d); else setError(d.error || 'โหลดไม่สำเร็จ') })
       .catch((e) => alive && setError(e.message))
     return () => { alive = false }
-  }, [as])
+  }, [as, reloadKey])
 
   if (error) return <div style={{ ...card, color: 'var(--payi-danger)' }}>{error}</div>
   if (!data) return <div style={{ padding: 40, color: 'var(--payi-text-muted)' }}>กำลังโหลด...</div>
-  const { me, people, departments, pending, target, sales, okr } = data
+  const { me, people, departments, pending, target, sales, okr, tracker } = data
+  const mine = tracker.filter((t) => t.owners.includes(me.key))
+  const reload = () => setReloadKey((k) => k + 1)
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', display: 'grid', gap: 18 }}>
@@ -162,9 +252,9 @@ export default function Workspace({ onOpenTab }) {
 
       <div>
         <h3 style={sectionTitle}>หัวข้อเป้า 2027 ที่รับผิดชอบ</h3>
-        {me.board.length ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
-            {me.board.map((b) => <BoardCard key={b.no} item={b} />)}
+        {mine.length ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+            {mine.map((b) => <BoardCard key={b.no} item={b} asKey={me.key} onSaved={reload} />)}
           </div>
         ) : <div style={{ ...card, color: 'var(--payi-text-muted)', fontSize: 13 }}>ยังไม่มีหัวข้อบนกระดานที่ถือโดยตรง — ดูงานของฝ่ายด้านล่าง</div>}
       </div>
@@ -181,6 +271,8 @@ export default function Workspace({ onOpenTab }) {
           </div>
         </div>
       )}
+
+      {tracker.length > mine.length && <TrackerCard tracker={tracker} />}
 
       {target && <TargetCard target={target} sales={sales} okr={okr} />}
       {okr && <OkrCard okr={okr} />}
