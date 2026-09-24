@@ -63,3 +63,45 @@ test('tracker flags stuck, stale and waiting items', async () => {
   assert.equal(t[6].waiting, true) // รอ 1
   assert.equal(t[6].stale, false)
 })
+
+test('narrative flags when the biggest mover contradicts the total trend', async () => {
+  const { buildNarrative } = await import('../api/_lib/workspace.js')
+  const s = buildNarrative(-0.02, { name: 'Shopee', delta: 395940 })
+  assert.match(s, /ลดลง 2%/)
+  assert.match(s, /Shopee เพิ่ม/)
+  assert.match(s, /อื่นรวมกันลดมากกว่า/)
+})
+
+test('narrative reads plainly when the biggest mover agrees with the total trend', async () => {
+  const { buildNarrative } = await import('../api/_lib/workspace.js')
+  const s = buildNarrative(0.1, { name: 'TikTok Shop', delta: 50000 })
+  assert.match(s, /เพิ่มขึ้น 10%/)
+  assert.match(s, /มีผลมากที่สุด/)
+})
+
+test('computeBriefing caps the comparison to the shorter month and says so', async () => {
+  const { computeBriefing } = await import('../api/_lib/workspace.js')
+  const row = (date, platform, name, revenue, status = 'สำเร็จ') => ({ date, platform, name, revenue, status })
+  const thisRows = [
+    row('2026-08-01', 'Shopee', 'A', 100), row('2026-08-15', 'Shopee', 'A', 100), row('2026-08-31', 'Shopee', 'A', 50),
+    row('2026-08-31', 'Shopee', 'B', 999, 'ยกเลิก'),
+  ]
+  const prevRows = [row('2026-02-01', 'Shopee', 'A', 40), row('2026-02-15', 'Shopee', 'A', 40), row('2026-03-01', 'Shopee', 'A', 999)]
+  const b = computeBriefing({ thisTab: 'raw_orders_2026_08', thisRows, prevTab: 'raw_orders_2026_02', prevRows, lowStock: null, archivedMonths: [] })
+  assert.equal(b.asOfDate, '2026-08-31')
+  assert.equal(b.comparableDays, 28) // ก.พ. มี 28 วัน แม้วันล่าสุดของ ส.ค. คือวันที่ 31
+  assert.equal(b.dayCapped, true)
+  assert.equal(b.mtd.windowRevenue, 200) // เฉพาะ 1-28 ส.ค. (ไม่รวมวันที่ 31 ที่เกินขอบเขตเทียบ, ไม่รวมแถวยกเลิก)
+  assert.equal(b.mtd.prevRevenue, 80) // เฉพาะ 1-28 ก.พ.
+  assert.equal(b.mtd.revenue, 250) // ยอดสะสมจริงทั้งเดือนถึงวันล่าสุด (200 + 50 วันที่ 31)
+  assert.equal(b.lowStock.status, 'unknown')
+})
+
+test('computeBriefing works with no previous month at all', async () => {
+  const { computeBriefing } = await import('../api/_lib/workspace.js')
+  const thisRows = [{ date: '2026-01-05', platform: 'Shopee', name: 'A', revenue: 100, status: 'สำเร็จ' }]
+  const b = computeBriefing({ thisTab: 'raw_orders_2026_01', thisRows, prevTab: null, prevRows: [], lowStock: { asOfDate: '2026-01-05', items: [] }, archivedMonths: [] })
+  assert.equal(b.mtd.deltaPct, null)
+  assert.equal(b.narrative, '')
+  assert.equal(b.lowStock.status, 'ok')
+})

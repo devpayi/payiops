@@ -242,11 +242,97 @@ const prevMonthTab = (tab) => {
   const d = new Date(Date.UTC(y, m - 2, 1))
   return `raw_orders_${d.getUTCFullYear()}_${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 }
+const daysInMonth = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate() // m = 1-12
+const THAI_MONTH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+const thaiDate = (dateStr) => { const [y, m, d] = dateStr.split('-').map(Number); return `${Number(d)} ${THAI_MONTH[m - 1]}` }
+const thaiRange = (startStr, endDay) => { const [y, m] = startStr.split('-').map(Number); return `1–${endDay} ${THAI_MONTH[m - 1]}` }
 function sumBy(rows, keyFn) {
   const out = new Map()
   for (const r of rows) { if (isCancelled(r.status)) continue; const k = keyFn(r); if (!k) continue; out.set(k, (out.get(k) || 0) + r.revenue) }
   return out
 }
+function movers(curRows, prevRows, keyFn) {
+  const cur = sumBy(curRows, keyFn), prev = sumBy(prevRows, keyFn)
+  const keys = new Set([...cur.keys(), ...prev.keys()])
+  return [...keys].map((k) => ({ name: k, now: Math.round(cur.get(k) || 0), before: Math.round(prev.get(k) || 0), delta: Math.round((cur.get(k) || 0) - (prev.get(k) || 0)) }))
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+}
+const pctOf = (delta, base) => (base ? delta / base : null)
+
+// สรุปหนึ่งประโยค: บอกว่าอะไรมีผลต่อยอดรวมมากที่สุด ไม่อ้างสาเหตุ — ถ้าตัวที่มีผลมากสุดสวนทางกับยอดรวม
+// (เช่น Shopee เพิ่มแต่ยอดรวมลด) ต้องบอกให้ชัด ไม่งั้นคนอ่านเข้าใจผิดว่าโตทุกช่องทาง
+export function buildNarrative(totalDeltaPct, topMover) {
+  if (totalDeltaPct == null || !topMover) return ''
+  const dir = totalDeltaPct >= 0 ? 'เพิ่มขึ้น' : 'ลดลง'
+  const pct = `${Math.abs(Math.round(totalDeltaPct * 100))}%`
+  const moverDir = topMover.delta >= 0 ? 'เพิ่ม' : 'ลด'
+  const moverAmt = thbPlain(Math.abs(topMover.delta))
+  const sameDirection = (topMover.delta >= 0) === (totalDeltaPct >= 0)
+  if (sameDirection) return `ยอดรวม${dir} ${pct} — ${topMover.name} มีผลมากที่สุด (${moverDir} ${moverAmt} บาท)`
+  return `ยอดรวม${dir} ${pct} แม้ ${topMover.name} ${moverDir} ${moverAmt} บาท แต่ช่องทาง/สินค้าอื่นรวมกัน${totalDeltaPct >= 0 ? 'เพิ่ม' : 'ลด'}มากกว่า`
+}
+function thbPlain(n) { return Math.round(n).toLocaleString('th-TH') }
+
+// ส่วนคำนวณล้วน (ไม่แตะ Sheets) — ทดสอบด้วยข้อมูลสมมติได้ ดู test/workspace.test.js
+// thisRows/prevRows: [{date:'YYYY-MM-DD', platform, name, revenue, status}]; lowStock: { asOfDate, items } | null
+export function computeBriefing({ thisTab, thisRows, prevTab, prevRows, lowStock, archivedMonths = [] }) {
+  const latestDate = thisRows.reduce((max, r) => (r.date > max ? r.date : max), '')
+  if (!latestDate) return null
+  const [y, m] = latestDate.slice(0, 7).split('-').map(Number)
+  const dayNum = Number(latestDate.slice(8, 10))
+  const monthStart = latestDate.slice(0, 8) + '01'
+  const [py, pm] = prevTab ? prevTab.slice(11).split('_').map(Number) : [null, null]
+  const prevMonthStart = prevTab ? `${prevTab.slice(11, 15)}-${prevTab.slice(16, 18)}-01` : null
+  // เดือนก่อนอาจมีวันน้อยกว่าเดือนนี้ (เช่น เทียบ 31 ส.ค. กับ ก.พ. 28 วัน) — เทียบเท่าที่ทั้งคู่มีจริง
+  // แล้วบอกให้ชัดว่าตัดที่กี่วัน ไม่ปัดเป็นเดือนถัดไปโดยไม่รู้ตัว
+  const comparableDays = prevMonthStart ? Math.min(dayNum, daysInMonth(py, pm)) : dayNum
+  const thisWindow = thisRows.filter((r) => r.date >= monthStart && r.date <= addDays(monthStart, comparableDays - 1) && !isCancelled(r.status))
+  const thisFullMtd = thisRows.filter((r) => r.date >= monthStart && r.date <= latestDate && !isCancelled(r.status))
+  const prevWindow = prevMonthStart ? prevRows.filter((r) => r.date >= prevMonthStart && r.date <= addDays(prevMonthStart, comparableDays - 1) && !isCancelled(r.status)) : []
+
+  const revenueOf = (rows) => Math.round(rows.reduce((s, r) => s + r.revenue, 0))
+  const mtdRevenue = revenueOf(thisFullMtd)
+  const windowRevenue = revenueOf(thisWindow)
+  const prevRevenue = revenueOf(prevWindow)
+  const deltaPct = pctOf(windowRevenue - prevRevenue, prevRevenue)
+
+  const platformMovers = movers(thisWindow, prevWindow, (r) => r.platform)
+  const productMovers = movers(thisWindow, prevWindow, (r) => r.name)
+  const narrative = buildNarrative(deltaPct, platformMovers[0])
+
+  const yesterday = addDays(latestDate, -1)
+  const dayRevenue = (d) => revenueOf(thisRows.filter((r) => r.date === d && !isCancelled(r.status)))
+
+  const platformLatest = {}
+  for (const r of thisRows) if (r.platform && (!platformLatest[r.platform] || r.date > platformLatest[r.platform])) platformLatest[r.platform] = r.date
+
+  return {
+    asOfDate: latestDate,
+    asOfLabel: thaiDate(latestDate),
+    rangeLabel: thaiRange(monthStart, dayNum),
+    prevRangeLabel: prevMonthStart ? thaiRange(prevMonthStart, comparableDays) : null,
+    comparableDays,
+    dayCapped: prevMonthStart ? comparableDays < dayNum : false,
+    daily: { date: latestDate, revenue: Math.round(dayRevenue(latestDate)), prevDate: yesterday, prevDayRevenue: Math.round(dayRevenue(yesterday)) },
+    mtd: { revenue: mtdRevenue, windowRevenue, prevRevenue, deltaPct, prevMonthLabel: prevMonthStart ? prevMonthStart.slice(0, 7) : null },
+    narrative,
+    platformMovers, productMovers,
+    lowStock: lowStock
+      ? { status: 'ok', asOfDate: lowStock.asOfDate, count: lowStock.items.length, top: [...lowStock.items].sort((a, b) => (b.recommendedOrder || 0) - (a.recommendedOrder || 0)).slice(0, 5) }
+      : { status: 'unknown', asOfDate: null, count: 0, top: [] },
+    dataStatus: {
+      latestMonthTab: thisTab,
+      platformLatestDate: platformLatest,
+      archivedMonths,
+      unconnected: [
+        { source: 'ไลฟ์ (payi-webapp)', state: 'มีข้อมูลจริง ยังไม่เชื่อมเข้ามา', detail: 'มียอดต่อรอบ ต่อคนไลฟ์ ต่อทีม และตารางแคมเปญอยู่แล้วในฐานข้อมูลแยก' },
+        { source: 'Affiliate / KOL', state: 'ยังไม่มีที่เก็บ', detail: 'ยังไม่มีระบบบันทึกยอดต่อคนที่ใดเลย' },
+        { source: 'Content', state: 'ยังไม่มีที่เก็บ', detail: 'ยังไม่มีระบบเก็บผลตอบรับคอนเทนต์' },
+      ],
+    },
+  }
+}
+
 let briefingCache = null
 export async function buildBriefing() {
   if (briefingCache && Date.now() - briefingCache.at < 15 * 60_000) return briefingCache.data
@@ -260,58 +346,22 @@ export async function buildBriefing() {
     if (rows.length) { thisTab = tabs[i]; thisRows = rows; break }
   }
   if (!thisTab) return null
-  const latestDate = thisRows.reduce((max, r) => (r.date > max ? r.date : max), '')
-  if (!latestDate) return null
-  const dayNum = Number(latestDate.slice(8, 10))
-  const monthStart = latestDate.slice(0, 8) + '01'
   const prevTab = prevMonthTab(thisTab)
-  const prevRows = tabs.includes(prevTab) || (await getMetaCached()).sheets.some((s) => s.properties.title === prevTab) ? await loadMonth(prevTab) : []
-  const prevMonthStart = prevTab.slice(11).replace('_', '-') + '-01'
-  const prevComparable = prevRows.filter((r) => r.date >= prevMonthStart && r.date <= addDays(prevMonthStart, dayNum - 1))
+  const prevExists = tabs.includes(prevTab) || meta.sheets.some((s) => s.properties.title === prevTab)
+  const prevRows = prevExists ? await loadMonth(prevTab) : []
 
-  const today = latestDate, yesterday = addDays(latestDate, -1)
-  const revOn = (rows, d) => rows.filter((r) => r.date === d && !isCancelled(r.status)).reduce((s, r) => s + r.revenue, 0)
-  const mtd = thisRows.filter((r) => r.date >= monthStart && !isCancelled(r.status)).reduce((s, r) => s + r.revenue, 0)
-  const mtdPrev = prevComparable.reduce((s, r) => s + r.revenue, 0)
+  let lowStock = null
+  try {
+    const { computeLowStockList } = await import('./inventory.js')
+    lowStock = { asOfDate: new Date().toISOString().slice(0, 10), items: await computeLowStockList() }
+  } catch { /* ไม่มีสต็อกให้เช็คก็ข้าม ไม่ทำให้หน้าพัง — status ออกมาเป็น 'unknown' เอง */ }
 
-  const movers = (keyFn) => {
-    const cur = sumBy(thisRows.filter((r) => r.date >= monthStart), keyFn)
-    const prev = sumBy(prevComparable, keyFn)
-    const keys = new Set([...cur.keys(), ...prev.keys()])
-    return [...keys].map((k) => ({ name: k, now: Math.round(cur.get(k) || 0), before: Math.round(prev.get(k) || 0), delta: Math.round((cur.get(k) || 0) - (prev.get(k) || 0)) }))
-      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-  }
-  const platformMovers = movers((r) => r.platform)
-  const productMovers = movers((r) => r.name).slice(0, 5)
-
-  let lowStock = []
-  try { const { computeLowStockList } = await import('./inventory.js'); lowStock = (await computeLowStockList()).sort((a, b) => (b.recommendedOrder || 0) - (a.recommendedOrder || 0)) } catch { /* ไม่มีสต็อกให้เช็คก็ข้าม ไม่ทำให้หน้าพัง */ }
-
-  const platformLatest = {}
-  for (const r of thisRows) if (r.platform && (!platformLatest[r.platform] || r.date > platformLatest[r.platform])) platformLatest[r.platform] = r.date
-
-  briefingCache = {
-    at: Date.now(),
-    data: {
-      asOfDate: latestDate,
-      today: { revenue: Math.round(revOn(thisRows, today)) },
-      yesterday: { revenue: Math.round(revOn(thisRows, yesterday)) },
-      mtd: { revenue: Math.round(mtd), comparableDays: dayNum, prevMonthComparable: Math.round(mtdPrev), deltaPct: mtdPrev ? (mtd - mtdPrev) / mtdPrev : null, prevMonthLabel: prevMonthStart.slice(0, 7) },
-      platformMovers, productMovers,
-      lowStock: { count: lowStock.length, top: lowStock.slice(0, 5) },
-      dataStatus: {
-        latestMonthTab: thisTab, comparableDays: dayNum,
-        platformLatestDate: platformLatest,
-        archivedMonths: meta.sheets.filter((s) => s.properties.archived).map((s) => s.properties.title),
-        unconnected: [
-          { source: 'ไลฟ์ (payi-webapp)', state: 'มีข้อมูลจริง ยังไม่เชื่อมเข้ามา', detail: 'มียอดต่อรอบ ต่อคนไลฟ์ ต่อทีม และตารางแคมเปญอยู่แล้วในฐานข้อมูลแยก' },
-          { source: 'Affiliate / KOL', state: 'ยังไม่มีที่เก็บ', detail: 'ยังไม่มีระบบบันทึกยอดต่อคนที่ใดเลย' },
-          { source: 'Content', state: 'ยังไม่มีที่เก็บ', detail: 'ยังไม่มีระบบเก็บผลตอบรับคอนเทนต์' },
-        ],
-      },
-    },
-  }
-  return briefingCache.data
+  const data = computeBriefing({
+    thisTab, thisRows, prevTab: prevExists ? prevTab : null, prevRows, lowStock,
+    archivedMonths: meta.sheets.filter((s) => s.properties.archived).map((s) => s.properties.title),
+  })
+  briefingCache = { at: Date.now(), data }
+  return data
 }
 
 export default async function opWorkspace(req, res) {

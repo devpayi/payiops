@@ -138,18 +138,25 @@ function MoverRow({ m }) {
 
 function BriefingCard({ briefing }) {
   const [showStatus, setShowStatus] = useState(false)
+  const [showAllMovers, setShowAllMovers] = useState(false)
   if (!briefing) return null
-  const { mtd, today, yesterday, platformMovers, productMovers, lowStock, dataStatus, asOfDate } = briefing
+  const { mtd, daily, platformMovers, productMovers, lowStock, dataStatus, narrative, asOfLabel, rangeLabel, prevRangeLabel, dayCapped } = briefing
+  const platTop = showAllMovers ? platformMovers : platformMovers.slice(0, 3)
+  const prodTop = showAllMovers ? productMovers : productMovers.slice(0, 3)
+  const hasMore = platformMovers.length > 3 || productMovers.length > 3
   return (
     <div style={card}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
-        <h3 style={sectionTitle}>สรุปก่อนเริ่มงาน</h3>
-        <button type="button" onClick={() => setShowStatus((v) => !v)} style={{ fontSize: 11, color: 'var(--payi-text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>สถานะข้อมูล</button>
-      </div>
+      <h3 style={sectionTitle}>สรุปก่อนเริ่มงาน</h3>
 
+      {/* 1. ข้อมูลถึงเมื่อไร */}
+      <div style={{ fontSize: 13, color: 'var(--payi-text)', marginBottom: 4 }}>
+        ข้อมูลล่าสุด <b>{asOfLabel}</b>{dayCapped && <span style={{ color: '#c2410c' }}> — เทียบได้แค่ {briefing.comparableDays} วันแรก ({prevRangeLabel} มีวันน้อยกว่า)</span>}
+      </div>
+      <button type="button" onClick={() => setShowStatus((v) => !v)} style={{ fontSize: 11, color: 'var(--payi-text-muted)', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline', marginBottom: 14 }}>
+        {showStatus ? 'ซ่อนรายละเอียดข้อมูล' : 'ข้อมูลอะไรยังขาด / ยังไม่รวม'}
+      </button>
       {showStatus && (
         <div style={{ background: 'var(--payi-bg, #f8fafc)', borderRadius: 12, padding: '12px 14px', marginBottom: 16, fontSize: 12, color: 'var(--payi-text)', display: 'grid', gap: 8 }}>
-          <div>ข้อมูลล่าสุด <b>{asOfDate}</b> (เดือน {dataStatus.latestMonthTab.slice(11)}) — เทียบกับช่วง {dataStatus.comparableDays} วันแรกของเดือนก่อนเสมอ ไม่เทียบเดือนเต็มกับเดือนที่ยังไม่จบ</div>
           <div>ข้อมูลถึงวันที่ต่อช่องทาง: {Object.entries(dataStatus.platformLatestDate).map(([p, d]) => `${p} ${d}`).join(' · ')}</div>
           {dataStatus.archivedMonths.length > 0 && <div>เดือนเก่า ({dataStatus.archivedMonths.map((t) => t.slice(11)).join(', ')}) ย้ายไปไฟล์เก็บแยก แต่ยังรวมในยอดทั้งหมดตามปกติ</div>}
           <div style={{ borderTop: '1px solid var(--payi-line, #e5e7eb)', paddingTop: 8 }}>
@@ -164,43 +171,53 @@ function BriefingCard({ briefing }) {
         </div>
       )}
 
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 8 }}>ตอนนี้เป็นอย่างไร</div>
-      <div className="app-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 12, marginBottom: 18 }}>
-        {[
-          ['เมื่อวาน', thb(yesterday.revenue), null],
-          ['วันที่ ' + asOfDate.slice(8, 10), thb(today.revenue), null],
-          [`สะสมเดือนนี้ (${mtd.comparableDays} วัน)`, thb(mtd.revenue), null],
-          [`ช่วงเดียวกันเดือน ${mtd.prevMonthLabel.slice(5)}`, `${thb(mtd.prevMonthComparable)} (${pct1(mtd.deltaPct)})`, mtd.deltaPct >= 0 ? '#16a34a' : '#dc2626'],
-        ].map(([label, value, color]) => (
-          <div key={label} style={{ background: 'var(--payi-bg, #f8fafc)', borderRadius: 12, padding: '12px 14px' }}>
-            <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>{label}</div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: color || 'var(--payi-text-strong)', marginTop: 4 }}>{value}</div>
+      {/* 2. ยอดรวมเป็นอย่างไร — เดือนเป็นตัวหลัก วันเป็นตัวรอง */}
+      <div style={{ background: 'var(--payi-bg, #f8fafc)', borderRadius: 12, padding: '14px 16px', marginBottom: 8 }}>
+        <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>ยอดสะสม {rangeLabel}</div>
+        <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--payi-text-strong)', marginTop: 2 }}>{thb(mtd.revenue)}</div>
+        {prevRangeLabel && (
+          <div style={{ fontSize: 12, color: mtd.deltaPct >= 0 ? '#16a34a' : '#dc2626', marginTop: 4 }}>
+            {pct1(mtd.deltaPct)} เทียบ {prevRangeLabel} ({thb(mtd.prevRevenue)})
           </div>
-        ))}
+        )}
+        {narrative && <div style={{ fontSize: 12, color: 'var(--payi-text)', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--payi-line, #e5e7eb)' }}>{narrative}</div>}
+      </div>
+      <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--payi-text-muted)', marginBottom: 18 }}>
+        <span>{asOfLabel} <b style={{ color: 'var(--payi-text-strong)' }}>{thb(daily.revenue)}</b></span>
+        <span>เมื่อวาน <b style={{ color: 'var(--payi-text-strong)' }}>{thb(daily.prevDayRevenue)}</b></span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px,1fr))', gap: 20, marginBottom: 8 }}>
+      {/* 3. อะไรมีส่วนให้ยอดเปลี่ยนมากที่สุด */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px,1fr))', gap: 20, marginBottom: 4 }}>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>อะไรเปลี่ยนมากที่สุด — ช่องทาง</div>
-          {platformMovers.map((m) => <MoverRow key={m.name} m={m} />)}
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>ช่องทางที่เปลี่ยนมากที่สุด</div>
+          {platTop.map((m) => <MoverRow key={m.name} m={m} />)}
         </div>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>อะไรเปลี่ยนมากที่สุด — สินค้า</div>
-          {productMovers.length ? productMovers.map((m) => <MoverRow key={m.name} m={m} />) : <div style={{ fontSize: 12, color: 'var(--payi-text-faint)', padding: '8px 0' }}>ไม่มีข้อมูล</div>}
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>สินค้าที่เปลี่ยนมากที่สุด</div>
+          {prodTop.length ? prodTop.map((m) => <MoverRow key={m.name} m={m} />) : <div style={{ fontSize: 12, color: 'var(--payi-text-faint)', padding: '8px 0' }}>ไม่มีข้อมูล</div>}
         </div>
       </div>
+      {hasMore && (
+        <button type="button" onClick={() => setShowAllMovers((v) => !v)} style={{ fontSize: 12, color: 'var(--payi-text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: '6px 0 0' }}>
+          {showAllMovers ? 'ย่อรายการ' : 'ดูทั้งหมด'}
+        </button>
+      )}
 
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginTop: 16 }}>อะไรควรสนใจวันนี้</div>
-      {lowStock.count > 0 ? (
+      {/* 4. ควรตรวจต่อเรื่องไหน */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginTop: 18 }}>ควรตรวจต่อ</div>
+      {lowStock.status === 'unknown' ? (
+        <div style={{ fontSize: 13, color: 'var(--payi-text-muted)', marginTop: 6 }}>สต็อก — ยังประเมินไม่ได้ (เชื่อมข้อมูลสต็อกไม่สำเร็จ)</div>
+      ) : lowStock.count > 0 ? (
         <div style={{ marginTop: 6 }}>
-          <div style={{ fontSize: 13, color: '#c2410c', fontWeight: 700 }}>สต็อกเสี่ยงหมด {lowStock.count} รายการ</div>
+          <div style={{ fontSize: 13, color: '#c2410c', fontWeight: 700 }}>สต็อกเสี่ยงหมด {lowStock.count} รายการ (ข้อมูล ณ {lowStock.asOfDate})</div>
           {lowStock.top.map((it) => (
             <div key={it.sku} style={{ fontSize: 12, color: 'var(--payi-text)', padding: '4px 0' }}>
               {it.display_name} ({it.sku}) — เหลือ {it.balance} {it.unit} {it.recommendedOrder ? `· แนะนำสั่ง ${it.recommendedOrder}` : ''}
             </div>
           ))}
         </div>
-      ) : <div style={{ fontSize: 13, color: 'var(--payi-text-muted)', marginTop: 6 }}>ไม่มีสินค้าเสี่ยงหมดตอนนี้</div>}
+      ) : <div style={{ fontSize: 13, color: 'var(--payi-text-muted)', marginTop: 6 }}>สต็อก — ไม่มีรายการเสี่ยงหมด (ข้อมูล ณ {lowStock.asOfDate})</div>}
 
       <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 14 }}>ตัวเลขบอกแค่ว่าอะไรเปลี่ยนมากที่สุด ไม่ได้บอกสาเหตุ — กดดูรายละเอียดต่อได้ที่ "ทางลัด" ด้านบน</div>
     </div>
