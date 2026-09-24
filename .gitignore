@@ -38,3 +38,5 @@ backend/.env
 
 # ผลรัน/ดัมพ์ข้อมูลจากชีต (ออเดอร์จริง ไม่ควรขึ้น repo)
 reports/
+tmp/orders-sqlite/
+__pycache__/
