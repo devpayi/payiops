@@ -12,19 +12,20 @@ export const STAFF_TABS = Object.freeze([
   'Executive', 'Daily', 'Monthly',
   'Products', 'ProductTrends',
   'Inventory', 'Stock Movement',
+  'Workspace',
 ])
 
 // role แคบสำหรับคนดูแลสต็อกอย่างเดียว (เช่น ฟ้า) — เห็นแค่ Inventory/Stock Movement ไม่เห็นแท็บอื่นเลย
-export const STOCK_TABS = Object.freeze(['Inventory', 'Stock Movement'])
+export const STOCK_TABS = Object.freeze(['Inventory', 'Stock Movement', 'Workspace'])
 
 // role แคบสำหรับฝ่าย marketing (เช่น toon) — เห็นแค่ Dashboard ยอดขาย+สินค้า กับ Marketing Radar
 // เต็มหน้า (จัดการได้ ไม่ใช่แค่ดู — ดู canManageMarketing ด้านล่างที่ผูกกับ endpoint ของ Marketing Radar
 // โดยเฉพาะ ไม่ใช้ canManageOperations เพราะนั่นจะให้สิทธิ์ Inventory/HR/OT ไปด้วยซึ่งเกินขอบเขตที่ขอ)
-export const MARKETING_TABS = Object.freeze(['Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends', 'MarketingRadar', 'Demographic'])
+export const MARKETING_TABS = Object.freeze(['Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends', 'MarketingRadar', 'Demographic', 'Workspace'])
 
 // role แคบสำหรับฝ่ายบัญชี/การเงิน (พี่หยก, พี่แต้ว) — เห็นแค่ CFO เท่านั้น ไม่ปนกับ canManageOperations
 // เพราะนั่นจะให้สิทธิ์ Inventory/HR/OT ไปด้วยซึ่งเกินขอบเขต (ตาม pattern เดียวกับ marketing ด้านบน)
-export const FINANCE_TABS = Object.freeze(['CFO', 'Fulfillment'])
+export const FINANCE_TABS = Object.freeze(['CFO', 'Fulfillment', 'Workspace'])
 
 // tang (แตง) — เหมือน staff + เห็นหน้า Fulfillment ด้วย. แยก role ไว้เพื่อไม่ให้ staff คนอื่น
 // เห็น Fulfillment (มีข้อมูลค่าแรง/OT/ต้นทุน) โดยอัตโนมัติ

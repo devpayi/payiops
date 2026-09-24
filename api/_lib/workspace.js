@@ -1,7 +1,8 @@
 // GET /api/sheet-tools?op=workspace[&as=username] — Workspace รุ่นแรก (2026-09-24)
 // หน้า "งานของฉัน": ฝ่าย/หัวข้อบนกระดานเป้า 2027 ของแต่ละคน + ยอดบริษัทเทียบเป้า 150 ล้าน (หัวหน้าฝ่าย/CEO เท่านั้น)
 // ข้อมูลคน/ฝ่าย/หัวข้อ = ค่าตั้งต้นในไฟล์นี้ (โมตัดสินโครงสร้างเอง — ดู memory workspace-permissions)
-// ตอนนี้เปิดให้ dev เท่านั้น (?as= สลับดูมุมของแต่ละคน) — ยังไม่เปิดให้ role อื่นจนกว่าโมจะอนุมัติ
+// เปิดให้ทุกคนที่มีบัญชี Ops เห็นของตัวเองแล้ว (2026-09-24) — ?as= สลับมุมได้เฉพาะ dev (เช็คว่าใครเห็นอะไร)
+// คนอื่นที่ login มา key จะถูกล็อกเป็น username ตัวเองเสมอ ดู PEOPLE ด้านล่างว่าใครมีบัญชีจริงแล้ว
 import { authEnabled } from './auth.js'
 import { normalizeRole, canAccessTab } from '../../shared/roles.js'
 import { getMetaCached, batchGetValues, getSheet, appendRows, ensureSheet } from './sheets.js'
@@ -396,10 +397,14 @@ export async function buildBriefing() {
 
 export default async function opWorkspace(req, res) {
   try {
+    // requireAuth() ผ่านมาก่อนแล้ว (เรียกใน handler หลักของ sheet-tools.js) — req.user มีค่าแน่นอนเมื่อเปิด auth
+    // local dev ไม่ตั้ง AUTH_SECRET เลย req.user จึงเป็น undefined เสมอ (ดู authEnabled() ทั้งไฟล์นี้ในโปรเจกต์)
+    // — ปฏิบัติเหมือน dev เต็มสิทธิ์ ไม่งั้น ?as= พังตอนทดสอบในเครื่อง
     const role = normalizeRole(req.user?.role)
-    if (authEnabled() && role !== 'dev') return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงส่วนนี้' })
-    // dev สลับดูมุมคนอื่นได้ (?as=) — ตอนเปิดให้ทุกคน ต้องล็อกให้แต่ละคนเห็นเฉพาะตัวเอง
-    const key = String(req.query.as || req.user?.username || 'dev')
+    const canPreviewOthers = !authEnabled() || role === 'dev'
+    // dev สลับดูมุมคนอื่นได้ (?as=) เพื่อเช็คว่าแต่ละคนเห็นอะไร — ทุกคนอื่นล็อกให้เห็นแค่ของตัวเอง ห้ามใช้
+    // ?as= ดูของคนอื่น (จะหลุดยอดบริษัท/เป้าฝ่ายอื่นที่ไม่ใช่ของตัวเอง)
+    const key = canPreviewOthers ? String(req.query.as || req.user?.username || 'dev') : String(req.user?.username || 'dev')
     const me = profileFor(key)
     if (!me) return res.status(404).json({ success: false, error: `ไม่พบ ${key} ในรายชื่อ Workspace` })
     if (req.method === 'POST') {

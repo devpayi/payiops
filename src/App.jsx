@@ -1459,7 +1459,7 @@ export default function App() {
 
         {/* แท็บพวกนี้ mount ค้างไว้เมื่อเคยเปิดแล้ว (ซ่อนด้วย CSS แทนการ unmount) กัน fetch ข้อมูลซ้ำทุกครั้งที่กดสลับแท็บไปมา */}
         {[
-          ['Workspace', isDev ? <Workspace onOpenTab={setActiveTab} /> : <DevOnlyLock label="Workspace" />],
+          ['Workspace', <Workspace onOpenTab={setActiveTab} />],
           ['Daily', <DailyDashboard />],
           ['Monthly', <MonthlyDashboard />],
           ['Products', <ProductDashboard />],
