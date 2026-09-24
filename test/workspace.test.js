@@ -100,8 +100,42 @@ test('computeBriefing caps the comparison to the shorter month and says so', asy
 test('computeBriefing works with no previous month at all', async () => {
   const { computeBriefing } = await import('../api/_lib/workspace.js')
   const thisRows = [{ date: '2026-01-05', platform: 'Shopee', name: 'A', revenue: 100, status: 'สำเร็จ' }]
-  const b = computeBriefing({ thisTab: 'raw_orders_2026_01', thisRows, prevTab: null, prevRows: [], lowStock: { asOfDate: '2026-01-05', items: [] }, archivedMonths: [] })
+  const b = computeBriefing({ thisTab: 'raw_orders_2026_01', thisRows, prevTab: null, prevRows: [], lowStock: { calculatedAt: '2026-01-05T10:00:00Z', stockUpdatedAt: '2026-01-04T09:00:00Z', items: [] }, archivedMonths: [] })
   assert.equal(b.mtd.deltaPct, null)
   assert.equal(b.narrative, '')
   assert.equal(b.lowStock.status, 'ok')
+  assert.equal(b.lowStock.stockUpdatedAt, '2026-01-04T09:00:00Z')
+})
+
+test('computeBriefing flags an incomplete previous month instead of a false percentage', async () => {
+  const { computeBriefing } = await import('../api/_lib/workspace.js')
+  const row = (date, revenue) => ({ date, platform: 'Shopee', name: 'A', revenue, status: 'สำเร็จ' })
+  // เดือนนี้มีข้อมูลถึงวันที่ 24, เดือนก่อนมีแถวแค่วันที่ 1 (import ไม่ครบ ไม่ใช่ขายไม่ได้)
+  const thisRows = [row('2026-08-01', 100), row('2026-08-24', 100)]
+  const prevRows = [row('2026-07-01', 50)]
+  const b = computeBriefing({ thisTab: 'raw_orders_2026_08', thisRows, prevTab: 'raw_orders_2026_07', prevRows, lowStock: null, archivedMonths: [] })
+  assert.equal(b.comparisonIncomplete, true)
+  assert.equal(b.prevDataThrough, '2026-07-01')
+  assert.equal(b.mtd.deltaPct, null) // ไม่โชว์ % เทียม จากข้อมูลที่ยังไม่ครบ
+  assert.equal(b.narrative, '')
+})
+
+test('computeBriefing reads yesterday across a month boundary', async () => {
+  const { computeBriefing } = await import('../api/_lib/workspace.js')
+  const thisRows = [{ date: '2026-09-01', platform: 'Shopee', name: 'A', revenue: 300, status: 'สำเร็จ' }]
+  const prevRows = [{ date: '2026-08-31', platform: 'Shopee', name: 'A', revenue: 200, status: 'สำเร็จ' }]
+  const b = computeBriefing({ thisTab: 'raw_orders_2026_09', thisRows, prevTab: 'raw_orders_2026_08', prevRows, lowStock: null, archivedMonths: [] })
+  assert.equal(b.daily.date, '2026-09-01')
+  assert.equal(b.daily.revenue, 300)
+  assert.equal(b.daily.prevDate, '2026-08-31')
+  assert.equal(b.daily.prevDayRevenue, 200) // เดิมเจอ 0 เพราะมองแค่ thisRows เดือนเดียวกัน
+})
+
+test('movers flag a platform with no rows anywhere last month, not just a raw 100% jump', async () => {
+  const { computeBriefing } = await import('../api/_lib/workspace.js')
+  const thisRows = [{ date: '2026-08-05', platform: 'Lazada', name: 'A', revenue: 500, status: 'สำเร็จ' }]
+  const prevRows = [{ date: '2026-07-05', platform: 'Shopee', name: 'A', revenue: 500, status: 'สำเร็จ' }]
+  const b = computeBriefing({ thisTab: 'raw_orders_2026_08', thisRows, prevTab: 'raw_orders_2026_07', prevRows, lowStock: null, archivedMonths: [] })
+  const laz = b.platformMovers.find((m) => m.name === 'Lazada')
+  assert.equal(laz.noBaseline, true)
 })

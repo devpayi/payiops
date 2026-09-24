@@ -136,11 +136,36 @@ function MoverRow({ m }) {
   )
 }
 
+const fmtDateTime = (iso) => { if (!iso) return null; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }
+
+function MoverGapNote({ m }) {
+  if (!m.noBaseline) return null
+  return <div style={{ fontSize: 11, color: '#c2410c' }}>เดือนก่อนไม่มีข้อมูล{m.name}เลย — ไม่ใช่โตจากศูนย์จริง อาจเพิ่งเริ่มเก็บ/เริ่มขาย</div>
+}
+
 function BriefingCard({ briefing }) {
   const [showStatus, setShowStatus] = useState(false)
   const [showAllMovers, setShowAllMovers] = useState(false)
   if (!briefing) return null
-  const { mtd, daily, platformMovers, productMovers, lowStock, dataStatus, narrative, asOfLabel, rangeLabel, prevRangeLabel, dayCapped } = briefing
+
+  if (briefing.status === 'error') {
+    return (
+      <div style={card}>
+        <h3 style={sectionTitle}>สรุปก่อนเริ่มงาน</h3>
+        <div style={{ fontSize: 13, color: 'var(--payi-danger)' }}>โหลดสรุปไม่สำเร็จ: {briefing.message || 'ไม่ทราบสาเหตุ'}</div>
+      </div>
+    )
+  }
+  if (briefing.status === 'no-data') {
+    return (
+      <div style={card}>
+        <h3 style={sectionTitle}>สรุปก่อนเริ่มงาน</h3>
+        <div style={{ fontSize: 13, color: 'var(--payi-text-muted)' }}>ยังไม่มีข้อมูลออเดอร์ให้สรุป</div>
+      </div>
+    )
+  }
+
+  const { mtd, daily, platformMovers, productMovers, lowStock, dataStatus, narrative, asOfLabel, rangeLabel, prevRangeLabel, dayCapped, comparisonIncomplete, prevDataThrough, comparableDays } = briefing
   const platTop = showAllMovers ? platformMovers : platformMovers.slice(0, 3)
   const prodTop = showAllMovers ? productMovers : productMovers.slice(0, 3)
   const hasMore = platformMovers.length > 3 || productMovers.length > 3
@@ -150,7 +175,7 @@ function BriefingCard({ briefing }) {
 
       {/* 1. ข้อมูลถึงเมื่อไร */}
       <div style={{ fontSize: 13, color: 'var(--payi-text)', marginBottom: 4 }}>
-        ข้อมูลล่าสุด <b>{asOfLabel}</b>{dayCapped && <span style={{ color: '#c2410c' }}> — เทียบได้แค่ {briefing.comparableDays} วันแรก ({prevRangeLabel} มีวันน้อยกว่า)</span>}
+        ข้อมูลล่าสุด <b>{asOfLabel}</b>{dayCapped && <span style={{ color: '#c2410c' }}> — เทียบได้แค่ {comparableDays} วันแรก ({prevRangeLabel} มีวันน้อยกว่า)</span>}
       </div>
       <button type="button" onClick={() => setShowStatus((v) => !v)} style={{ fontSize: 11, color: 'var(--payi-text-muted)', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline', marginBottom: 14 }}>
         {showStatus ? 'ซ่อนรายละเอียดข้อมูล' : 'ข้อมูลอะไรยังขาด / ยังไม่รวม'}
@@ -175,27 +200,29 @@ function BriefingCard({ briefing }) {
       <div style={{ background: 'var(--payi-bg, #f8fafc)', borderRadius: 12, padding: '14px 16px', marginBottom: 8 }}>
         <div style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>ยอดสะสม {rangeLabel}</div>
         <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--payi-text-strong)', marginTop: 2 }}>{thb(mtd.revenue)}</div>
-        {prevRangeLabel && (
+        {comparisonIncomplete ? (
+          <div style={{ fontSize: 12, color: '#c2410c', marginTop: 4 }}>ข้อมูล{prevRangeLabel}ยังไม่ครบสำหรับเปรียบเทียบ (มีถึงแค่ {prevDataThrough}) — ยังไม่คำนวณ %</div>
+        ) : prevRangeLabel ? (
           <div style={{ fontSize: 12, color: mtd.deltaPct >= 0 ? '#16a34a' : '#dc2626', marginTop: 4 }}>
-            {pct1(mtd.deltaPct)} เทียบ {prevRangeLabel} ({thb(mtd.prevRevenue)})
+            เฉพาะ {rangeLabel} {thb(mtd.windowRevenue)} เทียบ {prevRangeLabel} {thb(mtd.prevRevenue)}: {pct1(mtd.deltaPct)}
           </div>
-        )}
+        ) : null}
         {narrative && <div style={{ fontSize: 12, color: 'var(--payi-text)', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--payi-line, #e5e7eb)' }}>{narrative}</div>}
       </div>
       <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--payi-text-muted)', marginBottom: 18 }}>
-        <span>{asOfLabel} <b style={{ color: 'var(--payi-text-strong)' }}>{thb(daily.revenue)}</b></span>
-        <span>เมื่อวาน <b style={{ color: 'var(--payi-text-strong)' }}>{thb(daily.prevDayRevenue)}</b></span>
+        <span>{daily.label} <b style={{ color: 'var(--payi-text-strong)' }}>{thb(daily.revenue)}</b></span>
+        <span>{daily.prevLabel} <b style={{ color: 'var(--payi-text-strong)' }}>{thb(daily.prevDayRevenue)}</b></span>
       </div>
 
       {/* 3. อะไรมีส่วนให้ยอดเปลี่ยนมากที่สุด */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px,1fr))', gap: 20, marginBottom: 4 }}>
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>ช่องทางที่เปลี่ยนมากที่สุด</div>
-          {platTop.map((m) => <MoverRow key={m.name} m={m} />)}
+          {platTop.map((m) => <div key={m.name}><MoverRow m={m} /><MoverGapNote m={m} /></div>)}
         </div>
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>สินค้าที่เปลี่ยนมากที่สุด</div>
-          {prodTop.length ? prodTop.map((m) => <MoverRow key={m.name} m={m} />) : <div style={{ fontSize: 12, color: 'var(--payi-text-faint)', padding: '8px 0' }}>ไม่มีข้อมูล</div>}
+          {prodTop.length ? prodTop.map((m) => <div key={m.name}><MoverRow m={m} /><MoverGapNote m={m} /></div>) : <div style={{ fontSize: 12, color: 'var(--payi-text-faint)', padding: '8px 0' }}>ไม่มีข้อมูล</div>}
         </div>
       </div>
       {hasMore && (
@@ -208,16 +235,24 @@ function BriefingCard({ briefing }) {
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginTop: 18 }}>ควรตรวจต่อ</div>
       {lowStock.status === 'unknown' ? (
         <div style={{ fontSize: 13, color: 'var(--payi-text-muted)', marginTop: 6 }}>สต็อก — ยังประเมินไม่ได้ (เชื่อมข้อมูลสต็อกไม่สำเร็จ)</div>
-      ) : lowStock.count > 0 ? (
+      ) : (
         <div style={{ marginTop: 6 }}>
-          <div style={{ fontSize: 13, color: '#c2410c', fontWeight: 700 }}>สต็อกเสี่ยงหมด {lowStock.count} รายการ (ข้อมูล ณ {lowStock.asOfDate})</div>
-          {lowStock.top.map((it) => (
-            <div key={it.sku} style={{ fontSize: 12, color: 'var(--payi-text)', padding: '4px 0' }}>
-              {it.display_name} ({it.sku}) — เหลือ {it.balance} {it.unit} {it.recommendedOrder ? `· แนะนำสั่ง ${it.recommendedOrder}` : ''}
-            </div>
-          ))}
+          {lowStock.count > 0 ? (
+            <>
+              <div style={{ fontSize: 13, color: '#c2410c', fontWeight: 700 }}>สต็อกเสี่ยงหมด {lowStock.count} รายการ</div>
+              {lowStock.top.map((it) => (
+                <div key={it.sku} style={{ fontSize: 12, color: 'var(--payi-text)', padding: '4px 0' }}>
+                  {it.display_name} ({it.sku}) — เหลือ {it.balance} {it.unit} {it.recommendedOrder ? `· แนะนำสั่ง ${it.recommendedOrder}` : ''}
+                </div>
+              ))}
+            </>
+          ) : <div style={{ fontSize: 13, color: 'var(--payi-text-muted)' }}>สต็อก — ไม่มีรายการเสี่ยงหมดตามเงื่อนไขที่ตรวจ</div>}
+          <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 4 }}>
+            คำนวณเมื่อ {fmtDateTime(lowStock.calculatedAt)} · สต็อกอัปเดตล่าสุด {fmtDateTime(lowStock.stockUpdatedAt) || 'ไม่ทราบ'}
+            {lowStock.note && <> · {lowStock.note}</>}
+          </div>
         </div>
-      ) : <div style={{ fontSize: 13, color: 'var(--payi-text-muted)', marginTop: 6 }}>สต็อก — ไม่มีรายการเสี่ยงหมด (ข้อมูล ณ {lowStock.asOfDate})</div>}
+      )}
 
       <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', marginTop: 14 }}>ตัวเลขบอกแค่ว่าอะไรเปลี่ยนมากที่สุด ไม่ได้บอกสาเหตุ — กดดูรายละเอียดต่อได้ที่ "ทางลัด" ด้านบน</div>
     </div>

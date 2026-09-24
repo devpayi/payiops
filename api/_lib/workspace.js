@@ -274,34 +274,52 @@ export function buildNarrative(totalDeltaPct, topMover) {
 function thbPlain(n) { return Math.round(n).toLocaleString('th-TH') }
 
 // ส่วนคำนวณล้วน (ไม่แตะ Sheets) — ทดสอบด้วยข้อมูลสมมติได้ ดู test/workspace.test.js
-// thisRows/prevRows: [{date:'YYYY-MM-DD', platform, name, revenue, status}]; lowStock: { asOfDate, items } | null
+// thisRows/prevRows: [{date:'YYYY-MM-DD', platform, name, revenue, status}] — prevRows คือ "เดือนก่อน
+// ทั้งเดือน" (ไม่ตัดช่วงมาก่อน) เพราะต้องใช้เช็คทั้งความครบของข้อมูลและยอดวันก่อนที่อาจข้ามเดือน
+// lowStock: { calculatedAt, stockUpdatedAt, items, note } | null
 export function computeBriefing({ thisTab, thisRows, prevTab, prevRows, lowStock, archivedMonths = [] }) {
   const latestDate = thisRows.reduce((max, r) => (r.date > max ? r.date : max), '')
   if (!latestDate) return null
-  const [y, m] = latestDate.slice(0, 7).split('-').map(Number)
   const dayNum = Number(latestDate.slice(8, 10))
   const monthStart = latestDate.slice(0, 8) + '01'
   const [py, pm] = prevTab ? prevTab.slice(11).split('_').map(Number) : [null, null]
   const prevMonthStart = prevTab ? `${prevTab.slice(11, 15)}-${prevTab.slice(16, 18)}-01` : null
+  const prevMonthEnd = prevMonthStart ? `${prevTab.slice(11, 15)}-${prevTab.slice(16, 18)}-${String(daysInMonth(py, pm)).padStart(2, '0')}` : null
   // เดือนก่อนอาจมีวันน้อยกว่าเดือนนี้ (เช่น เทียบ 31 ส.ค. กับ ก.พ. 28 วัน) — เทียบเท่าที่ทั้งคู่มีจริง
   // แล้วบอกให้ชัดว่าตัดที่กี่วัน ไม่ปัดเป็นเดือนถัดไปโดยไม่รู้ตัว
   const comparableDays = prevMonthStart ? Math.min(dayNum, daysInMonth(py, pm)) : dayNum
-  const thisWindow = thisRows.filter((r) => r.date >= monthStart && r.date <= addDays(monthStart, comparableDays - 1) && !isCancelled(r.status))
+  const windowEnd = prevMonthStart ? addDays(monthStart, comparableDays - 1) : null
+  const thisWindow = windowEnd ? thisRows.filter((r) => r.date >= monthStart && r.date <= windowEnd && !isCancelled(r.status)) : []
   const thisFullMtd = thisRows.filter((r) => r.date >= monthStart && r.date <= latestDate && !isCancelled(r.status))
-  const prevWindow = prevMonthStart ? prevRows.filter((r) => r.date >= prevMonthStart && r.date <= addDays(prevMonthStart, comparableDays - 1) && !isCancelled(r.status)) : []
+  const prevWindowEnd = prevMonthStart ? addDays(prevMonthStart, comparableDays - 1) : null
+  const prevWindow = prevMonthStart ? prevRows.filter((r) => r.date >= prevMonthStart && r.date <= prevWindowEnd && !isCancelled(r.status)) : []
+
+  // เดือนก่อนอาจมีแท็บสร้างไว้แต่ import ไม่ครบ (เช่น มีแค่วันที่ 1) — เช็คจาก "มีแถวอยู่จริง" ไม่ใช่ยอดขาย
+  // (ยอด 0 วันนั้นอาจเป็นเรื่องจริง แต่ "ไม่มีแถวเลย" หลังจุดหนึ่งแปลว่าข้อมูลขาด ไม่ใช่ขายไม่ได้)
+  const prevMaxRowDate = prevRows.reduce((max, r) => (r.date > max ? r.date : max), '')
+  const comparisonIncomplete = !!(prevMonthStart && prevMaxRowDate && prevMaxRowDate < prevWindowEnd)
 
   const revenueOf = (rows) => Math.round(rows.reduce((s, r) => s + r.revenue, 0))
   const mtdRevenue = revenueOf(thisFullMtd)
   const windowRevenue = revenueOf(thisWindow)
   const prevRevenue = revenueOf(prevWindow)
-  const deltaPct = pctOf(windowRevenue - prevRevenue, prevRevenue)
+  const deltaPct = comparisonIncomplete ? null : pctOf(windowRevenue - prevRevenue, prevRevenue)
 
-  const platformMovers = movers(thisWindow, prevWindow, (r) => r.platform)
-  const productMovers = movers(thisWindow, prevWindow, (r) => r.name)
-  const narrative = buildNarrative(deltaPct, platformMovers[0])
+  // ช่องทาง/สินค้าที่ไม่มีแถวเลยในเดือนก่อน (ทั้งเดือน ไม่ใช่แค่ช่วงเทียบ) — ไม่รู้ว่าไม่มีเพราะไม่ได้ขาย
+  // จริง หรือเพราะยังไม่เคยเก็บช่องทางนั้น (เช่น Lazada เริ่มขายเดือนนี้เป็นเดือนแรก) ต้องบอก ไม่ใช่โชว์
+  // เป็น "เพิ่ม 100%" เงียบๆ
+  const markGaps = (list, keyFn) => {
+    const everSeen = new Set(prevRows.map(keyFn).filter(Boolean))
+    return list.map((mv) => ({ ...mv, noBaseline: mv.before === 0 && !everSeen.has(mv.name) }))
+  }
+  const platformMovers = markGaps(movers(thisWindow, prevWindow, (r) => r.platform), (r) => r.platform)
+  const productMovers = markGaps(movers(thisWindow, prevWindow, (r) => r.name), (r) => r.name)
+  const narrative = comparisonIncomplete ? '' : buildNarrative(deltaPct, platformMovers.find((m) => !m.noBaseline) || platformMovers[0])
 
-  const yesterday = addDays(latestDate, -1)
-  const dayRevenue = (d) => revenueOf(thisRows.filter((r) => r.date === d && !isCancelled(r.status)))
+  // ยอดรายวัน: เดือนที่ latestDate อยู่ต้นเดือน (เช่น วันที่ 1) แปลว่า "เมื่อวาน" อยู่เดือนก่อน ต้องมองข้าม
+  // เดือนไปหาด้วย ไม่งั้นได้ 0 ทั้งที่มีข้อมูลจริง
+  const prevDate = addDays(latestDate, -1)
+  const dayRevenue = (d) => revenueOf([...thisRows, ...prevRows].filter((r) => r.date === d && !isCancelled(r.status)))
 
   const platformLatest = {}
   for (const r of thisRows) if (r.platform && (!platformLatest[r.platform] || r.date > platformLatest[r.platform])) platformLatest[r.platform] = r.date
@@ -313,13 +331,18 @@ export function computeBriefing({ thisTab, thisRows, prevTab, prevRows, lowStock
     prevRangeLabel: prevMonthStart ? thaiRange(prevMonthStart, comparableDays) : null,
     comparableDays,
     dayCapped: prevMonthStart ? comparableDays < dayNum : false,
-    daily: { date: latestDate, revenue: Math.round(dayRevenue(latestDate)), prevDate: yesterday, prevDayRevenue: Math.round(dayRevenue(yesterday)) },
+    comparisonIncomplete, prevDataThrough: comparisonIncomplete ? prevMaxRowDate : null,
+    daily: { date: latestDate, label: thaiDate(latestDate), revenue: Math.round(dayRevenue(latestDate)), prevDate, prevLabel: thaiDate(prevDate), prevDayRevenue: Math.round(dayRevenue(prevDate)) },
     mtd: { revenue: mtdRevenue, windowRevenue, prevRevenue, deltaPct, prevMonthLabel: prevMonthStart ? prevMonthStart.slice(0, 7) : null },
     narrative,
     platformMovers, productMovers,
     lowStock: lowStock
-      ? { status: 'ok', asOfDate: lowStock.asOfDate, count: lowStock.items.length, top: [...lowStock.items].sort((a, b) => (b.recommendedOrder || 0) - (a.recommendedOrder || 0)).slice(0, 5) }
-      : { status: 'unknown', asOfDate: null, count: 0, top: [] },
+      ? {
+          status: 'ok', calculatedAt: lowStock.calculatedAt, stockUpdatedAt: lowStock.stockUpdatedAt || null,
+          count: lowStock.items.length, top: [...lowStock.items].sort((a, b) => (b.recommendedOrder || 0) - (a.recommendedOrder || 0)).slice(0, 5),
+          note: 'ไม่รวมสินค้าที่สั่งซื้อไปแล้วและรอของเข้า — สินค้ากลุ่มนั้นอาจยังเสี่ยงหมดระหว่างรอของ',
+        }
+      : { status: 'unknown', calculatedAt: null, stockUpdatedAt: null, count: 0, top: [], note: '' },
     dataStatus: {
       latestMonthTab: thisTab,
       platformLatestDate: platformLatest,
@@ -345,21 +368,25 @@ export async function buildBriefing() {
     const rows = await loadMonth(tabs[i])
     if (rows.length) { thisTab = tabs[i]; thisRows = rows; break }
   }
-  if (!thisTab) return null
+  if (!thisTab) return { status: 'no-data' }
   const prevTab = prevMonthTab(thisTab)
   const prevExists = tabs.includes(prevTab) || meta.sheets.some((s) => s.properties.title === prevTab)
   const prevRows = prevExists ? await loadMonth(prevTab) : []
 
   let lowStock = null
   try {
-    const { computeLowStockList } = await import('./inventory.js')
-    lowStock = { asOfDate: new Date().toISOString().slice(0, 10), items: await computeLowStockList() }
+    const { computeLowStockList, loadItemsWithBalance } = await import('./inventory.js')
+    // สองเวลาคนละความหมาย: calculatedAt = ตอนนี้ (เมื่อ endpoint นี้รัน), stockUpdatedAt = ครั้งล่าสุดที่
+    // มีคนบันทึกรับ/เบิก/ปรับยอดจริงในหน้า Inventory — ถ้าไม่มีใครอัปเดตมาหลายวัน ตัวเลขก็เก่าแม้จะ "คำนวณ" สดๆ
+    const [items, balance] = await Promise.all([computeLowStockList(), loadItemsWithBalance()])
+    lowStock = { calculatedAt: new Date().toISOString(), stockUpdatedAt: balance.totals?.lastMovementAt || null, items }
   } catch { /* ไม่มีสต็อกให้เช็คก็ข้าม ไม่ทำให้หน้าพัง — status ออกมาเป็น 'unknown' เอง */ }
 
-  const data = computeBriefing({
+  const computed = computeBriefing({
     thisTab, thisRows, prevTab: prevExists ? prevTab : null, prevRows, lowStock,
     archivedMonths: meta.sheets.filter((s) => s.properties.archived).map((s) => s.properties.title),
   })
+  const data = computed ? { status: 'ok', ...computed } : { status: 'no-data' }
   briefingCache = { at: Date.now(), data }
   return data
 }
@@ -388,7 +415,9 @@ export default async function opWorkspace(req, res) {
       sales: sales?.map(({ month, revenue }) => ({ month, revenue })) || null,
       okr: sales ? buildOkr(sales) : null,
       tracker: summarize(visibleBoard(key), checkins),
-      briefing: key === 'boss' || key === 'dev' ? await buildBriefing().catch(() => null) : null,
+      // null = ไม่มีสิทธิ์เห็นการ์ดนี้เลย (ไม่ใช่ CEO/หัวหน้า); ให้เห็นแล้ว แยก 'no-data'/'error' กับข้อมูลจริง
+      // เสมอ — .catch เงียบแบบเดิมทำให้ "โหลดพัง" หน้าตาเหมือน "ไม่มีข้อมูล" ซึ่งเป็นคนละเรื่องกัน
+      briefing: (key === 'boss' || key === 'dev') ? await buildBriefing().catch((e) => ({ status: 'error', message: e.message })) : null,
     })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })
