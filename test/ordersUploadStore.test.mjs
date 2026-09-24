@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OrdersUploadStore, hash, normalize } from '../scripts/lib/orders-upload-store.mjs';
@@ -13,6 +14,26 @@ function upload(s, rows, key='key') {
 }
 function store(t) { const s = new OrdersUploadStore(); t.after(() => s.close()); return s; }
 const code = expected => e => e.code === expected;
+
+test('refuses an unrelated database without modifying any bytes', t => {
+  const dir=mkdtempSync(join(tmpdir(),'payi-protected-'));
+  t.after(() => rmSync(dir,{recursive:true,force:true}));
+  const path=join(dir,'existing.sqlite'), db=new DatabaseSync(path);
+  db.exec("CREATE TABLE important_data(value TEXT); INSERT INTO important_data VALUES('keep');"); db.close();
+  const before=readFileSync(path);
+  assert.throws(() => new OrdersUploadStore(path),code('TRIAL_ONLY'));
+  assert.deepEqual(readFileSync(path),before);
+});
+
+test('production runtime cannot start trial importer', () => {
+  const previous=process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV='production';
+    assert.throws(() => new OrdersUploadStore(),code('TRIAL_ONLY'));
+  } finally {
+    if (previous === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV=previous;
+  }
+});
 
 test('partial uploads stay invisible; restart, out-of-order chunks and retries are durable', t => {
   const dir = mkdtempSync(join(tmpdir(), 'payi-upload-'));

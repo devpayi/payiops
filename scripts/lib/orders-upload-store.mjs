@@ -1,6 +1,7 @@
 // Local SQLite rehearsal on Node 24. No production API or remote DB connection.
 import { DatabaseSync } from 'node:sqlite';
 import { createHash, randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 
 export const HEADERS = 'order_key order_id order_item_id date platform business sku_platform product_name variation_name master_sku display_name qty revenue order_status imported_at source_file import_id alias_key province shipping_option fulfillment_type buyer_hash'.split(' ');
 export const canonical = value => JSON.stringify(sort(value));
@@ -67,9 +68,22 @@ function identity(r) {
 
 export class OrdersUploadStore {
   constructor(path = ':memory:') {
+    if (process.env.VERCEL || process.env.NODE_ENV === 'production') fail('TRIAL_ONLY', 'Local trial cannot run in production');
+    if (path !== ':memory:' && existsSync(path)) {
+      // Inspect existing files read-only BEFORE creating tables or issuing writes.
+      const check = new DatabaseSync(path, { readOnly: true });
+      try {
+        const table = check.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='payi_trial_identity'").get();
+        if (!table || check.prepare('SELECT marker FROM payi_trial_identity WHERE id=1').get()?.marker !== 'orders-upload-local-v1') {
+          fail('TRIAL_ONLY', 'Refusing an existing database without the local trial marker');
+        }
+      } finally { check.close(); }
+    }
     this.db = new DatabaseSync(path);
     this.db.exec(`
       PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
+      CREATE TABLE IF NOT EXISTS payi_trial_identity(id INTEGER PRIMARY KEY CHECK(id=1), marker TEXT NOT NULL);
+      INSERT OR IGNORE INTO payi_trial_identity VALUES(1,'orders-upload-local-v1');
       CREATE TABLE IF NOT EXISTS uploads(id TEXT PRIMARY KEY, owner TEXT NOT NULL, request_key TEXT NOT NULL, manifest TEXT NOT NULL, status TEXT NOT NULL, result TEXT, error_code TEXT, UNIQUE(owner,request_key));
       CREATE TABLE IF NOT EXISTS upload_chunks(upload_id TEXT REFERENCES uploads(id), idx INTEGER, hash TEXT NOT NULL, row_count INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(upload_id,idx));
       CREATE TABLE IF NOT EXISTS order_batches(seq INTEGER PRIMARY KEY, id TEXT UNIQUE NOT NULL, active INTEGER NOT NULL DEFAULT 1);
