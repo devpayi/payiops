@@ -525,11 +525,19 @@ export async function createOrderRequest(body, actorName, role) {
   if (!Number.isFinite(qtyRaw) || qtyRaw < 0) throw new Error('จำนวนไม่ถูกต้อง')
   const qty = qtyRaw
 
-  await ensureInventorySheets()
-  const items = await getSheet(ITEMS_SHEET)
-  const item = items.find((it) => String(it.sku) === sku)
-  if (!item) throw new Error('ไม่พบสินค้านี้ในระบบ')
-  if (isPackagingItem(item)) throw new Error('วัสดุแพ็คเกจจิ้ง/กล่อง/พัสดุ ไม่อยู่ในรายการแจ้งของเข้า')
+  // "อื่นๆ" — สั่งของที่ไม่มี SKU ในระบบเลย (owner ขอ 2026-09-25) พิมพ์ชื่ออะไรก็ได้ผ่านไลน์ ไม่ต้องมีสินค้า
+  // ในระบบมาก่อน ไม่ track สต็อกจริง (ไม่มี SKU ให้ผูก แค่บันทึกไว้ว่าสั่งแล้วเฉยๆ) — sku ในแถวนี้คือชื่อที่
+  // พิมพ์เองตรงๆ ไม่ใช่รหัสสินค้าจริง ทุกจุดที่โชว์ชื่อ (`item?.display_name || request.sku`) แสดงถูกต้องอยู่
+  // แล้วโดยไม่ต้องแก้โค้ดที่อื่นเลย เพราะ fallback เป็น sku ตรงๆ เมื่อหา item ไม่เจอ
+  if (!body.misc) {
+    await ensureInventorySheets()
+    const items = await getSheet(ITEMS_SHEET)
+    const item = items.find((it) => String(it.sku) === sku)
+    if (!item) throw new Error('ไม่พบสินค้านี้ในระบบ')
+    if (isPackagingItem(item)) throw new Error('วัสดุแพ็คเกจจิ้ง/กล่อง/พัสดุ ไม่อยู่ในรายการแจ้งของเข้า')
+  } else {
+    await ensureInventorySheets()
+  }
 
   const now = new Date().toISOString()
   const row = {

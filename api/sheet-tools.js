@@ -863,6 +863,27 @@ async function askOrderQty(replyToken, lineUserId, item) {
   await replyMessage(replyToken, [{ type: 'text', text }])
 }
 
+// marker เก็บไว้ใน session.sku (คนละคอลัมน์ไม่ต้องเพิ่ม) บอกว่าเป็นชื่อที่พิมพ์เองไม่มีจริงในระบบ ("อื่นๆ",
+// owner ขอ 2026-09-25) — ใช้ prefix แทนเพิ่ม field ใหม่ เพราะ SKU จริงไม่มีทางขึ้นต้นแบบนี้อยู่แล้ว
+const MISC_ORDER_PREFIX = 'MISC::'
+
+async function handleStockMiscConfirmPostback(event, choice) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken) return
+  const session = (await getStockOrderSessions()).find((s) => s.line_user_id === lineUserId)
+  if (session?.step !== 'await_misc_confirm' || !String(session.sku || '').startsWith(MISC_ORDER_PREFIX)) {
+    return replyMessage(replyToken, [{ type: 'text', text: 'รายการนี้หมดอายุแล้วค่ะ พิมพ์ "สั่งของ" เพื่อเริ่มใหม่' }])
+  }
+  if (choice === 'no') {
+    await clearStockOrderSession(lineUserId)
+    return replyMessage(replyToken, [{ type: 'text', text: 'ยกเลิกแล้วค่ะ' }])
+  }
+  const name = session.sku.slice(MISC_ORDER_PREFIX.length)
+  await upsertStockOrderSession(lineUserId, { step: 'await_item_qty' })
+  await replyMessage(replyToken, [{ type: 'text', text: `สั่ง "${name}" กี่ชิ้นคะ?` }])
+}
+
 async function handleStockOrderPostback(event, sku) {
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
@@ -1069,7 +1090,20 @@ async function handleStockOrderSearchReply(event, queryOverride = '') {
   }
 
   const matches = searchItemsByQuery(rawText, items).slice(0, 10)
-  if (!matches.length) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบสินค้านี้ค่ะ ลองพิมพ์สั้นลง หรือใช้ชื่อ/SKU ที่ตรงกับหน้าเว็บมากขึ้น\nหากต้องการเริ่มใหม่ พิมพ์ “สั่งของ” ได้เลยค่ะ' }])
+  // "อื่นๆ" — ไม่เจอในระบบ ถามยืนยันก่อนว่าจะสั่งแบบไม่ผูก SKU ไหม (owner ขอ 2026-09-25 — สั่งของนอกแคตตาล็อก
+  // ได้ ไม่ต้องมีในระบบก่อน) เก็บชื่อไว้ใน session.sku คั่นด้วย MISC_ORDER_PREFIX ยืนยันแล้วค่อยถามจำนวนต่อ
+  if (!matches.length) {
+    const name = rawText.trim()
+    await upsertStockOrderSession(lineUserId, { step: 'await_misc_confirm', sku: `${MISC_ORDER_PREFIX}${name}` })
+    return replyMessage(replyToken, [{
+      type: 'text',
+      text: `ไม่พบ "${name}" ในระบบค่ะ ลองพิมพ์สั้นลง/ใช้ชื่อในหน้าเว็บ หรือสั่งแบบ "อื่นๆ" (ไม่ผูกกับสินค้าในระบบ ไม่ track สต็อกจริง แค่บันทึกไว้ว่าสั่งแล้ว) ก็ได้ค่ะ`,
+      quickReply: { items: [
+        { type: 'action', action: { type: 'postback', label: `✅ สั่ง "${name.slice(0, 15)}"`, data: 'stock-misc-confirm:yes', displayText: `สั่ง "${name}" (อื่นๆ)` } },
+        { type: 'action', action: { type: 'postback', label: 'ยกเลิก', data: 'stock-misc-confirm:no', displayText: 'ยกเลิก' } },
+      ] },
+    }])
+  }
   if (matches.length === 1) return askOrderQty(replyToken, lineUserId, matches[0])
 
   await upsertStockOrderSession(lineUserId, { step: 'await_item_pick', sku: '', qty: '' })
@@ -1104,7 +1138,7 @@ async function completeStockOrderBatch(replyToken, lineUserId, session, orderDat
   const failed = []
   for (const it of items) {
     try {
-      await createOrderRequest({ sku: it.sku, qty: it.qty, order_date: orderDate, note: 'สั่งจาก LINE' }, manager.name, manager.role)
+      await createOrderRequest({ sku: it.sku, qty: it.qty, order_date: orderDate, note: it.misc ? 'สั่งจาก LINE (อื่นๆ ไม่มีในระบบ)' : 'สั่งจาก LINE', misc: it.misc }, manager.name, manager.role)
       done.push(it)
     } catch (e) { failed.push(`${it.display_name}: ${e.message}`) }
   }
@@ -1150,6 +1184,14 @@ async function handleStockOrderQtyReply(event, session) {
     await mergeIntoCart(lineUserId, [done])
     if (remaining.length) return askPendingQueue(replyToken, lineUserId, remaining)
     return addToCartAndAskMore(replyToken, lineUserId, [])
+  }
+
+  // "อื่นๆ" — สั่งชื่อที่พิมพ์เองไม่มีในระบบ (owner ขอ 2026-09-25) เก็บ marker ไว้ที่ session.sku ตอนยืนยัน
+  // (ดู stock-misc-confirm postback) ข้ามการค้นหาใน loadOrderableItems ไปเลย เพราะไม่มีจริง
+  if (String(session.sku).startsWith(MISC_ORDER_PREFIX)) {
+    const name = session.sku.slice(MISC_ORDER_PREFIX.length)
+    await addToCartAndAskMore(replyToken, lineUserId, [{ sku: name, display_name: name, unit: 'ชิ้น', qty, misc: true }])
+    return
   }
 
   const items = await loadOrderableItems()
@@ -3744,6 +3786,7 @@ async function opLineWebhook(req, res) {
         if (stockInSession?.step === 'await_edit_qty') { await handleStockInEditQtyReply(event, stockInSession); continue }
         if (stockInSession?.step === 'await_edit_item') { await handleStockInEditItemReply(event, stockInSession); continue }
         if (stockInSession?.step === 'await_shipping_no') { await handleStockInShippingNoReply(event, stockInSession); continue }
+        if (stockSession?.step === 'await_misc_confirm') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดปุ่มยืนยัน/ยกเลิกด้านบนก่อนค่ะ หรือพิมพ์ “สั่งของ” เพื่อเริ่มใหม่' }]); continue }
         if (stockSession?.step === 'await_batch_date') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดเลือกวันที่จากข้อความก่อนหน้านี้ หรือพิมพ์ “สั่งของ” เพื่อเริ่มใหม่ค่ะ' }]); continue }
         if (stockInSession?.step === 'await_batch_date') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดเลือกวันที่จากข้อความก่อนหน้านี้ หรือพิมพ์ “แจ้งของเข้า” เพื่อเริ่มใหม่ค่ะ' }]); continue }
         if (stockSession?.step === 'await_item' || stockSession?.step === 'await_item_pick') {
@@ -3776,6 +3819,7 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('stock-pick:')) { await handleStockPickPostback(event, data.slice('stock-pick:'.length)); continue }
       if (data.startsWith('stock-order-date:')) { await handleStockOrderDatePostback(event, data.slice('stock-order-date:'.length)); continue }
       if (data === 'stock-cart-done') { await handleStockCartDonePostback(event); continue }
+      if (data.startsWith('stock-misc-confirm:')) { await handleStockMiscConfirmPostback(event, data.slice('stock-misc-confirm:'.length)); continue }
       if (data.startsWith('leadtime-pick:')) { await handleLeadtimePickPostback(event, data.slice('leadtime-pick:'.length)); continue }
       if (data.startsWith('leadtime-revert:')) { await handleLeadtimeRevertPostback(event, data.slice('leadtime-revert:'.length)); continue }
       if (data.startsWith('stockin-pick:')) { await handleStockInPickPostback(event, data.slice('stockin-pick:'.length)); continue }
