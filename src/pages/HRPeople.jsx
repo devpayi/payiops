@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { Users, UserPlus, Search, X, ExternalLink, RefreshCw, FilePlus2, Printer, Trash2, RotateCcw } from 'lucide-react'
+import { Users, Search, X, ExternalLink, RefreshCw, FilePlus2, Printer, Trash2, RotateCcw } from 'lucide-react'
 import KpiCard from '../components/KpiCard'
 
 const API = '/api/sheet-tools?op=hr-people'
 
+// บอส 2026-09-25: ตัดปุ่มแบบสั้น/เดิม (Google Form เก่า) ออกจากแดชบอร์ด เหลือแค่แบบเต็มทั้งสองฝั่ง
+// — ข้อมูลเก่าในแท็บ employees/applicants ไม่ได้ลบทิ้ง แค่ไม่มีปุ่มเข้าถึงจากหน้านี้แล้ว
 const VIEWS = [
-  { id: 'employees', label: 'พนักงาน (เดิม)', icon: Users, formLabel: 'ฟอร์มข้อมูลพนักงาน (เดิม)', formUrl: 'https://docs.google.com/forms/d/1hxqaPqkZfiOaR7Hclm5XtBYrZTnS4vHdf7p4KviBVTk/viewform' },
-  { id: 'employees_full', label: 'พนักงาน (แบบเต็ม)', icon: Users, formLabel: 'ฟอร์มข้อมูลพนักงาน (แบบเต็ม บนมือถือ)', formUrl: '/employee.html' },
-  { id: 'applicants', label: 'ผู้สมัครงาน (แบบสั้น)', icon: UserPlus, formLabel: 'ฟอร์มใบสมัครงาน (แบบสั้น)', formUrl: 'https://docs.google.com/forms/d/1sjhYp5tFwJlvuhpa5yT0DwPOVutZdmxXmBnENiWs_AM/viewform' },
-  { id: 'applicants_full', label: 'ผู้สมัครงาน (แบบเต็ม)', icon: FilePlus2, formLabel: 'ฟอร์มใบสมัครงาน (แบบเต็ม บนมือถือ)', formUrl: '/apply.html' },
+  { id: 'employees_full', label: 'พนักงาน', icon: Users, formLabel: 'ฟอร์มข้อมูลพนักงาน (บนมือถือ)', formUrl: '/employee.html' },
+  { id: 'applicants_full', label: 'ผู้สมัครงาน', icon: FilePlus2, formLabel: 'ฟอร์มใบสมัครงาน (บนมือถือ)', formUrl: '/apply.html' },
   // ลบจากแดชบอร์ด = ย้ายมาเก็บที่นี่ (ไม่หายจริง) กู้คืนกลับได้ — ไม่มีฟอร์มของตัวเอง
   { id: 'deleted', label: 'ประวัติที่ลบ', icon: Trash2 },
 ]
@@ -198,7 +198,7 @@ function SetupHint() {
 }
 
 export default function HRPeople() {
-  const [view, setView] = useState('employees')
+  const [view, setView] = useState('employees_full')
   const [data, setData] = useState({})
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
