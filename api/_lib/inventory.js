@@ -208,6 +208,13 @@ async function loadOpenOrderSkus() {
   )
 }
 
+// ของตกแต่ง/ของขวัญ กรอบรูป (owner ขอ 2026-09-25 — "ให้บอสสั่งของในไลน์ได้") — เพิ่มเป็น inventory_items
+// จริงเพื่อให้ค้นเจอในตัวเลือก "สั่งของ" ผ่านไลน์ได้เท่านั้น ไม่ได้กะ track ยอดคงเหลือจริง balance นิ่งอยู่ 0
+// ตลอด (ไม่มีใครลง movement เข้า-ออก) ถ้าไม่กันไว้ตรงนี้ statusOf จะขึ้น "หมด" ทุกตัวทุกวันไม่มีวันหาย
+// รบกวนการ์ดแจ้งเตือนของหมดรายวันไปเรื่อยๆ — ยังค้นหา/สั่งได้ปกติ (loadOrderableItems ไม่ได้กันตรงนี้)
+// แค่ไม่โผล่ในแจ้งเตือนอัตโนมัติ
+const LOW_STOCK_ALERT_EXCLUDE_SKUS = new Set(['KT030', 'KT036', 'KT050', 'KT051', 'KT052', 'KT088'])
+
 export async function computeLowStockList() {
   const { items } = await loadItemsWithBalance({ includeHidden: false })
   // fresh: true — กันตัวเลขไม่ตรงกับหน้าเว็บ Inventory.jsx (ดู comment ยาวบน computeSalesStats ใน
@@ -242,6 +249,8 @@ export async function computeLowStockList() {
   for (const it of items) {
     if (!it.active || it.category === 'packaging') continue
     const sku = String(it.sku).toUpperCase()
+    if (LOW_STOCK_ALERT_EXCLUDE_SKUS.has(sku)) continue // ของตกแต่ง/ของขวัญ (กรอบรูป) — สั่งผ่านไลน์ได้
+    // ปกติแต่ไม่ track ยอดคงเหลือจริง (balance นิ่ง 0 ตลอด) ไม่งั้นขึ้น "หมด" ทุกวันไม่มีวันหาย
     if (openOrderSkus.has(sku)) continue // สั่งของไปแล้ว รอของเข้าอยู่ — ไม่ต้องแจ้งซ้ำ
     const sales = salesBySku.get(sku) || allocatedSales.get(sku)
     const dailyAvg = sales?.dailyAverage || 0
