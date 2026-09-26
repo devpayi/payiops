@@ -23,7 +23,7 @@ const SHEET_GROUPS = 'groups';
 const SHEET_EVENTS = 'processed_events';
 const SHEET_LOG = 'log';
 const TZ = 'Asia/Bangkok';
-const VERSION = '2026-09-21.1'; // open the /exec URL in a browser to see which version is deployed
+const VERSION = '2026-09-26.1'; // open the /exec URL in a browser to see which version is deployed
 const STATUS_OPEN = 'OPEN', STATUS_ORDERED = 'ORDERED', STATUS_PICKUP = 'PICKUP',
       STATUS_DONE = 'DONE', STATUS_CANCELLED = 'CANCELLED';
 const PAGE_SIZE = 15, MAX_FLEX_BYTES = 45000;
@@ -302,6 +302,7 @@ function handlePostback_(event) {
   if (!outcome) return;
   sh.getRange(row.rowIndex, 7).setValue(outcome[0]);
   sh.getRange(row.rowIndex, 9).setValue(new Date());
+  sh.getRange(row.rowIndex, 11).setValue(Number(row.values[10]) + 1); // a second tap on the same button must not repeat the reply
   reply_(event.replyToken, outcome[1]);
 }
 

@@ -450,17 +450,17 @@ const test = async (name, fn) => {
     assert.ok(shown.includes('a1') && shown.includes('b2') && !shown.includes('c3'), 'only handled tasks listed');
     assert.ok(s.includes('a=undo') && s.includes('รอไปเอา') && s.includes('ย้อนกลับ'));
     const note = await validate('reply', [card], 'handled card');
-    post(env, [postback(`a=undo&id=${id(0)}&v=1`)]);
+    post(env, [postback(`a=undo&id=${id(0)}&v=2`)]); // "order" now bumps version too (repeat taps must not re-fire)
     assert.strictEqual(rows()[0][6], 'OPEN');
-    assert.strictEqual(rows()[0][10], 2);
+    assert.strictEqual(rows()[0][10], 3);
     assert.strictEqual(lastText(env), 'ย้อนกลับแล้ว งานกลับไปอยู่ในรายการค้าง');
     assert.strictEqual(env.api.openRows_().length, 2);
-    post(env, [postback(`a=undo&id=${id(0)}&v=1`)]);
+    post(env, [postback(`a=undo&id=${id(0)}&v=2`)]);
     assert.ok(lastText(env).includes('เปลี่ยนแปลงหรือจัดการไปแล้ว'));
     post(env, [postback(`a=order&id=${id(0)}&v=1`)]);
     assert.ok(lastText(env).includes('เปลี่ยนแปลงหรือจัดการไปแล้ว'), 'the old open-card button is stale after undo');
     assert.strictEqual(rows()[0][6], 'OPEN');
-    post(env, [postback(`a=cancel&id=${id(1)}&v=1`)]);
+    post(env, [postback(`a=cancel&id=${id(1)}&v=2`)]); // "pickup" bumped id(1) to version 2
     assert.strictEqual(rows()[1][6], 'CANCELLED');
     post(env, [postback(`a=undo&id=${id(2)}&v=1`)]);
     assert.strictEqual(rows()[2][6], 'OPEN', 'undo on a task that was never ordered changes nothing');
