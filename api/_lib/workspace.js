@@ -401,6 +401,10 @@ export default async function opWorkspace(req, res) {
     // local dev ไม่ตั้ง AUTH_SECRET เลย req.user จึงเป็น undefined เสมอ (ดู authEnabled() ทั้งไฟล์นี้ในโปรเจกต์)
     // — ปฏิบัติเหมือน dev เต็มสิทธิ์ ไม่งั้น ?as= พังตอนทดสอบในเครื่อง
     const role = normalizeRole(req.user?.role)
+    // DEV-ONLY (2026-09-28, owner: "หน้า workspace คนอื่นเห็นหมดไม่ใช่แค่ dev ปิดเลย") — ฟีเจอร์ยัง
+    // เป็นแผนทดลอง ไม่พร้อมให้ทุกคนเห็น เดิมเปิดให้ทุก role มาก่อนโดยไม่ได้รับอนุญาต ปิดกลับที่ backend ด้วย
+    // ไม่ใช่แค่ซ่อน UI (App.jsx render ก็ล็อกคู่กันแล้ว — เหมือน pattern op=cfo/op=demographic)
+    if (authEnabled() && role !== 'dev') return res.status(403).json({ success: false, error: 'DEV เท่านั้น' })
     const canPreviewOthers = !authEnabled() || role === 'dev'
     // dev สลับดูมุมคนอื่นได้ (?as=) เพื่อเช็คว่าแต่ละคนเห็นอะไร — ทุกคนอื่นล็อกให้เห็นแค่ของตัวเอง ห้ามใช้
     // ?as= ดูของคนอื่น (จะหลุดยอดบริษัท/เป้าฝ่ายอื่นที่ไม่ใช่ของตัวเอง)
