@@ -1,0 +1,697 @@
+{
+  "origin": "topsecret/src/data/platformInsights.js",
+  "copiedAt": "2026-09-28T11:11:58.788Z",
+  "transferredOn": "2026-09-29",
+  "data": {
+    "ADS_SPEND": [
+      {
+        "date": "2026-07-31",
+        "platform": "shopee",
+        "source": "product_ads",
+        "spend": 930660.93,
+        "attributedRevenue": 3920555,
+        "attributedOrders": 17000,
+        "attributionWindow": null,
+        "sourceGrain": "platform_report",
+        "clicks": 226000,
+        "ctr": 1.73
+      },
+      {
+        "date": "2026-07-31",
+        "platform": "shopee",
+        "source": "search_ads",
+        "spend": 0,
+        "attributedRevenue": 0,
+        "attributedOrders": 0,
+        "attributionWindow": null,
+        "sourceGrain": "platform_report"
+      },
+      {
+        "date": "2026-07-31",
+        "platform": "shopee",
+        "source": "brand_ads",
+        "spend": 0,
+        "attributedRevenue": 0,
+        "attributedOrders": 0,
+        "attributionWindow": null,
+        "sourceGrain": "platform_report"
+      },
+      {
+        "date": "2026-07-31",
+        "platform": "shopee",
+        "source": "live_ads",
+        "spend": 0,
+        "attributedRevenue": 0,
+        "attributedOrders": 0,
+        "attributionWindow": null,
+        "sourceGrain": "platform_report"
+      },
+      {
+        "date": "2026-07-31",
+        "platform": "tiktok",
+        "source": "gmv_max",
+        "spend": 382594.6,
+        "attributedRevenue": 2128677.29,
+        "attributedOrders": 12582,
+        "attributionWindow": null,
+        "sourceGrain": "platform_report"
+      }
+    ],
+    "SKU_ADS": [
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE ถุงเท้าเจลซัพพอร์ตเท้า 2in1 ลดการปวดส้นเท้า ปวดอุ้งเท้า",
+        "spend": 63070.43,
+        "attributedRevenue": 255640,
+        "roas": 4.05,
+        "views": 1000000,
+        "clicks": 13400,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "แห่นยืน Roas 25 เทส (ชื่อแคมเปญไม่ตรงชื่อสินค้าปกติ — ไม่ยืนยันว่าเป็นสินค้าจริงตัวไหน)",
+        "spend": 8988.16,
+        "attributedRevenue": 175104,
+        "roas": 19.48,
+        "views": 97400,
+        "clicks": 5800,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE แผ่นรองเท้าสุขภาพ ลดอาการปวดเมื่อยเท้า ปวดส้นเท้า",
+        "spend": 25431.88,
+        "attributedRevenue": 81094,
+        "roas": 3.19,
+        "views": 208300,
+        "clicks": 4600,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE ถุงเท้าเจลซัพพอร์ตเท้า ลดอาการปวดส้นเท้า ปวดรองช้ำ",
+        "spend": 19796.9,
+        "attributedRevenue": 71317,
+        "roas": 3.6,
+        "views": 153900,
+        "clicks": 3400,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "กลุ่มโฆษณา 21/05/2026 - 1 (ad group — รวมหลายสินค้า)",
+        "spend": 10806.92,
+        "attributedRevenue": 67491,
+        "roas": 6.25,
+        "views": 156700,
+        "clicks": 4300,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "ad_group"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE ถุงเท้าเจลซัพพอร์ตเท้า ส้นฝ่าเท้า ลดปวดฝ่าเท้า จมูกเท้า",
+        "spend": 17740.48,
+        "attributedRevenue": 58850,
+        "roas": 3.32,
+        "views": 199700,
+        "clicks": 3500,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "[Set สุดคุ้ม] PAYI HEALTH CARE แผ่นกันรองเท้ากัด ป้องกันรองเท้ากัด แบบใส (PY067 — Set/bundle, ไม่ใช่ component SKU เดียว)",
+        "spend": 11288.7,
+        "attributedRevenue": 57899,
+        "roas": 5.13,
+        "views": 52000,
+        "clicks": 2000,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE ลูกกลิ้งนวดเท้า ลดปวดรองช้ำ ลดปวดส้นเท้า",
+        "spend": 15564.79,
+        "attributedRevenue": 56094,
+        "roas": 3.6,
+        "views": 228600,
+        "clicks": 3600,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE ครีมนวดเท้า ลดปวดส้นเท้า ปวดรองช้ำ บรรเทาอาการปวด",
+        "spend": 9625.74,
+        "attributedRevenue": 39509,
+        "roas": 4.1,
+        "views": 88200,
+        "clicks": 1400,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE ลดอาการปวดส้นเท้า ปวดเมื่อยเท้า ด้วยแผ่นเจลรองส้นเท้า",
+        "spend": 9435,
+        "attributedRevenue": 32729,
+        "roas": 3.47,
+        "views": 224400,
+        "clicks": 3700,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE ผ้ายืดลดอาการปวดรองช้ำ ใช้ช่วยกายบริหารเท้า",
+        "spend": 8517,
+        "attributedRevenue": 31032,
+        "roas": 3.64,
+        "views": 116500,
+        "clicks": 2000,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE ซิลิโคนคั่นนิ้วโป้งเท้า ลดการเสียดสีของนิ้วโป้งเท้า [8]",
+        "spend": 6866,
+        "attributedRevenue": 24064,
+        "roas": 3.5,
+        "views": 167200,
+        "clicks": 3100,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE Night Splint ที่พยุงฝ่าเท้าตอนนอน ป้องกันเท้าแตก",
+        "spend": 5261,
+        "attributedRevenue": 23614,
+        "roas": 4.49,
+        "views": 37100,
+        "clicks": 914,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE ถุงเท้าเจลซัพพอร์ตอุ้งเท้า ลดอาการปวดอุ้งเท้า ปวดเมื่อยเท้า",
+        "spend": 6526,
+        "attributedRevenue": 22384,
+        "roas": 3.43,
+        "views": 67900,
+        "clicks": 2200,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "[Set นิ้วโป้งเท้า 24 ชม.] PAYI HEALTH CARE ซิลิโคนคั่นนิ้วโป้ง+ผ้ารัดหัวแม่เท้า (PY071 — Set/bundle)",
+        "spend": 5276,
+        "attributedRevenue": 18132,
+        "roas": 3.44,
+        "views": 41800,
+        "clicks": 781,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE แผ่นเสริมอุ้งเท้า ลดอาการปวดฝ่าเท้า เหมาะสำหรับเท้าแบน",
+        "spend": 4400,
+        "attributedRevenue": 16570,
+        "roas": 3.77,
+        "views": 43100,
+        "clicks": 1100,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE ลดอาการปวดส้นเท้า ส้นเท้าแตก รองเท้ากัด ด้วยซิลิโคนรองส้น",
+        "spend": 4526,
+        "attributedRevenue": 16003,
+        "roas": 3.54,
+        "views": 42800,
+        "clicks": 1300,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "[Set ลดปวดเท้า] PAYI HEALTH CARE ครีมนวดเท้าลดปวดเมื่อยเท้า+ลูกกลิ้ง (PY069 — Set/bundle)",
+        "spend": 3730,
+        "attributedRevenue": 14927,
+        "roas": 4,
+        "views": 37100,
+        "clicks": 626,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "shopee",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "productId": null,
+        "productName": "PAYI HEALTH CARE ลูกบอลนวดเท้า 3in1 [ร้อน-เย็น-น้ำมันนวด] คลายปวดเมื่อย",
+        "spend": 3883,
+        "attributedRevenue": 13647,
+        "roas": 3.51,
+        "views": 55900,
+        "clicks": 1500,
+        "source": "Shopee Seller Centre > Shopee Ads > โฆษณาสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "tiktok",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-31",
+        "productId": "1732253952869304428",
+        "productName": "PAYI HEALTH CARE แท้ 100% ถุงเท้าเจล 2in1 (GMV Max ของสินค้า 2in1 เริ่มวันที่ 21 Jul 25)",
+        "spend": 47741.77,
+        "attributedRevenue": 235273.86,
+        "roi": 4.93,
+        "attributedOrders": 1142,
+        "source": "TikTok Shop Seller Center > การตลาด > โฆษณาร้านค้า > GMV Max ของสินค้า > การวิเคราะห์ > ตารางสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "tiktok",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-31",
+        "productId": "1733099860154418284",
+        "productName": "PAYI HEALTH CARE แท้ 100% ลูกกลิ้งนวดเท้า (GMV Max แท่งเทา 01 Jul 26)",
+        "spend": 13147.4,
+        "attributedRevenue": 54609.35,
+        "roi": 4.15,
+        "attributedOrders": 288,
+        "source": "TikTok Shop Seller Center > การตลาด > โฆษณาร้านค้า > GMV Max ของสินค้า > การวิเคราะห์ > ตารางสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "tiktok",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-31",
+        "productId": "1730793515649566828",
+        "productName": "PAYI HEALTH CARE แท้ 100% ถุงเท้าเจลส้น (ถุงเท้าเจลส้น 24 Jul 25)",
+        "spend": 9774.45,
+        "attributedRevenue": 45015.99,
+        "roi": 4.61,
+        "attributedOrders": 312,
+        "source": "TikTok Shop Seller Center > การตลาด > โฆษณาร้านค้า > GMV Max ของสินค้า > การวิเคราะห์ > ตารางสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "tiktok",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-31",
+        "productId": "1729445282769635436",
+        "productName": "PAYI HEALTH CARE แท้ 100% แผ่นรองเท้า (แผ่นรองเท้า 29 Oct 25)",
+        "spend": 10571.63,
+        "attributedRevenue": 43425.46,
+        "roi": 4.11,
+        "attributedOrders": 219,
+        "source": "TikTok Shop Seller Center > การตลาด > โฆษณาร้านค้า > GMV Max ของสินค้า > การวิเคราะห์ > ตารางสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "tiktok",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-31",
+        "productId": "1730202223496890476",
+        "productName": "PAYI HEALTH CARE แท้ 100% ถุงเท้าเจลฝ่าเท้า (ถุงเท้าเจลฝ่าเท้า 24 Jul 25)",
+        "spend": 8183.23,
+        "attributedRevenue": 38312.46,
+        "roi": 4.68,
+        "attributedOrders": 264,
+        "source": "TikTok Shop Seller Center > การตลาด > โฆษณาร้านค้า > GMV Max ของสินค้า > การวิเคราะห์ > ตารางสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "tiktok",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-31",
+        "productId": "1729998877264021612",
+        "productName": "PAYI HEALTH CARE แท้ 100% แผ่นเจลรองส้นเท้า (แผ่นเจลรองส้นเท้า 01 Aug 25)",
+        "spend": 6734.39,
+        "attributedRevenue": 24996.91,
+        "roi": 3.71,
+        "attributedOrders": 179,
+        "source": "TikTok Shop Seller Center > การตลาด > โฆษณาร้านค้า > GMV Max ของสินค้า > การวิเคราะห์ > ตารางสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "tiktok",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-31",
+        "productId": "1729445390297303148",
+        "productName": "PAYI HEALTH CARE แท้ 100% ซิลิโคนคั่นนิ้วโป้ง (ซิลิโคนคั่นนิ้วโป้ง 24 Jul 25)",
+        "spend": 5962.69,
+        "attributedRevenue": 21833,
+        "roi": 3.66,
+        "attributedOrders": 159,
+        "source": "TikTok Shop Seller Center > การตลาด > โฆษณาร้านค้า > GMV Max ของสินค้า > การวิเคราะห์ > ตารางสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "tiktok",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-31",
+        "productId": "1735970261260403820",
+        "productName": "PAYI HEALTH CARE แท้ 100% อุ้งเท้า (GMV Max อุ้งเทา 01 Jul 26)",
+        "spend": 5548.83,
+        "attributedRevenue": 22718.01,
+        "roi": 4.1,
+        "attributedOrders": 160,
+        "source": "TikTok Shop Seller Center > การตลาด > โฆษณาร้านค้า > GMV Max ของสินค้า > การวิเคราะห์ > ตารางสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "tiktok",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-31",
+        "productId": "1732458725141349484",
+        "productName": "PAYI HEALTH CARE แท้ 100% แผ่นเท้า (GMV Max อุ้งดำ 12 Apr 26)",
+        "spend": 3803.48,
+        "attributedRevenue": 12708.22,
+        "roi": 3.34,
+        "attributedOrders": 90,
+        "source": "TikTok Shop Seller Center > การตลาด > โฆษณาร้านค้า > GMV Max ของสินค้า > การวิเคราะห์ > ตารางสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "single_product"
+      },
+      {
+        "platform": "tiktok",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-31",
+        "productId": null,
+        "productName": "GMV Max รวม ตัว ยังไม่ได้ยิง 25 Apr 26 (ad group — รวมหลายสินค้า, ดูตาราง \"สินค้า\" ในแคมเปญนี้ต่อ)",
+        "spend": 2811.86,
+        "attributedRevenue": 20481.09,
+        "roi": 7.28,
+        "attributedOrders": 133,
+        "source": "TikTok Shop Seller Center > การตลาด > โฆษณาร้านค้า > GMV Max ของสินค้า > การวิเคราะห์ > ตารางสินค้า",
+        "attributionWindow": "undisclosed",
+        "grain": "ad_group"
+      }
+    ],
+    "SKU_ADS_SHOP_AGGREGATE": {
+      "shopee": {
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30",
+        "spend": 253365.16,
+        "attributedRevenue": 1121142,
+        "views": 3100000,
+        "clicks": 62100,
+        "note": "จากแท็บ \"โฆษณาสินค้า\" เดียวกับ SKU rows"
+      },
+      "tiktok": {
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-31",
+        "spend": 124802.09,
+        "attributedRevenue": 595575.88,
+        "attributedOrders": 3404,
+        "note": "จากแดชบอร์ด GMV Max ภาพรวม — อาจรวม LIVE GMV Max ปนอยู่ด้วย (ยังไม่ยืนยัน)"
+      }
+    },
+    "SHOPEE_MONTHLY": [
+      {
+        "month": "2026-08",
+        "collectedOn": "2026-09-08",
+        "shopeeAds": {
+          "spend": 988036,
+          "spendMomPct": 6.2,
+          "attributedSales": 4661450,
+          "attributedSalesMomPct": 18.9,
+          "roas": 4.72,
+          "impressions": 12600000,
+          "clicks": 249400,
+          "ctrPct": 1.98,
+          "orders": 19100,
+          "itemsSold": 26900,
+          "adCreditRemaining": 23688,
+          "dailySpendRecent": 20130
+        }
+      }
+    ],
+    "TIKTOK_MONTHLY": [
+      {
+        "month": "2026-08",
+        "collectedOn": "2026-09-08",
+        "gmvMaxAds": {
+          "spend": 430977,
+          "spendMomPct": 12.6,
+          "attributedRevenue": 2158201,
+          "attributedRevenueMomPct": 1.4,
+          "roi": 5.01,
+          "skuOrders": 12301,
+          "costPerOrder": 35.04,
+          "balanceRemaining": 42609,
+          "campaigns": [
+            {
+              "name": "LIVE GMV Max",
+              "spend": 36673,
+              "revenue": 278068,
+              "roi": 7.56,
+              "targetRoi": 5.5,
+              "dailyBudget": 1500,
+              "note": "ดีสุด แต่งบถูกล็อก — ระบบแนะนำขึ้นเป็น 7000"
+            },
+            {
+              "name": "GMV Max รวม (ad-group)",
+              "spend": 8843,
+              "revenue": 64530,
+              "roi": 7.25,
+              "targetRoi": 8.1
+            },
+            {
+              "name": "ถุงเท้าเจล 2in1",
+              "spend": 147238,
+              "revenue": 765285,
+              "roi": 5.16,
+              "targetRoi": 5,
+              "note": "ระบบ flag ว่ารายได้ต่ำกว่าเกณฑ์ 95% — แนะนำเพิ่มวิดีโอ"
+            },
+            {
+              "name": "ถุงเท้าเจลส้นเท้า",
+              "spend": 44231,
+              "revenue": 224171,
+              "roi": 5.03,
+              "targetRoi": 5
+            },
+            {
+              "name": "ถุงเท้าเจลฝ่าเท้า",
+              "spend": 29964,
+              "revenue": 151604,
+              "roi": 5.02,
+              "targetRoi": 5
+            },
+            {
+              "name": "ลูกกลิ้งนวดเท้า",
+              "spend": 50616,
+              "revenue": 228116,
+              "roi": 4.48,
+              "targetRoi": 4.5
+            },
+            {
+              "name": "ถุงเท้าเจลอุ้งเท้า",
+              "spend": 18301,
+              "revenue": 78898,
+              "roi": 4.28,
+              "targetRoi": 4.5
+            },
+            {
+              "name": "แผ่นรองเท้าสุขภาพ",
+              "spend": 31672,
+              "revenue": 135970,
+              "roi": 4.26,
+              "targetRoi": 4.5
+            },
+            {
+              "name": "แผ่นเจลรองส้นเท้า",
+              "spend": 25788,
+              "revenue": 101922,
+              "roi": 3.92,
+              "targetRoi": 4
+            },
+            {
+              "name": "ซิลิโคนคั่นนิ้วโป้ง",
+              "spend": 17814,
+              "revenue": 67303,
+              "roi": 3.76,
+              "targetRoi": 4
+            },
+            {
+              "name": "แผ่นโฟมเสริมอุ้งเท้า",
+              "spend": 16937,
+              "revenue": 62333,
+              "roi": 3.66,
+              "targetRoi": 4
+            }
+          ]
+        }
+      }
+    ],
+    "TIKTOK_MONTHLY_SOURCES": [
+      {
+        "group": "ภาพรวมร้าน",
+        "page": "Compass > การวิเคราะห์ร้านค้า",
+        "capture": "GMV, ออเดอร์, ลูกค้า, การแสดงผล, GMV ranking"
+      },
+      {
+        "group": "ช่อง GMV",
+        "page": "Compass > การวิเคราะห์ร้านค้า > รายละเอียด GMV",
+        "capture": "affiliate / seller video / seller LIVE / product card"
+      },
+      {
+        "group": "Funnel รายช่อง",
+        "page": "Compass > การวิเคราะห์สินค้า > การเข้าชมสินค้า",
+        "capture": "การแสดงผล, CTR, cart rate, CTOR ต่อช่อง"
+      },
+      {
+        "group": "ลูกค้า",
+        "page": "Compass > การวิเคราะห์ลูกค้า",
+        "capture": "ใหม่/ซื้อซ้ำ, demographic, Top 3 สินค้า, Top 50 คลิป (own vs affiliate)"
+      },
+      {
+        "group": "แอฟฟิลิเอต",
+        "page": "Affiliate Center > ผลการดำเนินงาน",
+        "capture": "GMV ครีเอเตอร์, คอมมิชชัน, Top 20 ครีเอเตอร์, open/targeted/partner"
+      },
+      {
+        "group": "โฆษณา",
+        "page": "การตลาด > โฆษณาร้านค้า > GMV Max",
+        "capture": "งบ, รายได้, ROI รวม + ต่อแคมเปญ, ยอดเงินคงเหลือ"
+      }
+    ],
+    "DATA_SOURCES": {
+      "adsSpend": {
+        "label": "Ads Spend แยกช่องทาง",
+        "platform": "Shopee/TikTok",
+        "points": "Product Ads (Shopee) + GMV Max (TikTok), ก.ค. 2026 — รายละเอียดที่ ADS_SPEND",
+        "method": "มือ — อ่านจาก dashboard จริง (Shopee: Marketing Centre > Shopee Ads > โฆษณาสินค้า; TikTok: การตลาด > โฆษณาร้านค้า > GMV Max) ไม่ใช่ export file — ยังไม่เจอปุ่ม export ที่ใช้ได้ในทั้ง 2 แพลตฟอร์ม",
+        "lastUpdated": "2026-07-31",
+        "refreshDays": 30,
+        "owner": "MARKETING",
+        "criticality": "critical",
+        "sourceType": "available",
+        "nextAction": "ยังไม่ reconcile grain กับ Orders (ดู warning ใน ADS_SPEND) — ห้ามคำนวณ MER/CAC จนกว่าจะเช็ค grain ให้ตรงก่อน"
+      }
+    }
+  },
+  "derived": {
+    "skuAdsCoverage": [
+      {
+        "platform": "shopee",
+        "sampledCount": 19,
+        "totalCampaigns": 19,
+        "spendCoveragePct": 90.7,
+        "revenueCoveragePct": 90,
+        "status": "partial",
+        "gapNote": "เปิดดูครบทุกแคมเปญที่มี spend>0 แล้ว — ส่วนต่างที่เหลือน่าจะมาจาก rounding ตอนอ่านตัวเลขจากหน้าจอ (บางแถวปัดเป็นจำนวนเต็มบาท) หรือ platform-side timing (ROAS Protection rebate / Rapid Boost overflow) ไม่ใช่แคมเปญที่ตกหล่น",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-30"
+      },
+      {
+        "platform": "tiktok",
+        "sampledCount": 10,
+        "totalCampaigns": 10,
+        "spendCoveragePct": 89.3,
+        "revenueCoveragePct": 83.8,
+        "status": "partial",
+        "gapNote": "เปิดดูครบทุกแคมเปญที่มี spend>0 แล้ว — ส่วนต่างที่เหลือน่าจะมาจาก rounding ตอนอ่านตัวเลขจากหน้าจอ (บางแถวปัดเป็นจำนวนเต็มบาท) หรือ platform-side timing (ROAS Protection rebate / Rapid Boost overflow) ไม่ใช่แคมเปญที่ตกหล่น",
+        "dateFrom": "2026-08-24",
+        "dateTo": "2026-08-31"
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+
+.seller-ads-reports {display:grid;gap:16px;min-width:0;color:var(--payi-text)}
+.seller-ads-reports>h2 {font-size:20px;font-weight:800;margin:0}
+.seller-ads-reports .report-card {padding:20px;border:1px solid var(--payi-border);border-radius:16px;background:var(--payi-surface);min-width:0}
+.seller-ads-reports h3 {margin:0 0 12px;font-size:16px;color:var(--payi-text-strong)}
+.seller-ads-reports p {font-size:14px;line-height:1.7;margin:8px 0}
+.seller-ads-reports .muted,.seller-ads-note {color:var(--payi-text-muted)}
+.seller-ads-reports summary {cursor:pointer;font-size:14px;font-weight:700;line-height:1.6}
+.seller-ads-reports summary:focus-visible {outline:2px solid var(--payi-mint);outline-offset:4px}
+.seller-ads-table {overflow-x:auto;margin-top:12px}
+.seller-ads-table table {width:100%;border-collapse:collapse;font-size:13px}
+.seller-ads-table th,.seller-ads-table td {padding:12px;text-align:left;border-bottom:1px solid var(--payi-border);vertical-align:top}
+.seller-ads-table th {color:var(--payi-text-muted);font-weight:600;white-space:nowrap}
+.seller-ads-table td {font-variant-numeric:tabular-nums}
+.seller-ads-reports details details {margin-top:16px}

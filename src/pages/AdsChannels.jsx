@@ -1,3 +1,4 @@
+import SellerAdsReports from './SellerAdsReports.jsx'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ResponsiveContainer, ComposedChart, BarChart, Bar, Line, XAxis, YAxis, Tooltip,
@@ -186,13 +187,14 @@ export default function AdsChannels() {
     } catch (e) { setError(e.message) } finally { setSaving(false) }
   }
 
-  if (loading && !inputs) return <Center><Loader2 size={18} className="payi-spin" /> กำลังโหลด...</Center>
-  if (error && !inputs) return <Center danger><Info size={18} /> โหลดไม่สำเร็จ: {error}</Center>
+  if (loading && !inputs) return <><SellerAdsReports /><Center><Loader2 size={18} className="payi-spin" /> กำลังโหลดค่า Ads ของ Ops...</Center></>
+  if (error && !inputs) return <><SellerAdsReports /><Center danger><Info size={18} /> โหลดค่า Ads ของ Ops ไม่สำเร็จ: {error}</Center></>
 
   const adsTotalSel = Object.values(adsByMonth[selMonth] || {}).reduce((s, v) => s + v, 0)
 
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <SellerAdsReports />
       {error && <div style={{ padding: '10px 12px', background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', border: '1px solid var(--payi-danger)', borderRadius: 8, fontSize: 13 }}>{error}</div>}
 
       {/* ── กรอกมือ ── */}
