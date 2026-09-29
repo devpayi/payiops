@@ -12,26 +12,28 @@ export const STAFF_TABS = Object.freeze([
   'Executive', 'Daily', 'Monthly',
   'Products', 'ProductTrends',
   'Inventory', 'Stock Movement',
-  'Workspace',
 ])
 
 // role แคบสำหรับคนดูแลสต็อกอย่างเดียว (เช่น ฟ้า) — เห็นแค่ Inventory/Stock Movement ไม่เห็นแท็บอื่นเลย
-export const STOCK_TABS = Object.freeze(['Inventory', 'Stock Movement', 'Workspace'])
+export const STOCK_TABS = Object.freeze(['Inventory', 'Stock Movement'])
 
 // role แคบสำหรับฝ่าย marketing (เช่น toon) — เห็นแค่ Dashboard ยอดขาย+สินค้า กับ Marketing Radar
 // เต็มหน้า (จัดการได้ ไม่ใช่แค่ดู — ดู canManageMarketing ด้านล่างที่ผูกกับ endpoint ของ Marketing Radar
 // โดยเฉพาะ ไม่ใช้ canManageOperations เพราะนั่นจะให้สิทธิ์ Inventory/HR/OT ไปด้วยซึ่งเกินขอบเขตที่ขอ)
-export const MARKETING_TABS = Object.freeze(['Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends', 'MarketingRadar', 'Demographic', 'Workspace'])
+export const MARKETING_TABS = Object.freeze(['Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends', 'MarketingRadar', 'Demographic'])
 
 // role แคบสำหรับฝ่ายบัญชี/การเงิน (พี่หยก, พี่แต้ว) — เห็นแค่ CFO เท่านั้น ไม่ปนกับ canManageOperations
 // เพราะนั่นจะให้สิทธิ์ Inventory/HR/OT ไปด้วยซึ่งเกินขอบเขต (ตาม pattern เดียวกับ marketing ด้านบน)
-export const FINANCE_TABS = Object.freeze(['CFO', 'Fulfillment', 'Workspace'])
+export const FINANCE_TABS = Object.freeze(['CFO', 'Fulfillment'])
 
 // tang (แตง) — เหมือน staff + เห็นหน้า Fulfillment ด้วย. แยก role ไว้เพื่อไม่ให้ staff คนอื่น
 // เห็น Fulfillment (มีข้อมูลค่าแรง/OT/ต้นทุน) โดยอัตโนมัติ
 export const TANG_TABS = Object.freeze([...STAFF_TABS, 'Fulfillment'])
 
-const BOSS_HIDDEN_TABS = new Set(['Import Orders', 'Dev Hub', 'Settings'])
+// Workspace (2026-09-29, owner: "ปิดหน้านี้ ให้เห็นแค่ dev คนเดียว") — ต่างจาก CFO/Demographic
+// ที่ non-dev ยังเห็น sidebar entry (แค่คลิกเข้าไปเจอ DevOnlyLock กลืนไปกับแท็บที่ยังไม่ทำ) อันนี้ตัด
+// ออกจาก sidebar ไปเลยสำหรับ non-dev ทุก role (รวม boss) เพราะ badge "ทดลอง" มันเด่นเกินจะกลืนแบบนั้น
+const BOSS_HIDDEN_TABS = new Set(['Import Orders', 'Dev Hub', 'Settings', 'Workspace'])
 const STAFF_TAB_SET = new Set(STAFF_TABS)
 const STOCK_TAB_SET = new Set(STOCK_TABS)
 const MARKETING_TAB_SET = new Set(MARKETING_TABS)
