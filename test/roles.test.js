@@ -24,7 +24,7 @@ test('Staff sees only its operational pages', () => {
   for (const tab of ['Executive', 'Monthly', 'Products', 'ProductTrends', 'Inventory', 'Stock Movement']) {
     assert.equal(canAccessTab('staff', tab), true, tab)
   }
-  for (const tab of ['HR', 'CFO', 'Demographic', 'Import Orders', 'Dev Hub', 'Settings']) {
+  for (const tab of ['HR', 'CFO', 'Import Orders', 'Dev Hub', 'Settings']) {
     assert.equal(canAccessTab('staff', tab), false, tab)
   }
   assert.equal(canManageOperations('staff'), false)
@@ -36,10 +36,11 @@ test('Stock role sees only Inventory/Stock Movement', () => {
   assert.equal(canAccessTab('stock', 'Executive'), false)
 })
 
-test('Marketing role sees dashboards plus the Demographic menu entry', () => {
-  for (const tab of ['Executive', 'Monthly', 'Products', 'ProductTrends', 'Demographic']) {
+test('Marketing role sees dashboards only', () => {
+  for (const tab of ['Executive', 'Monthly', 'Products', 'ProductTrends']) {
     assert.equal(canAccessTab('marketing', tab), true, tab)
   }
+  assert.equal(canAccessTab('marketing', 'Demographic'), false)
   assert.equal(canAccessTab('marketing', 'Inventory'), false)
   assert.equal(canManageMarketing('marketing'), true)
   assert.equal(canManageMarketing('staff'), false)

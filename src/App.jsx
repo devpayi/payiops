@@ -12,7 +12,7 @@ import {
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
   LayoutDashboard, UploadCloud, Megaphone, Boxes,
   ArrowLeftRight, BookOpen, Link2,
-  Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet, MapPin, Warehouse, FileSignature, Users,
+  Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet, Warehouse, FileSignature, Users,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -35,7 +35,6 @@ const StockMovement = lazy(() => import('./pages/StockMovement'))
 const ImportTracking = lazy(() => import('./pages/ImportTracking'))
 const WhtCert = lazy(() => import('./pages/WhtCert'))
 const CfoDashboard = lazy(() => import('./pages/CfoDashboard'))
-const DemographicDashboard = lazy(() => import('./pages/DemographicDashboard'))
 const Fulfillment = lazy(() => import('./pages/Fulfillment'))
 const Workspace = lazy(() => import('./pages/Workspace'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -96,7 +95,6 @@ const Icons = {
   ImportTracking: Ship,
   WhtCert: FileSignature,
   CFO: Wallet,
-  Demographic: MapPin,
   Fulfillment: Warehouse,
   HR: CalendarCheck,
   'HR People': Users,
@@ -109,7 +107,7 @@ const Icons = {
 const KNOWN_TABS = new Set([
   'Home', 'Workspace', 'Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends',
   'AdsChannels', 'ContentOS', 'Inventory',
-  'Import Tracking', 'WHT Cert', 'Stock Movement', 'HR', 'HR People', 'CFO', 'Demographic', 'Fulfillment',
+  'Import Tracking', 'WHT Cert', 'Stock Movement', 'HR', 'HR People', 'CFO', 'Fulfillment',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings',
 ])
 
@@ -126,7 +124,6 @@ const menuGroups = [
     title: 'ยอดขายและการตลาด',
     items: [
       { id: 'Import Orders', label: 'Import Orders', renderIcon: Icons.ImportOrders, dotColor: 'var(--payi-success)' },
-      { id: 'Demographic', label: 'เดโมกราฟฟิกลูกค้า', renderIcon: Icons.Demographic, dotColor: '#0ea5e9' },
       { id: 'AdsChannels', label: 'Ads & Channels', renderIcon: Icons.AdsChannels },
       { id: 'ContentOS', label: 'Content OS Prototype', renderIcon: Icons.ContentOS, dotColor: 'var(--payi-mint)' }
     ]
@@ -1436,7 +1433,6 @@ export default function App() {
           ['Import Tracking', ['dev', 'boss'].includes(currentRole) ? <ImportTracking /> : <DevOnlyLock label="ติดตามนำเข้า" />],
           ['WHT Cert', ['dev', 'boss'].includes(currentRole) ? <WhtCert /> : <DevOnlyLock label="ใบหัก ณ ที่จ่าย" />],
           ['CFO', isDev ? <CfoDashboard /> : <DevOnlyLock label="CFO Dashboard" />],
-          ['Demographic', isDev ? <DemographicDashboard /> : <DevOnlyLock label="เดโมกราฟฟิกลูกค้า" />],
           ['Fulfillment', ['dev', 'boss', 'finance', 'tang'].includes(currentRole) ? <Fulfillment /> : <DevOnlyLock label="Fulfillment" />],
           ['Stock Movement', <StockMovement />],
           ['HR', <HR />],

@@ -35,7 +35,7 @@ demand planning, marketing tracking, and a LINE bot.
   `vite.config.js`). Requires root `.env`. `npm run build` to check compile.
 - **Role-based access** (`shared/roles.js`): 6 roles — `dev`/`boss`/`staff` plus 3
   narrow single-purpose roles added since: `stock` (ฟ้า — sees only Inventory/Stock
-  Movement), `marketing` (ตูน — sees Dashboard/Products; Demographic is in her whitelist but renders `DevOnlyLock`),
+  Movement), `marketing` (ตูน — sees Dashboard/Products only; the Demographic tab was removed 2026-09-30, see below),
   `finance` (พี่หยก/พี่แต้ว — sees only CFO Dashboard). `admin` is a legacy alias,
   normalized to `dev`. `canAccessTab(role, tab)`: `dev` sees everything; `boss` sees
   everything except `Import Orders`/`Dev Hub`/`Settings`; `stock`/`marketing`/`finance`
@@ -48,9 +48,12 @@ demand planning, marketing tracking, and a LINE bot.
   `canManageFinance` (dev/boss/finance — legacy, no longer gates anything after the
   2026-09-01 lockdown). **⚠️ `op=cfo` / `op=demographic` / `op=import-tracking` are
   DEV-ONLY as of 2026-09-01** (owner request — `normalizeRole(req.user?.role) !== 'dev'`
-  → 403). Other roles still see the sidebar entry but `App.jsx` renders `DevOnlyLock`
-  (a fake "module being prepared" placeholder, deliberately indistinguishable from an
-  unbuilt tab). The narrow-role
+  → 403). Other roles still see the CFO/Import Tracking sidebar entries but `App.jsx`
+  renders `DevOnlyLock` (a fake "module being prepared" placeholder, deliberately
+  indistinguishable from an unbuilt tab); the `demographic` op stays behind this same
+  gate for API compatibility, but its menu entry and page (`DemographicDashboard.jsx`)
+  were removed from the frontend 2026-09-30 — Toon's site now reads `raw_orders_*`
+  directly and has its own province/shipping/repeat-customer reports. The narrow-role
   guards must be paired with `authEnabled() &&` (local dev has no `AUTH_SECRET`, so
   `req.user` is `undefined` and would otherwise get normalized down to `staff` and
   rejected — bit the team once building the stock-in-request matcher).
@@ -126,15 +129,15 @@ Sheets rate limits.
 - `ProductDashboard.jsx` + `ProductTrends.jsx` (product-family dashboard + MoM trends — tab `Dashboard สินค้า`)
 - `Upload.jsx` → used inside `Import Orders` tab (import orders, dev-only)
 - ~~`MarketingRadar.jsx`~~ — **removed 2026-09-30** (menu, page, `MarketingRadar` tab id, radar CSS, mermaid asset). Old `?tab=MarketingRadar` links / saved tab fall back to Home via `KNOWN_TABS` in `App.jsx`. Backend `?kind=events|basket` + `marketing_events` sheet intentionally kept.
-- **`DemographicDashboard.jsx`** — "เดโมกราฟฟิกลูกค้า", province-level sales breakdown,
-  `sheet-tools.js?op=demographic` (`_lib/demographic.js`, see TODO #12). **DEV-ONLY**
-  since 2026-09-01. Also computes, from `raw_orders` T/U/V: Shopee delivery-option
-  breakdown (`_lib/shippingClass.js` — parses the label from the raw Shopee string,
-  folds carrier-only values to "ไม่ระบุประเภท"), the same split per `deriveGroup`
-  product family (% fast vs standard), and per-platform repeat-customer rate (counted
-  per distinct `order_id`, buyers matched on `buyer_hash`). Province names normalized
-  at read time via `_lib/provinceNormalize.js` (merges "จังหวัดนนทบุรี"/"นนทบุรี"/
-  "Nonthaburi" etc. — fixes existing data, no re-import).
+- ~~`DemographicDashboard.jsx`~~ — **removed 2026-09-30** (menu, page, `Demographic`
+  tab id, `MapPin` icon, `MARKETING_TABS`/`DEV_ONLY_PAGES`/`DEPT_LINKS.CMO` entries).
+  Toon's Marketing site now reads `raw_orders_*` directly and has its own province,
+  Shopee delivery-option, and repeat-customer reports (updated on its own ~15-minute
+  cache cycle). Old `?tab=Demographic` links / saved tab fall back to Home via
+  `KNOWN_TABS` in `App.jsx`. Backend `sheet-tools.js?op=demographic` (`_lib/demographic.js`,
+  `_lib/shippingClass.js`, `_lib/provinceNormalize.js`) intentionally kept — still
+  DEV-ONLY since 2026-09-01 — since `Import Orders`/`Fulfillment` and the `raw_orders_*`
+  columns it reads are unrelated and still in active use.
 - `AdsChannels.jsx` (manual Ads spend / TikTok channel entry + monthly sales overlay)
 - **`CfoDashboard.jsx`** — "CFO Dashboard", cash runway/burn-rate view,
   `sheet-tools.js?op=cfo` (`_lib/cfo.js`, `cfo_capital`/`cfo_fixcost` sheets). **DEV-ONLY**

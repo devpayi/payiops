@@ -65,7 +65,7 @@ export const PENDING_SLOTS = {
 // แท็บใน Ops ที่เป็นทางลัดของแต่ละฝ่าย (หน้าเว็บกรองอีกชั้นด้วย canAccessTab ตาม role จริง)
 const DEPT_LINKS = {
   CEO: ['Executive', 'Products', 'Fulfillment', 'CFO'],
-  CMO: ['Products', 'AdsChannels', 'Demographic'],
+  CMO: ['Products', 'AdsChannels'],
   Content: ['ContentOS'],
   Floor: ['Inventory', 'Stock Movement', 'Fulfillment'],
   Management: [],
@@ -73,7 +73,7 @@ const DEPT_LINKS = {
 }
 
 // หน้าที่ App.jsx ล็อกให้เฉพาะ dev (DevOnlyLock) แม้ canAccessTab จะยอม — ไม่ใส่เป็นทางลัดให้คนอื่น
-const DEV_ONLY_PAGES = new Set(['CFO', 'Demographic'])
+const DEV_ONLY_PAGES = new Set(['CFO'])
 
 const nameOf = (key) => PEOPLE.find((p) => p.key === key)?.name || key
 const isHead = (key) => DEPARTMENTS.some((d) => d.head === key) || PEOPLE.some((p) => p.key === key && p.headOf)

@@ -18,9 +18,8 @@ export const STAFF_TABS = Object.freeze([
 export const STOCK_TABS = Object.freeze(['Inventory', 'Stock Movement'])
 
 // role แคบสำหรับฝ่าย marketing (เช่น toon) — ใช้งานจริงได้แค่ Dashboard ยอดขาย+สินค้า
-// Demographic ยังอยู่ใน whitelist (เห็นในเมนู) แต่ App.jsx ล็อกเป็น DevOnlyLock เพราะ dev-only
-// (หน้า Marketing Radar ถูกถอดออกแล้ว 2026-09-30)
-export const MARKETING_TABS = Object.freeze(['Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends', 'Demographic'])
+// (หน้า Marketing Radar และ Demographic ถูกถอดออกแล้ว 2026-09-30 — เว็บตูนอ่าน raw_orders_* เอง)
+export const MARKETING_TABS = Object.freeze(['Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends'])
 
 // role แคบสำหรับฝ่ายบัญชี/การเงิน (พี่หยก, พี่แต้ว) — เห็นแค่ CFO เท่านั้น ไม่ปนกับ canManageOperations
 // เพราะนั่นจะให้สิทธิ์ Inventory/HR/OT ไปด้วยซึ่งเกินขอบเขต (ตาม pattern เดียวกับ marketing ด้านบน)
@@ -30,7 +29,7 @@ export const FINANCE_TABS = Object.freeze(['CFO', 'Fulfillment'])
 // เห็น Fulfillment (มีข้อมูลค่าแรง/OT/ต้นทุน) โดยอัตโนมัติ
 export const TANG_TABS = Object.freeze([...STAFF_TABS, 'Fulfillment'])
 
-// Workspace (2026-09-29, owner: "ปิดหน้านี้ ให้เห็นแค่ dev คนเดียว") — ต่างจาก CFO/Demographic
+// Workspace (2026-09-29, owner: "ปิดหน้านี้ ให้เห็นแค่ dev คนเดียว") — ต่างจาก CFO
 // ที่ non-dev ยังเห็น sidebar entry (แค่คลิกเข้าไปเจอ DevOnlyLock กลืนไปกับแท็บที่ยังไม่ทำ) อันนี้ตัด
 // ออกจาก sidebar ไปเลยสำหรับ non-dev ทุก role (รวม boss) เพราะ badge "ทดลอง" มันเด่นเกินจะกลืนแบบนั้น
 const BOSS_HIDDEN_TABS = new Set(['Import Orders', 'Dev Hub', 'Settings', 'Workspace'])
