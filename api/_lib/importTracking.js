@@ -289,6 +289,29 @@ async function getImportLineTargets() {
   return links.filter((l) => l.username && l.line_user_id && String(l.notify_import) === '1').map((l) => l.line_user_id)
 }
 
+// การ์ด flex สีชมพูใช้ร่วมกันทั้งแจ้งครบ 5 (headline สั้น) และเตือนค้างนาน (headline + คำเตือนเพิ่ม)
+function buildLotFlexCard(ready, headline, subText) {
+  const names = [...new Set(ready.map((r) => r.item_name).filter(Boolean))].slice(0, 8)
+  const url = APP_BASE_URL ? importTrackingWebUrl() : ''
+  const PINK = { bg: '#FFF0F5', soft: '#FFD9E8', text: '#B8305A', button: '#F582AB' }
+  const bubble = {
+    type: 'bubble',
+    body: {
+      type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'xs', backgroundColor: PINK.bg,
+      contents: [
+        { type: 'text', text: headline, weight: 'bold', size: 'md', wrap: true, color: PINK.text },
+        { type: 'text', text: subText, size: 'sm', color: PINK.text, margin: 'xs' },
+        { type: 'separator', margin: 'md', color: PINK.soft },
+        ...names.map((n) => ({ type: 'text', text: `• ${n}`, size: 'sm', wrap: true, margin: 'sm', color: '#7A4A5A' })),
+      ],
+    },
+    ...(url ? { footer: { type: 'box', layout: 'vertical', paddingAll: '12px', backgroundColor: PINK.bg, contents: [
+      { type: 'button', style: 'primary', height: 'sm', color: PINK.button, action: { type: 'uri', label: 'เปิดหน้าติดตามนำเข้า', uri: url } },
+    ] } } : {}),
+  }
+  return [{ type: 'flex', altText: headline, contents: bubble }]
+}
+
 async function checkLotReadyNotify() {
   try {
     const rows = await getSheet(ARRIVALS)
@@ -299,29 +322,10 @@ async function checkLotReadyNotify() {
       if (wasNotified) return
       const targets = await getImportLineTargets()
       if (targets.length) {
-        const names = [...new Set(ready.map((r) => r.item_name).filter(Boolean))].slice(0, 8)
-        const url = APP_BASE_URL ? importTrackingWebUrl() : ''
-        // โทนชมพูอ่อนๆ น่ารักๆ เข้าธีมชื่อฟีเจอร์ "ใบชมพู" (owner ขอ 2026-09-12)
-        const PINK = { bg: '#FFF0F5', soft: '#FFD9E8', text: '#B8305A', button: '#F582AB' }
-        const bubble = {
-          type: 'bubble',
-          body: {
-            type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'xs', backgroundColor: PINK.bg,
-            contents: [
-              { type: 'text', text: `🌸 ใบชมพูครบ ${ready.length} รายการแล้ว`, weight: 'bold', size: 'md', wrap: true, color: PINK.text },
-              { type: 'text', text: 'พร้อมจัดลอตน้า~', size: 'sm', color: PINK.text, margin: 'xs' },
-              { type: 'separator', margin: 'md', color: PINK.soft },
-              ...names.map((n) => ({ type: 'text', text: `• ${n}`, size: 'sm', wrap: true, margin: 'sm', color: '#7A4A5A' })),
-            ],
-          },
-          ...(url ? { footer: { type: 'box', layout: 'vertical', paddingAll: '12px', backgroundColor: PINK.bg, contents: [
-            { type: 'button', style: 'primary', height: 'sm', color: PINK.button, action: { type: 'uri', label: 'เปิดหน้าติดตามนำเข้า', uri: url } },
-          ] } } : {}),
-        }
-        const messages = [{ type: 'flex', altText: `📦 ใบชมพูครบ ${ready.length} รายการ พร้อมจัดลอต`, contents: bubble }]
+        const messages = buildLotFlexCard(ready, `🌸 ใบชมพูครบ ${ready.length} รายการแล้ว`, 'พร้อมจัดลอตน้า~')
         // owner รายงาน 2026-09-15 ว่าปุ่มเปิดเว็บในการ์ดนี้ไม่ขึ้น (การ์ดอื่นปุ่มขึ้นปกติ) — log url ที่ใช้จริง
         // + ผลลัพธ์ push ไว้เช็คใน Vercel logs รอบทดสอบหน้า หาสาเหตุจริงก่อนแก้ (2026-09-15)
-        console.log('lot-ready-notify: url=', JSON.stringify(url), 'targets=', targets.length)
+        console.log('lot-ready-notify: targets=', targets.length)
         const results = await Promise.all(targets.map((to) => pushMessage(to, messages)))
         console.log('lot-ready-notify: push results=', JSON.stringify(results))
       }
@@ -330,6 +334,32 @@ async function checkLotReadyNotify() {
       await overwriteSheet(NOTIFY_STATE, NOTIFY_STATE_HEADERS, [['ready', '', new Date().toISOString()]])
     }
   } catch (e) { console.error('lot-ready-notify:', e.message) } // ไม่ให้ล้มทั้ง request เพราะแจ้งเตือนพัง
+}
+
+// ── เตือนซ้ำ (cron รายวัน) ถ้าครบ 5 ค้างนานเกิน 10 วัน ยังไม่มีใครจัดลอต ──
+// ใช้ import_notify_state.updated_at เป็นเวลา "เริ่มครบ 5" (ตั้งตอน checkLotReadyNotify แจ้งครั้งแรก
+// ไม่ถูกเขียนทับซ้ำระหว่างที่ยัง notified='1' ค้างอยู่ — วัดอายุได้ตรง) เตือนซ้ำทุกวันจนกว่าจะจัดลอต (owner ขอ 2026-09-30)
+const STALE_LOT_DAYS = 10
+export async function checkLotStaleReminder() {
+  try {
+    await ensureAll()
+    const rows = await getSheet(ARRIVALS)
+    const ready = rows.filter((r) => r.id && !r.lot_id && bool(r.pink_slip))
+    if (ready.length < LOT_TARGET) return { sent: false }
+    const [state] = await getSheet(NOTIFY_STATE)
+    if (!state?.updated_at || String(state.notified) !== '1') return { sent: false }
+    const days = (Date.now() - new Date(state.updated_at).getTime()) / 86400000
+    if (days < STALE_LOT_DAYS) return { sent: false }
+    const targets = await getImportLineTargets()
+    if (!targets.length) return { sent: false }
+    const messages = buildLotFlexCard(
+      ready,
+      `⏰ ใบชมพูครบ ${ready.length} รายการมา ${Math.floor(days)} วันแล้ว`,
+      'ยังไม่จัดลอตเลยน้า~ รีบจัดหน่อย',
+    )
+    await Promise.all(targets.map((to) => pushMessage(to, messages)))
+    return { sent: true, days: Math.floor(days) }
+  } catch (e) { console.error('lot-stale-reminder:', e.message); return { sent: false } }
 }
 
 // ---------- writes ----------

@@ -12,7 +12,7 @@ import {
 import { applyScheduleOverrides, LEGACY_OVERRIDE_EXEMPT_CODES } from './_lib/scheduleOverrides.js'
 import { isoDate } from './_lib/dates.js'
 import opInventory, { computeLowStockList, computeOverdueOrders, muteOrderReminder, snoozeOrderReminder, cancelOrderRequest, undoOverdueOrderAction, createOrderRequest, createOrderRequestForGroup, loadOrderGroups, addStockInRequest, matchStockInRequest, rejectStockInRequest, undoStockInDecision, editStockInRequest, getStockInRequestById, loadStockInRequests, loadItemsWithBalance, isPackagingItem, applyTempLeadTime, revertTempLeadTime, applyTempLeadTimeBulk, revertTempLeadTimeBulk, autoRevertExpiredTempLeadTimes } from './_lib/inventory.js'
-import opImportTracking, { createArrivalsFromShipping } from './_lib/importTracking.js'
+import opImportTracking, { createArrivalsFromShipping, checkLotStaleReminder } from './_lib/importTracking.js'
 import opCfo from './_lib/cfo.js'
 import opDemographic from './_lib/demographic.js'
 import opFulfillment from './_lib/fulfillment.js'
@@ -671,6 +671,16 @@ async function handleLeadtimeRevertPostback(event, sku) {
   } catch (e) {
     await replyMessage(replyToken, [{ type: 'text', text: `ทำรายการไม่สำเร็จ: ${e.message}` }])
   }
+}
+
+// cron รายวัน: ใบชมพูครบ 5 ค้างจัดลอตเกิน 10 วัน เตือนซ้ำ (owner ขอ 2026-09-30) — pattern เดียวกับ
+// opLowStockCron ด้านล่าง (ข้าม requireAuth, เช็ค CRON_SECRET เอง) ตรรกะ/dedupe จริงอยู่ใน checkLotStaleReminder
+async function opLotStaleCron(req, res) {
+  if (req.method !== 'GET') return res.status(405).end()
+  const auth = req.headers.authorization || ''
+  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ error: 'unauthorized' })
+  const result = await checkLotStaleReminder()
+  return res.status(200).json({ success: true, ...result })
 }
 
 // entry point ของ Vercel Cron (vercel.json) — ต้องข้าม requireAuth ปกติเพราะ cron ไม่มี user token
@@ -4084,6 +4094,7 @@ export default async function handler(req, res) {
   // Vercel Cron เรียกไม่มี user token — ข้าม requireAuth เหมือน line-webhook แล้วเช็ค CRON_SECRET แทนในตัวมันเอง
   if (op === 'inventory' && req.query.cron === 'low-stock') return opLowStockCron(req, res)
   if (op === 'workforce' && req.query.cron === 'holiday-reminder') return opHolidayReminderCron(req, res)
+  if (op === 'import-tracking' && req.query.cron === 'lot-stale') return opLotStaleCron(req, res)
   if (!requireAuth(req, res)) return
   // CFO / Demographic / Import Tracking — เปิดให้เฉพาะ DEV เท่านั้น (owner ขอ 2026-09-01)
   // role อื่นเห็นแท็บได้แต่หน้าเป็น placeholder (ดู DevOnlyLock ใน App.jsx) — endpoint ปิดตายด้วย

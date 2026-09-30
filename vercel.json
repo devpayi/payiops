@@ -10,6 +10,7 @@
   "crons": [
     { "path": "/api/sheet-tools?op=inventory&cron=low-stock", "schedule": "0 10 * * *" },
     { "path": "/api/sheet-tools?op=workforce&cron=holiday-reminder", "schedule": "0 2 * * *" },
-    { "path": "/api/tiktok?cron=pull", "schedule": "0 13 * * *" }
+    { "path": "/api/tiktok?cron=pull", "schedule": "0 13 * * *" },
+    { "path": "/api/sheet-tools?op=import-tracking&cron=lot-stale", "schedule": "30 10 * * *" }
   ]
 }
