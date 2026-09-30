@@ -294,8 +294,11 @@ function buildLotFlexCard(ready, headline, subText) {
   const names = [...new Set(ready.map((r) => r.item_name).filter(Boolean))].slice(0, 8)
   const url = APP_BASE_URL ? importTrackingWebUrl() : ''
   const PINK = { bg: '#FFF0F5', soft: '#FFD9E8', text: '#B8305A', button: '#F582AB' }
+  // size:'giga' + footer layout:'horizontal' ตั้งใจให้ตรงกับการ์ดอื่นที่ปุ่มขึ้นปกติทุกใบในระบบ (เทียบแล้ว
+  // นี่เป็นการ์ดเดียวที่เคยใช้ size ปริยาย (kilo) + footer แนวตั้ง — ต่างจากการ์ดที่ยืนยันว่าใช้ได้จริง (2026-09-30)
   const bubble = {
     type: 'bubble',
+    size: 'giga',
     body: {
       type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'xs', backgroundColor: PINK.bg,
       contents: [
@@ -305,7 +308,7 @@ function buildLotFlexCard(ready, headline, subText) {
         ...names.map((n) => ({ type: 'text', text: `• ${n}`, size: 'sm', wrap: true, margin: 'sm', color: '#7A4A5A' })),
       ],
     },
-    ...(url ? { footer: { type: 'box', layout: 'vertical', paddingAll: '12px', backgroundColor: PINK.bg, contents: [
+    ...(url ? { footer: { type: 'box', layout: 'horizontal', spacing: 'xs', paddingAll: '12px', backgroundColor: PINK.bg, contents: [
       { type: 'button', style: 'primary', height: 'sm', color: PINK.button, action: { type: 'uri', label: 'เปิดหน้าติดตามนำเข้า', uri: url } },
     ] } } : {}),
   }
@@ -323,11 +326,7 @@ async function checkLotReadyNotify() {
       const targets = await getImportLineTargets()
       if (targets.length) {
         const messages = buildLotFlexCard(ready, `🌸 ใบชมพูครบ ${ready.length} รายการแล้ว`, 'พร้อมจัดลอตน้า~')
-        // owner รายงาน 2026-09-15 ว่าปุ่มเปิดเว็บในการ์ดนี้ไม่ขึ้น (การ์ดอื่นปุ่มขึ้นปกติ) — log url ที่ใช้จริง
-        // + ผลลัพธ์ push ไว้เช็คใน Vercel logs รอบทดสอบหน้า หาสาเหตุจริงก่อนแก้ (2026-09-15)
-        console.log('lot-ready-notify: targets=', targets.length)
-        const results = await Promise.all(targets.map((to) => pushMessage(to, messages)))
-        console.log('lot-ready-notify: push results=', JSON.stringify(results))
+        await Promise.all(targets.map((to) => pushMessage(to, messages)))
       }
       await overwriteSheet(NOTIFY_STATE, NOTIFY_STATE_HEADERS, [['ready', '1', new Date().toISOString()]])
     } else if (wasNotified) {
