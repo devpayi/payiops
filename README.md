@@ -17,7 +17,7 @@ mona-ops/
 │   ├── dashboard.js / monthly.js / products.js / product-trends.js
 │   ├── import-orders.js      # นำเข้าออเดอร์ + จับคู่ SKU + กันซ้ำ + แยก tab รายเดือน
 │   ├── planner-sales.js      # ABC classification + ยอดขายเฉลี่ย
-│   ├── marketing.js          # ?kind=events|inputs|basket
+│   ├── marketing.js          # ?kind=inputs (ใช้อยู่) · events|basket ยังอยู่แต่ไม่มีหน้าเรียกแล้ว (ถอด Marketing Radar 2026-09-30)
 │   ├── sheet-tools.js        # ?op=... — HR, workforce, planner, inventory, cfo, demographic, LINE webhook ฯลฯ
 │   ├── auth.js
 │   └── _lib/                 # sheets.js, productGroup.js, inventory.js, cfo.js, demographic.js, skuMapping.js, ฯลฯ

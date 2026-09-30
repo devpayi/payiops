@@ -17,10 +17,10 @@ export const STAFF_TABS = Object.freeze([
 // role แคบสำหรับคนดูแลสต็อกอย่างเดียว (เช่น ฟ้า) — เห็นแค่ Inventory/Stock Movement ไม่เห็นแท็บอื่นเลย
 export const STOCK_TABS = Object.freeze(['Inventory', 'Stock Movement'])
 
-// role แคบสำหรับฝ่าย marketing (เช่น toon) — เห็นแค่ Dashboard ยอดขาย+สินค้า กับ Marketing Radar
-// เต็มหน้า (จัดการได้ ไม่ใช่แค่ดู — ดู canManageMarketing ด้านล่างที่ผูกกับ endpoint ของ Marketing Radar
-// โดยเฉพาะ ไม่ใช้ canManageOperations เพราะนั่นจะให้สิทธิ์ Inventory/HR/OT ไปด้วยซึ่งเกินขอบเขตที่ขอ)
-export const MARKETING_TABS = Object.freeze(['Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends', 'MarketingRadar', 'Demographic'])
+// role แคบสำหรับฝ่าย marketing (เช่น toon) — ใช้งานจริงได้แค่ Dashboard ยอดขาย+สินค้า
+// Demographic ยังอยู่ใน whitelist (เห็นในเมนู) แต่ App.jsx ล็อกเป็น DevOnlyLock เพราะ dev-only
+// (หน้า Marketing Radar ถูกถอดออกแล้ว 2026-09-30)
+export const MARKETING_TABS = Object.freeze(['Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends', 'Demographic'])
 
 // role แคบสำหรับฝ่ายบัญชี/การเงิน (พี่หยก, พี่แต้ว) — เห็นแค่ CFO เท่านั้น ไม่ปนกับ canManageOperations
 // เพราะนั่นจะให้สิทธิ์ Inventory/HR/OT ไปด้วยซึ่งเกินขอบเขต (ตาม pattern เดียวกับ marketing ด้านบน)

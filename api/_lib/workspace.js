@@ -65,7 +65,7 @@ export const PENDING_SLOTS = {
 // แท็บใน Ops ที่เป็นทางลัดของแต่ละฝ่าย (หน้าเว็บกรองอีกชั้นด้วย canAccessTab ตาม role จริง)
 const DEPT_LINKS = {
   CEO: ['Executive', 'Products', 'Fulfillment', 'CFO'],
-  CMO: ['Products', 'MarketingRadar', 'AdsChannels', 'Demographic'],
+  CMO: ['Products', 'AdsChannels', 'Demographic'],
   Content: ['ContentOS'],
   Floor: ['Inventory', 'Stock Movement', 'Fulfillment'],
   Management: [],

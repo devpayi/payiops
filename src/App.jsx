@@ -10,7 +10,7 @@ const getMeUser = () => { try { return JSON.parse(localStorage.getItem('payi-use
 import {
   Bell, Search, UserCircle2, Target, ShoppingBag, Package, TrendingUp, Percent,
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
-  LayoutDashboard, UploadCloud, Radar, Megaphone, Boxes,
+  LayoutDashboard, UploadCloud, Megaphone, Boxes,
   ArrowLeftRight, BookOpen, Link2,
   Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet, MapPin, Warehouse, FileSignature, Users,
 } from 'lucide-react'
@@ -28,7 +28,6 @@ const HR = lazy(() => import('./pages/HR'))
 const HRPeople = lazy(() => import('./pages/HRPeople'))
 const ProductDashboard = lazy(() => import('./pages/ProductDashboard'))
 const ProductTrends = lazy(() => import('./pages/ProductTrends'))
-const MarketingRadar = lazy(() => import('./pages/MarketingRadar'))
 const AdsChannels = lazy(() => import('./pages/AdsChannels'))
 const ContentOSPrototype = lazy(() => import('./pages/ContentOSPrototype'))
 const Inventory = lazy(() => import('./pages/Inventory'))
@@ -90,7 +89,6 @@ const Icons = {
   Executive: LayoutDashboard,
   Products: Package,
   ImportOrders: UploadCloud,
-  MarketingRadar: Radar,
   AdsChannels: Megaphone,
   ContentOS: Sparkles,
   Inventory: Boxes,
@@ -110,7 +108,7 @@ const Icons = {
 
 const KNOWN_TABS = new Set([
   'Home', 'Workspace', 'Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends',
-  'AdsChannels', 'ContentOS', 'MarketingRadar', 'Inventory',
+  'AdsChannels', 'ContentOS', 'Inventory',
   'Import Tracking', 'WHT Cert', 'Stock Movement', 'HR', 'HR People', 'CFO', 'Demographic', 'Fulfillment',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings',
 ])
@@ -128,7 +126,6 @@ const menuGroups = [
     title: 'ยอดขายและการตลาด',
     items: [
       { id: 'Import Orders', label: 'Import Orders', renderIcon: Icons.ImportOrders, dotColor: 'var(--payi-success)' },
-      { id: 'MarketingRadar', label: 'Marketing Radar', renderIcon: Icons.MarketingRadar, dotColor: 'var(--payi-mint)' },
       { id: 'Demographic', label: 'เดโมกราฟฟิกลูกค้า', renderIcon: Icons.Demographic, dotColor: '#0ea5e9' },
       { id: 'AdsChannels', label: 'Ads & Channels', renderIcon: Icons.AdsChannels },
       { id: 'ContentOS', label: 'Content OS Prototype', renderIcon: Icons.ContentOS, dotColor: 'var(--payi-mint)' }
@@ -482,9 +479,12 @@ export default function App() {
   // แลกกับไม่ต้องกดกลับไปหน้าเดิมทุกครั้งที่ refresh ?tab=... ใน URL (deep link จากการ์ดไลน์) ยังชนะเสมอ
   const [activeTab, setActiveTab] = useState(() => {
     try {
-      const tab = new URLSearchParams(window.location.search).get('tab')
-      if (tab) return tab
-      return localStorage.getItem('payi-active-tab') || 'Home'
+      // แท็บที่ถอดออกไปแล้ว (เช่น MarketingRadar) อาจค้างได้ทั้งใน ?tab= (ลิงก์เก่า) และ localStorage —
+      // ตกกลับ Home แทนหน้า placeholder ทั้งสองทาง
+      const fromUrl = new URLSearchParams(window.location.search).get('tab')
+      if (fromUrl) return KNOWN_TABS.has(fromUrl) ? fromUrl : 'Home'
+      const saved = localStorage.getItem('payi-active-tab')
+      return saved && KNOWN_TABS.has(saved) ? saved : 'Home'
     } catch { return 'Home' }
   })
   useEffect(() => {
@@ -513,19 +513,11 @@ export default function App() {
   // มือถือ (<=860px, ดูใน theme.css): sidebar ทั้งแถบซ่อนไปเลย ใช้ bottom tab bar + more sheet แทน
   // (ของเดิมเป็นลิ้นชักเลื่อนออกจาก sidebar — owner ขอเปลี่ยนเป็นแท็บล่างสไตล์แอพธนาคาร)
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
-  const [marketingDueCount, setMarketingDueCount] = useState(() => {
-    try { return Number(localStorage.getItem('payi-marketing-due-count') || 0) } catch { return 0 }
-  })
   const [isMobileViewport, setIsMobileViewport] = useState(() => window.innerWidth <= 860)
   useEffect(() => {
     const onResize = () => setIsMobileViewport(window.innerWidth <= 860)
-    const onMarketingDue = (event) => setMarketingDueCount(Number(event.detail || 0))
     window.addEventListener('resize', onResize)
-    window.addEventListener('payi-marketing-due', onMarketingDue)
-    return () => {
-      window.removeEventListener('resize', onResize)
-      window.removeEventListener('payi-marketing-due', onMarketingDue)
-    }
+    return () => window.removeEventListener('resize', onResize)
   }, [])
 
   // DATE FILTER STATES
@@ -790,11 +782,6 @@ export default function App() {
       eyebrow: 'Marketing',
       subtitle: 'ค่า Ads และ TikTok channel (Affiliate/Live/VDO) รายเดือน · กรอกมือ + กราฟเทียบกับ Orders'
     },
-    MarketingRadar: {
-      title: 'เรดาร์การตลาด',
-      eyebrow: 'Marketing',
-      subtitle: 'บันทึกสิ่งที่เปลี่ยน วัดจำนวนชิ้นหลัง 7/30 วัน และส่งงานให้ Boss ตัดสินใจ'
-    },
     HR: {
       title: 'พนักงาน (ลา)',
       eyebrow: 'Operations Planning',
@@ -842,7 +829,6 @@ export default function App() {
   }
 
   const isLinksHubMode = activeTab === 'Links Hub'
-  const hidePageTitleCard = activeTab === 'MarketingRadar'
   const isSwanPastelPage = activeTab === 'Inventory' || activeTab === 'Stock Movement'
 
   return (
@@ -922,27 +908,7 @@ export default function App() {
                         </span>
                       )}
                     </div>
-                    {sidebarExpanded && item.id === 'MarketingRadar' && marketingDueCount > 0 ? (
-                      <span
-                        aria-label={`${marketingDueCount} งานรอตัดสินใจ`}
-                        style={{
-                          minWidth: 20,
-                          height: 20,
-                          padding: '0 6px',
-                          borderRadius: 999,
-                          display: 'grid',
-                          placeItems: 'center',
-                          background: isActive ? 'rgba(255,255,255,0.22)' : 'var(--payi-mint-soft)',
-                          color: isActive ? '#fff' : 'var(--payi-mint-strong)',
-                          fontSize: 10,
-                          fontWeight: 900,
-                          fontVariantNumeric: 'tabular-nums',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {marketingDueCount > 99 ? '99+' : marketingDueCount}
-                      </span>
-                    ) : sidebarExpanded && item.dotColor && !isActive ? (
+                    {sidebarExpanded && item.dotColor && !isActive ? (
                       <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: item.dotColor, marginRight: '6px', flexShrink: 0 }} />
                     ) : null}
                   </button>
@@ -960,12 +926,12 @@ export default function App() {
         {/* HEADER TOP ROW — เดิมเป็นกล่องไล่สีมนๆ เหมือน hero การ์ดยอดขายด้านล่าง (Executive) ทำให้ดูซ้ำ
             หลุดโฟกัส (feedback เจ้าของ 2026-07-29) — เปลี่ยนเป็น header เรียบๆ แค่ตัวหนังสือ ให้ gradient
             เหลือแค่การ์ดตัวเลขสำคัญจริงๆ (เช่น Total Revenue) เด่นแทน */}
-        {!isLinksHubMode && <div className="payi-topbar" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: hidePageTitleCard ? 'flex-end' : 'space-between', gap: 18, marginBottom: hidePageTitleCard ? 12 : 18, alignItems: 'center' }}>
-          {!hidePageTitleCard && <div style={{ width: isMobileViewport ? '100%' : 'auto' }}>
+        {!isLinksHubMode && <div className="payi-topbar" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 18, marginBottom: 18, alignItems: 'center' }}>
+          <div style={{ width: isMobileViewport ? '100%' : 'auto' }}>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: isSwanPastelPage ? '#a782da' : 'var(--payi-mint-strong)', marginBottom: 4 }}>{pageMeta.eyebrow}</div>
             <div style={{ fontSize: 24, fontWeight: 850, letterSpacing: 0, color: 'var(--payi-text-strong)', marginBottom: 2 }}>{pageMeta.title}</div>
             <div style={{ fontSize: 13, color: 'var(--payi-text-muted)' }}>{pageMeta.subtitle}</div>
-          </div>}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <div className="payi-topbar-search" style={{ display: 'flex', alignItems: 'center', gap: 10, width: 280, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.6)', borderRadius: 999, padding: '10px 14px', boxShadow: '0 8px 20px rgba(16,24,40,0.06)' }}>
               <Search size={16} color="var(--payi-text-muted)" />
@@ -1466,7 +1432,6 @@ export default function App() {
           ['ProductTrends', <ProductTrends />],
           ['AdsChannels', <AdsChannels />],
           ['ContentOS', <ContentOSPrototype />],
-          ['MarketingRadar', <MarketingRadar />],
           ['Inventory', <Inventory />],
           ['Import Tracking', ['dev', 'boss'].includes(currentRole) ? <ImportTracking /> : <DevOnlyLock label="ติดตามนำเข้า" />],
           ['WHT Cert', ['dev', 'boss'].includes(currentRole) ? <WhtCert /> : <DevOnlyLock label="ใบหัก ณ ที่จ่าย" />],

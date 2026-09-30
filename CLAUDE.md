@@ -35,7 +35,7 @@ demand planning, marketing tracking, and a LINE bot.
   `vite.config.js`). Requires root `.env`. `npm run build` to check compile.
 - **Role-based access** (`shared/roles.js`): 6 roles — `dev`/`boss`/`staff` plus 3
   narrow single-purpose roles added since: `stock` (ฟ้า — sees only Inventory/Stock
-  Movement), `marketing` (ตูน — sees Dashboard/Products + Marketing Radar + Demographic),
+  Movement), `marketing` (ตูน — sees Dashboard/Products; Demographic is in her whitelist but renders `DevOnlyLock`),
   `finance` (พี่หยก/พี่แต้ว — sees only CFO Dashboard). `admin` is a legacy alias,
   normalized to `dev`. `canAccessTab(role, tab)`: `dev` sees everything; `boss` sees
   everything except `Import Orders`/`Dev Hub`/`Settings`; `stock`/`marketing`/`finance`
@@ -44,7 +44,7 @@ demand planning, marketing tracking, and a LINE bot.
   `Stock Movement`). Server-side guards mirror this: `requireAuth` (any logged-in
   user), `requireDev` (dev only — used by `import-orders.js`), `requireManager`
   (dev+boss), `canManageOperations` (dev/boss — Inventory/HR/Import Tracking ops),
-  `canManageMarketing` (dev/boss/marketing — Marketing Radar writes, basket analysis),
+  `canManageMarketing` (dev/boss/marketing — only gates the Ads-cost visibility on `MonthlyDashboard`; the Marketing Radar it used to guard was removed 2026-09-30),
   `canManageFinance` (dev/boss/finance — legacy, no longer gates anything after the
   2026-09-01 lockdown). **⚠️ `op=cfo` / `op=demographic` / `op=import-tracking` are
   DEV-ONLY as of 2026-09-01** (owner request — `normalizeRole(req.user?.role) !== 'dev'`
@@ -107,10 +107,12 @@ fixed-cost line items, backing the CFO Dashboard — see Files section.
 settings), `planner_daily` (daily FG/feed history).
 
 **Marketing tabs** (`api/marketing.js`): `marketing_events` (action log + sales
-snapshot), `marketing_inputs` (manual monthly Ads spend / TikTok channel split — not
-derivable from `raw_orders`). `marketing.js` also has a `?kind=basket` op
-(`_lib/marketingBasket.js`) — "bought together" basket analysis computed live from
-`raw_orders`, no separate sheet.
+snapshot — **historical data only**: the Marketing Radar page that wrote it was removed
+2026-09-30, sheet kept untouched on purpose, nothing in `src/` reads it), `marketing_inputs` (manual monthly Ads spend / TikTok channel split — not
+derivable from `raw_orders`). `marketing.js` still has `?kind=events` and `?kind=basket` ops
+(`_lib/marketingEvents.js` / `_lib/marketingBasket.js`) but **no frontend calls them since
+the Radar removal (2026-09-30)** — kept on purpose (owner: keep backend + data for now);
+only `?kind=inputs` is live (Ads & Channels, MonthlyDashboard).
 
 Conventions: **exclude cancelled orders** (`order_status` contains "ยกเลิก"/"cancel");
 aggregate server-side and set `Cache-Control` s-maxage / in-memory cache
@@ -123,7 +125,7 @@ Sheets rate limits.
 - `MonthlyDashboard.jsx` (sales by store, MoM, platform donut, trend — tab `Dashboard สรุปยอดขาย`)
 - `ProductDashboard.jsx` + `ProductTrends.jsx` (product-family dashboard + MoM trends — tab `Dashboard สินค้า`)
 - `Upload.jsx` → used inside `Import Orders` tab (import orders, dev-only)
-- `MarketingRadar.jsx` (marketing action log + event tracking)
+- ~~`MarketingRadar.jsx`~~ — **removed 2026-09-30** (menu, page, `MarketingRadar` tab id, radar CSS, mermaid asset). Old `?tab=MarketingRadar` links / saved tab fall back to Home via `KNOWN_TABS` in `App.jsx`. Backend `?kind=events|basket` + `marketing_events` sheet intentionally kept.
 - **`DemographicDashboard.jsx`** — "เดโมกราฟฟิกลูกค้า", province-level sales breakdown,
   `sheet-tools.js?op=demographic` (`_lib/demographic.js`, see TODO #12). **DEV-ONLY**
   since 2026-09-01. Also computes, from `raw_orders` T/U/V: Shopee delivery-option
