@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Loader2, Info, Search, ChevronRight, ChevronDown, TrendingUp, TrendingDown } from 'lucide-react'
+import { Loader2, Info, Search, ChevronRight, ChevronDown, TrendingUp, TrendingDown, ArrowDownWideNarrow } from 'lucide-react'
 import Mascot from '../components/Mascot.jsx'
 
 const fmt = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })
@@ -40,6 +40,7 @@ export default function ProductTrends() {
   const [platform, setPlatform] = useState('all')
   const [metric, setMetric] = useState('units') // units | revenue
   const [search, setSearch] = useState('')
+  const [sortDesc, setSortDesc] = useState(false) // เรียงตามยอดรวม (ตามตัวชี้วัดที่เลือกอยู่) มากไปน้อย
   const [expanded, setExpanded] = useState(() => new Set())
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -68,12 +69,16 @@ export default function ProductTrends() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return groups
-    return groups.filter((g) =>
+    let rows = !q ? groups : groups.filter((g) =>
       g.label.toLowerCase().includes(q) ||
       g.members.some((m) => (m.master_sku || '').toLowerCase().includes(q) || (m.display_name || '').toLowerCase().includes(q))
     )
-  }, [groups, search])
+    if (sortDesc) {
+      const sumMetric = (g) => g.monthly.reduce((s, c) => s + (metric === 'units' ? c.units : c.revenue), 0)
+      rows = [...rows].sort((a, b) => sumMetric(b) - sumMetric(a))
+    }
+    return rows
+  }, [groups, search, sortDesc, metric])
 
   const toggle = (key) => setExpanded((prev) => {
     const next = new Set(prev)
@@ -103,6 +108,13 @@ export default function ProductTrends() {
             <button key={m} onClick={() => setMetric(m)} style={pillStyle(metric === m)}>{lbl}</button>
           ))}
         </div>
+        <button
+          onClick={() => setSortDesc((v) => !v)}
+          title="เรียงตามยอดรวม (ตัวชี้วัดที่เลือกอยู่) มากไปน้อย"
+          style={{ ...pillStyle(sortDesc), display: 'flex', alignItems: 'center', gap: 5 }}
+        >
+          <ArrowDownWideNarrow size={14} /> เรียงมากไปน้อย
+        </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 220, background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 8, padding: '8px 12px' }}>
           <Search size={15} color="var(--payi-text-muted)" />
           <input placeholder="ค้นหาสินค้า / SKU" value={search} onChange={(e) => setSearch(e.target.value)} autoComplete="off"
