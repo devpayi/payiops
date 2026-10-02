@@ -404,13 +404,13 @@ const steps = [
       grid.appendChild(selectInput('english_read', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้'], 'การอ่าน'));
       grid.appendChild(selectInput('english_write', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้'], 'การเขียน'));
       c.appendChild(grid);
-      c.appendChild(field('ภาษาอื่นๆ', textInput('other_language')));
-      c.appendChild(field('อุปกรณ์สำนักงานที่ใช้เป็น', checkGroup('office_skills', ['เครื่องถ่ายเอกสาร', 'เครื่องปริ้นเตอร์/สแกนเนอร์', 'เครื่องรูดบัตร'])));
-      c.appendChild(field('ความสามารถใช้คอมพิวเตอร์', selectInput('computer_level', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้'])));
-      c.appendChild(field('โปรแกรม/เครื่องมือที่ใช้ได้', checkGroup('computer_programs', ['Excel', 'Word', 'PowerPoint', 'Canva', 'Google Docs/Sheets', 'โปรแกรมบัญชี', 'ระบบขายออนไลน์ (Shopee/TikTok Shop)', 'AI (ChatGPT ฯลฯ)', 'อื่นๆ'])));
+      c.appendChild(field('ภาษาอื่นๆ', textInput('other_language'), true));
+      c.appendChild(field('อุปกรณ์สำนักงานที่ใช้เป็น', checkGroup('office_skills', ['เครื่องถ่ายเอกสาร', 'เครื่องปริ้นเตอร์/สแกนเนอร์', 'เครื่องรูดบัตร']), true));
+      c.appendChild(field('ความสามารถใช้คอมพิวเตอร์', selectInput('computer_level', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้']), true));
+      c.appendChild(field('โปรแกรม/เครื่องมือที่ใช้ได้', checkGroup('computer_programs', ['Excel', 'Word', 'PowerPoint', 'Canva', 'Google Docs/Sheets', 'โปรแกรมบัญชี', 'ระบบขายออนไลน์ (Shopee/TikTok Shop)', 'AI (ChatGPT ฯลฯ)', 'อื่นๆ']), true));
     },
-    required: () => !!answers.english_speak && !!answers.english_read && !!answers.english_write && !!answers.other_language
-      && (answers.office_skills || []).length > 0 && !!answers.computer_level && (answers.computer_programs || []).length > 0,
+    // บอส 2026-10-02: ไม่บังคับ บางคนใช้คอมพิวเตอร์/โปรแกรมไม่เป็นเลย กรอกเท่าที่ตอบได้
+    required: () => true,
   },
   {
     title: 'บุคคลอ้างอิง', sub: 'ไม่บังคับ',
