@@ -347,9 +347,11 @@ const steps = [
       if (answers.education_level) {
         if (!(answers.education_history || [])[0]) answers.education_history = [{}];
         const row = answers.education_history[0];
+        // บอส 2026-10: เดิมมีช่อง "ระดับการศึกษา" ซ้ำกับ dropdown วุฒิการศึกษาสูงสุดด้านบน
+        // ("ต้องกรอกซ้ำ") — ไม่ต้องให้พิมพ์เอง ใช้ค่าจาก dropdown เลย (row.level ยังใช้ในตาราง PDF)
+        row.level = answers.education_level;
         const box = el('div', { class: 'repeat-item' });
         [
-          ['level', 'ระดับการศึกษา (เช่น ปวส./ปริญญาตรี)'],
           ['school', 'สถาบันการศึกษา'],
           ['major', 'สาขาวิชาเอก'],
           ['year', 'ปีที่จบการศึกษา'],
