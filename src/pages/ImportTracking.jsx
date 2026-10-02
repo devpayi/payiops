@@ -813,7 +813,10 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
     }
   }
 
-  // ── ดึงกล่องจากชีท LK ต่อ arrival (ครั้งเดียวตอนเปิด) ──
+  // ── ดึงกล่องจากชีท LK + ยอดรับเข้าจริงจาก Stock Movement ต่อ arrival (ครั้งเดียวตอนเปิด) ──
+  // ยอดจริงที่ลงไว้ใน Stock Movement (แยกราย SKU ตามเลขใบชมพูเดียวกัน) ถือเป็นของจริงที่สุด — ถ้าเจอ
+  // มากกว่า 1 SKU ติดเลขเดียวกัน ใช้เป็น splits ให้อัตโนมัติเลย ไม่ต้องพิมพ์แยกไซส์/สีซ้ำมือ
+  // (owner ขอ 2026-10-02 หลังเจอเคสแผ่นกันรองเท้ากัด 5 ทรง/ถุงเท้าเจลฝ่า 2 ไซส์ ที่ลงแยกไว้ใน Stock Movement แล้ว)
   const load = useCallback(async () => {
     const out = []
     for (const a of lot.arrivals) {
@@ -826,7 +829,25 @@ function ProformaModal({ lot, busy, onClose, onMarkDone }) {
           if (r.found && r.cartons?.length) { cartons = groupCartons(r.cartons); carton_src = 'LK' }
         } catch { /* noop */ }
       }
-      out.push({ id: a.id, item_name: a.item_name || '', qty: a.qty || 0, sku: a.sku || '', sku0: a.sku || '', shipping_no: a.shipping_no || '', arrive_date: a.arrive_date || '', cartons, carton_src, manualCarton: null, splits: null })
+      let sku = a.sku || ''
+      let qty = a.qty || 0
+      let splits = null
+      if (a.shipping_no) {
+        try {
+          const q2 = new URLSearchParams({ op: 'inventory', view: 'movements', type: 'in', shipping_no: a.shipping_no })
+          const r2 = await fetch(`/api/sheet-tools?${q2}`).then((x) => x.json())
+          const bySku = new Map()
+          for (const m of r2.movements || []) bySku.set(m.sku, (bySku.get(m.sku) || 0) + Number(m.qty || 0))
+          if (bySku.size > 1) {
+            splits = [...bySku.entries()].map(([s, qn]) => ({ sku: s, qty: qn, manualCarton: null }))
+            sku = splits[0].sku
+            qty = splits.reduce((s2, sp) => s2 + sp.qty, 0)
+          } else if (bySku.size === 1) {
+            [[sku, qty]] = [...bySku.entries()]
+          }
+        } catch { /* noop — เหลือค่าจาก arrival เดิมถ้าดึงไม่ได้ */ }
+      }
+      out.push({ id: a.id, item_name: a.item_name || '', qty, sku, sku0: a.sku || '', shipping_no: a.shipping_no || '', arrive_date: a.arrive_date || '', cartons, carton_src, manualCarton: null, splits })
     }
     return out
   }, [lot])

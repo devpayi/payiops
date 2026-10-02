@@ -285,7 +285,7 @@ export async function computeOverdueOrders() {
   return out
 }
 
-async function loadMovements({ type, q, from, to }) {
+async function loadMovements({ type, q, from, to, shippingNo }) {
   await ensureInventorySheets()
   const [items, movements] = await Promise.all([getSheet(ITEMS_SHEET), getSheet(MOVEMENTS_SHEET)])
   const nameBySku = new Map(items.map((it) => [String(it.sku), it.display_name || it.sku]))
@@ -309,6 +309,9 @@ async function loadMovements({ type, q, from, to }) {
   if (type && type !== 'all') rows = rows.filter((r) => r.type === type)
   if (from) rows = rows.filter((r) => r.date >= from)
   if (to) rows = rows.filter((r) => r.date <= to)
+  // ไว้ให้หน้า Proforma (ImportTracking) ดึงยอดรับเข้าจริงแยกตาม SKU ของเลขใบชมพูเดียวกันมาเทียบ/เติมให้
+  // อัตโนมัติ (owner ขอ 2026-10-02 — กันต้องพิมพ์แยกไซส์/สีซ้ำมือทั้งที่ Stock Movement มีอยู่แล้ว)
+  if (shippingNo) rows = rows.filter((r) => String(r.shipping_no) === String(shippingNo))
   if (query) rows = rows.filter((r) =>
     r.display_name.toLowerCase().includes(query) ||
     String(r.sku).toLowerCase().includes(query) ||
@@ -1125,6 +1128,7 @@ export default async function opInventory(req, res) {
           q: req.query.q,
           from: req.query.from,
           to: req.query.to,
+          shippingNo: req.query.shipping_no,
         })
         return res.status(200).json({ success: true, movements: rows })
       }
