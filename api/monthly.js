@@ -67,9 +67,10 @@ export default async function handler(req, res) {
         let sm = store.get(ym)
         if (!sm) store.set(ym, (sm = new Map()))
         let s = sm.get(key)
-        if (!s) sm.set(key, (s = { store: key, business, platform, sales: 0, units: 0, orderIds: new Set(), salesOrderIds: new Set() }))
+        if (!s) sm.set(key, (s = { store: key, business, platform, sales: 0, units: 0, cancelSales: 0, orderIds: new Set(), salesOrderIds: new Set() }))
         if (orderId) s.orderIds.add(orderId)
         if (!excluded) { s.sales += rev; s.units += qty; if (orderId) s.salesOrderIds.add(orderId) }
+        else s.cancelSales += rev
       }
     }
 
@@ -131,7 +132,7 @@ export default async function handler(req, res) {
     const byStore = {}
     for (const [ym, sm] of store.entries()) {
       byStore[ym] = [...sm.values()]
-        .map((s) => ({ store: s.store, business: s.business, platform: s.platform, sales: round2(s.sales), orders: s.orderIds.size, salesOrders: s.salesOrderIds.size, units: s.units }))
+        .map((s) => ({ store: s.store, business: s.business, platform: s.platform, sales: round2(s.sales), cancelSales: round2(s.cancelSales), orders: s.orderIds.size, salesOrders: s.salesOrderIds.size, units: s.units }))
         .sort((a, b) => b.sales - a.sales)
     }
 

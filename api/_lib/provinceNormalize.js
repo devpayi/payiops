@@ -47,7 +47,8 @@ const EN_ALIAS = {
 function stripThai(s) {
   return s
     .replace(/^จังหวัด\s*/, '')
-    .replace(/^จ\.?\s*/, '')
+    // ตัด "จ." / "จ " เท่านั้น — เดิม /^จ\.?\s*/ ตัด "จ" ตัวแรกของ "จันทบุรี" ด้วย (กลายเป็น "ันทบุรี")
+    .replace(/^จ(\.\s*|\s+)/, '')
     .replace(/ฯ$/, '')
     .replace(/\s+/g, ' ')
     .trim()

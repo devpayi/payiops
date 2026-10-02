@@ -116,10 +116,21 @@ export default function AdsChannels() {
     return m
   }, [monthly])
 
+  // ยอดที่ถูกยกเลิก/ตีคืน (TikTok) จาก raw_orders — ยอดขายด้านบนไม่นับ แต่ GMV ใน Compass นับรวม
+  const ttCancelByMonthBiz = useMemo(() => {
+    const m = {}
+    for (const [ym, arr] of Object.entries(monthly?.byStore || {})) {
+      for (const s of arr) {
+        if (s.platform === 'TikTok Shop') (m[ym] ||= {})[s.business] = s.cancelSales || 0
+      }
+    }
+    return m
+  }, [monthly])
+
   // GMV รวมที่ใช้คิด "อื่น ๆ" — เลขที่กรอกเอง (จาก Compass) ก่อน, ไม่มีค่อย fallback raw_orders
   const gmvBasis = (b) => {
     const typed = parseFloat(form.tt[b]?.gmv)
-    return Number.isFinite(typed) && typed > 0 ? typed : (ttGmvByMonthBiz[selMonth]?.[b] || 0)
+    return Number.isFinite(typed) && typed > 0 ? typed : ((ttGmvByMonthBiz[selMonth]?.[b] || 0) + (ttCancelByMonthBiz[selMonth]?.[b] || 0))
   }
 
   // "อื่น ๆ" ไม่ต้องกรอก — ส่วนที่เหลือของ GMV รวมหลังหัก Affiliate/Live/VDO
@@ -241,6 +252,7 @@ export default function AdsChannels() {
                 <tr style={{ color: 'var(--payi-text-muted)', fontSize: 11 }}>
                   <th style={{ ...thStyle, textAlign: 'left' }}>ร้าน</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>GMV รวม</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }} title="จาก orders ที่ import: ยอดไม่ยกเลิก / ยอดยกเลิก">orders: ขายจริง / ยกเลิก</th>
                   {CHANNELS.map(([id, lbl]) => <th key={id} style={{ ...thStyle, textAlign: 'right' }}>{lbl}</th>)}
                 </tr>
               </thead>
@@ -250,7 +262,11 @@ export default function AdsChannels() {
                     <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{b}</td>
                     <td style={{ ...tdStyle, textAlign: 'right' }}>
                       <input inputMode="numeric" value={form.tt[b]?.gmv ?? ''} onChange={(e) => setTt(b, 'gmv', e.target.value.replace(/[^\d.]/g, ''))}
-                        placeholder={ttGmvByMonthBiz[selMonth]?.[b] ? fmt(Math.round(ttGmvByMonthBiz[selMonth][b])) : '0'} style={cellInput} />
+                        placeholder={ttGmvByMonthBiz[selMonth]?.[b] ? fmt(Math.round(ttGmvByMonthBiz[selMonth][b] + (ttCancelByMonthBiz[selMonth]?.[b] || 0))) : '0'} style={cellInput} />
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--payi-text-muted)' }}>
+                      {fmt(Math.round(ttGmvByMonthBiz[selMonth]?.[b] || 0))}
+                      <span style={{ color: '#c2410c' }}> / {fmt(Math.round(ttCancelByMonthBiz[selMonth]?.[b] || 0))}</span>
                     </td>
                     {CHANNELS.map(([id]) => (
                       <td key={id} style={{ ...tdStyle, textAlign: 'right' }}>
@@ -270,7 +286,7 @@ export default function AdsChannels() {
               </tbody>
             </table>
             <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 6 }}>
-              GMV รวม = เลข GMV จาก Compass (การวิเคราะห์ร้านค้า, ทั้งเดือน) · ถ้าไม่กรอกจะใช้ยอดจาก orders แทน<br />
+              GMV รวม = เลข GMV จาก Compass (การวิเคราะห์ร้านค้า, ทั้งเดือน) · ถ้าไม่กรอกจะใช้ orders (ขายจริง + ยกเลิก) แทน — ตรงกับที่ Compass นับ<br />
               อื่น ๆ = GMV รวม − Affiliate − Live − VDO (คำนวณอัตโนมัติ ไม่ต้องกรอก)
             </div>
           </div>
