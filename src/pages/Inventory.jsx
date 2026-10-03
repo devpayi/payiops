@@ -1067,10 +1067,10 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
         <div>
           <label style={labelStyle}>รหัสสินค้า (SKU)</label>
           <input value={sku} onChange={(e) => setSku(e.target.value)} disabled={isEdit} required style={{ ...inputStyle, opacity: isEdit ? 0.6 : 1 }} placeholder={newCategory === 'packaging' ? 'เช่น PKG-STICKER-01' : 'เช่น PY006'} />
-          {!isEdit && newCategory !== 'packaging' && skuHints?.prefixes?.length > 0 && (
+          {!isEdit && newCategory !== 'packaging' && skuHints?.prefixes?.some((p) => p.prefix === 'PY') && (
             <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 11.5, color: 'var(--payi-text-muted)' }}>
               <span>ใช้ไปแล้วถึง (กดเพื่อใช้เลขถัดไป):</span>
-              {skuHints.prefixes.map((p) => (
+              {skuHints.prefixes.filter((p) => p.prefix === 'PY').map((p) => (
                 <button key={p.prefix} type="button" onClick={() => setSku(p.next)} title={`ล่าสุด ${p.last}`}
                   style={{ border: '1px solid var(--payi-border)', background: 'var(--payi-surface-muted)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-text-strong)' }}>
                   {p.last} → {p.next}
