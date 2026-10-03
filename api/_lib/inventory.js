@@ -1111,6 +1111,32 @@ async function deletePackagingRecipe(body) {
   return { packaging_sku: packagingSku, product_sku: productSku }
 }
 
+// เลข SKU สูงสุดที่ถูกใช้ไปแล้วต่อ prefix (PY/KT/ZZ ฯลฯ) — นับจากทั้ง product_aliases (สินค้าที่ขายจริง) และ
+// inventory_items รวมกัน (owner ถาม 2026-10-03: "เพิ่มสินค้าใหม่เอง จะรู้ได้ไงว่า sku ถึงเลขไหนแล้ว")
+// นับเฉพาะรหัสแบบ <ตัวอักษร><ตัวเลข> ล้วน (ตัด suffix -B/_M ออก) ให้หน้าเว็บโชว์ "ถัดไป" ให้กดเติมได้เลย
+// พร้อมรายการ SKU ทั้งหมดไว้เช็คซ้ำตอนพิมพ์เอง
+async function loadSkuHints() {
+  const [aliases, items] = await Promise.all([getSheet('product_aliases').catch(() => []), getSheet(ITEMS_SHEET)])
+  const all = new Set()
+  for (const r of aliases) if (r.master_sku) all.add(String(r.master_sku).trim().toUpperCase())
+  for (const r of items) if (r.sku) all.add(String(r.sku).trim().toUpperCase())
+  const maxByPrefix = {}
+  for (const sku of all) {
+    const m = sku.match(/^([A-Z]+)(\d+)(?:[-_].*)?$/)
+    if (!m) continue
+    const n = parseInt(m[2], 10)
+    if (!(m[1] in maxByPrefix) || n > maxByPrefix[m[1]].n) maxByPrefix[m[1]] = { n, width: m[2].length }
+  }
+  const prefixes = Object.entries(maxByPrefix)
+    .map(([prefix, { n, width }]) => ({
+      prefix,
+      last: prefix + String(n).padStart(width, '0'),
+      next: prefix + String(n + 1).padStart(width, '0'),
+    }))
+    .sort((a, b) => a.prefix.localeCompare(b.prefix))
+  return { prefixes, allSkus: [...all].sort() }
+}
+
 export default async function opInventory(req, res) {
   try {
     const actorName = req.user?.name || req.user?.u || ''
@@ -1154,7 +1180,7 @@ export default async function opInventory(req, res) {
         return res.status(200).json({ success: true, ...result })
       }
       const data = await loadItemsWithBalance({ includeHidden: req.query.includeHidden === '1' })
-      return res.status(200).json({ success: true, ...data })
+      return res.status(200).json({ success: true, ...data, skuHints: await loadSkuHints() })
     }
 
     if (req.method === 'POST') {

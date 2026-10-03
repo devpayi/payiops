@@ -899,6 +899,7 @@ export default function Inventory() {
           onDeleteRecipe={deleteRecipe}
           suggestedBufferPercent={itemModal === 'new' ? 30 : (packagingBufferSuggestion.get(String(itemModal.sku).toUpperCase()) ?? 30)}
           onApplyTempLeadTime={applyTempLeadTime}
+          skuHints={data?.skuHints}
           onRevertTempLeadTime={revertTempLeadTime}
         />
       )}
@@ -983,7 +984,7 @@ function BulkLeadtimeModal({ activeCount, soonestUntil, saving, onClose, onApply
   )
 }
 
-function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPercentUsed = null, saving, onClose, onSave, recipes = [], productOptions = [], onSaveRecipe, onDeleteRecipe, suggestedBufferPercent = 30, onApplyTempLeadTime, onRevertTempLeadTime }) {
+function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPercentUsed = null, saving, onClose, onSave, recipes = [], productOptions = [], onSaveRecipe, onDeleteRecipe, suggestedBufferPercent = 30, onApplyTempLeadTime, onRevertTempLeadTime, skuHints = null }) {
   const isEdit = Boolean(initial)
   const isPackaging = (initial?.category || newCategory) === 'packaging'
   const [sku, setSku] = useState(initial?.sku || '')
@@ -1066,6 +1067,23 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
         <div>
           <label style={labelStyle}>รหัสสินค้า (SKU)</label>
           <input value={sku} onChange={(e) => setSku(e.target.value)} disabled={isEdit} required style={{ ...inputStyle, opacity: isEdit ? 0.6 : 1 }} placeholder={newCategory === 'packaging' ? 'เช่น PKG-STICKER-01' : 'เช่น PY006'} />
+          {!isEdit && newCategory !== 'packaging' && skuHints?.prefixes?.length > 0 && (
+            <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 11.5, color: 'var(--payi-text-muted)' }}>
+              <span>ใช้ไปแล้วถึง (กดเพื่อใช้เลขถัดไป):</span>
+              {skuHints.prefixes.map((p) => (
+                <button key={p.prefix} type="button" onClick={() => setSku(p.next)} title={`ล่าสุด ${p.last}`}
+                  style={{ border: '1px solid var(--payi-border)', background: 'var(--payi-surface-muted)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', color: 'var(--payi-text-strong)' }}>
+                  {p.last} → {p.next}
+                </button>
+              ))}
+            </div>
+          )}
+          {!isEdit && sku.trim() && productOptions.some((p) => String(p.sku).toUpperCase() === sku.trim().toUpperCase()) && (
+            <div style={{ marginTop: 6, fontSize: 11.5, fontWeight: 700, color: '#b91c1c' }}>⚠️ SKU นี้อยู่ในสต็อกแล้ว — บันทึกจะเป็นการแก้ทับสินค้าเดิม ถ้าเป็นสินค้าใหม่ให้ใช้เลขอื่น</div>
+          )}
+          {!isEdit && sku.trim() && !productOptions.some((p) => String(p.sku).toUpperCase() === sku.trim().toUpperCase()) && skuHints?.allSkus?.includes(sku.trim().toUpperCase()) && (
+            <div style={{ marginTop: 6, fontSize: 11.5, fontWeight: 700, color: '#92400e' }}>ℹ️ SKU นี้มีในรายการขายแล้ว (ยังไม่อยู่ในสต็อก) — ใช้ได้เลยถ้าเป็นสินค้าตัวเดียวกัน จะเชื่อมยอดขายให้อัตโนมัติ</div>
+          )}
         </div>
         <div>
           <label style={labelStyle}>ชื่อสินค้า</label>
