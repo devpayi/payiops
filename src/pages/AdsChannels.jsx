@@ -77,8 +77,8 @@ export default function AdsChannels() {
   }, [inputs])
 
   // เมื่อเปลี่ยนเดือน/โหลดใหม่ → เติมฟอร์มจากข้อมูลที่มี
-  useEffect(() => {
-    if (!selMonth) return
+  const savedForm = useMemo(() => {
+    if (!selMonth) return null
     const ads = {}
     for (const b of BUSINESSES) for (const p of PLATFORMS) {
       // ที่เก็บในชีทรวม VAT 7% แล้ว (ดู save()) — โชว์กลับในช่องกรอกเป็นเลขก่อน VAT เหมือนเดิม
@@ -96,8 +96,16 @@ export default function AdsChannels() {
       const g = ttByMonth[selMonth]?.[b]?.tt_gmv
       tt[b].gmv = g ? String(g) : ''
     }
-    setForm({ ads, tt })
+    return { ads, tt }
   }, [selMonth, adsByMonth, ttByMonth])
+
+  useEffect(() => { if (savedForm) setForm(savedForm) }, [savedForm])
+
+  // ช่องที่ค่าตรงกับที่บันทึกไว้แล้ว → เทาอ่อน (แก้แล้วยังไม่บันทึก = สีเข้ม)
+  const isSaved = (cur, saved) => !!saved && String(cur ?? '') === String(saved)
+  const savedAdsCell = (k) => isSaved(form.ads[k], savedForm?.ads[k])
+  const savedTtCell = (b, id) => isSaved(form.tt[b]?.[id], savedForm?.tt[b]?.[id])
+  const savedStyle = { color: 'var(--payi-text-muted)', background: 'var(--payi-surface-dark)' }
 
   const { ordersByMonth, salesByMonth } = useMemo(() => {
     const o = {}, s = {}
@@ -238,7 +246,7 @@ export default function AdsChannels() {
                     {PLATFORMS.map((p) => (
                       <td key={p} style={{ ...tdStyle, textAlign: 'right' }}>
                         <input inputMode="numeric" value={form.ads[comboKey(b, p)] ?? ''} onChange={(e) => setAds(comboKey(b, p), e.target.value.replace(/[^\d.]/g, ''))}
-                          placeholder="0" style={cellInput} />
+                          placeholder="0" style={{ ...cellInput, ...(savedAdsCell(comboKey(b, p)) ? savedStyle : null) }} />
                       </td>
                     ))}
                   </tr>
@@ -265,7 +273,7 @@ export default function AdsChannels() {
                     <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{b}</td>
                     <td style={{ ...tdStyle, textAlign: 'right' }}>
                       <input inputMode="numeric" value={form.tt[b]?.gmv ?? ''} onChange={(e) => setTt(b, 'gmv', e.target.value.replace(/[^\d.]/g, ''))}
-                        placeholder={ttGmvByMonthBiz[selMonth]?.[b] ? fmt(Math.round(ttGmvByMonthBiz[selMonth][b] + (ttCancelByMonthBiz[selMonth]?.[b] || 0))) : '0'} style={cellInput} />
+                        placeholder={ttGmvByMonthBiz[selMonth]?.[b] ? fmt(Math.round(ttGmvByMonthBiz[selMonth][b] + (ttCancelByMonthBiz[selMonth]?.[b] || 0))) : '0'} style={{ ...cellInput, ...(savedTtCell(b, 'gmv') ? savedStyle : null) }} />
                     </td>
                     <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--payi-text-muted)' }}>
                       {fmt(Math.round(ttGmvByMonthBiz[selMonth]?.[b] || 0))}
@@ -280,7 +288,7 @@ export default function AdsChannels() {
                           </span>
                         ) : (
                           <input inputMode="numeric" value={form.tt[b]?.[id] ?? ''} onChange={(e) => setTt(b, id, e.target.value.replace(/[^\d.]/g, ''))}
-                            placeholder="0" style={cellInput} />
+                            placeholder="0" style={{ ...cellInput, ...(savedTtCell(b, id) ? savedStyle : null) }} />
                         )}
                       </td>
                     ))}
