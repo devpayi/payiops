@@ -465,7 +465,7 @@ function overdueOrderReminderMessage(o) {
       type: 'bubble', size: 'kilo',
       body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'sm', backgroundColor: ORDER_CARD.soft, contents: [
         orderFlexText(`⏰ ${o.display_name} ${qtyText}`, { size: 'xs', weight: 'bold', wrap: true }),
-        orderFlexText(`สั่งไว้ ${o.order_date}`, { size: 'xxs', color: ORDER_CARD.muted }),
+        orderFlexText(`สั่งไว้ ${o.order_date}${o.expected_date ? ` · คาดถึง ${o.expected_date} (เลยแล้ว)` : ''}`, { size: 'xxs', color: ORDER_CARD.muted }),
         { type: 'box', layout: 'horizontal', spacing: 'xs', margin: 'sm', contents: [
           { type: 'button', style: 'primary', color: '#E0A324', height: 'sm', flex: 1, action: { type: 'postback', label: 'เลื่อน', data: `order-remind-snooze:${o.id}`, displayText: `เลื่อนเตือน 10 วัน - ${o.display_name}` } },
           { type: 'button', style: 'primary', color: '#C0392B', height: 'sm', flex: 1, action: { type: 'postback', label: 'ยกเลิก', data: `order-remind-cancel:${o.id}`, displayText: `ยกเลิก - ${o.display_name}` } },
@@ -1137,7 +1137,7 @@ async function handleStockPickPostback(event, sku) {
 
 // บันทึกคำสั่งซื้อทั้งตะกร้า (1 รายการขึ้นไป) — สร้างทีละแถวด้วย createOrderRequest ตัวเดียวกับปุ่มบนหน้า
 // Stock Movement (ไม่แยก "สั่งทีละตัว" กับ "สั่งหลายตัว" อีกต่อไป — ตะกร้า 1 รายการก็ผ่าน path เดียวกันนี้)
-async function completeStockOrderBatch(replyToken, lineUserId, session, orderDate) {
+async function completeStockOrderBatch(replyToken, lineUserId, session, orderDate, expectedDate = '') {
   let items = []
   try { items = JSON.parse(session.items_json || '[]') } catch { items = [] }
   if (!Array.isArray(items) || !items.length) return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการสั่งของค่ะ กรุณาเริ่มใหม่ด้วย “สั่งของ”' }])
@@ -1148,7 +1148,7 @@ async function completeStockOrderBatch(replyToken, lineUserId, session, orderDat
   const failed = []
   for (const it of items) {
     try {
-      await createOrderRequest({ sku: it.sku, qty: it.qty, order_date: orderDate, note: it.misc ? 'สั่งจาก LINE (อื่นๆ ไม่มีในระบบ)' : 'สั่งจาก LINE', misc: it.misc }, manager.name, manager.role)
+      await createOrderRequest({ sku: it.sku, qty: it.qty, order_date: orderDate, expected_date: expectedDate, note: it.misc ? 'สั่งจาก LINE (อื่นๆ ไม่มีในระบบ)' : 'สั่งจาก LINE', misc: it.misc }, manager.name, manager.role)
       done.push(it)
     } catch (e) { failed.push(`${it.display_name}: ${e.message}`) }
   }
@@ -1160,7 +1160,7 @@ async function completeStockOrderBatch(replyToken, lineUserId, session, orderDat
     type: 'flex', altText: `สั่งของ ${done.length} รายการ เรียบร้อย`,
     contents: {
       type: 'bubble', size: 'giga',
-      header: orderCardHeader('สั่งของเรียบร้อย', `${done.length} รายการ · ${orderDate}`, '✅'),
+      header: orderCardHeader('สั่งของเรียบร้อย', `${done.length} รายการ · ${orderDate}${expectedDate ? ` · คาดถึง ${expectedDate}` : ''}`, '✅'),
       body: { type: 'box', layout: 'vertical', paddingAll: '10px', spacing: 'xs', backgroundColor: ORDER_CARD.soft, contents: [
         { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '8px', cornerRadius: '10px', backgroundColor: ORDER_CARD.base, contents: facts.length ? facts : [orderFlexText('ไม่มีรายการสำเร็จ', {})] },
         ...(failed.length ? [orderFlexText(`ล้มเหลว: ${failed.join('; ')}`, { color: '#C0392B', size: 'xxs', margin: 'sm', wrap: true })] : []),
@@ -1237,7 +1237,67 @@ async function handleStockOrderDatePostback(event, choice) {
   if (session?.step !== 'await_batch_date') return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการสั่งของที่รอเลือกวันที่ค่ะ กรุณาเริ่มใหม่ด้วย “สั่งของ”' }])
   const orderDate = choice === 'today' ? todayBKK() : String(event.postback?.params?.date || '')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return replyMessage(replyToken, [{ type: 'text', text: 'กรุณาเลือกวันที่จากปฏิทินอีกครั้งค่ะ' }])
-  await completeStockOrderBatch(replyToken, lineUserId, session, orderDate)
+  // ถามต่อ "คาดว่าของจะถึงวันไหน" (owner ขอ 2026-10-05) — เก็บวันสั่งไว้ใน session.order_date ก่อน
+  await upsertStockOrderSession(lineUserId, { step: 'await_expected_date', order_date: orderDate })
+  await replyMessage(replyToken, [{
+    type: 'text',
+    text: 'คาดว่าของจะถึงวันไหนคะ? พิมพ์วันที่ (เช่น 15/11 หรือ 15/11/2026) หรือจำนวนวัน (เช่น 45 วัน) หรือเลือกด้านล่าง\nถ้าเลยวันนั้นแล้วของยังไม่เข้า บอทถึงจะเตือน — ถ้าไม่ระบุ ใช้ lead time ของสินค้านับจากวันสั่ง',
+    quickReply: { items: [
+      { type: 'action', action: { type: 'datetimepicker', label: 'เลือกวันที่ถึง', data: 'stock-order-eta:pick', mode: 'date', initial: orderDate } },
+      { type: 'action', action: { type: 'postback', label: 'ไม่ระบุ', data: 'stock-order-eta:none', displayText: 'ไม่ระบุวันที่ถึง' } },
+    ] },
+  }])
+}
+
+// แปลงข้อความที่บอสพิมพ์เป็นวันที่คาดว่าจะถึง: "15/11", "15/11/2026" (พ.ศ. ก็ได้), "2026-11-15", "45 วัน" (นับจากวันสั่ง)
+// คืน '' ถ้าอ่านไม่ออก ; ถ้า dd/mm ที่ไม่ใส่ปีอยู่ก่อนวันสั่ง ถือเป็นปีถัดไป
+function parseExpectedDate(text, orderDate) {
+  const t = String(text || '').trim()
+  let m = t.match(/^(\d{1,3})\s*วัน$/)
+  if (m) {
+    const d = new Date(`${orderDate}T00:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + Number(m[1]))
+    return d.toISOString().slice(0, 10)
+  }
+  m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (m) return t
+  m = t.match(/^(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?$/)
+  if (!m) return ''
+  const day = Number(m[1]); const mon = Number(m[2])
+  if (day < 1 || day > 31 || mon < 1 || mon > 12) return ''
+  let year
+  if (m[3]) { year = Number(m[3]); if (year < 100) year += 2000; if (year > 2400) year -= 543 }
+  else {
+    year = Number(orderDate.slice(0, 4))
+    if (`${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}` < orderDate) year += 1
+  }
+  return `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+async function finishOrderWithExpected(replyToken, lineUserId, session, expectedDate) {
+  const orderDate = isoDateOnly(session.order_date) || todayBKK()
+  await completeStockOrderBatch(replyToken, lineUserId, session, orderDate, expectedDate)
+}
+const isoDateOnly = (v) => (/^\d{4}-\d{2}-\d{2}/.test(String(v || '')) ? String(v).slice(0, 10) : '')
+
+async function handleStockOrderEtaPostback(event, choice) {
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  if (!replyToken || !lineUserId) return
+  const session = (await getStockOrderSessions()).find((s) => s.line_user_id === lineUserId)
+  if (session?.step !== 'await_expected_date') return replyMessage(replyToken, [{ type: 'text', text: 'ไม่พบรายการสั่งของที่รอวันที่ถึงค่ะ กรุณาเริ่มใหม่ด้วย “สั่งของ”' }])
+  const expected = choice === 'none' ? '' : String(event.postback?.params?.date || '')
+  if (choice !== 'none' && !/^\d{4}-\d{2}-\d{2}$/.test(expected)) return replyMessage(replyToken, [{ type: 'text', text: 'กรุณาเลือกวันที่จากปฏิทินอีกครั้งค่ะ' }])
+  await finishOrderWithExpected(replyToken, lineUserId, session, expected)
+}
+
+async function handleStockOrderEtaTextReply(event, session) {
+  const replyToken = event.replyToken
+  if (!replyToken) return
+  const orderDate = isoDateOnly(session.order_date) || todayBKK()
+  const expected = parseExpectedDate(event.message?.text, orderDate)
+  if (!expected) return replyMessage(replyToken, [{ type: 'text', text: 'อ่านวันที่ไม่ออกค่ะ พิมพ์เช่น 15/11 หรือ 15/11/2026 หรือ 45 วัน หรือกด “ไม่ระบุ” ด้านบน' }])
+  await finishOrderWithExpected(replyToken, event.source?.userId, session, expected)
 }
 
 // ── "แจ้งของเข้า" ผ่านไลน์ — มิเรอร์ flow "สั่งของ" ด้านบนแทบทุกจุด (ตะกร้า/ค้นหา/ถามจำนวน/เลือกวันที่)
@@ -3797,6 +3857,7 @@ async function opLineWebhook(req, res) {
         if (stockInSession?.step === 'await_edit_item') { await handleStockInEditItemReply(event, stockInSession); continue }
         if (stockInSession?.step === 'await_shipping_no') { await handleStockInShippingNoReply(event, stockInSession); continue }
         if (stockSession?.step === 'await_misc_confirm') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดปุ่มยืนยัน/ยกเลิกด้านบนก่อนค่ะ หรือพิมพ์ “สั่งของ” เพื่อเริ่มใหม่' }]); continue }
+        if (stockSession?.step === 'await_expected_date') { await handleStockOrderEtaTextReply(event, stockSession); continue }
         if (stockSession?.step === 'await_batch_date') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดเลือกวันที่จากข้อความก่อนหน้านี้ หรือพิมพ์ “สั่งของ” เพื่อเริ่มใหม่ค่ะ' }]); continue }
         if (stockInSession?.step === 'await_batch_date') { await replyMessage(event.replyToken, [{ type: 'text', text: 'กรุณากดเลือกวันที่จากข้อความก่อนหน้านี้ หรือพิมพ์ “แจ้งของเข้า” เพื่อเริ่มใหม่ค่ะ' }]); continue }
         if (stockSession?.step === 'await_item' || stockSession?.step === 'await_item_pick') {
@@ -3827,6 +3888,7 @@ async function opLineWebhook(req, res) {
       if (data.startsWith('leave-hist-month:')) { await handleBossLeaveHistoryMonth(event, data.slice('leave-hist-month:'.length)); continue }
       if (data.startsWith('stock-order:')) { await handleStockOrderPostback(event, data.slice('stock-order:'.length)); continue }
       if (data.startsWith('stock-pick:')) { await handleStockPickPostback(event, data.slice('stock-pick:'.length)); continue }
+      if (data.startsWith('stock-order-eta:')) { await handleStockOrderEtaPostback(event, data.slice('stock-order-eta:'.length)); continue }
       if (data.startsWith('stock-order-date:')) { await handleStockOrderDatePostback(event, data.slice('stock-order-date:'.length)); continue }
       if (data === 'stock-cart-done') { await handleStockCartDonePostback(event); continue }
       if (data.startsWith('stock-misc-confirm:')) { await handleStockMiscConfirmPostback(event, data.slice('stock-misc-confirm:'.length)); continue }

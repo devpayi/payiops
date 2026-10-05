@@ -66,7 +66,10 @@ const STOCK_IN_REQUESTS_SHEET = 'stock_in_requests'
 // ป้องกันเคสลอตค้างเงียบๆ แบบ PY043 ที่เจอมาก่อน) next_reminder_at ว่าง = ยังไม่เคยตั้ง คำนวณ due date
 // สดจาก order_date/created_at + 15 วันแทน (ดู computeOverdueOrders) — ตั้งจริงเฉพาะตอน snooze/mute
 // shipping_no: ต่อท้ายล่าสุด — เลขใบชมพูจากการนำเข้าจีน กรอกได้ตอนแจ้งของเข้าทางไลน์ (ไม่บังคับ)
-const STOCK_IN_REQUESTS_HEADERS = ['id', 'sku', 'arrival_date', 'count_date', 'qty', 'note', 'status', 'created_by', 'created_at', 'matched_by', 'matched_at', 'movement_id', 'reject_reason', 'linked_order_id', 'order_date', 'next_reminder_at', 'reminder_muted', 'shipping_no', 'reporter_line_user_id']
+const STOCK_IN_REQUESTS_HEADERS = ['id', 'sku', 'arrival_date', 'count_date', 'qty', 'note', 'status', 'created_by', 'created_at', 'matched_by', 'matched_at', 'movement_id', 'reject_reason', 'linked_order_id', 'order_date', 'next_reminder_at', 'reminder_muted', 'shipping_no', 'reporter_line_user_id', 'expected_date']
+// expected_date: วันที่ "คาดว่าของจะถึง" ที่บอสระบุตอนสั่งของ (owner ขอ 2026-10-05) — cron เตือนค้างนาน
+// (computeOverdueOrders) จะเตือนเฉพาะเมื่อเลยวันนี้แล้วของยังไม่เข้า ไม่เตือนทุก 15 วันตายตัวอีก (ของสั่งเรือ/
+// สั่งผลิตรอนานเป็นปกติ เตือนไปก็เปลืองโควตา) ว่าง = ใช้ lead time ของสินค้า (ผลิต+ขนส่ง) นับจากวันสั่งแทน
 // reporter_line_user_id: LINE userId ของคนที่แจ้งของเข้าแถวนี้ผ่านไลน์จริง (ว่าง = แจ้งผ่านเว็บ ไม่มี LINE
 // ให้แจ้งกลับ) — owner ขอ 2026-09-18: ตอน boss approve/ปฏิเสธ ต้องแจ้งกลับ "คนที่แจ้งแถวนี้จริง" 1:1 ไม่ใช่
 // แจ้งฟ้า/แตงตายตัวทุกครั้งไม่ว่าใครเป็นคนแจ้ง — เก็บตรงนี้ตอนสร้างแถว (addStockInRequest) ใช้ตรงๆ ตอน
@@ -271,16 +274,20 @@ export async function computeLowStockList() {
 export async function computeOverdueOrders() {
   await ensureInventorySheets()
   const [requests, items] = await Promise.all([getSheet(STOCK_IN_REQUESTS_SHEET), getSheet(ITEMS_SHEET)])
-  const nameBySku = new Map(items.map((it) => [String(it.sku), { display_name: it.display_name, unit: it.unit }]))
+  const nameBySku = new Map(items.map((it) => [String(it.sku), { display_name: it.display_name, unit: it.unit, leadDays: num(it.lead_time_production) + num(it.lead_time_transport) }]))
   const today = todayBKK()
   const out = []
   for (const r of requests) {
     if (r.status !== 'pending' || isoDate(r.arrival_date)) continue // เฉพาะ order_only ที่ยังไม่มีของเข้า
     if (String(r.reminder_muted) === '1') continue
-    const dueDate = r.next_reminder_at || addDaysIso(r.order_date || isoDate(r.created_at), ORDER_REMINDER_DAYS)
-    if (dueDate > today) continue
     const meta = nameBySku.get(String(r.sku)) || {}
-    out.push({ id: r.id, sku: r.sku, display_name: meta.display_name || r.sku, unit: meta.unit || '', qty: num(r.qty), order_date: r.order_date || isoDate(r.created_at), created_by: r.created_by || '' })
+    // เตือนเมื่อ "เลยวันที่คาดว่าจะถึง" แล้วของยังไม่เข้า (owner ขอ 2026-10-05) — ไม่ได้ระบุ = lead time ของสินค้า
+    // นับจากวันสั่ง (ไม่มี lead time ก็ 15 วันเหมือนเดิม) ; กด "เลื่อนเตือน" (next_reminder_at) ยังชนะเสมอ
+    const orderDay = r.order_date || isoDate(r.created_at)
+    const eta = isoDate(r.expected_date) || addDaysIso(orderDay, meta.leadDays > 0 ? meta.leadDays : ORDER_REMINDER_DAYS)
+    const dueDate = r.next_reminder_at || addDaysIso(eta, 1)
+    if (dueDate > today) continue
+    out.push({ id: r.id, sku: r.sku, display_name: meta.display_name || r.sku, unit: meta.unit || '', qty: num(r.qty), order_date: r.order_date || isoDate(r.created_at), expected_date: isoDate(r.expected_date) || eta, created_by: r.created_by || '' })
   }
   return out
 }
@@ -554,6 +561,7 @@ export async function createOrderRequest(body, actorName, role) {
     created_by: actorName || '',
     created_at: now,
     order_date: isoDate(body.order_date) || todayBKK(),
+    expected_date: isoDate(body.expected_date) || '',
   }
   await appendRows(STOCK_IN_REQUESTS_SHEET, [STOCK_IN_REQUESTS_HEADERS.map((h) => row[h] ?? '')])
   return row
@@ -846,6 +854,7 @@ export async function loadStockInRequests({ status, role } = {}) {
     reject_reason: r.reject_reason || '',
     linked_order_id: r.linked_order_id || '',
     order_date: isoDate(r.order_date),
+    expected_date: isoDate(r.expected_date),
     order_only: !isoDate(r.arrival_date),
     shipping_no: r.shipping_no || '',
   }))
@@ -1057,6 +1066,7 @@ export async function editStockInRequest(body, actorName, role) {
     arrival_date: isoDate(body.arrival_date) || requests[idx].arrival_date,
     count_date: body.count_date !== undefined ? (isoDate(body.count_date) || '') : requests[idx].count_date,
     order_date: body.order_date !== undefined ? (isoDate(body.order_date) || requests[idx].order_date) : requests[idx].order_date,
+    expected_date: body.expected_date !== undefined ? (isoDate(body.expected_date) || '') : requests[idx].expected_date,
     note: body.note !== undefined ? body.note : requests[idx].note,
     shipping_no: body.shipping_no !== undefined ? String(body.shipping_no || '').trim() : requests[idx].shipping_no,
     status: 'pending',
