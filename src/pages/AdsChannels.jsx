@@ -201,7 +201,8 @@ export default function AdsChannels() {
   if (loading && !inputs) return <><SellerAdsReports /><Center><Loader2 size={18} className="payi-spin" /> กำลังโหลดค่า Ads ของ Ops...</Center></>
   if (error && !inputs) return <><SellerAdsReports /><Center danger><Info size={18} /> โหลดค่า Ads ของ Ops ไม่สำเร็จ: {error}</Center></>
 
-  const adsTotalSel = Object.values(adsByMonth[selMonth] || {}).reduce((s, v) => s + v, 0)
+  // รวมจากช่องกรอก (ก่อน VAT) — ตรงกับที่เห็นในตาราง ไม่ปนกับค่าที่บันทึกไว้แล้ว
+  const adsInputTotal = BUSINESSES.reduce((s, b) => s + PLATFORMS.reduce((t, p) => t + (parseFloat(form.ads[comboKey(b, p)]) || 0), 0), 0)
 
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -219,8 +220,10 @@ export default function AdsChannels() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 18 }}>
           {/* Ads grid */}
           <div>
-            <SectionLabel>ค่า Ads (บาท ก่อน VAT) — แยกร้าน/แพลตฟอร์ม</SectionLabel>
-            <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginBottom: 6 }}>กรอกเลขที่เห็นในแอดแมเนเจอร์ตรงๆ ระบบจะ +VAT 7% ให้ตอนบันทึก</div>
+            <SectionLabel>ค่า Ads (บาท) — แยกร้าน/แพลตฟอร์ม</SectionLabel>
+            <div style={{ fontSize: 12, marginBottom: 8, padding: '6px 10px', borderRadius: 8, background: '#fff7ed', color: '#c2410c', fontWeight: 600 }}>
+              ช่องกรอก = ราคา "ก่อน VAT" (ตามแอดแมเนเจอร์) · ระบบ +7% ให้ตอนบันทึก
+            </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr style={{ color: 'var(--payi-text-muted)', fontSize: 11 }}>
@@ -296,7 +299,11 @@ export default function AdsChannels() {
           <button onClick={save} disabled={saving || !selMonth} style={{ ...primaryBtn, opacity: saving || !selMonth ? 0.6 : 1 }}>
             {saving ? <Loader2 size={15} className="payi-spin" /> : <Save size={15} />} บันทึกเดือน {selMonth && monthLabel(selMonth)}
           </button>
-          <span style={{ fontSize: 12, color: 'var(--payi-text-muted)' }}>Ads รวมเดือนนี้ (รวม VAT 7%): <b style={{ color: 'var(--payi-text-strong)' }}>{fmtBaht(adsTotalSel)}</b></span>
+          <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'baseline' }}>
+            <span>ที่กรอก (ก่อน VAT): <b style={{ color: 'var(--payi-text-strong)' }}>{fmtBaht(adsInputTotal)}</b></span>
+            <span>+ VAT 7%: <b style={{ color: 'var(--payi-text-strong)' }}>{fmtBaht(adsInputTotal * (ADS_VAT_MULT - 1))}</b></span>
+            <span>= รวม VAT (ที่เก็บในระบบ): <b style={{ color: 'var(--payi-mint-dark, #0f766e)', fontSize: 14 }}>{fmtBaht(adsInputTotal * ADS_VAT_MULT)}</b></span>
+          </div>
         </div>
       </Card>
 
