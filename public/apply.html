@@ -409,10 +409,20 @@ const steps = [
       c.appendChild(field('ภาษาอื่นๆ', textInput('other_language'), true));
       c.appendChild(field('อุปกรณ์สำนักงานที่ใช้เป็น', checkGroup('office_skills', ['เครื่องถ่ายเอกสาร', 'เครื่องปริ้นเตอร์/สแกนเนอร์', 'เครื่องรูดบัตร']), true));
       c.appendChild(field('ความสามารถใช้คอมพิวเตอร์', selectInput('computer_level', ['ดีมาก', 'ดี', 'พอใช้', 'ไม่ได้']), true));
-      c.appendChild(field('โปรแกรม/เครื่องมือที่ใช้ได้', checkGroup('computer_programs', ['Excel', 'Word', 'PowerPoint', 'Canva', 'Google Docs/Sheets', 'โปรแกรมบัญชี', 'ระบบขายออนไลน์ (Shopee/TikTok Shop)', 'AI (ChatGPT ฯลฯ)', 'อื่นๆ']), true));
+      const progWrap = checkGroup('computer_programs', ['Excel', 'Word', 'PowerPoint', 'Canva', 'Google Docs/Sheets', 'โปรแกรมบัญชี', 'ระบบขายออนไลน์ (Shopee/TikTok Shop)', 'AI (ChatGPT ฯลฯ)', 'อื่นๆ']);
+      c.appendChild(field('โปรแกรม/เครื่องมือที่ใช้ได้', progWrap, true));
+      // เลือก "อื่นๆ" ต้องระบุว่าอะไร (บอส 2026-10-05) — ช่องระบุโผล่เฉพาะตอนติ๊กอื่นๆ และกันถัดไปจนกว่าจะพิมพ์
+      const otherInp = textInput('computer_programs_other', 'text', 'ระบุโปรแกรม/เครื่องมืออื่นๆ');
+      const otherField = field('อื่นๆ (ระบุ)', otherInp);
+      otherField.style.display = (answers.computer_programs || []).includes('อื่นๆ') ? '' : 'none';
+      progWrap.addEventListener('change', () => {
+        otherField.style.display = (answers.computer_programs || []).includes('อื่นๆ') ? '' : 'none';
+        refreshNextState();
+      });
+      c.appendChild(otherField);
     },
-    // บอส 2026-10-02: ไม่บังคับ บางคนใช้คอมพิวเตอร์/โปรแกรมไม่เป็นเลย กรอกเท่าที่ตอบได้
-    required: () => true,
+    // บอส 2026-10-02: ไม่บังคับ บางคนใช้คอมพิวเตอร์/โปรแกรมไม่เป็นเลย กรอกเท่าที่ตอบได้ — แต่ถ้าติ๊ก "อื่นๆ" ต้องระบุ (2026-10-05)
+    required: () => !(answers.computer_programs || []).includes('อื่นๆ') || !!(answers.computer_programs_other || '').trim(),
   },
   {
     title: 'บุคคลอ้างอิง', sub: 'ไม่บังคับ',
@@ -487,8 +497,15 @@ btnNext.addEventListener('click', async () => {
 // ==================== PDF ====================
 // ตัวสร้างฟอร์ม PDF อยู่ที่ /hr-pdf-form.js (ไฟล์เดียว ใช้ร่วมกับแดชบอร์ด HRPeople.jsx)
 // สร้างจากรายการคำถามเท่านั้น — ถ้าแก้คำถามใน steps ข้างบน ต้องแก้ SECTIONS ในไฟล์นั้นให้ตรงด้วย
+// "อื่นๆ" ในรายการโปรแกรม -> "อื่นๆ: <ที่ระบุ>" (เก็บในคอลัมน์เดิม ไม่เพิ่มคอลัมน์ชีต) ตัด comma ออกเพราะ
+// ฝั่งอ่าน/PDF แยกรายการด้วย comma
+function programsWithOther(a) {
+  const other = String(a.computer_programs_other || '').replace(/[,\s]+/g, ' ').trim();
+  return (a.computer_programs || []).map((p) => (p === 'อื่นๆ' ? (other ? 'อื่นๆ: ' + other : 'อื่นๆ') : p));
+}
+
 function buildLockedFormHTML(a) {
-  return window.HRPdfForm.build((k) => a[k], 'applicant');
+  return window.HRPdfForm.build((k) => (k === 'computer_programs' ? programsWithOther(a) : a[k]), 'applicant');
 }
 
 async function submit() {
@@ -508,7 +525,7 @@ async function submit() {
   FIELD_KEYS.forEach(k => { payload[k] = answers[k] || ''; });
   payload.documents_ready = (answers.documents_ready || []).join(', ');
   payload.office_skills = (answers.office_skills || []).join(', ');
-  payload.computer_programs = (answers.computer_programs || []).join(', ');
+  payload.computer_programs = programsWithOther(answers).join(', ');
   payload.education_history = JSON.stringify(answers.education_history || []);
   payload.work_history = JSON.stringify(answers.work_history || []);
   payload.confirmed = answers.confirmed ? 'ยืนยันแล้ว' : '';

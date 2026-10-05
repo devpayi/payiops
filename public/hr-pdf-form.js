@@ -161,7 +161,18 @@
     if (it.t === 'f') return label + blank(str(v) ? 'แนบไฟล์แล้ว' : '', 1);
     if (it.t === 'c') {
       var picked = list(v);
-      return label + it.options.map(function (o) { return chk(o, picked.indexOf(o) >= 0); }).join('');
+      return label + it.options.map(function (o) {
+        // "อื่นๆ: xxx" (คำตอบที่ระบุเอง) ติ๊กช่อง อื่นๆ และโชว์ข้อความที่ระบุต่อท้าย
+        var other = o === 'อื่นๆ' ? picked.filter(function (x) { return x === 'อื่นๆ' || x.indexOf('อื่นๆ:') === 0; })[0] : undefined;
+        if (other !== undefined) {
+          var detail = other.replace(/^อื่นๆ:?\s*/, '');
+          return chk('อื่นๆ', true) + (detail ? '<span style="font-weight:600;margin-right:14px">: ' + esc(detail) + '</span>' : '');
+        }
+        var res = chk(o, picked.indexOf(o) >= 0);
+        // ฟอร์มเปล่าไว้ปริ้นกรอกมือ: ข้อ "อื่นๆ" ของโปรแกรมมีเส้นให้เขียนระบุ
+        if (S.blank && o === 'อื่นๆ' && it.key === 'computer_programs') res += blank('', 1);
+        return res;
+      }).join('');
     }
     if (it.t === 'y') {
       var s = str(v), no = s === 'ไม่มี', yes = !!s && !no;
