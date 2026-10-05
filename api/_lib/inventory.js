@@ -281,13 +281,13 @@ export async function computeOverdueOrders() {
     if (r.status !== 'pending' || isoDate(r.arrival_date)) continue // เฉพาะ order_only ที่ยังไม่มีของเข้า
     if (String(r.reminder_muted) === '1') continue
     const meta = nameBySku.get(String(r.sku)) || {}
-    // เตือนเมื่อ "เลยวันที่คาดว่าจะถึง" แล้วของยังไม่เข้า (owner ขอ 2026-10-05) — ไม่ได้ระบุ = lead time ของสินค้า
+    // เตือนเมื่อ "เลยวันที่คาดว่าจะถึง" แล้วของยังไม่เข้า (owner ขอ 2026-10-05) — กำหนด = วันสั่ง + lead time ของสินค้า เลยไป 1 วัน
     // นับจากวันสั่ง (ไม่มี lead time ก็ 15 วันเหมือนเดิม) ; กด "เลื่อนเตือน" (next_reminder_at) ยังชนะเสมอ
     const orderDay = r.order_date || isoDate(r.created_at)
-    const eta = isoDate(r.expected_date) || addDaysIso(orderDay, meta.leadDays > 0 ? meta.leadDays : ORDER_REMINDER_DAYS)
+    const eta = addDaysIso(orderDay, meta.leadDays > 0 ? meta.leadDays : ORDER_REMINDER_DAYS)
     const dueDate = r.next_reminder_at || addDaysIso(eta, 1)
     if (dueDate > today) continue
-    out.push({ id: r.id, sku: r.sku, display_name: meta.display_name || r.sku, unit: meta.unit || '', qty: num(r.qty), order_date: r.order_date || isoDate(r.created_at), expected_date: isoDate(r.expected_date) || eta, created_by: r.created_by || '' })
+    out.push({ id: r.id, sku: r.sku, display_name: meta.display_name || r.sku, unit: meta.unit || '', qty: num(r.qty), order_date: r.order_date || isoDate(r.created_at), expected_date: eta, created_by: r.created_by || '' })
   }
   return out
 }

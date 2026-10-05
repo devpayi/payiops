@@ -489,7 +489,7 @@ export default function StockMovement() {
                     <div style={{ minWidth: 0, flex: '1 1 auto', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }} title={`${r.display_name} ${fmtOrderQty(r.qty)} · สั่งวันที่ ${r.order_date || '-'} · สั่งโดย ${r.created_by || '-'}${r.note ? ` · ${r.note}` : ''}`}>
                       <span style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{r.display_name}</span>{' '}
                       <span style={{ fontWeight: 800, color: 'var(--payi-text-muted)' }}>{fmtOrderQty(r.qty)}</span>{' '}
-                      <span style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>· {r.order_date || '-'}{r.expected_date ? ` → คาดถึง ${r.expected_date}` : ''} · {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</span>
+                      <span style={{ fontSize: 11, color: 'var(--payi-text-faint)' }}>· {r.order_date || '-'} · {r.created_by || '-'}{r.note ? ` · ${r.note}` : ''}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                       <button onClick={() => finishOrder(r.id)} title="เสร็จสิ้น" style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'linear-gradient(135deg, #2563eb 0%, #34d399 100%)', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 9px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}>
@@ -788,7 +788,6 @@ function OrderRequestModal({ items, orderGroups = [], saving, initial, onClose, 
   const [group, setGroup] = useState(orderGroups[0]?.group || '')
   const [qty, setQty] = useState(initial ? String(initial.qty) : '')
   const [orderDate, setOrderDate] = useState(initial?.order_date || (() => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }))())
-  const [expectedDate, setExpectedDate] = useState(initial?.expected_date || '')
   const [note, setNote] = useState(initial?.note || '')
 
   const selectedGroup = orderGroups.find((g) => g.group === group)
@@ -802,7 +801,7 @@ function OrderRequestModal({ items, orderGroups = [], saving, initial, onClose, 
     }
     if (!sku) return
     if (qty !== '' && Number(qty) < 0) return
-    onSave({ sku, qty, order_date: orderDate, expected_date: expectedDate, note })
+    onSave({ sku, qty, order_date: orderDate, note })
   }
 
   return (
@@ -870,12 +869,6 @@ function OrderRequestModal({ items, orderGroups = [], saving, initial, onClose, 
             <label style={labelStyle}>วันที่สั่ง</label>
             <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
           </div>
-          {mode === 'sku' && (
-            <div>
-              <label style={labelStyle}>คาดว่าของจะถึง (ไม่บังคับ — เลยวันนี้แล้วของยังไม่เข้า บอทถึงจะเตือน)</label>
-              <input type="date" value={expectedDate} min={orderDate} onChange={(e) => setExpectedDate(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
-            </div>
-          )}
           <div>
             <label style={labelStyle}>หมายเหตุ</label>
             <input value={note} onChange={(e) => setNote(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="ไม่บังคับ" />
