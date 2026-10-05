@@ -23,9 +23,10 @@ const SHEET_GROUPS = 'groups';
 const SHEET_EVENTS = 'processed_events';
 const SHEET_LOG = 'log';
 const TZ = 'Asia/Bangkok';
-const VERSION = '2026-09-26.1'; // open the /exec URL in a browser to see which version is deployed
+const VERSION = '2026-10-05.1'; // open the /exec URL in a browser to see which version is deployed
 const STATUS_OPEN = 'OPEN', STATUS_ORDERED = 'ORDERED', STATUS_PICKUP = 'PICKUP',
       STATUS_DONE = 'DONE', STATUS_CANCELLED = 'CANCELLED';
+const KIND_NOTE = 'NOTE'; // column 12 of "requests"; blank/anything else = an order request
 const PAGE_SIZE = 15, MAX_FLEX_BYTES = 45000;
 const C_RED = '#b81d2e', C_BLUE = '#1c5a9c', C_PALE = '#dbe6f3', C_BAND = '#e8ecf3',
       C_INK = '#1f2937', C_MUTED = '#8a94a3', C_WHITE = '#ffffff';
@@ -218,6 +219,19 @@ function addRequest_(event, groupId, text) {
     STATUS_OPEN, event.message.id, now, '', 1]);
 }
 
+function kindOf_(values) {
+  return values[11] === KIND_NOTE ? KIND_NOTE : 'ORDER';
+}
+
+// The boss's private note (e.g. an appointment). Same sheet and lifecycle as a request, tagged in column 12.
+function addNote_(event, userId, text) {
+  const sh = sheet_(SHEET_REQUESTS);
+  if (!sh.getRange(1, 12, 1, 1).getValues()[0][0]) sh.getRange(1, 12).setValue('kind');
+  const now = new Date();
+  sh.appendRow([Utilities.getUuid(), now, cell_(displayName_(event.source)), userId, '', cell_(text),
+    STATUS_OPEN, event.message.id, now, '', 1, KIND_NOTE]);
+}
+
 // Sheets parses appended strings like typed input: "=..." becomes a formula and "35-36" or "1/2"
 // becomes a date. A leading apostrophe forces plain text (and is not stored).
 function cell_(value) {
@@ -254,6 +268,15 @@ function handleDirect_(event, userId, text) {
     return;
   }
   if (userId !== prop_('BOSS_USER_ID')) return; // personal command is boss-only
+  const note = /^[#＃\/]\s*โน้ต\s*([\s\S]*)$/.exec(text);
+  if (note) {
+    const body = note[1].replace(/\s+/g, ' ').trim();
+    if (!body) { reply_(event.replyToken, 'พิมพ์ #โน้ต แล้วตามด้วยข้อความ เช่น #โน้ต บ่าย 1 นัดคุยงาน'); return; }
+    addNote_(event, userId, body);
+    log_('boss note: "' + body.slice(0, 30) + '"');
+    reply_(event.replyToken, 'จดโน้ตแล้ว');
+    return;
+  }
   if (text === 'ต้องสั่ง') sendTaskCards_(event.replyToken, 0, openRows_(null), 'open');
   else if (text === 'สั่งแล้ว') sendTaskCards_(event.replyToken, 0, handledRows_(), 'done');
 }
@@ -280,7 +303,7 @@ function handlePostback_(event) {
     return;
   }
   const sh = sheet_(SHEET_REQUESTS);
-  const map = { order: [STATUS_ORDERED, 'บันทึกว่าสั่งแล้ว'], pickup: [STATUS_PICKUP, 'บันทึกว่ารอไปเอาแล้ว'], cancel: [STATUS_CANCELLED, 'ยกเลิกแล้ว'] };
+  const map = { order: [STATUS_ORDERED, 'บันทึกว่าสั่งแล้ว'], pickup: [STATUS_PICKUP, 'บันทึกว่ารอไปเอาแล้ว'], cancel: [STATUS_CANCELLED, 'ยกเลิกแล้ว'], done: [STATUS_DONE, 'เสร็จแล้ว'] };
   if (data.a === 'undo') {
     if (row.values[6] !== STATUS_ORDERED && row.values[6] !== STATUS_PICKUP) {
       reply_(event.replyToken, 'รายการนี้เปลี่ยนแปลงหรือจัดการไปแล้ว');
@@ -372,7 +395,8 @@ function utf8Length_(s) {
 
 function buildCarousel_(rows, nextOffset, mode) {
   const done = mode === 'done';
-  const groups = chunk_(rows, 5);
+  const groups = chunk_(rows.filter(r => kindOf_(r.values) !== KIND_NOTE), 5)
+    .concat(chunk_(rows.filter(r => kindOf_(r.values) === KIND_NOTE), 5));
   const bubbles = groups.map(group => ({
     type: 'bubble',
     size: 'giga',
@@ -382,7 +406,7 @@ function buildCarousel_(rows, nextOffset, mode) {
       contents: [
         { type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center', contents: [
           { type: 'box', layout: 'vertical', width: '10px', height: '10px', cornerRadius: '10px', backgroundColor: C_BLUE, contents: [] },
-          { type: 'text', text: 'ULTRAMAN MISSIONS', weight: 'bold', size: 'sm', color: C_INK, flex: 1, wrap: true },
+          { type: 'text', text: kindOf_(group[0].values) === KIND_NOTE ? 'โน้ต' : 'ULTRAMAN MISSIONS', weight: 'bold', size: 'sm', color: C_INK, flex: 1, wrap: true },
           { type: 'text', text: group.length + (done ? ' งาน · สั่งแล้ว' : ' งาน'), size: 'xs', color: C_MUTED },
         ]},
         { type: 'box', layout: 'vertical', height: '2px', backgroundColor: C_RED, contents: [] },
@@ -421,7 +445,11 @@ function taskBlock_(r, withSeparator, done) {
   const title = { type: 'text', text: String(r.values[5]), wrap: true, weight: 'bold', size: 'md', color: C_INK, flex: 1 };
   const titleRow = done ? [title] : [title,
     { type: 'text', text: 'ยกเลิก', size: 'xs', color: C_MUTED, align: 'end', flex: 0, action: { type: 'postback', label: 'ยกเลิก', data: 'a=cancel&id=' + id + '&v=' + v } }];
-  const buttons = done ? [
+  const isNote = kindOf_(r.values) === KIND_NOTE;
+  const buttons = isNote ? [
+    actionBox_('เสร็จแล้ว', C_RED, C_WHITE, 'xs', 'a=done&id=' + id + '&v=' + v, 1),
+    actionBox_('เลื่อนเตือน', C_PALE, '#3b4a5f', 'xs', 'a=snooze&id=' + id + '&v=' + v, 1),
+  ] : done ? [
     actionBox_('ย้อนกลับ', C_BLUE, C_WHITE, 'xs', 'a=undo&id=' + id + '&v=' + v, 1),
     actionBox_('ยกเลิก', C_PALE, '#3b4a5f', 'xs', 'a=cancel&id=' + id + '&v=' + v, 1),
   ] : [
@@ -471,7 +499,8 @@ function openRows_(_unused) {
     if (values[9] && new Date(values[9]) > now) continue; // snoozed
     rows.push({ rowIndex: r + 1, values });
   }
-  return rows;
+  // orders first, notes after, so a card never mixes the two
+  return rows.filter(x => kindOf_(x.values) !== KIND_NOTE).concat(rows.filter(x => kindOf_(x.values) === KIND_NOTE));
 }
 
 // Requests the boss marked ordered / waiting-for-pickup in the last 7 days, newest first (for undo).

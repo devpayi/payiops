@@ -574,6 +574,59 @@ const test = async (name, fn) => {
     for (const t of texts) assert.ok(!/พิมพ์|คำสั่ง/.test(t), 'no instructions in: ' + t);
   });
 
+  await test('boss DM "#โน้ต": private note on its own "โน้ต" card with เสร็จแล้ว/เลื่อนเตือน/ยกเลิก; boss-only; lifecycle works', async () => {
+    const env = makeEnv();
+    post(env, [groupMsg('@เหมียวสั่งมา สั่งกล่อง')]);
+    const before = replies(env).length;
+    post(env, [direct('#โน้ต บ่าย 1 นัดคุยงาน', STAFF)]);
+    assert.strictEqual(replies(env).length, before, 'non-boss DM is ignored');
+    assert.strictEqual(reqRows(env).length, 1);
+    post(env, [direct('#โน้ต')]);
+    assert.ok(lastText(env).includes('พิมพ์ #โน้ต แล้วตามด้วยข้อความ'));
+    assert.strictEqual(reqRows(env).length, 1);
+    post(env, [direct('#โน้ต บ่าย 1 นัดคุยงาน')]);
+    assert.strictEqual(lastText(env), 'จดโน้ตแล้ว');
+    const note = reqRows(env)[1];
+    assert.strictEqual(note[5], 'บ่าย 1 นัดคุยงาน'); assert.strictEqual(note[11], 'NOTE'); assert.strictEqual(note[4], '');
+    assert.strictEqual(env.store.requests[0][11], 'kind', 'header cell for the new column is written');
+    post(env, [direct('ต้องสั่ง')]);
+    const card = replies(env).pop().payload.messages[0];
+    const bubbles = card.contents.contents;
+    assert.strictEqual(bubbles.length, 2, 'one orders bubble then one notes bubble');
+    const texts = b => { const t = []; JSON.stringify(b, (k, v) => { if (k === 'text' && typeof v === 'string') t.push(v); return v; }); return t; };
+    assert.ok(texts(bubbles[0]).includes('ULTRAMAN MISSIONS') && texts(bubbles[0]).includes('สั่งกล่อง'));
+    assert.ok(texts(bubbles[1]).includes('โน้ต') && texts(bubbles[1]).includes('บ่าย 1 นัดคุยงาน'));
+    const nb = JSON.stringify(bubbles[1]);
+    assert.ok(nb.includes('a=done') && nb.includes('a=snooze') && nb.includes('a=cancel'));
+    assert.ok(!nb.includes('a=order') && !nb.includes('a=pickup'), 'order buttons never appear on a note');
+    const vres = await validate('reply', [card], 'notes card');
+    const nid = note[0];
+    post(env, [postback(`a=done&id=${nid}&v=1`)]);
+    assert.strictEqual(lastText(env), 'เสร็จแล้ว');
+    assert.strictEqual(reqRows(env)[1][6], 'DONE');
+    post(env, [postback(`a=done&id=${nid}&v=1`)]);
+    assert.strictEqual(lastText(env), 'รายการนี้เปลี่ยนแปลงหรือจัดการไปแล้ว');
+    post(env, [direct('สั่งแล้ว')]);
+    assert.ok(lastText(env).includes('ไม่มีรายการที่สั่งแล้ว') && !cardData(replies(env).pop().payload.messages[0] || {}).includes('นัดคุยงาน'));
+    return vres;
+  });
+
+  await test('notes appear in the 17:00 summary and can be snoozed/cancelled; orders alone unchanged', async () => {
+    const env = makeEnv();
+    post(env, [direct('#โน้ต โทรหาร้านค้า')]);
+    post(env, [direct('/โน้ต นัดบัญชี')]);
+    env.api.sendEveningSummary();
+    const p = pushes(env);
+    assert.strictEqual(p.length, 1);
+    assert.ok(cardData(p[0].payload.messages[0]).includes('โทรหาร้านค้า') && cardData(p[0].payload.messages[0]).includes('นัดบัญชี'));
+    const id0 = reqRows(env)[0][0], id1 = reqRows(env)[1][0];
+    post(env, [postback(`a=snooze&id=${id0}&v=1`)]);
+    assert.strictEqual(env.api.openRows_().length, 1);
+    post(env, [postback(`a=cancel&id=${id1}&v=1`)]);
+    assert.strictEqual(reqRows(env)[1][6], 'CANCELLED');
+    assert.strictEqual(env.api.openRows_().length, 0);
+  });
+
   for (const [s, name, note] of results) console.log(s.padEnd(5), name, note ? '— ' + note : '');
   console.log('\n' + results.filter(r => r[0] === 'PASS').length + '/' + results.length + ' passed');
   process.exit(results.some(r => r[0] === 'FAIL') ? 1 : 0);
