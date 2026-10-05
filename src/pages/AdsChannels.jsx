@@ -1,4 +1,4 @@
-import SellerAdsReports from './SellerAdsReports.jsx'
+// SellerAdsReports (snapshot จาก topsecret) ซ่อนไว้ก่อน 2026-10-05 — ไฟล์ยังอยู่ ไม่ได้ลบ: เปิดคืนด้วย import + <SellerAdsReports /> ด้านบนของหน้า
 import { useEffect, useMemo, useState } from 'react'
 import {
   ResponsiveContainer, ComposedChart, BarChart, Bar, Line, XAxis, YAxis, Tooltip,
@@ -105,7 +105,7 @@ export default function AdsChannels() {
   const isSaved = (cur, saved) => !!saved && String(cur ?? '') === String(saved)
   const savedAdsCell = (k) => isSaved(form.ads[k], savedForm?.ads[k])
   const savedTtCell = (b, id) => isSaved(form.tt[b]?.[id], savedForm?.tt[b]?.[id])
-  const savedStyle = { color: 'var(--payi-text-muted)', background: 'var(--payi-surface-dark)' }
+  const savedStyle = { color: '#8a94a3', background: '#f3f4f6' }
 
   const { ordersByMonth, salesByMonth } = useMemo(() => {
     const o = {}, s = {}
@@ -206,15 +206,14 @@ export default function AdsChannels() {
     } catch (e) { setError(e.message) } finally { setSaving(false) }
   }
 
-  if (loading && !inputs) return <><SellerAdsReports /><Center><Loader2 size={18} className="payi-spin" /> กำลังโหลดค่า Ads ของ Ops...</Center></>
-  if (error && !inputs) return <><SellerAdsReports /><Center danger><Info size={18} /> โหลดค่า Ads ของ Ops ไม่สำเร็จ: {error}</Center></>
+  if (loading && !inputs) return <Center><Loader2 size={18} className="payi-spin" /> กำลังโหลดค่า Ads ของ Ops...</Center>
+  if (error && !inputs) return <Center danger><Info size={18} /> โหลดค่า Ads ของ Ops ไม่สำเร็จ: {error}</Center>
 
   // รวมจากช่องกรอก (ก่อน VAT) — ตรงกับที่เห็นในตาราง ไม่ปนกับค่าที่บันทึกไว้แล้ว
   const adsInputTotal = BUSINESSES.reduce((s, b) => s + PLATFORMS.reduce((t, p) => t + (parseFloat(form.ads[comboKey(b, p)]) || 0), 0), 0)
 
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <SellerAdsReports />
       {error && <div style={{ padding: '10px 12px', background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', border: '1px solid var(--payi-danger)', borderRadius: 8, fontSize: 13 }}>{error}</div>}
 
       {/* ── กรอกมือ ── */}
