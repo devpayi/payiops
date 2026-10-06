@@ -202,6 +202,7 @@ export default function Inventory() {
   const [moveModal, setMoveModal] = useState(null) // { sku, display_name, unit, type }
   const [historyModal, setHistoryModal] = useState(null) // { sku, display_name }
   const [bulkLeadtimeModal, setBulkLeadtimeModal] = useState(false)
+  const [growthModal, setGrowthModal] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -348,7 +349,10 @@ export default function Inventory() {
       const isPackaging = it.category === 'packaging'
       const sales = salesBySku.get(sku) || allocatedSales.get(sku)
       const packagingAvg = packagingDailyAvg.get(sku)
-      const dailyAvg = isPackaging ? (packagingAvg?.buffered || 0) : (sales?.dailyAverage || 0)
+      const growthPercent = isPackaging ? 0 : (it.growth_temp_percent || 0)
+      const dailyAvgRaw = isPackaging ? (packagingAvg?.buffered || 0) : (sales?.dailyAverage || 0)
+      // เพิ่มสต็อกชั่วคราว % (owner ขอ 2026-10-06) — คูณยอดขายเฉลี่ยก่อนคำนวณขั้นต่ำ/แนะนำสั่ง ให้ตรงกับ cron ไลน์
+      const dailyAvg = dailyAvgRaw * (1 + growthPercent / 100)
       const units90 = sales?.units90 || 0
       const abc = sales?.abc || null
       const salesEstimated = Boolean(sales?.estimated)
@@ -368,9 +372,9 @@ export default function Inventory() {
       const recommendedOrder = isPackaging ? null : (effectiveStatus !== 'ปกติ' && dailyAvg && leadTimeTotal
         ? calcRecommendedOrder(effectiveSafety, it.balance, dailyAvg, leadTimeTotal)
         : null)
-      const dailyAvgBase = isPackaging ? (packagingAvg?.base || 0) : dailyAvg
+      const dailyAvgBase = isPackaging ? (packagingAvg?.base || 0) : dailyAvgRaw
       const bufferPercentUsed = isPackaging ? (packagingAvg?.bufferPercent ?? DEFAULT_BUFFER_PERCENT) : null
-      return { ...it, dailyAvg, dailyAvgBase, bufferPercentUsed, units90, abc, salesEstimated, leadTimeTotal, computedSafety, effectiveSafety, effectiveStatus, recommendedOrder, normalSafety }
+      return { ...it, growthPercent, dailyAvg, dailyAvgBase, bufferPercentUsed, units90, abc, salesEstimated, leadTimeTotal, computedSafety, effectiveSafety, effectiveStatus, recommendedOrder, normalSafety }
     })
   }, [items, salesBySku, allocatedSales, packagingDailyAvg])
 
@@ -380,6 +384,7 @@ export default function Inventory() {
   const lowStockCount = useMemo(() => activeEnriched.filter((it) => it.category !== 'packaging' && it.effectiveStatus !== 'ปกติ').length, [activeEnriched])
   const leadtimeTempActiveItems = useMemo(() => activeEnriched.filter((it) => it.lead_time_temp_active), [activeEnriched])
   const leadtimeTempActiveCount = leadtimeTempActiveItems.length
+  const growthActiveCount = useMemo(() => activeEnriched.filter((it) => it.growthPercent > 0).length, [activeEnriched])
   // วันที่ใกล้สุดที่จะกลับปกติเอง (ในบรรดารายการที่ตั้งวันไว้) — โชว์เป็น hint ในป็อปอัพปรับทั้งหมด
   const leadtimeSoonestUntil = useMemo(() => {
     const dates = leadtimeTempActiveItems.map((it) => it.lead_time_temp_until).filter(Boolean).sort()
@@ -516,6 +521,25 @@ export default function Inventory() {
     } catch (e) { setError(e.message) } finally { setSaving(false) }
   }
 
+  // เพิ่มสต็อกชั่วคราว % (owner ขอ 2026-10-06) — ไม่มีวันหมดอายุ ปรับกลับเอง: รายตัว / ทั้งหมดตามกลุ่ม ABC
+  const growthCall = async (body, closeModal) => {
+    setSaving(true); setError('')
+    try {
+      const res = await fetch('/api/sheet-tools?op=inventory', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'ปรับไม่สำเร็จ')
+      if (closeModal) setGrowthModal(false)
+      setItemModal(null)
+      await load()
+    } catch (e) { setError(e.message) } finally { setSaving(false) }
+  }
+  const setGrowthBuffer = (sku, percent) => growthCall({ action: 'set-growth-buffer', sku, percent }, false)
+  const applyGrowthBulk = (percent, classes) => growthCall({ action: 'apply-growth-buffer-bulk', percent, classes }, true)
+  const revertGrowthBulk = () => growthCall({ action: 'revert-growth-buffer-bulk' }, true)
+
   // payload.balanceCorrection (ถ้ามี) มาจากช่อง "นับสต็อกจริง" ในป็อปอัพแก้ไขเดียวกัน —
   // บันทึกแยกเป็นรายการ adjust ใน stock_movements เสมอ (ประวัติแยกดูได้ที่ Stock Movement)
   // ไม่ใช่การเขียนทับ opening_balance ตรงๆ
@@ -643,6 +667,19 @@ export default function Inventory() {
               ⏱️ Lead Time ทั้งหมด{leadtimeTempActiveCount ? ` (${leadtimeTempActiveCount})` : ''}
             </button>
             <button
+              onClick={() => setGrowthModal(true)}
+              title="เพิ่มสต็อกขั้นต่ำชั่วคราว % ตามกลุ่ม ABC เผื่อยอดโต ไม่มีกำหนดสิ้นสุด"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, height: 38, boxSizing: 'border-box',
+                background: growthActiveCount ? '#dcfce7' : 'var(--payi-surface-muted)',
+                color: growthActiveCount ? '#166534' : 'var(--payi-text-muted)',
+                border: '1px solid ' + (growthActiveCount ? '#4ade80' : 'var(--payi-border)'),
+                borderRadius: 10, padding: '0 14px', fontSize: 13, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              📈 เพิ่มสต็อก %{growthActiveCount ? ` (${growthActiveCount})` : ''}
+            </button>
+            <button
               onClick={() => exportCsv(
                 categoryTab === 'packaging' ? 'วัสดุแพ็คเกจจิ้ง.csv' : 'สินค้า.csv',
                 filtered,
@@ -713,7 +750,7 @@ export default function Inventory() {
                                 title="กดเพื่อดูประวัติรับเข้า-เบิกออก"
                                 style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', width: '100%', display: 'block' }}
                               >
-                                <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}{it.lead_time_temp_active && <span title={it.lead_time_temp_until ? `ปรับ lead time ชั่วคราว — จะกลับปกติเอง ${it.lead_time_temp_until}` : 'ปรับ lead time ชั่วคราว — ไม่ได้ตั้งวันสิ้นสุด ต้องกดปรับกลับเอง'}> ⏱️</span>}</div>
+                                <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)' }}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}{it.growthPercent > 0 && <span title={`เพิ่มสต็อกชั่วคราว +${it.growthPercent}%`} style={{ marginLeft: 6, fontSize: 11, fontWeight: 800, color: '#166534', background: '#dcfce7', borderRadius: 6, padding: '1px 5px' }}>+{it.growthPercent}%</span>}{it.lead_time_temp_active && <span title={it.lead_time_temp_until ? `ปรับ lead time ชั่วคราว — จะกลับปกติเอง ${it.lead_time_temp_until}` : 'ปรับ lead time ชั่วคราว — ไม่ได้ตั้งวันสิ้นสุด ต้องกดปรับกลับเอง'}> ⏱️</span>}</div>
                                 <div style={{ fontSize: 10, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{it.sku}</div>
                               </button>
                             </td>
@@ -800,7 +837,7 @@ export default function Inventory() {
                         title="กดเพื่อดูประวัติรับเข้า-เบิกออก"
                         style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', width: '100%', display: 'block', overflow: 'hidden' }}
                       >
-                        <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.lead_time_temp_active ? (it.lead_time_temp_until ? `ปรับ lead time ชั่วคราว — จะกลับปกติเอง ${it.lead_time_temp_until}` : 'ปรับ lead time ชั่วคราว — ไม่ได้ตั้งวันสิ้นสุด ต้องกดปรับกลับเอง') : it.display_name}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}{it.lead_time_temp_active && ' ⏱️'}</div>
+                        <div style={{ fontWeight: 700, color: 'var(--payi-text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.lead_time_temp_active ? (it.lead_time_temp_until ? `ปรับ lead time ชั่วคราว — จะกลับปกติเอง ${it.lead_time_temp_until}` : 'ปรับ lead time ชั่วคราว — ไม่ได้ตั้งวันสิ้นสุด ต้องกดปรับกลับเอง') : it.display_name}>{it.display_name}{!it.active && ' (ซ่อนอยู่)'}{it.lead_time_temp_active && ' ⏱️'}{it.growthPercent > 0 && ` 📈+${it.growthPercent}%`}</div>
                         <div style={{ fontSize: 11, color: 'var(--payi-text-faint)', fontFamily: 'monospace' }}>{it.sku}</div>
                       </button>
                     </td>
@@ -883,6 +920,16 @@ export default function Inventory() {
         />
       )}
 
+      {growthModal && (
+        <GrowthBufferModal
+          activeCount={growthActiveCount}
+          saving={saving}
+          onClose={() => setGrowthModal(false)}
+          onApply={applyGrowthBulk}
+          onRevert={revertGrowthBulk}
+        />
+      )}
+
       {itemModal && (
         <ItemModal
           initial={itemModal === 'new' ? null : itemModal}
@@ -899,6 +946,7 @@ export default function Inventory() {
           onDeleteRecipe={deleteRecipe}
           suggestedBufferPercent={itemModal === 'new' ? 30 : (packagingBufferSuggestion.get(String(itemModal.sku).toUpperCase()) ?? 30)}
           onApplyTempLeadTime={applyTempLeadTime}
+          onSetGrowth={setGrowthBuffer}
           skuHints={data?.skuHints}
           onRevertTempLeadTime={revertTempLeadTime}
         />
@@ -929,6 +977,58 @@ const iconBtnStyle = (color) => ({
 
 // ปรับ lead time ชั่วคราวทีเดียวทั้งหมด (owner ขอ 2026-09-18 — เผื่อวันหยุดยาวเช่นตรุษจีน โรงงาน/ขนส่ง
 // ปิดพร้อมกันหมดทุกสินค้า) — บวก "จำนวนวันเพิ่ม" บนฐานเดิมของแต่ละสินค้า ไม่ใช่ตั้งให้ทุกตัวเท่ากัน
+function GrowthBufferModal({ activeCount, saving, onClose, onApply, onRevert }) {
+  const [percent, setPercent] = useState('30')
+  const [classes, setClasses] = useState({ A: true, B: true, C: false })
+  const picked = Object.keys(classes).filter((k) => classes[k])
+  return (
+    <Modal title="เพิ่มสต็อกชั่วคราว (เผื่อยอดโต)" onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--payi-text-muted)' }}>
+          คูณยอดขายเฉลี่ยของสินค้าในกลุ่มที่เลือก แล้วคำนวณขั้นต่ำ/แนะนำสั่งใหม่ (ทั้งหน้าเว็บและแจ้งเตือนไลน์) ไม่มีกำหนดสิ้นสุด
+          ต้องกดปรับกลับเอง ปรับรายสินค้าเพิ่มได้จากปุ่มแก้ไขของแต่ละตัว (ไม่รวมวัสดุแพ็คเกจจิ้ง)
+        </div>
+        {activeCount > 0 && (
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#166534', background: '#dcfce7', borderRadius: 8, padding: '8px 10px' }}>
+            📈 ตอนนี้มี {activeCount} รายการเพิ่มสต็อกชั่วคราวอยู่ (ปุ่มนี้จะตั้งค่าใหม่ทับตัวที่อยู่ในกลุ่มที่เลือก)
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label style={labelStyle}>เพิ่ม</label>
+          <input type="number" min="1" max="500" value={percent} onChange={(e) => setPercent(e.target.value)} style={{ ...inputStyle, width: 90 }} />
+          <span style={{ fontWeight: 800 }}>%</span>
+        </div>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+          <span style={labelStyle}>กลุ่มสินค้า</span>
+          {['A', 'B', 'C'].map((k) => (
+            <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 800, cursor: 'pointer' }}>
+              <input type="checkbox" checked={classes[k]} onChange={(e) => setClasses({ ...classes, [k]: e.target.checked })} style={{ margin: 0 }} /> {k}
+            </label>
+          ))}
+        </div>
+        <button
+          type="button"
+          disabled={saving || !Number(percent) || !picked.length}
+          onClick={() => onApply(Number(percent), picked)}
+          style={{ border: 'none', borderRadius: 10, background: 'var(--payi-gradient-primary)', color: '#fff', fontWeight: 800, fontSize: 13, padding: '10px 14px', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
+        >
+          เพิ่ม {percent || 0}% ให้กลุ่ม {picked.join(' + ') || '-'}
+        </button>
+        {activeCount > 0 && (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => onRevert()}
+            style={{ border: '1px solid var(--payi-border)', borderRadius: 10, background: 'var(--payi-surface)', color: 'var(--payi-text-strong)', fontWeight: 800, fontSize: 13, padding: '10px 14px', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
+          >
+            ปรับกลับทั้งหมด ({activeCount} รายการ)
+          </button>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 function BulkLeadtimeModal({ activeCount, soonestUntil, saving, onClose, onApply, onRevert }) {
   const [extraProduction, setExtraProduction] = useState('')
   const [extraTransport, setExtraTransport] = useState('')
@@ -984,12 +1084,13 @@ function BulkLeadtimeModal({ activeCount, soonestUntil, saving, onClose, onApply
   )
 }
 
-function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPercentUsed = null, saving, onClose, onSave, recipes = [], productOptions = [], onSaveRecipe, onDeleteRecipe, suggestedBufferPercent = 30, onApplyTempLeadTime, onRevertTempLeadTime, skuHints = null }) {
+function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPercentUsed = null, saving, onClose, onSave, recipes = [], productOptions = [], onSaveRecipe, onDeleteRecipe, suggestedBufferPercent = 30, onApplyTempLeadTime, onRevertTempLeadTime, onSetGrowth, skuHints = null }) {
   const isEdit = Boolean(initial)
   const isPackaging = (initial?.category || newCategory) === 'packaging'
   const [sku, setSku] = useState(initial?.sku || '')
   const [displayName, setDisplayName] = useState(initial?.display_name || '')
   const [unit, setUnit] = useState(initial?.unit || 'ชิ้น')
+  const [growthInput, setGrowthInput] = useState(initial?.growth_temp_percent || 30)
   const [unitsPerBatch, setUnitsPerBatch] = useState(initial?.units_per_batch || '')
   // ว่าง = ยังไม่เคยตั้งเอง ใช้ค่าแนะนำจาก Planner Control (safety_percent ของสินค้าที่ผูกไว้ เฉลี่ยกัน)
   const [bufferPercent, setBufferPercent] = useState(initial?.buffer_percent ?? '')
@@ -1245,6 +1346,21 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
                 ) : (
                   <button type="button" onClick={() => { setTempProd(leadProd || 0); setTempTransport(leadTransport || 0); setTempFormOpen(true) }} style={{ border: '1px dashed var(--payi-border)', borderRadius: 8, background: 'transparent', color: 'var(--payi-text-muted)', fontWeight: 700, fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
                     ปรับ Lead Time ชั่วคราว
+                  </button>
+                )}
+              </div>
+            )}
+            {isEdit && !isPackaging && onSetGrowth && (
+              <div style={{ borderTop: '1px dashed var(--payi-border)', paddingTop: 8, marginTop: 2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)' }}>📈 เพิ่มสต็อกชั่วคราว</span>
+                <input type="number" min="1" max="500" value={growthInput} onChange={(e) => setGrowthInput(e.target.value)} style={{ ...inputStyle, width: 70 }} />
+                <span style={{ fontSize: 12, fontWeight: 700 }}>%</span>
+                <button type="button" disabled={saving || !Number(growthInput)} onClick={() => onSetGrowth(sku, Number(growthInput))} style={{ border: 'none', borderRadius: 8, background: 'var(--payi-gradient-primary)', color: '#fff', fontWeight: 800, fontSize: 12, padding: '7px 12px', cursor: 'pointer' }}>
+                  {initial?.growth_temp_percent ? 'เปลี่ยนเป็นค่านี้' : 'ใช้ค่านี้'}
+                </button>
+                {initial?.growth_temp_percent > 0 && (
+                  <button type="button" disabled={saving} onClick={() => onSetGrowth(sku, 0)} style={{ border: '1px solid var(--payi-border)', borderRadius: 8, background: 'var(--payi-surface)', color: 'var(--payi-text-strong)', fontWeight: 700, fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
+                    ปรับกลับ (ตอนนี้ +{initial.growth_temp_percent}%)
                   </button>
                 )}
               </div>

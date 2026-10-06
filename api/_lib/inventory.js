@@ -17,7 +17,9 @@ import {
 const ITEMS_SHEET = 'inventory_items'
 const MOVEMENTS_SHEET = 'stock_movements'
 // ต่อท้ายรายการเดิมเท่านั้น (ห้ามแทรกกลาง) — แถวเดิมใน Sheet อิงตำแหน่งคอลัมน์เดิมอยู่ เหมือน claims sheet
-const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category', 'units_per_batch', 'buffer_percent', 'order_group', 'retail_price', 'lead_time_temp_active', 'lead_time_production_saved', 'lead_time_transport_saved', 'lead_time_temp_until']
+const ITEMS_HEADERS = ['sku', 'display_name', 'unit', 'safety_stock', 'opening_balance', 'opening_date', 'active', 'created_at', 'updated_at', 'reorder_date', 'expected_arrival', 'lead_time_production', 'lead_time_transport', 'ship_freight', 'reorder_qty', 'reorder_note', 'category', 'units_per_batch', 'buffer_percent', 'order_group', 'retail_price', 'lead_time_temp_active', 'lead_time_production_saved', 'lead_time_transport_saved', 'lead_time_temp_until', 'growth_temp_percent']
+// growth_temp_percent: เพิ่มสต็อกชั่วคราว % (owner ขอ 2026-10-06 — รองรับยอดโต ของไม่ช็อต) คูณยอดขายเฉลี่ย/วัน
+// ก่อนคำนวณขั้นต่ำ/แนะนำสั่งทุกจุด (เว็บ + cron ไลน์) ว่าง/0 = ปิด ไม่มีกำหนดสิ้นสุด ต้องกดปรับกลับเอง
 // lead_time_temp_*: ปรับ lead time ชั่วคราวได้ (เช่น ช่วงโรงงาน/ขนส่งช้ากว่าปกติ) โดยไม่ต้องจำเลขเดิมเอง
 // แล้วปรับกลับทีหลัง (owner ขอ 2026-09-18) — applyTempLeadTime/revertTempLeadTime ด้านล่าง เขียนทับ
 // lead_time_production/lead_time_transport ตรงๆ (ตัวเดียวกับที่ safety-stock formula ทุกจุดอ่านอยู่แล้ว —
@@ -158,6 +160,7 @@ export async function loadItemsWithBalance({ includeHidden = false } = {}) {
       lead_time_production_saved: it.lead_time_production_saved === '' || it.lead_time_production_saved === undefined ? null : num(it.lead_time_production_saved),
       lead_time_transport_saved: it.lead_time_transport_saved === '' || it.lead_time_transport_saved === undefined ? null : num(it.lead_time_transport_saved),
       lead_time_temp_until: it.lead_time_temp_until || '',
+      growth_temp_percent: num(it.growth_temp_percent),
       units_per_batch: num(it.units_per_batch),
       buffer_percent: it.buffer_percent === '' || it.buffer_percent === undefined ? null : num(it.buffer_percent),
       active: truthyActive(it.active),
@@ -256,7 +259,7 @@ export async function computeLowStockList() {
     // ปกติแต่ไม่ track ยอดคงเหลือจริง (balance นิ่ง 0 ตลอด) ไม่งั้นขึ้น "หมด" ทุกวันไม่มีวันหาย
     if (openOrderSkus.has(sku)) continue // สั่งของไปแล้ว รอของเข้าอยู่ — ไม่ต้องแจ้งซ้ำ
     const sales = salesBySku.get(sku) || allocatedSales.get(sku)
-    const dailyAvg = sales?.dailyAverage || 0
+    const dailyAvg = (sales?.dailyAverage || 0) * (1 + (it.growth_temp_percent || 0) / 100)
     const leadTimeTotal = (it.lead_time_production || 0) + (it.lead_time_transport || 0)
     const computedSafety = calcSuggestedSafety(dailyAvg, leadTimeTotal, it.ship_freight)
     const effectiveSafety = computedSafety !== null ? computedSafety : it.safety_stock
@@ -492,6 +495,64 @@ export async function revertTempLeadTimeBulk(actorName, role) {
     count++
   }
   await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
+  return { count }
+}
+
+// เพิ่มสต็อกชั่วคราว % ทีละสินค้า (percent 0/ว่าง = ปิด) — ไม่มีวันหมดอายุ ปรับกลับเอง (owner ขอ 2026-10-06)
+export async function setGrowthBuffer(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ปรับสต็อกชั่วคราวได้')
+  const sku = String(body.sku || '').trim()
+  if (!sku) throw new Error('ต้องระบุ sku')
+  const percent = Math.max(0, Math.min(500, num(body.percent)))
+  await ensureInventorySheets()
+  const items = await getSheet(ITEMS_SHEET)
+  const row = items.find((it) => String(it.sku) === sku)
+  if (!row) throw new Error('ไม่พบสินค้านี้')
+  row.growth_temp_percent = percent || ''
+  row.updated_at = new Date().toISOString()
+  await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
+  return { sku, growth_temp_percent: percent }
+}
+
+// เพิ่มสต็อกชั่วคราว % ทีเดียวตามกลุ่ม ABC (ค่าเริ่มต้น A+B) — ABC จากยอดขาย 30 วัน ชุดเดียวกับหน้าเว็บ
+// SKU แยกสี/ไซส์ที่ไม่มียอดขายตรงๆ ใช้ ABC ของสินค้าหลัก (ตัด -X ท้าย) ไม่รวมวัสดุแพ็คเกจจิ้ง/สินค้าที่ซ่อน
+export async function applyGrowthBufferBulk(body, actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ปรับสต็อกชั่วคราวได้')
+  const percent = Math.max(0, Math.min(500, num(body.percent)))
+  if (!percent) throw new Error('ต้องระบุ % ที่จะเพิ่ม')
+  const classes = (Array.isArray(body.classes) && body.classes.length ? body.classes : ['A', 'B']).map((c) => String(c).toUpperCase())
+  const sales = await computeSalesStats(30, { fresh: true })
+  const abcBySku = new Map((sales.items || []).map((p) => [String(p.masterSku || '').toUpperCase(), p.abc]))
+  await ensureInventorySheets()
+  const items = await getSheet(ITEMS_SHEET)
+  const now = new Date().toISOString()
+  let count = 0
+  for (const row of items) {
+    if (!row.sku || !truthyActive(row.active) || row.category === 'packaging') continue
+    const sku = String(row.sku).toUpperCase()
+    const abc = abcBySku.get(sku) || abcBySku.get(sku.replace(/-[A-Z]$/, ''))
+    if (!abc || !classes.includes(abc)) continue
+    row.growth_temp_percent = percent
+    row.updated_at = now
+    count++
+  }
+  await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
+  return { count, percent, classes }
+}
+
+export async function revertGrowthBufferBulk(actorName, role) {
+  if (authEnabled() && !canManageOperations(role)) throw new Error('เฉพาะ Boss หรือ Dev เท่านั้นที่ปรับสต็อกชั่วคราวได้')
+  await ensureInventorySheets()
+  const items = await getSheet(ITEMS_SHEET)
+  const now = new Date().toISOString()
+  let count = 0
+  for (const row of items) {
+    if (!num(row.growth_temp_percent)) continue
+    row.growth_temp_percent = ''
+    row.updated_at = now
+    count++
+  }
+  if (count) await overwriteSheet(ITEMS_SHEET, ITEMS_HEADERS, items.map((it) => ITEMS_HEADERS.map((h) => it[h] ?? '')))
   return { count }
 }
 
@@ -1213,6 +1274,18 @@ export default async function opInventory(req, res) {
       }
       if (action === 'revert-temp-leadtime-bulk') {
         const result = await revertTempLeadTimeBulk(actorName, role)
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'set-growth-buffer') {
+        const result = await setGrowthBuffer(req.body, actorName, role)
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'apply-growth-buffer-bulk') {
+        const result = await applyGrowthBufferBulk(req.body, actorName, role)
+        return res.status(200).json({ success: true, ...result })
+      }
+      if (action === 'revert-growth-buffer-bulk') {
+        const result = await revertGrowthBufferBulk(actorName, role)
         return res.status(200).json({ success: true, ...result })
       }
       if (action === 'add-movement') {
