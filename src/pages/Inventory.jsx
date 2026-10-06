@@ -536,6 +536,18 @@ export default function Inventory() {
       await load()
     } catch (e) { setError(e.message) } finally { setSaving(false) }
   }
+  // ส่งแจ้งเตือนของที่ต้องสั่งเข้าไลน์ตอนนี้เลย (เหมือน cron 17:00 แต่กดเองได้ ส่งซ้ำในวันเดียวกันได้)
+  const sendAlertNow = async () => {
+    if (!window.confirm('ส่งแจ้งเตือนของใกล้หมด/ที่ต้องสั่งเข้าไลน์บอสตอนนี้เลย?')) return
+    setSaving(true); setError('')
+    try {
+      const res = await fetch('/api/sheet-tools?op=inventory&cron=low-stock')
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'ส่งไม่สำเร็จ')
+      window.alert(`ส่งแล้ว: ของใกล้หมด ${json.item_count} รายการ, ออเดอร์ค้าง ${json.overdue_count} รายการ, ผู้รับ ${json.notified} คน`)
+    } catch (e) { setError(e.message) } finally { setSaving(false) }
+  }
+  const canSendAlert = (() => { try { const u = JSON.parse(localStorage.getItem('payi-user') || 'null'); return !u || canManageOperations(u.role) } catch { return true } })()
   const setGrowthBuffer = (sku, percent) => growthCall({ action: 'set-growth-buffer', sku, percent }, false)
   const applyGrowthBulk = (percent, classes) => growthCall({ action: 'apply-growth-buffer-bulk', percent, classes }, true)
   const revertGrowthBulk = () => growthCall({ action: 'revert-growth-buffer-bulk' }, true)
@@ -679,6 +691,16 @@ export default function Inventory() {
             >
               📈 เพิ่มสต็อก %{growthActiveCount ? ` (${growthActiveCount})` : ''}
             </button>
+            {canSendAlert && (
+              <button
+                onClick={sendAlertNow}
+                disabled={saving}
+                title="ส่งแจ้งเตือนของใกล้หมด/ที่ต้องสั่งเข้าไลน์ตอนนี้เลย"
+                style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38, boxSizing: 'border-box', background: 'var(--payi-surface-muted)', color: 'var(--payi-text-muted)', border: '1px solid var(--payi-border)', borderRadius: 10, padding: '0 14px', fontSize: 13, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                📣 ส่งแจ้งเตือนตอนนี้
+              </button>
+            )}
             <button
               onClick={() => exportCsv(
                 categoryTab === 'packaging' ? 'วัสดุแพ็คเกจจิ้ง.csv' : 'สินค้า.csv',

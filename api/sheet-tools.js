@@ -1,7 +1,7 @@
 // GET/POST /api/sheet-tools?op=summary|sheet|append|overwrite|workforce|planner|hr|inventory
 // รวม 4 endpoint เครื่องมือชีตเดิม (/api/summary /api/sheet /api/append /api/overwrite)
 // เป็นฟังก์ชันเดียว — Vercel Hobby จำกัด 12 serverless functions ต่อโปรเจค
-import { requireAuth, cacheable, authEnabled } from './_lib/auth.js'
+import { requireAuth, cacheable, authEnabled, verifyToken } from './_lib/auth.js'
 import { canManageOperations, normalizeRole } from '../shared/roles.js'
 import { getMetaCached, batchGetValues, getSheet, appendRows, appendRowsVerified, overwriteSheet, ensureSheet, ensureSheets } from './_lib/sheets.js'
 import { verifySignature, pushMessage, pushMessageWithFallback, replyMessage, linkRichMenuToUser } from './_lib/line.js'
@@ -689,12 +689,15 @@ async function opLotStaleCron(req, res) {
 async function opLowStockCron(req, res) {
   if (req.method !== 'GET') return res.status(405).end()
   const auth = req.headers.authorization || ''
-  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ error: 'unauthorized' })
+  // ผู้ใช้ boss/dev ที่ login อยู่กดส่งเองจากหน้า Inventory ได้ (แนบ x-api-token) — ไม่ต้องมี CRON_SECRET และส่งซ้ำในวันเดียวกันได้
+  const manualUser = verifyToken(req.headers['x-api-token'])
+  const manual = Boolean(manualUser && canManageOperations(normalizeRole(manualUser.role)))
+  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}` && !manual) return res.status(401).json({ error: 'unauthorized' })
   const dryRun = req.query.dry === '1'
   try {
     await ensureSheet(STOCK_ALERT_RUNS_SHEET, STOCK_ALERT_RUNS_HEADERS)
     const today = todayBKK()
-    if (!dryRun) {
+    if (!dryRun && !manual) {
       const runs = await getSheet(STOCK_ALERT_RUNS_SHEET)
       if (runs.some((r) => r.date === today)) return res.status(200).json({ success: true, skipped: 'already sent today' })
     }
