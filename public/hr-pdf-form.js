@@ -190,7 +190,7 @@
     S = Object.assign({}, (override && override.blank ? BLANK_SCALES : SCALES)[isEmp ? 'employee' : 'applicant'], override || {});
     var out = '<div style="font-family:-apple-system,\'Noto Sans Thai\',Arial,sans-serif;color:#111;font-size:' + S.fs + 'px;line-height:' + S.lh + '">' +
       '<div style="text-align:center;margin:0 0 ' + S.sec + 'px"><div style="font-size:' + (S.fs + 5) + 'px;font-weight:800">' + (isEmp ? 'ประวัติพนักงาน' : 'ใบสมัครงาน') + '</div>' +
-      '<div style="font-size:' + (S.fs - 1) + 'px;color:#555">PAYI</div></div>';
+      '<div style="font-size:' + (S.fs - 1) + 'px;color:#333;font-weight:600">บริษัท ปลาใหญ่ มาร์เก็ตติ้ง จำกัด</div></div>';
     var secs = SECTIONS[isEmp ? 'employee' : 'applicant'];
     secs.forEach(function (sec, i) {
       // section สุดท้ายไม่เว้นล่าง — กัน margin ล้นหน้ากระดาษจนได้หน้าว่างต่อท้าย
