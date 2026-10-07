@@ -469,9 +469,13 @@ const steps = [
     required: () => true,
   },
   {
-    title: 'บัญชีธนาคาร', sub: 'สำหรับโอนเงินเดือน',
+    title: 'บัญชีธนาคาร', sub: 'สำหรับโอนเงินเดือน (ใช้บัญชีธนาคารไทยพาณิชย์เท่านั้น)',
     render: (c) => {
-      c.appendChild(field('ธนาคาร', textInput('bank_name')));
+      // บอส 2026-10-07: ธนาคารบังคับ = ไทยพาณิชย์ — ล็อกค่า ไม่ให้พิมพ์ธนาคารอื่น (เขียนทับค่าเก่าใน draft ด้วย)
+      answers.bank_name = 'ไทยพาณิชย์ (SCB)';
+      const bankInp = textInput('bank_name');
+      bankInp.readOnly = true;
+      c.appendChild(field('ธนาคาร', bankInp));
       c.appendChild(field('เลขบัญชี', textInput('bank_account_number')));
       c.appendChild(field('ชื่อบัญชี', textInput('bank_account_name')));
     },
