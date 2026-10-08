@@ -15,7 +15,7 @@ import { pushMessage } from './line.js'
 // ── ชีท LK (Lively Kingdom Import) — ดึง carton/น้ำหนัก/ขนาด ตามเลข SHIPPING บนใบชมพู ──
 /* global process */
 const LK_SHEET_ID = process.env.LK_SHEET_ID || ''
-const LK_CODE = 'LK-PAYI-SALES'
+const isPayiCode = (v) => /^LKPAYI/.test(String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''))
 const LK_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
 // index คอลัมน์ (0-based): C=2 เลขเข้าคลัง(base-n) · D=3 CTN · G=6 code · H=7 ชื่อจีน ·
@@ -44,8 +44,10 @@ async function lkLookup(shippingNo, dateHint) {
       rows = await getExternalSheet(LK_SHEET_ID, `${tab}!A:V`)
     } catch { continue }
     if (!rows || !rows.length) continue
+    // เลขใบชมพูไม่ซ้ำกันอยู่แล้ว — โค้ดลูกค้าในชีทพิมพ์ไม่คงที่ (เจอจริง ก.ย. 2026: LK-PAYI-SALES / LK-PAYISALES /
+    // LK-PAYI) เทียบแบบหลวม (ตัดขีด/เว้นวรรค ขึ้นต้น LKPAYI) ไม่งั้นพลาดเลขที่โค้ดสะกดต่างไป
     const hits = rows.filter((r) =>
-      String(r[6] || '').trim() === LK_CODE &&
+      isPayiCode(r[6]) &&
       String(r[2] || '').trim().split('-')[0] === key)
     if (!hits.length) continue
     const nz = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0 }
