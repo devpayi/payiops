@@ -1617,8 +1617,12 @@ async function completeStockInBatch(replyToken, lineUserId, session, arrivalDate
   // มีเลขใบชมพูแต่ยังไม่เคยลงทะเบียนที่หน้าติดตามนำเข้า -> สร้างรายการให้เอง + บอทไปหาข้อมูลกล่อง/น้ำหนักจากชีท LK
   // (owner ขอ 2026-09-21) เลขที่มีอยู่แล้วถูกข้ามอัตโนมัติ (dedupe ด้วย shipping_no) เงียบเสมอ ไม่ให้ล้มขั้นตอนแจ้งของเข้า
   if (session.shipping_no && done.length) {
-    const one = done.length === 1 ? done[0] : null
-    try { await createArrivalsFromShipping([session.shipping_no], arrivalDate, one?.display_name || '', one?.sku || '') } catch (e) { console.error('stockin->arrival:', e.message) }
+    const nums = String(session.shipping_no).match(/\d{6,9}/g) || []
+    // ชื่อ/SKU ใส่ให้เฉพาะเคส 1 สินค้า + 1 เลข — หลายเลขหลายสินค้าไม่เดาจับคู่เลข↔สินค้า (ให้บอสจับเองที่หน้านำเข้า)
+    const one = done.length === 1 && nums.length === 1 ? done[0] : null
+    if (nums.length) {
+      try { await createArrivalsFromShipping(nums, arrivalDate, one?.display_name || '', one?.sku || '') } catch (e) { console.error('stockin->arrival:', e.message) }
+    }
   }
   await clearStockInSession(lineUserId)
 
@@ -1741,7 +1745,11 @@ async function handleStockInShippingNoReply(event, session) {
   const replyToken = event.replyToken
   const lineUserId = event.source?.userId
   if (!replyToken || !lineUserId) return
-  const shippingNo = String(event.message?.text || '').trim().slice(0, 40)
+  // ฟ้าพิมพ์หลายเลขในข้อความเดียว (บรรทัดละเลข เคสจริง 2026-10-09) — จับทุกเลข 6-9 หลักแล้วเก็บเป็น "a, b, c"
+  // ไม่ใช่ข้อความดิบมีขึ้นบรรทัดใหม่ (เดิมเก็บทั้งก้อนเป็นเลขเดียว หา LK ไม่เจอ) ไม่มีเลขเลยค่อยใช้ข้อความเดิม
+  const rawShip = String(event.message?.text || '').trim()
+  const found = [...new Set(rawShip.match(/\d{6,9}/g) || [])]
+  const shippingNo = found.length ? found.join(', ') : rawShip.slice(0, 40)
   await upsertStockInSession(lineUserId, { shipping_no: shippingNo })
   await completeStockInBatch(replyToken, lineUserId, { ...session, shipping_no: shippingNo }, session.arrival_date, session.count_date)
 }
