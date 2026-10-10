@@ -59,6 +59,14 @@ const PRODUCT_FAMILIES = (() => {
   return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label, 'th'))
 })()
 
+// คำแปลไทยของชื่อจีนที่ LK ใช้ในชีท (กว้างๆ แยกสี/รุ่นไม่ได้) — โชว์กำกับให้บอสรู้ว่าคือของประเภทไหน ตอนยังไม่จับคู่ SKU
+const LK_GLOSS = {
+  '袜子': 'ถุงเท้า', '足膜': 'ฟุตมาส์ก/ถุงเท้าสปา', '鞋垫': 'แผ่นรองเท้า/แผ่นเสริม', '拉筋带': 'ผ้ายืด',
+  '后跟贴': 'แผ่นกันรองเท้ากัด/หลวม', '透明防磨贴': 'แผ่นกันรองเท้ากัด', '脚趾矫正器': 'ที่ดัด/คั่นนิ้วเท้า',
+  '筋膜球': 'บอลนวดเท้า', '拖鞋': 'รองเท้าแตะ', '鞋子': 'รองเท้า', '前掌垫': 'แผ่นเจลฝ่า',
+}
+const lkGloss = (zh) => LK_GLOSS[String(zh || '').trim()] || ''
+
 // ชื่อสินค้าภาษาไทย (รายสินค้า) จาก SKU ที่จับคู่แล้ว — ใช้โชว์แทนโค้ด PYxxx / ชื่อจีนจากชีท LK
 const skuThaiName = (sku) => {
   const p = sku ? PM_BY_SKU[sku] : null
@@ -369,6 +377,7 @@ function ArrivalsPanel({ arrivals, sel, lots, onToggleSel, onTogglePink, onAdd, 
                     <td style={{ padding: '8px' }}>
                       <div style={{ fontWeight: 600, color: 'var(--payi-text-strong)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         {skuThaiName(a.sku) || a.item_name}
+                        {!a.sku && lkGloss(a.item_name) && <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--payi-text-muted)' }}>({lkGloss(a.item_name)})</span>}
                         {a.lk_missing
                           ? <span style={{ fontSize: 10, fontWeight: 800, background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', padding: '1px 6px', borderRadius: 999 }}>✗ ไม่เจอ LK</span>
                           : !a.sku && <span style={{ fontSize: 10, fontWeight: 800, background: 'var(--payi-warning-bg)', color: 'var(--payi-warning)', padding: '1px 6px', borderRadius: 999 }}>รอใส่ SKU</span>}
@@ -550,6 +559,25 @@ function ArrivalModal({ initial, busy, onClose, onSave }) {
   }))
   const [lk, setLk] = useState(null) // null | 'loading' | {found,...}
   const [pickingProduct, setPickingProduct] = useState(false)
+  // ตัวเลือกจากใบแจ้งของเข้า (ฟ้า) ที่ติดเลขใบชมพูเดียวกัน — เทียบกับของที่แจ้งไว้ ไม่ต้องไล่เลือกจากทั้งแคตตาล็อก
+  const [cands, setCands] = useState([])
+  useEffect(() => {
+    const no = String(initial?.shipping_no || '').trim()
+    if (!no) return undefined
+    let alive = true
+    fetch('/api/sheet-tools?op=inventory&view=stock-in-requests').then((r) => r.json()).then((r) => {
+      if (!alive) return
+      const seen = new Map()
+      for (const q of r.requests || []) {
+        // rejected ยังนับเป็นตัวเลือก (บอสตีกลับให้ฟ้าแก้ แต่ของจริงยังอยู่ในใบเลขนี้) — ตัดแค่ที่ยกเลิก
+        if (q.order_only || q.status === 'cancelled') continue
+        if (!String(q.shipping_no || '').split(/[,\s]+/).includes(no)) continue
+        seen.set(q.sku, { sku: q.sku, name: q.display_name, qty: q.qty })
+      }
+      setCands([...seen.values()])
+    }).catch(() => {})
+    return () => { alive = false }
+  }, [initial?.shipping_no])
   const set = (k) => (e) => setF((d) => ({ ...d, [k]: e.target.value }))
   const pickFamily = (fam) => {
     setF((d) => ({ ...d, sku: fam.sku, item_name: d.item_name.trim() ? d.item_name : fam.label }))
@@ -615,10 +643,21 @@ function ArrivalModal({ initial, busy, onClose, onSave }) {
               {f.sku ? (PM_BY_SKU[f.sku] ? cleanFamilyName(PM_BY_SKU[f.sku].name_th, PM_BY_SKU[f.sku].name_en) : f.sku) : 'เลือกสินค้า'}
             </button>
             {pickingProduct && <FamilyListPicker onPick={pickFamily} onClose={() => setPickingProduct(false)} />}
+            {cands.length > 0 && (
+              <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: 'var(--payi-text-muted)' }}>จากใบแจ้งของเข้า:</span>
+                {cands.map((c) => (
+                  <button key={c.sku} type="button" onClick={() => setF((d) => ({ ...d, sku: c.sku, item_name: cleanFamilyName(PM_BY_SKU[c.sku]?.name_th, PM_BY_SKU[c.sku]?.name_en) || c.name }))}
+                    style={{ border: f.sku === c.sku ? '1px solid var(--payi-success)' : '1px solid var(--payi-border)', background: 'var(--payi-surface-muted)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, cursor: 'pointer', color: 'var(--payi-text-strong)' }}>
+                    {c.name} · {fmt(c.qty)}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div><label style={labelStyle}>ชื่อลับ</label><input value={f.codename} onChange={set('codename')} style={inputStyle} placeholder="กุ้งดำ" /></div>
         </div>
-        <div><label style={labelStyle}>ชื่อสินค้า</label><input value={f.item_name} onChange={set('item_name')} required style={inputStyle} placeholder="เลือก SKU แล้วเติมให้ หรือพิมพ์เอง" /></div>
+        <div><label style={labelStyle}>ชื่อสินค้า</label><input value={f.item_name} onChange={set('item_name')} required style={inputStyle} placeholder="เลือก SKU แล้วเติมให้ หรือพิมพ์เอง" />{lkGloss(f.item_name) && <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 4 }}>ชื่อจีนนี้แปลว่า: {lkGloss(f.item_name)}</div>}</div>
         <div><label style={labelStyle}>CTN number</label><input value={f.ctn_no} onChange={set('ctn_no')} style={inputStyle} placeholder="SPK2026...." /></div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
           <div><label style={labelStyle}>กล่อง</label><input type="number" value={f.box_count} onChange={set('box_count')} style={inputStyle} /></div>
