@@ -4,11 +4,28 @@ import { opPricing } from '../api/_lib/pricing.js'
 import { newPricingDraft } from '../shared/pricing.js'
 import sheetTools from '../api/sheet-tools.js'
 import { signToken } from '../api/_lib/auth.js'
-import { pricingConfigured } from '../api/_lib/pricingStore.js'
+import { pricingConfigured, pricingSheetId } from '../api/_lib/pricingStore.js'
 
 function response() { return { code: 200, headers: {}, status(code) {this.code=code;return this}, setHeader(k,v){this.headers[k]=v}, json(data){this.data=data;return this} } }
 function env(t, changes) { const before = Object.fromEntries(Object.keys(changes).map(k=>[k,process.env[k]]));Object.assign(process.env, changes); t.after(()=>{for(const [k,v] of Object.entries(before)) if(v===undefined)delete process.env[k];else process.env[k]=v}) }
 const request = (u, method='GET', action='access', body={}) => ({ user:{u,role:'dev'},method,query:{action},body })
+
+test('approved store defaults only in production and keeps dev-only API access', async t => {
+  env(t,{VERCEL_ENV:'production',PRICING_SHEET_ID:'',SHEET_ID:'main',AUTH_SECRET:'production-test-secret',PRICING_ALLOWED_USERS:'dev'})
+  assert.equal(pricingConfigured(),true)
+  const productionId=pricingSheetId()
+  assert.ok(productionId)
+  const dev=response();await opPricing(request('dev'),dev);assert.equal(dev.data.configured,true)
+  const boss=response();await opPricing(request('boss'),boss);assert.equal(boss.data.allowed,false);assert.equal(boss.data.configured,false)
+  for(const mode of ['preview','development','']) {
+    process.env.VERCEL_ENV=mode
+    assert.equal(pricingSheetId(),'');assert.equal(pricingConfigured(),false)
+  }
+  process.env.VERCEL_ENV='production';process.env.PRICING_SHEET_ID='override-private'
+  assert.equal(pricingSheetId(),'override-private')
+  process.env.PRICING_SHEET_ID='main';assert.equal(pricingConfigured(),false)
+  process.env.PRICING_SHEET_ID='';process.env.SHEET_ID=productionId;assert.equal(pricingConfigured(),false)
+})
 
 test('owner review blocks boss on every Pricing route even with stale dev,boss configuration', async t => {
   env(t,{AUTH_SECRET:'test-review-only',PRICING_ALLOWED_USERS:'dev,boss',PRICING_SHEET_ID:'private-test',SHEET_ID:'public-test'})

@@ -1,7 +1,7 @@
 // Read-only release gate. Run with the target environment, never print secrets.
 // node --env-file=.env scripts/pricing-preflight.mjs [--online]
 import { google } from 'googleapis'
-import { pricingConfigured } from '../api/_lib/pricingStore.js'
+import { pricingConfigured, pricingSheetId } from '../api/_lib/pricingStore.js'
 import { pricingAccounts } from '../api/_lib/pricing.js'
 
 let failures = 0
@@ -28,13 +28,13 @@ if (process.argv.includes('--online') && process.env.GOOGLE_SERVICE_ACCOUNT_EMAI
   } catch { check('Ops users readable with service account', false) }
   if (pricingConfigured()) {
     try {
-      const { data } = await drive.files.get({ fileId: process.env.PRICING_SHEET_ID.trim(), fields: 'mimeType,capabilities(canEdit),permissions(type,role,emailAddress,deleted)' })
+      const { data } = await drive.files.get({ fileId: pricingSheetId(), fields: 'mimeType,capabilities(canEdit),permissions(type,role,emailAddress,deleted)' })
       check('Private store is a native Google Sheet', data.mimeType === 'application/vnd.google-apps.spreadsheet')
       check('Service account can edit private store', data.capabilities?.canEdit === true)
       // Fail closed if permissions cannot be inspected. Only owner + service account
       // may directly access the database; app users read through the guarded API.
       check('Private store permissions visible and restricted', Array.isArray(data.permissions) && data.permissions.length > 0 && data.permissions.every(p => p.deleted || (p.type === 'user' && (p.role === 'owner' || p.emailAddress === process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL.trim()))))
-      await sheets.spreadsheets.get({ spreadsheetId: process.env.PRICING_SHEET_ID.trim(), fields: 'sheets.properties.title' })
+      await sheets.spreadsheets.get({ spreadsheetId: pricingSheetId(), fields: 'sheets.properties.title' })
       check('Private store readable', true)
     } catch { check('Private store and permissions readable', false) }
   }

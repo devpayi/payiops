@@ -3,6 +3,13 @@ import { google } from 'googleapis'
 let client
 const TAB = 'pricing_scenario_revisions'
 const HEADERS = ['request_id', 'payload_hash', 'scenario_id', 'revision_id', 'created_at', 'created_by', 'schema_version', 'engine_version', 'snapshot_json']
+// Resource identifier only, never credentials. Owner-approved private store.
+// Preview/local environments remain opt-in and cannot write here by default.
+const PRODUCTION_PRICING_SHEET = '18vxUJ1bpJdj3DuxbCkOsnvzhDW1z5Vt0lAGhRP0krXY'
+
+export function pricingSheetId() {
+  return process.env.PRICING_SHEET_ID?.trim() || (process.env.VERCEL_ENV === 'production' ? PRODUCTION_PRICING_SHEET : '')
+}
 
 function sheets() {
   if (!client) client = google.sheets({ version: 'v4', auth: new google.auth.GoogleAuth({ credentials: {
@@ -13,12 +20,12 @@ function sheets() {
 }
 
 export function pricingConfigured() {
-  const id = process.env.PRICING_SHEET_ID?.trim()
+  const id = pricingSheetId()
   return Boolean(id && !['SHEET_ID', 'ARCHIVE_SHEET_ID', 'HR_SHEET_ID'].some(key => process.env[key]?.trim() === id))
 }
 
 export async function listPricingRevisions() {
-  const spreadsheetId = process.env.PRICING_SHEET_ID.trim()
+  const spreadsheetId = pricingSheetId()
   const meta = await sheets().spreadsheets.get({ spreadsheetId, fields: 'sheets.properties.title' })
   if (!meta.data.sheets?.some(s => s.properties.title === TAB)) return []
   const response = await sheets().spreadsheets.values.get({ spreadsheetId, range: `${TAB}!A:I` })
@@ -28,7 +35,7 @@ export async function listPricingRevisions() {
 }
 
 export async function appendPricingRevision(record) {
-  const spreadsheetId = process.env.PRICING_SHEET_ID.trim()
+  const spreadsheetId = pricingSheetId()
   const meta = await sheets().spreadsheets.get({ spreadsheetId, fields: 'sheets.properties.title' })
   if (!meta.data.sheets?.some(s => s.properties.title === TAB)) {
     try { await sheets().spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [{ addSheet: { properties: { title: TAB } } }] } }) } catch (error) { if (!/already exists/i.test(error.message || '')) throw error }
