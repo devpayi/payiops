@@ -64,3 +64,5 @@
   .pricing-private,.pricing-notice,.pricing-price-caption,.pricing-receipt-header{font-size:12px}
   .pricing-button,.pricing-tabs button,.pricing-segmented button{font-size:13px}
 }
+
+.pricing-delete-confirm{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px;margin-top:10px;border-radius:6px;background:var(--payi-warning-bg);font-size:12px}.pricing-delete-confirm>span{flex:1 1 100%}.pricing-delete-confirm .pricing-button:first-of-type{color:var(--payi-danger)}

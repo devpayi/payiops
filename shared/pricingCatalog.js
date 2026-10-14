@@ -43,9 +43,13 @@ export function buildPricingCatalog({ aliases = [], inventory = [], recipes = []
   return { catalog: [...catalog.values()].sort((a,b) => a.business.localeCompare(b.business) || a.sku.localeCompare(b.sku, undefined, { numeric: true })), recipes: publicRecipes }
 }
 
+export function latestPricingPlans(revisions) {
+  return [...new Map(revisions.map(r=>[r.scenarioId || r,r])).values()].reverse()
+}
+
 export function savedPricingCosts(revisions) {
   const costs = new Map()
-  for (const record of [...revisions].sort((a,b) => String(a.createdAt).localeCompare(String(b.createdAt)))) {
+  for (const record of latestPricingPlans(revisions).filter(r=>!r.deleted).sort((a,b) => String(a.createdAt).localeCompare(String(b.createdAt)))) {
     const d = record.draft
     if (!d || !d.sku || d.kind !== 'single' || !validCost(d.unitCost)) continue
     costs.set(pricingProductKey(d.business,d.sku), { cost: Number(d.unitCost), planName: d.name, createdAt: record.createdAt })

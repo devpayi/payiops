@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ReferenceLine, R
 import PRODUCT_MASTER from '../data/productMaster.json'
 import { calculatePricing, monthlyProfit, newPricingDraft, normalizePricingDraft, PRICING_PROGRAMS, solvePricingTarget } from '../../shared/pricing.js'
 import { applyPricingPreset, PRICING_CATEGORIES, PRICING_PAYMENTS, PRICING_REFERENCE } from '../../shared/pricingPresets.js'
-import { buildPricingCatalog, pricingProductKey, pricingRecipeKey, savedPricingCosts, draftForPricingProduct, draftForPricingRecipe } from '../../shared/pricingCatalog.js'
+import { buildPricingCatalog, pricingProductKey, pricingRecipeKey, latestPricingPlans, savedPricingCosts, draftForPricingProduct, draftForPricingRecipe } from '../../shared/pricingCatalog.js'
 import { pricingDemoData, pricingDemoSales } from '../data/pricingDemo.js'
 import { pricingComparisonDraft } from '../../shared/pricingComparison.js'
 import './Pricing.css'
@@ -45,6 +45,8 @@ export default function Pricing({ access, onAccessRevoked }) {
   const [revisions, setRevisions] = useState([])
   const [activeRecord, setActiveRecord] = useState(null)
   const [search, setSearch] = useState('')
+  const [showDeleted,setShowDeleted] = useState(false)
+  const [deleteCandidate,setDeleteCandidate] = useState(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -81,8 +83,10 @@ export default function Pricing({ access, onAccessRevoked }) {
   const monthly = useMemo(() => monthlyProfit(draft), [draft])
   const comparisonDraft = useMemo(()=>pricingComparisonDraft(draft,reference,comparisonMode),[comparisonMode,draft,reference])
   const baseline = useMemo(() => comparisonDraft ? calculatePricing(comparisonDraft) : {valid:false}, [comparisonDraft])
-  const plans = useMemo(() => [...new Map(revisions.map(r => [r.scenarioId, r])).values()].reverse(), [revisions])
-  const filteredPlans = plans.filter(p => `${p.draft.name} ${p.draft.productName} ${p.draft.sku}`.toLowerCase().includes(search.toLowerCase()))
+  const latestPlans = useMemo(() => latestPricingPlans(revisions), [revisions])
+  const plans = latestPlans.filter(r=>!r.deleted)
+  const deletedPlans = latestPlans.filter(r=>r.deleted)
+  const filteredPlans = (showDeleted ? deletedPlans : plans).filter(p => `${p.draft.name} ${p.draft.productName} ${p.draft.sku}`.toLowerCase().includes(search.toLowerCase()))
 
   const denied = response => {
     if (response.status === 403 || response.status === 401) {
@@ -196,7 +200,34 @@ export default function Pricing({ access, onAccessRevoked }) {
 
   function addRecord(record) {
     setRevisions(prev => prev.some(r => r.revisionId === record.revisionId) ? prev : [...prev, record])
+    if(['delete-scenario','restore-scenario'].includes(record.operation)) {
+      if(activeRecord?.scenarioId===record.scenarioId) setActiveRecord(record.deleted ? null : record)
+      setPending(null);pendingRef.current=null
+      return
+    }
     setActiveRecord(record); setDirty(false); setPending(null); pendingRef.current = null
+  }
+
+  async function changePlanStatus(record, deleted) {
+    if(pendingRef.current || saving) return
+    setDeleteCandidate(null)
+    const body={action:deleted?'delete-scenario':'restore-scenario',requestId:crypto.randomUUID(),scenarioId:record.scenarioId,parentRevisionId:record.revisionId}
+    const message=deleted?'ลบแผนแล้ว กู้คืนได้จากถังขยะ':'กู้คืนแผนแล้ว'
+    setSaving(true);setError('');setMessage('')
+    if(access?.demo) {
+      addRecord({...record,...body,operation:body.action,revisionId:crypto.randomUUID(),createdAt:new Date().toISOString(),createdBy:'ตัวอย่าง',deleted})
+      setMessage(message);setSaving(false);return
+    }
+    pendingRef.current=body;setPending(body)
+    try {
+      const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)})
+      if(denied(response) || !alive.current) return
+      const data=await response.json()
+      if(data.unknown) throw new Error(data.error)
+      if(!data.success) {pendingRef.current=null;setPending(null);throw new Error(data.error)}
+      addRecord(data.record);setMessage(message)
+    } catch(e) {if(alive.current) setError(e.message || 'ยังยืนยันผลไม่ได้ กรุณาตรวจสอบก่อนลองใหม่')}
+    finally {if(alive.current) setSaving(false)}
   }
 
   async function savePlan(asNew = false) {
@@ -263,8 +294,8 @@ export default function Pricing({ access, onAccessRevoked }) {
     <datalist id={catalogId}>{catalog.map(p => <option key={`${p.business}|${p.sku}`} value={p.sku}>{p.name} · {p.business}</option>)}</datalist>
 
     <fieldset className="pricing-editor" disabled={saving || !!pending}>
-    {view === 'plans' ? <section className="pricing-saved"><div className="pricing-section-heading"><div><h2>แผนราคาของคุณ</h2><p>เปิดแผนเดิม หรือทำสำเนาเพื่อเปรียบเทียบราคาใหม่</p></div><label className="pricing-search">ค้นหาแผน<input value={search} onChange={e => setSearch(e.target.value)} placeholder="ชื่อสินค้า / SKU / ชื่อแผน" /></label></div>
-      {!filteredPlans.length ? <div className="pricing-empty"><FolderOpen size={36} /><h3>{search ? 'ไม่พบแผนที่ตรงกับคำค้น' : 'เริ่มจากแผนราคาของสินค้าหนึ่งตัว'}</h3><p>{search ? 'ลองค้นด้วยชื่อสินค้าหรือ SKU อื่น' : 'คำนวณต้นทุน ลองราคา แล้วบันทึกไว้เปิดใช้ครั้งถัดไป'}</p><button className="pricing-button primary" onClick={() => {setView('calculator');setSearch('')}}>ไปเครื่องคำนวณ <ArrowRight size={16} /></button></div> : <div className="pricing-plan-grid">{filteredPlans.map(record => <article key={record.revisionId} className="pricing-plan-card"><div className="pricing-plan-meta"><span>{record.draft.kind === 'bundle' ? 'เซ็ตสินค้า' : 'สินค้าเดี่ยว'}</span><span>{record.draft.sku || 'ไม่ระบุ SKU'}</span></div><h3>{record.draft.productName}</h3><p>{record.draft.name}</p><div className="pricing-plan-numbers"><div><small>ราคาขาย</small><strong>{money(record.result.unitPrice)}</strong></div><div><small>กำไร / {record.draft.kind === 'bundle' ? 'เซ็ต' : 'ชิ้น'}</small><strong>{money(record.result.unitProfit)}</strong></div></div><small>{dateLabel(record.createdAt)} · {record.createdBy}</small><div className="pricing-plan-actions"><button className="pricing-button" onClick={() => openPlan(record)}>เปิดแผน</button><button className="pricing-button subtle" onClick={() => openPlan(record, true)}><Copy size={14} /> สำเนา</button><button className="pricing-button subtle" onClick={() => {setReference(normalizePricingDraft(record.draft));setComparisonMode('snapshot');setView('calculator');setMessage(`ใช้ “${record.draft.name}” เป็นฐานเปรียบเทียบกราฟแล้ว`)}}>เทียบกราฟ</button></div></article>)}</div>}
+    {view === 'plans' ? <section className="pricing-saved"><div className="pricing-section-heading"><div><h2>{showDeleted ? 'ถังขยะ' : 'แผนราคาของคุณ'}</h2><p>เปิดแผนเดิม หรือทำสำเนาเพื่อเปรียบเทียบราคาใหม่</p></div><button className="pricing-button subtle" onClick={()=>setShowDeleted(v=>!v)}>{showDeleted ? 'กลับรายการแผน' : `ถังขยะ (${deletedPlans.length})`}</button><label className="pricing-search">ค้นหาแผน<input value={search} onChange={e => setSearch(e.target.value)} placeholder="ชื่อสินค้า / SKU / ชื่อแผน" /></label></div>
+      {!filteredPlans.length ? <div className="pricing-empty"><FolderOpen size={36} /><h3>{search ? 'ไม่พบแผนที่ตรงกับคำค้น' : showDeleted ? 'ไม่มีแผนในถังขยะ' : 'เริ่มจากแผนราคาของสินค้าหนึ่งตัว'}</h3><p>{search ? 'ลองค้นด้วยชื่อสินค้าหรือ SKU อื่น' : showDeleted ? 'แผนที่ลบจะอยู่ที่นี่และกู้คืนได้' : 'คำนวณต้นทุน ลองราคา แล้วบันทึกไว้เปิดใช้ครั้งถัดไป'}</p><button className="pricing-button primary" onClick={() => {setView('calculator');setSearch('')}}>ไปเครื่องคำนวณ <ArrowRight size={16} /></button></div> : <div className="pricing-plan-grid">{filteredPlans.map(record => <article key={record.revisionId} className="pricing-plan-card"><div className="pricing-plan-meta"><span>{record.draft.kind === 'bundle' ? 'เซ็ตสินค้า' : 'สินค้าเดี่ยว'}</span><span>{record.draft.sku || 'ไม่ระบุ SKU'}</span></div><h3>{record.draft.productName}</h3><p>{record.draft.name}</p><div className="pricing-plan-numbers"><div><small>ราคาขาย</small><strong>{money(record.result.unitPrice)}</strong></div><div><small>กำไร / {record.draft.kind === 'bundle' ? 'เซ็ต' : 'ชิ้น'}</small><strong>{money(record.result.unitProfit)}</strong></div></div><small>{dateLabel(record.createdAt)} · {record.createdBy}</small><div className="pricing-plan-actions">{showDeleted ? <button className="pricing-button" onClick={()=>changePlanStatus(record,false)}>กู้คืน</button> : <><button className="pricing-button" onClick={() => openPlan(record)}>แก้ไข</button><button className="pricing-button subtle" onClick={() => openPlan(record, true)}><Copy size={14} /> สำเนา</button><button className="pricing-button subtle" onClick={() => {setReference(normalizePricingDraft(record.draft));setComparisonMode('snapshot');setView('calculator');setMessage(`ใช้ “${record.draft.name}” เป็นฐานเปรียบเทียบกราฟแล้ว`)}}>เทียบกราฟ</button><button className="pricing-button subtle" onClick={()=>setDeleteCandidate(record.scenarioId)}><Trash2 size={14} /> ลบ</button></>}</div>{deleteCandidate===record.scenarioId && <div className="pricing-delete-confirm" role="group" aria-label="ยืนยันการลบแผน"><span>ลบแผนนี้? กู้คืนได้จากถังขยะ</span><button className="pricing-button" onClick={()=>changePlanStatus(record,true)}>ยืนยันลบ</button><button className="pricing-button subtle" onClick={()=>setDeleteCandidate(null)}>ยกเลิก</button></div>}</article>)}</div>}
     </section> : <>
       <div className="pricing-workspace">
         <div className="pricing-form-stack">

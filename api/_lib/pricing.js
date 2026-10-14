@@ -44,6 +44,19 @@ export async function opPricing(req, res, services = {}) {
       if (new Set(found.map(r => r.hash)).size > 1) return res.status(409).json({ success: false, error: 'พบรายการบันทึกขัดแย้ง กรุณาโหลดประวัติใหม่' })
       return res.status(200).json({ success: true, record: found[0] || null })
     }
+    if (req.method === 'POST' && ['delete-scenario','restore-scenario'].includes(action)) {
+      const body=req.body || {}
+      if (!/^[a-zA-Z0-9-]{16,80}$/.test(body.requestId || '') || !body.scenarioId || !body.parentRevisionId) return res.status(400).json({success:false,error:'รหัสแผนหรือคำขอไม่ถูกต้อง'})
+      const hash=createHash('sha256').update(JSON.stringify({action,scenarioId:body.scenarioId,parentRevisionId:body.parentRevisionId})).digest('hex')
+      const revisions=await listRevisions(),existing=revisions.find(r=>r.requestId===body.requestId)
+      if(existing) return res.status(existing.hash===hash?200:409).json(existing.hash===hash?{success:true,record:existing}:{success:false,error:'รหัสคำขอนี้ถูกใช้แล้ว'})
+      const latest=revisions.filter(r=>r.scenarioId===body.scenarioId).at(-1)
+      if(!latest) return res.status(404).json({success:false,error:'ไม่พบแผนนี้'})
+      if(latest.revisionId!==body.parentRevisionId) return res.status(409).json({success:false,conflict:true,error:'แผนนี้มีการแก้ไขแล้ว กรุณาโหลดรายการใหม่'})
+      const record={...latest,requestId:body.requestId,hash,revisionId:randomUUID(),parentRevisionId:latest.revisionId,createdAt:new Date().toISOString(),createdBy:req.user.u,deleted:action==='delete-scenario',operation:action}
+      try { await appendRevision(record) } catch { return res.status(503).json({success:false,unknown:true,error:'ยังยืนยันผลไม่ได้ กดตรวจสอบผลบันทึกก่อนลองใหม่',requestId:body.requestId}) }
+      return res.status(200).json({success:true,record})
+    }
     if (req.method === 'POST' && action === 'save-scenario') {
       const body = req.body || {}
       if (!/^[a-zA-Z0-9-]{16,80}$/.test(body.requestId || '')) return res.status(400).json({ success: false, error: 'รหัสคำขอบันทึกไม่ถูกต้อง' })
@@ -57,7 +70,7 @@ export async function opPricing(req, res, services = {}) {
       if (existing) return res.status(existing.hash === hash ? 200 : 409).json(existing.hash === hash ? { success: true, record: existing } : { success: false, error: 'รหัสคำขอนี้ถูกใช้กับข้อมูลคนละชุด' })
       if (body.scenarioId) {
         const history = revisions.filter(r => r.scenarioId === body.scenarioId)
-        if (!history.length || history.at(-1).revisionId !== body.parentRevisionId) return res.status(409).json({ success: false, conflict: true, error: 'แผนนี้มีการแก้ไขแล้ว กรุณาโหลดใหม่หรือบันทึกเป็นแผนใหม่' })
+        if (!history.length || history.at(-1).deleted || history.at(-1).revisionId !== body.parentRevisionId) return res.status(409).json({ success: false, conflict: true, error: 'แผนนี้ถูกลบหรือมีการแก้ไขแล้ว กรุณาโหลดใหม่หรือบันทึกเป็นแผนใหม่' })
       }
       const record = { requestId: body.requestId, hash, scenarioId: body.scenarioId || randomUUID(), revisionId: randomUUID(), parentRevisionId: body.parentRevisionId || null, createdAt: new Date().toISOString(), createdBy: req.user.u, schemaVersion: PRICING_SCHEMA_VERSION, engineVersion: PRICING_ENGINE_VERSION, draft, result }
       try { await appendRevision(record) } catch { return res.status(503).json({ success: false, unknown: true, error: 'ยังยืนยันผลบันทึกไม่ได้ กดตรวจสอบผลบันทึกก่อนลองใหม่', requestId: body.requestId }) }

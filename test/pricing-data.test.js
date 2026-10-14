@@ -1,6 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildPricingCatalog,buildPricingSalesSummary,pricingProductKey,savedPricingCosts,draftForPricingProduct,draftForPricingRecipe,dateOffset } from '../shared/pricingCatalog.js'
+
+test('deleted scenarios no longer seed costs; restoring retains the saved cost', () => {
+  const first={scenarioId:'plan-a',createdAt:'2026-01-01',draft:{business:'Payi',sku:'A',kind:'single',unitCost:150}}
+  const removed={...first,createdAt:'2026-01-02',deleted:true}
+  assert.equal(savedPricingCosts([first,removed]).has(pricingProductKey('Payi','A')),false)
+  const restored={...removed,createdAt:'2026-01-03',deleted:false}
+  assert.equal(savedPricingCosts([first,removed,restored]).get(pricingProductKey('Payi','A')).cost,150)
+})
 import { newPricingDraft,calculatePricing,normalizePricingDraft } from '../shared/pricing.js'
 import { bangkokDate,loadPricingSales,loadPricingCatalog } from '../api/_lib/pricingData.js'
 

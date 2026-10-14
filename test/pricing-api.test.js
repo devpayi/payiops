@@ -10,6 +10,29 @@ function response() { return { code: 200, headers: {}, status(code) {this.code=c
 function env(t, changes) { const before = Object.fromEntries(Object.keys(changes).map(k=>[k,process.env[k]]));Object.assign(process.env, changes); t.after(()=>{for(const [k,v] of Object.entries(before)) if(v===undefined)delete process.env[k];else process.env[k]=v}) }
 const request = (u, method='GET', action='access', body={}) => ({ user:{u,role:'dev'},method,query:{action},body })
 
+test('delete/restore append recoverable revisions and reject stale edits or unauthorized users', async t => {
+  env(t,{AUTH_SECRET:'test-lifecycle',PRICING_ALLOWED_USERS:'dev,boss',PRICING_SHEET_ID:'private',SHEET_ID:'main'})
+  const records=[],services={listRevisions:async()=>records,appendRevision:async r=>records.push(r)}
+  const saveBody={requestId:'00000000-0000-0000-0000-000000000021',draft:{...newPricingDraft(),sku:'PY001'}}
+  const first=response();await opPricing(request('boss','POST','save-scenario',saveBody),first,services)
+  const original=first.data.record,originalSnapshot=JSON.stringify(original)
+  const body={requestId:'00000000-0000-0000-0000-000000000022',scenarioId:original.scenarioId,parentRevisionId:original.revisionId}
+  const removed=response();await opPricing(request('dev','POST','delete-scenario',body),removed,services)
+  assert.equal(removed.code,200);assert.equal(removed.data.record.deleted,true);assert.equal(records.length,2)
+  assert.equal(JSON.stringify(original),originalSnapshot)
+  assert.deepEqual(removed.data.record.result,original.result)
+  const duplicate=response();await opPricing(request('dev','POST','delete-scenario',body),duplicate,services);assert.equal(duplicate.code,200);assert.equal(records.length,2)
+  const staleEdit=response();await opPricing(request('boss','POST','save-scenario',{...saveBody,requestId:'00000000-0000-0000-0000-000000000023',scenarioId:original.scenarioId,parentRevisionId:removed.data.record.revisionId}),staleEdit,services);assert.equal(staleEdit.code,409)
+  const staleRestore=response();await opPricing(request('boss','POST','restore-scenario',{...body,requestId:'00000000-0000-0000-0000-000000000024'}),staleRestore,services);assert.equal(staleRestore.code,409)
+  const restored=response();await opPricing(request('boss','POST','restore-scenario',{...body,requestId:'00000000-0000-0000-0000-000000000025',parentRevisionId:removed.data.record.revisionId}),restored,services)
+  assert.equal(restored.code,200);assert.equal(restored.data.record.deleted,false);assert.equal(records.length,3)
+  for(const action of ['delete-scenario','restore-scenario']) {
+    const outsider=response();await opPricing(request('other-dev','POST',action,body),outsider,services);assert.equal(outsider.code,403)
+  }
+  const uncertain=response();await opPricing(request('dev','POST','delete-scenario',{...body,requestId:'00000000-0000-0000-0000-000000000026',parentRevisionId:restored.data.record.revisionId}),uncertain,{...services,appendRevision:async()=>{throw Error('timeout')}})
+  assert.equal(uncertain.code,503);assert.equal(uncertain.data.unknown,true)
+})
+
 test('boss can read, save and recover plans; explicit dev-only override can revoke access', async t => {
   env(t,{AUTH_SECRET:'test-boss-release',PRICING_SHEET_ID:'private',SHEET_ID:'main',PRICING_ALLOWED_USERS:'dev,boss'})
   delete process.env.PRICING_ALLOWED_USERS // Approved rollout works without a Vercel env change.

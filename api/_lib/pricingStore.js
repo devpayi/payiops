@@ -41,7 +41,7 @@ export async function appendPricingRevision(record) {
     try { await sheets().spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [{ addSheet: { properties: { title: TAB } } }] } }) } catch (error) { if (!/already exists/i.test(error.message || '')) throw error }
     await sheets().spreadsheets.values.update({ spreadsheetId, range: `${TAB}!A1:I1`, valueInputOption: 'RAW', requestBody: { values: [HEADERS] } })
   }
-  const snapshot = JSON.stringify({ schemaVersion: record.schemaVersion, engineVersion: record.engineVersion, parentRevisionId: record.parentRevisionId, draft: record.draft, result: record.result })
+  const snapshot = JSON.stringify({ schemaVersion: record.schemaVersion, engineVersion: record.engineVersion, parentRevisionId: record.parentRevisionId, draft: record.draft, result: record.result, deleted: record.deleted === true, operation: record.operation || 'save-scenario' })
   if (snapshot.length > 30000) throw new Error('แผนมีขนาดเกินที่บันทึกได้ กรุณาลดจำนวนส่วนประกอบ')
   // Deliberately no automatic append retry: a timeout may follow a successful write.
   await sheets().spreadsheets.values.append({ spreadsheetId, range: `${TAB}!A:I`, valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS', requestBody: { values: [[record.requestId, record.hash, record.scenarioId, record.revisionId, record.createdAt, record.createdBy, record.schemaVersion, record.engineVersion, snapshot]] } })
