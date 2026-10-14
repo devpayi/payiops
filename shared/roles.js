@@ -40,6 +40,8 @@ const FINANCE_TAB_SET = new Set(FINANCE_TABS)
 const TANG_TAB_SET = new Set(TANG_TABS)
 
 export function canAccessTab(role, tab) {
+  // Pricing uses a server-checked account allowlist; a broad role grants no access.
+  if (tab === 'Pricing') return false
   const normalized = normalizeRole(role)
   if (normalized === ROLES.DEV) return true
   if (normalized === ROLES.BOSS) return !BOSS_HIDDEN_TABS.has(tab)

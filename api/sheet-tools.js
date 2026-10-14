@@ -18,6 +18,7 @@ import opDemographic from './_lib/demographic.js'
 import opFulfillment from './_lib/fulfillment.js'
 import opHrPeople, { opSubmitApplicant, opSubmitEmployee } from './_lib/hrPeople.js'
 import opWorkspace from './_lib/workspace.js'
+import { opPricing } from './_lib/pricing.js'
 
 // ปิด body parser อัตโนมัติของ Vercel — ต้องอ่าน raw body เองเพื่อตรวจลายเซ็น LINE webhook (HMAC ต้องใช้ byte ดิบ)
 // req.body ยังใช้ได้ตามปกติในทุก op เดิม เพราะ readRawBody() ด้านล่าง parse JSON ให้เหมือน Vercel ทำเอง
@@ -4107,6 +4108,7 @@ export default async function handler(req, res) {
   if (op === 'workforce' && req.query.cron === 'holiday-reminder') return opHolidayReminderCron(req, res)
   if (op === 'import-tracking' && req.query.cron === 'lot-stale') return opLotStaleCron(req, res)
   if (!requireAuth(req, res)) return
+  if (op === 'pricing') return opPricing(req, res)
   // CFO / Demographic / Import Tracking — เปิดให้เฉพาะ DEV เท่านั้น (owner ขอ 2026-09-01)
   // role อื่นเห็นแท็บได้แต่หน้าเป็น placeholder (ดู DevOnlyLock ใน App.jsx) — endpoint ปิดตายด้วย
   // pair กับ authEnabled() เสมอ: local dev ไม่มี AUTH_SECRET → req.user undefined → ข้ามเช็ค

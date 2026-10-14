@@ -10,7 +10,7 @@ const getMeUser = () => { try { return JSON.parse(localStorage.getItem('payi-use
 import {
   Bell, Search, UserCircle2, Target, ShoppingBag, Package, TrendingUp, Percent,
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
-  LayoutDashboard, UploadCloud, Megaphone, Boxes,
+  LayoutDashboard, UploadCloud, Megaphone, Boxes, Calculator,
   ArrowLeftRight, BookOpen, Link2,
   Code2, Settings as SettingsIcon, CalendarCheck, Menu, Ship, Wallet, Warehouse, FileSignature, Users,
 } from 'lucide-react'
@@ -38,6 +38,7 @@ const CfoDashboard = lazy(() => import('./pages/CfoDashboard'))
 const Fulfillment = lazy(() => import('./pages/Fulfillment'))
 const Workspace = lazy(() => import('./pages/Workspace'))
 const Settings = lazy(() => import('./pages/Settings'))
+const Pricing = lazy(() => import('./pages/Pricing'))
 
 const API_BASE = '/api'
 
@@ -102,13 +103,14 @@ const Icons = {
   LinksHub: Link2,
   DevHub: Code2,
   Settings: SettingsIcon,
+  Pricing: Calculator,
 }
 
 const KNOWN_TABS = new Set([
   'Home', 'Workspace', 'Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends',
   'AdsChannels', 'ContentOS', 'Inventory',
   'Import Tracking', 'WHT Cert', 'Stock Movement', 'HR', 'HR People', 'CFO', 'Fulfillment',
-  'Import Orders', 'Links Hub', 'Dev Hub', 'Settings',
+  'Import Orders', 'Links Hub', 'Dev Hub', 'Settings', 'Pricing',
 ])
 
 const menuGroups = [
@@ -123,6 +125,7 @@ const menuGroups = [
   {
     title: 'ยอดขายและการตลาด',
     items: [
+      { id: 'Pricing', label: 'ตั้งราคาและกำไร', renderIcon: Icons.Pricing },
       { id: 'Import Orders', label: 'Import Orders', renderIcon: Icons.ImportOrders, dotColor: 'var(--payi-success)' },
       { id: 'AdsChannels', label: 'Ads & Channels', renderIcon: Icons.AdsChannels },
       { id: 'ContentOS', label: 'Content OS Prototype', renderIcon: Icons.ContentOS, dotColor: 'var(--payi-mint)' }
@@ -450,12 +453,26 @@ function DevOnlyLock({ label }) {
 }
 
 export default function App() {
+  const [pricingAccess, setPricingAccess] = useState(null)
+  const handlePricingRevoked = useCallback(() => setPricingAccess({ allowed: false }), [])
+  useEffect(() => {
+    let cancelled = false
+    const checkAccess = () => fetch('/api/sheet-tools?op=pricing&action=access')
+      .then(async response => {
+        const data = await response.json()
+        if (!cancelled) setPricingAccess(data.success ? data : { allowed: false })
+      }).catch(() => { /* Keep local edits on a transient outage; API checks every request. */ })
+    checkAccess()
+    const timer = setInterval(checkAccess, 60000)
+    window.addEventListener('focus', checkAccess)
+    return () => { cancelled = true; clearInterval(timer); window.removeEventListener('focus', checkAccess) }
+  }, [])
   const currentRole = (() => {
     try { return normalizeRole(JSON.parse(localStorage.getItem('payi-user') || 'null')?.role || 'dev') } catch { return 'dev' }
   })()
   const isDev = currentRole === 'dev'
   const visibleMenuGroups = menuGroups
-    .map((group) => ({ ...group, items: group.items.filter((item) => canAccessTab(currentRole, item.id)) }))
+    .map((group) => ({ ...group, items: group.items.filter((item) => item.id === 'Pricing' ? pricingAccess?.allowed : canAccessTab(currentRole, item.id)) }))
     .filter((group) => group.items.length > 0)
   // แถบล่างมือถือ — role ที่เห็นแท็บเยอะ (boss/dev/staff) ใช้ 4 อันที่ใช้บ่อยสุด ที่เหลือกดปุ่ม "เมนู"
   // role แคบที่เห็นแท็บน้อย (เช่น stock — เห็นแค่ Inventory/Stock Movement) ยัดทุกแท็บที่ตัวเองเห็นลง
@@ -496,8 +513,12 @@ export default function App() {
 
   useEffect(() => {
     if (activeTab === 'Home') return
+    if (activeTab === 'Pricing') {
+      if (pricingAccess && !pricingAccess.allowed) setActiveTab(firstAllowedTab)
+      return
+    }
     if (!canAccessTab(currentRole, activeTab)) setActiveTab(firstAllowedTab)
-  }, [activeTab, currentRole, firstAllowedTab])
+  }, [activeTab, currentRole, firstAllowedTab, pricingAccess])
 
   useEffect(() => {
     try {
@@ -774,6 +795,11 @@ export default function App() {
       eyebrow: 'Overview',
       subtitle: 'ผลงานสินค้ารายกลุ่ม + % เปลี่ยนแปลงรายเดือน (จำนวนชิ้น & ยอดขาย)'
     },
+    Pricing: {
+      title: 'ตั้งราคาและกำไร',
+      eyebrow: 'Pricing Studio',
+      subtitle: 'วางแผนราคาสินค้าเดี่ยวและเซ็ต · พื้นที่ส่วนตัว'
+    },
     AdsChannels: {
       title: 'Ads & Channels',
       eyebrow: 'Marketing',
@@ -918,7 +944,7 @@ export default function App() {
       )}
 
       {/* MAIN CONTENT AREA */}
-      <div className="payi-main-content" style={{ flex: 1, minHeight: '100vh', overflow: 'auto', padding: isLinksHubMode ? '32px 34px 40px' : '24px 32px 40px', boxSizing: 'border-box', width: '100%' }}>
+      <div className="payi-main-content" style={{ flex: 1, minHeight: '100vh', overflow: activeTab === 'Pricing' ? 'visible' : 'auto', padding: isLinksHubMode ? '32px 34px 40px' : '24px 32px 40px', boxSizing: 'border-box', width: '100%' }}>
 
         {/* HEADER TOP ROW — เดิมเป็นกล่องไล่สีมนๆ เหมือน hero การ์ดยอดขายด้านล่าง (Executive) ทำให้ดูซ้ำ
             หลุดโฟกัส (feedback เจ้าของ 2026-07-29) — เปลี่ยนเป็น header เรียบๆ แค่ตัวหนังสือ ให้ gradient
@@ -1422,6 +1448,7 @@ export default function App() {
 
         {/* แท็บพวกนี้ mount ค้างไว้เมื่อเคยเปิดแล้ว (ซ่อนด้วย CSS แทนการ unmount) กัน fetch ข้อมูลซ้ำทุกครั้งที่กดสลับแท็บไปมา */}
         {[
+          ['Pricing', pricingAccess?.allowed ? <Pricing access={pricingAccess} onAccessRevoked={handlePricingRevoked} /> : null],
           ['Workspace', isDev ? <Workspace onOpenTab={setActiveTab} /> : <DevOnlyLock label="Workspace" />],
           ['Daily', <DailyDashboard />],
           ['Monthly', <MonthlyDashboard />],
