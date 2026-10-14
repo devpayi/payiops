@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { ArrowDownToLine, ArrowRight, Check, ChevronDown, Copy, FolderOpen, Layers3, LockKeyhole, Plus, RotateCcw, Save, SlidersHorizontal, Trash2, TrendingUp } from 'lucide-react'
+import { ArrowRight, Check, ChevronDown, Copy, FolderOpen, Layers3, LockKeyhole, Plus, RotateCcw, Save, SlidersHorizontal, Trash2, TrendingUp } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import PRODUCT_MASTER from '../data/productMaster.json'
 import { calculatePricing, monthlyProfit, newPricingDraft, normalizePricingDraft, PRICING_PROGRAMS, solvePricingTarget } from '../../shared/pricing.js'
@@ -206,9 +206,9 @@ export default function Pricing({ access, onAccessRevoked }) {
     const snapshot = normalizePricingDraft(draft)
     const body = { action: 'save-scenario', requestId: crypto.randomUUID(), scenarioId: asNew ? null : activeRecord?.scenarioId, parentRevisionId: asNew ? null : activeRecord?.revisionId, draft: snapshot }
     if (!canPersist) {
-      if (!access?.demo) { setSaving(false); setError('เชื่อมชีตส่วนตัวก่อนบันทึก หรือดาวน์โหลดแผนเก็บเป็นไฟล์'); return }
+      if (!access?.demo) { setSaving(false); setError('ยังไม่เชื่อมที่เก็บแผน กรุณาติดต่อผู้ดูแลระบบ'); return }
       addRecord({ ...body, scenarioId: body.scenarioId || crypto.randomUUID(), revisionId: crypto.randomUUID(), createdAt: new Date().toISOString(), createdBy: 'ตัวอย่าง', result, draft: snapshot })
-      setMessage('เก็บแผนตัวอย่างในหน้านี้แล้ว · รีเฟรชหน้าจะหาย ดาวน์โหลดไฟล์เพื่อเก็บไว้ได้'); setSaving(false); return
+      setMessage('เก็บแผนตัวอย่างในหน้านี้แล้ว · รีเฟรชหน้าจะหาย'); setSaving(false); return
     }
     pendingRef.current = body; setPending(body)
     try {
@@ -236,29 +236,6 @@ export default function Pricing({ access, onAccessRevoked }) {
     finally { if (alive.current) setLoading(false) }
   }
 
-  function downloadPlan() {
-    if (!result.valid) { setError(result.errors[0]); return }
-    const payload = { type: 'payi-pricing-plan', schemaVersion: 1, exportedAt: new Date().toISOString(), draft: normalizePricingDraft(draft), result }
-    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }))
-    const link = document.createElement('a'); link.href = url; link.download = `pricing-${draft.sku.replace(/[^\w-]/g,'') || 'plan'}.json`; link.click(); URL.revokeObjectURL(url)
-    setMessage('ดาวน์โหลดแผนราคาแล้ว ไฟล์นี้มีต้นทุนและกำไรของคุณ')
-  }
-
-  async function importPlan(event) {
-    const file = event.target.files?.[0]; event.target.value = ''
-    if (!file) return
-    if (pending) { setError('ตรวจสอบผลบันทึกที่ค้างก่อนเปิดไฟล์'); return }
-    try {
-      if (file.size > 100000) throw new Error('ไฟล์ใหญ่เกินไป เลือกไฟล์แผนราคาที่ดาวน์โหลดจากหน้านี้')
-      const data = JSON.parse(await file.text())
-      if (data.type !== 'payi-pricing-plan' || data.schemaVersion !== 1) throw new Error('ไฟล์นี้ไม่ใช่แผนราคาที่รองรับ')
-      const next = normalizePricingDraft(data.draft), check = calculatePricing(next)
-      if (!check.valid) throw new Error(check.errors[0])
-      if (dirty && !window.confirm('เปิดไฟล์โดยไม่เก็บสิ่งที่แก้ไขอยู่หรือไม่?')) return
-      setDraft(next); setReference(next);setComparisonMode('snapshot');autoSales.current=null; setActiveRecord(null); setDirty(true); setView('calculator'); setError(''); setMessage('เปิดแผนจากไฟล์และคำนวณใหม่แล้ว ยังไม่ได้บันทึกเข้าระบบ')
-    } catch (e) { setError(e.message || 'เปิดไฟล์ไม่สำเร็จ') }
-  }
-
   function findTarget() {
     const solved = solvePricingTarget(draft)
     if (solved.error) { setError(solved.error); return }
@@ -277,8 +254,8 @@ export default function Pricing({ access, onAccessRevoked }) {
 
   return <div className="pricing-page">
     <header className="pricing-heading"><div><h1>คำนวณราคาและกำไร Shopee</h1></div><span className="pricing-private"><LockKeyhole size={14} /> เฉพาะ dev และ boss</span></header>
-    <div className="pricing-toolbar"><div className="pricing-tabs" role="group" aria-label="มุมมองตั้งราคา"><button type="button" className={view === 'calculator' ? 'active' : ''} aria-pressed={view === 'calculator'} onClick={() => setView('calculator')}><SlidersHorizontal size={16} /> เครื่องคำนวณ</button><button type="button" className={view === 'plans' ? 'active' : ''} aria-pressed={view === 'plans'} onClick={() => setView('plans')}><FolderOpen size={16} /> แผนที่บันทึก <span>{plans.length}</span></button></div><div className="pricing-toolbar-actions"><label className="pricing-button subtle"><FolderOpen size={15} /> เปิดไฟล์<input className="pricing-file" type="file" accept=".json,application/json" aria-label="เปิดไฟล์แผนราคา" onChange={importPlan} /></label><button className="pricing-button subtle" onClick={downloadPlan} disabled={!result.valid}><ArrowDownToLine size={15} /> ดาวน์โหลดแผน</button></div></div>
-    <div className={`pricing-notice ${access?.demo ? 'demo' : ''}`}><span>{access?.demo ? 'ข้อมูลตัวอย่าง · แผนจะหายเมื่อรีเฟรช' : canPersist ? 'แผนราคาส่วนตัว' : 'พร้อมคำนวณ · เชื่อมชีตส่วนตัวเพื่อบันทึกข้ามเครื่อง ระหว่างนี้เก็บแผนเป็นไฟล์ได้'}</span><span>ไม่เก็บเงินรับจริง</span></div>
+    <div className="pricing-toolbar"><div className="pricing-tabs" role="group" aria-label="มุมมองตั้งราคา"><button type="button" className={view === 'calculator' ? 'active' : ''} aria-pressed={view === 'calculator'} onClick={() => setView('calculator')}><SlidersHorizontal size={16} /> เครื่องคำนวณ</button><button type="button" className={view === 'plans' ? 'active' : ''} aria-pressed={view === 'plans'} onClick={() => setView('plans')}><FolderOpen size={16} /> แผนที่บันทึก <span>{plans.length}</span></button></div></div>
+    <div className={`pricing-notice ${access?.demo ? 'demo' : ''}`}><span>{access?.demo ? 'ข้อมูลตัวอย่าง · แผนจะหายเมื่อรีเฟรช' : canPersist ? 'แผนราคาส่วนตัว' : 'ยังไม่เชื่อมที่เก็บแผน กรุณาติดต่อผู้ดูแลระบบ'}</span><span>ไม่เก็บเงินรับจริง</span></div>
     {error && <div className="pricing-feedback error" role="alert">{error}</div>}
     {message && <div className="pricing-feedback" role="status"><Check size={16} />{message}</div>}
     {pending && <div className="pricing-feedback"><span>มีคำขอบันทึกที่รอตรวจสอบ กรุณาคงหน้านี้ไว้</span><button className="pricing-button" onClick={recoverSave} disabled={loading || saving}>{loading ? 'กำลังตรวจสอบ…' : 'ตรวจสอบผลบันทึก'}</button></div>}
