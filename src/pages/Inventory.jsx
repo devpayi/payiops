@@ -316,6 +316,7 @@ export default function Inventory() {
       if (!recipesBySku.has(r.packaging_sku)) recipesBySku.set(r.packaging_sku, [])
       recipesBySku.get(r.packaging_sku).push(r)
     }
+    const growthBySku = new Map(items.map((i) => [String(i.sku).toUpperCase(), i.growth_temp_percent || 0]))
     const result = new Map()
     for (const it of items) {
       if (it.category !== 'packaging') continue
@@ -333,7 +334,9 @@ export default function Inventory() {
       if (!recipes?.length || !it.units_per_batch) continue
       const piecesPerDay = recipes.reduce((sum, r) => {
         const productSales = salesBySku.get(r.product_sku) || allocatedSales.get(r.product_sku)
-        return sum + (productSales?.dailyAverage || 0) * r.qty_per_unit
+        // ตามยอดโตชั่วคราวของสินค้าที่ผูกไว้ (+% เพิ่มสต็อก) ให้ขั้นต่ำวัสดุขยับตามด้วย
+        const growth = growthBySku.get(String(r.product_sku).toUpperCase()) || 0
+        return sum + (productSales?.dailyAverage || 0) * (1 + growth / 100) * r.qty_per_unit
       }, 0)
       const bufferPercent = it.buffer_percent ?? packagingBufferSuggestion.get(sku) ?? DEFAULT_BUFFER_PERCENT
       const base = Math.round((piecesPerDay / it.units_per_batch) * 100) / 100
