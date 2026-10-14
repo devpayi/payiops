@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 // Use Git archive as baseline and Python's standard ZIP library for the overlay.
 const files = [
   '.env.example','api/sheet-tools.js','api/_lib/pricing.js','api/_lib/pricingData.js','api/_lib/pricingStore.js',
-  'shared/roles.js','shared/pricing.js','shared/pricingCatalog.js','shared/pricingPresets.js',
+  'shared/roles.js','shared/pricing.js','shared/pricingCatalog.js','shared/pricingPresets.js','shared/pricingComparison.js',
   'src/App.jsx','src/pages/Pricing.jsx','src/pages/Pricing.css','src/data/pricingDemo.js',
   'test/pricing.test.js','test/pricing-api.test.js','test/pricing-data.test.js',
   'scripts/pricing-preflight.mjs','scripts/pricing-smoke.mjs','scripts/pricing-release-package.mjs',

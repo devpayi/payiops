@@ -1,8 +1,45 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { calculatePricing, monthlyProfit, newPricingDraft, normalizePricingDraft, solvePricingTarget } from '../shared/pricing.js'
+import { calculatePricing, monthlyProfit, newPricingDraft, normalizePricingDraft, satang, solvePricingTarget } from '../shared/pricing.js'
+import { pricingComparisonDraft } from '../shared/pricingComparison.js'
 import { canAccessTab } from '../shared/roles.js'
 import { applyPricingPreset, PRICING_CATEGORIES, PRICING_PAYMENTS } from '../shared/pricingPresets.js'
+
+test('currency rounds decimal half satang consistently, including scientific notation', () => {
+  assert.equal(satang(10.075),1008)
+  assert.equal(satang(1.005),101)
+  assert.equal(satang(1.255),126)
+  assert.equal(satang(0.0000001),0)
+  assert.equal(satang(0),0)
+  const r=calculatePricing({...newPricingDraft(),unitCost:10.075})
+  assert.equal(r.unitCost,1008)
+})
+
+test('target price works without a pre-existing selling price but still requires cost', () => {
+  const input={...newPricingDraft(),price:'',target:100}
+  const solved=solvePricingTarget(input)
+  assert.ok(solved.price)
+  assert.ok(solved.result.profit>=10000)
+  assert.ok(calculatePricing({...input,price:solved.price-1}).profit<10000)
+  assert.ok(solvePricingTarget({...input,unitCost:''}).error)
+})
+
+test('snapshot comparison preserves costs and fees; price comparison shares current assumptions', () => {
+  const baseline={...newPricingDraft(),sku:'PY001'}
+  const current={...baseline,price:549,unitCost:250,commission:12}
+  const pinned=pricingComparisonDraft(current,baseline,'snapshot')
+  assert.equal(pinned.price,500);assert.equal(pinned.unitCost,200);assert.equal(pinned.commission,17.12)
+  const price=pricingComparisonDraft(current,baseline,'price')
+  assert.equal(price.price,500);assert.equal(price.unitCost,250);assert.equal(price.commission,12)
+  assert.equal(baseline.price,500)
+})
+
+test('graphs refuse an unrelated product, business, or variation as their baseline', () => {
+  const base={...newPricingDraft(),sku:'PY001'}
+  for(const mode of ['price','snapshot']) for(const changes of [{business:'Payi Outlet'},{sku:'PY002'},{kind:'bundle'},{variationName:'other'}]) {
+    assert.equal(pricingComparisonDraft({...base,...changes},base,mode),null)
+  }
+})
 
 test('screenshot fixture: shipping income and expense both included, fees rounded separately', () => {
   const r = calculatePricing(newPricingDraft())

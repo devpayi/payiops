@@ -1,5 +1,5 @@
 // Planning only. All monetary totals are integer satang; rates are user assumptions.
-export const PRICING_ENGINE_VERSION = 2
+export const PRICING_ENGINE_VERSION = 3
 export const PRICING_SCHEMA_VERSION = 1
 export const PRICING_PROGRAMS = [
   { key: 'prime', name: 'PRIME Seller', hint: 'ลดคอมมิชชัน (จุดเปอร์เซ็นต์)', type: 'reduction', defaultRate: 1.07 },
@@ -33,7 +33,11 @@ export function newPricingDraft() {
 const moneyFields = ['price', 'unitCost', 'packing', 'parcel', 'customerShipping', 'actualShipping', 'shippingSubsidy', 'platformFee', 'voucher', 'exclusivePrice', 'fixedCost']
 const textFields = ['name', 'productName', 'sku', 'business', 'store', 'storeType', 'category', 'payment', 'feeNote', 'color', 'size', 'variationName']
 const num = v => v === '' || v === null || v === undefined ? NaN : Number(v)
-export const satang = value => Math.round((Number(value) + Number.EPSILON) * 100)
+export const satang = value => {
+  // Decimal shift avoids binary rounding such as 10.075 * 100 = 1007.4999…
+  const [coefficient, exponent = '0'] = String(Number(value)).split('e')
+  return Math.round(Number(`${coefficient}e${Number(exponent) + 2}`))
+}
 const charge = (base, percent) => Math.round(base * Math.round(percent * 1e6) / 1e8)
 
 export function normalizePricingDraft(value) {
@@ -123,7 +127,8 @@ export function monthlyProfit(input, volume = input.monthlyVolume) {
 
 export function solvePricingTarget(input) {
   if (input.calculationModel !== 'reference-v2' && input.exclusiveEnabled) return { error: 'ปิด Exclusive Price ก่อนหาราคาเป้าหมาย' }
-  if (!calculatePricing(input).valid) return { error: 'กรอกข้อมูลต้นทุนและค่าธรรมเนียมให้ครบก่อน' }
+  // Price is the output of this solver, so it need not already be supplied.
+  if (!calculatePricing({ ...input, price: 1 }).valid) return { error: 'กรอกข้อมูลต้นทุนและค่าธรรมเนียมให้ครบก่อน' }
   const target = num(input.target)
   if (!Number.isFinite(target) || target < 0 || (input.targetType === 'margin' && target >= 100)) return { error: 'กรอกกำไรเป้าหมายที่ไม่ติดลบ และ margin ต้องต่ำกว่า 100%' }
   const passes = price => {

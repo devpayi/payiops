@@ -6,6 +6,7 @@ import { calculatePricing, monthlyProfit, newPricingDraft, normalizePricingDraft
 import { applyPricingPreset, PRICING_CATEGORIES, PRICING_PAYMENTS, PRICING_REFERENCE } from '../../shared/pricingPresets.js'
 import { buildPricingCatalog, pricingProductKey, pricingRecipeKey, savedPricingCosts, draftForPricingProduct, draftForPricingRecipe } from '../../shared/pricingCatalog.js'
 import { pricingDemoData, pricingDemoSales } from '../data/pricingDemo.js'
+import { pricingComparisonDraft } from '../../shared/pricingComparison.js'
 import './Pricing.css'
 
 const money = cents => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', maximumFractionDigits: 2 }).format(cents / 100)
@@ -78,8 +79,8 @@ export default function Pricing({ access, onAccessRevoked }) {
   }
   const result = useMemo(() => calculatePricing(draft), [draft])
   const monthly = useMemo(() => monthlyProfit(draft), [draft])
-  const comparisonDraft = useMemo(()=>comparisonMode==='price' ? {...draft,price:Number(reference.price)>0 ? reference.price : draft.price} : reference,[comparisonMode,draft,reference])
-  const baseline = useMemo(() => calculatePricing(comparisonDraft), [comparisonDraft])
+  const comparisonDraft = useMemo(()=>pricingComparisonDraft(draft,reference,comparisonMode),[comparisonMode,draft,reference])
+  const baseline = useMemo(() => comparisonDraft ? calculatePricing(comparisonDraft) : {valid:false}, [comparisonDraft])
   const plans = useMemo(() => [...new Map(revisions.map(r => [r.scenarioId, r])).values()].reverse(), [revisions])
   const filteredPlans = plans.filter(p => `${p.draft.name} ${p.draft.productName} ${p.draft.sku}`.toLowerCase().includes(search.toLowerCase()))
 
@@ -149,7 +150,7 @@ export default function Pricing({ access, onAccessRevoked }) {
     return [...prices].sort((a, b) => a - b).map(price => ({ price, profit: calculatePricing({ ...draft, price }).unitProfit / 100 }))
   }, [draft, result.valid])
   const volumeData = useMemo(() => {
-    if (!result.valid || !baseline.valid || draft.kind !== comparisonDraft.kind) return []
+    if (!result.valid || !baseline.valid || !comparisonDraft) return []
     const chosen = Number(draft.monthlyVolume)
     const volumes = new Set([500, 750, 1000, 1250, 1500, chosen])
     return [...volumes].sort((a,b) => a-b).map(volume => ({ volume, current: monthlyProfit(draft, volume).afterFixed / 100, original: monthlyProfit(comparisonDraft, volume).afterFixed / 100 }))
@@ -267,7 +268,7 @@ export default function Pricing({ access, onAccessRevoked }) {
   function restoreReferenceRates() {
     const defaults = newPricingDraft()
     const next = applyPricingPreset({ ...draft, calculationModel: 'reference-v2', platformFee: 1.07, transactionCap: 0, transactionIncludesShipping: true, voucherPct: 5, exclusivePct: 5, feeNote: defaults.feeNote, programs: Object.fromEntries(PRICING_PROGRAMS.map(p => [p.key, { enabled: draft.programs[p.key].enabled, rate: p.defaultRate }])) }, { category: PRICING_CATEGORIES.some(c => c.name === draft.category) ? draft.category : defaults.category, storeType: draft.storeType, payment: PRICING_PAYMENTS.some(p => p.id === draft.payment) ? draft.payment : defaults.payment })
-    setDraft(next); setReference(normalizePricingDraft(next)); setDirty(true); setError(''); setMessage('โหลดค่าพื้นฐานตามเว็บอ้างอิงแล้ว · สวิตช์และต้นทุนที่กรอกยังอยู่')
+    setDraft(next); setDirty(true); setError(''); setMessage('โหลดค่าพื้นฐานตามเว็บอ้างอิงแล้ว · แผนฐานที่ใช้เทียบยังอยู่')
   }
 
   const componentTotal = draft.kind === 'bundle' && result.valid ? result.unitCost : null
@@ -355,11 +356,12 @@ export default function Pricing({ access, onAccessRevoked }) {
       </div>
 
       <details className="pricing-simulation pricing-fold"><summary>จำลองยอดขายและดูกราฟ <ChevronDown size={14} /></summary><div className="pricing-section-heading"><div><div className="pricing-eyebrow">WHAT IF</div><h2>ถ้าเปลี่ยนราคา กำไรจะเป็นอย่างไร?</h2><p>ปรับยอดขายเพื่อจำลองผล ไม่ใช่การทำนายว่ายอดจะเพิ่มหรือลด</p></div><button className="pricing-button" disabled={!result.valid} onClick={() => {setReference(normalizePricingDraft(draft));setComparisonMode('snapshot');setMessage('ตั้งแผนปัจจุบันเป็นฐานเปรียบเทียบแล้ว')}}><Check size={15} /> ใช้แผนนี้เป็นฐานเทียบ</button></div>
+        <p className="pricing-sales-basis">{!comparisonDraft ? 'แผนฐานเป็นคนละสินค้า/ตัวเลือก กดใช้แผนนี้เป็นฐานเทียบก่อนดูกราฟ' : comparisonMode==='price' ? 'แผนฐานใช้ราคาอ้างอิง โดยใช้ต้นทุนและค่าธรรมเนียมเดียวกับแผนปัจจุบัน' : `แผนฐาน: ${reference.name} · ราคา ${money(Number(reference.price)*100)} · ล็อกต้นทุนและค่าธรรมเนียมไว้`}</p>
         {draft.salesSnapshot && <p className="pricing-sales-basis">ฐานจำลอง: {draft.salesSnapshot.units.toLocaleString('th-TH')} หน่วย จาก {draft.salesSnapshot.days} วัน ({draft.salesSnapshot.from} ถึง {draft.salesSnapshot.to}){Number(draft.monthlyVolume)!==draft.salesSnapshot.suggestedMonthlyVolume ? ' · ปรับจำนวนจำลองเองแล้ว' : ''}</p>}
         <div className="pricing-simulation-controls"><Field label={`ยอดขายจำลอง / เดือน (${unitLabel})`} value={draft.monthlyVolume} onChange={v => update('monthlyVolume',v)} unit={unitLabel} step="1" /><Field label="ค่าใช้จ่ายคงที่ที่จัดสรรให้แผน / เดือน" value={draft.fixedCost} onChange={v => update('fixedCost',v)} /><div className="pricing-monthly" aria-live="polite"><span>{Number(draft.fixedCost)>0 ? 'กำไรจำลองหลังค่าใช้จ่ายคงที่' : 'กำไรจำลองก่อนค่าใช้จ่ายคงที่'}</span><strong>{monthly ? money(monthly.afterFixed) : 'รอข้อมูลครบ'}</strong><small>{monthly ? `${integer(monthly.orders)} ออเดอร์ / เดือน ตามจำนวนหน่วยต่อออเดอร์ที่ตั้งไว้` : 'กรอกสมมติฐานก่อนดูกราฟ'}</small></div></div>
         <div className="pricing-chart-grid"><article className="pricing-chart"><h3>ราคาขายกับกำไรต่อ{unitLabel}</h3><p>{draft.calculationModel !== 'reference-v2' && draft.exclusiveEnabled ? 'กำลังใช้ Exclusive Price กำไรจึงคงที่เมื่อปรับราคาปกติ' : 'จุดตัดศูนย์คือราคาที่เริ่มครอบคลุมค่าใช้จ่ายผันแปร'}</p><div className="pricing-chart-area">{priceData.length ? <ResponsiveContainer width="100%" height={260}><LineChart data={priceData} margin={{top:16,right:20,bottom:24,left:4}} accessibilityLayer><CartesianGrid stroke={chartColors.border} vertical={false} /><XAxis dataKey="price" type="number" domain={['dataMin','dataMax']} tickCount={4} tick={{fill:chartColors.axis,fontSize:12}} label={{value:'ราคาขาย (บาท / หน่วย)',position:'bottom',offset:6,fill:chartColors.axis}} /><YAxis width={62} tick={{fill:chartColors.axis,fontSize:12}} label={{value:'กำไร (บาท)',angle:-90,position:'insideLeft',fill:chartColors.axis}} /><Tooltip content={<ChartTooltip unit="บาท / หน่วย" />} /><ReferenceLine y={0} stroke={chartColors.axis} /><ReferenceLine x={Number(draft.price)} stroke={chartColors.current} strokeDasharray="3 3" /><Line name="กำไรต่อหน่วย" type="linear" dataKey="profit" stroke={chartColors.current} strokeWidth={2.5} dot={false} activeDot={{r:5}} isAnimationActive={false} /></LineChart></ResponsiveContainer> : <div className="pricing-chart-placeholder">กรอกข้อมูลให้ครบเพื่อดูกราฟ</div>}</div></article>
           <article className="pricing-chart"><h3>ยอดขายกับกำไรต่อเดือน</h3><p>เทียบแผนฐานกับแผนที่กำลังปรับ · รวมค่าใช้จ่ายคงที่ที่ระบุ</p><div className="pricing-chart-area">{volumeData.length ? <ResponsiveContainer width="100%" height={260}><BarChart data={volumeData} margin={{top:16,right:12,bottom:24,left:4}} accessibilityLayer><CartesianGrid stroke={chartColors.border} vertical={false} /><XAxis dataKey="volume" tick={{fill:chartColors.axis,fontSize:12}} interval="preserveStartEnd" label={{value:`ยอดขาย (${unitLabel} / เดือน)`,position:'bottom',offset:6,fill:chartColors.axis}} /><YAxis width={62} tickFormatter={v => Math.abs(v)>=1000?`${v/1000}k`:v} tick={{fill:chartColors.axis,fontSize:12}} /><Tooltip content={<ChartTooltip unit={`${unitLabel} / เดือน`} />} /><Legend verticalAlign="top" height={30} /><ReferenceLine y={0} stroke={chartColors.axis} /><Bar name="แผนฐาน" dataKey="original" fill={chartColors.original} radius={[4,4,0,0]} isAnimationActive={false} /><Bar name="แผนปัจจุบัน" dataKey="current" fill={chartColors.current} radius={[4,4,0,0]} isAnimationActive={false} /></BarChart></ResponsiveContainer> : <div className="pricing-chart-placeholder">กรอกข้อมูลให้ครบเพื่อดูกราฟ</div>}</div></article></div>
-      </details><footer className="pricing-footer">ค่าธรรมเนียมและโปรแกรมเป็นสมมติฐานที่ผู้ใช้ระบุ · ข้อมูลนี้ใช้วางแผนตั้งราคา</footer>
+      </details><footer className="pricing-footer">ปัดเงินทีละรายการถึงสตางค์ · อัตราเป็นสมมติฐานสำหรับวางแผนตั้งราคา</footer>
     </>}
     </fieldset>
   </div>
