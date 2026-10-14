@@ -17,6 +17,10 @@ const fmtLastMovementAt = (iso) => {
 
 // เหมือน statusOf ฝั่ง api/_lib/inventory.js — แต่รับ safety stock ที่คำนวณสดจากสูตร lead time
 // ด้วย (effectiveSafety) ไม่ใช่แค่เลขที่เซฟไว้ในชีต ไม่งั้นสถานะ/แนะนำสั่งซื้อจะไม่ขยับตามสูตรเลย
+// ทุกสินค้าต้องมีขั้นต่ำอย่างน้อย 1 เสมอ (owner ขอ 2026-10-14) แม้ยอดขาย/ยอดใช้น้อยจนสูตรปัดเป็น 0 — ยกเว้น ZZ (เลิกขายแล้ว)
+const MIN_SAFETY = 1
+const withMinSafety = (sku, v) => (/^ZZ/i.test(String(sku)) ? v : Math.max(MIN_SAFETY, Number(v) || 0))
+
 const statusOf = (balance, safetyStock) => {
   if (balance <= 0) return 'หมด'
   if (safetyStock > 0 && balance <= safetyStock) return 'ใกล้หมด'
@@ -361,12 +365,12 @@ export default function Inventory() {
       const salesEstimated = Boolean(sales?.estimated)
       const leadTimeTotal = (it.lead_time_production || 0) + (it.lead_time_transport || 0)
       const computedSafety = calcSuggestedSafety(dailyAvg, leadTimeTotal, it.ship_freight)
-      const effectiveSafety = computedSafety !== null ? computedSafety : it.safety_stock
+      const effectiveSafety = withMinSafety(sku, computedSafety !== null ? computedSafety : it.safety_stock)
       // กำลังปรับ lead time ชั่วคราวอยู่ — คำนวณ "ขั้นต่ำปกติ" คู่กันไว้ด้วย (จาก lead time ตัวจริงที่สำรองไว้)
       // จะได้เทียบเห็นว่าต่างจากตอนนี้แค่ไหน ไม่ใช่เห็นแค่เลขเดียวแล้วไม่รู้ว่าค่าไหนคือของจริง (owner ขอ)
       const normalLeadTimeTotal = it.lead_time_temp_active ? (it.lead_time_production_saved || 0) + (it.lead_time_transport_saved || 0) : leadTimeTotal
       const normalComputedSafety = it.lead_time_temp_active ? calcSuggestedSafety(dailyAvg, normalLeadTimeTotal, it.ship_freight) : computedSafety
-      const normalSafety = it.lead_time_temp_active ? (normalComputedSafety !== null ? normalComputedSafety : it.safety_stock) : effectiveSafety
+      const normalSafety = it.lead_time_temp_active ? withMinSafety(sku, normalComputedSafety !== null ? normalComputedSafety : it.safety_stock) : effectiveSafety
       // วัสดุแพ็คเกจจิ้ง — ไม่ track ยอดคงเหลือจริง (คนหน้างานเช็คสต็อกเอง) ระบบเก็บแค่ขั้นต่ำ/lead time
       // ไว้อ้างอิง ไม่คำนวณสถานะหมด/ใกล้หมดจากยอด balance ที่ไม่มีความหมาย (นิ่งอยู่ 0 ตลอด)
       const effectiveStatus = isPackaging ? null : statusOf(it.balance, effectiveSafety)
