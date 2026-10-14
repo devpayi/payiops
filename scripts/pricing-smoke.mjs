@@ -8,6 +8,7 @@ import handler from '../api/sheet-tools.js'
 import { signToken } from '../api/_lib/auth.js'
 import { pricingConfigured } from '../api/_lib/pricingStore.js'
 import { newPricingDraft } from '../shared/pricing.js'
+import { pricingAccounts } from '../api/_lib/pricing.js'
 
 assert.ok(process.env.AUTH_SECRET && pricingConfigured(), 'Run pricing-preflight first')
 async function call(user, action, method='GET', body={}) {
@@ -17,12 +18,9 @@ async function call(user, action, method='GET', body={}) {
 }
 assert.equal((await call(null,'access')).code,401)
 assert.equal((await call('other-dev','bootstrap')).code,403)
-for(const user of ['dev']) {
+for(const user of pricingAccounts()) {
   const access=await call(user,'access');assert.equal(access.code,200);assert.equal(access.data.allowed,true);assert.equal(access.data.demo,false)
 }
-assert.equal((await call('boss','access')).data.allowed,false)
-for(const action of ['bootstrap','sales','recover']) assert.equal((await call('boss',action)).code,403)
-assert.equal((await call('boss','save-scenario','POST',{})).code,403)
 const bootstrap=await call('dev','bootstrap');assert.equal(bootstrap.code,200);assert.equal(bootstrap.data.storageConfigured,true);assert.ok(!bootstrap.data.storageError)
 console.log(`PASS authenticated routes; Ops catalog ${bootstrap.data.catalog.length} products; private history readable`)
 if (process.argv.includes('--write-sample')) {
@@ -38,5 +36,5 @@ if (process.argv.includes('--write-sample')) {
   assert.equal(recovered.data.record.result.profit,18106)
   const duplicate=await call('dev','save-scenario','POST',body)
   assert.equal(duplicate.code,200);assert.equal(duplicate.data.record.revisionId,saved.data.record.revisionId)
-  console.log('PASS real private Sheets save / dev readback / duplicate protection; boss denied; one labelled RELEASE-CHECK sample retained')
+  console.log('PASS real private Sheets save / readback / duplicate protection; one labelled RELEASE-CHECK sample retained')
 }

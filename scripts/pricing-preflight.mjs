@@ -8,7 +8,7 @@ let failures = 0
 const check = (label, ok) => { console.log(`${ok ? 'PASS' : 'BLOCK'} ${label}`); if (!ok) failures++ }
 check('AUTH_SECRET configured (at least 32 characters)', (process.env.AUTH_SECRET || '').length >= 32)
 check('Private pricing sheet differs from Ops / archive / HR', pricingConfigured())
-check('Owner review account allowlist is exactly dev', process.env.PRICING_ALLOWED_USERS?.trim() === 'dev' && pricingAccounts().join(',') === 'dev')
+check('Account allowlist contains only approved dev/boss accounts', pricingAccounts().length > 0 && String(process.env.PRICING_ALLOWED_USERS ?? 'dev,boss').split(',').every(v=>['dev','boss'].includes(v.trim().toLowerCase())))
 for (const key of ['GOOGLE_SERVICE_ACCOUNT_EMAIL', 'GOOGLE_PRIVATE_KEY', 'SHEET_ID']) check(`${key} configured`, Boolean(process.env[key]?.trim()))
 
 if (process.argv.includes('--online') && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY && process.env.SHEET_ID) {

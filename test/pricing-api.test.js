@@ -10,6 +10,20 @@ function response() { return { code: 200, headers: {}, status(code) {this.code=c
 function env(t, changes) { const before = Object.fromEntries(Object.keys(changes).map(k=>[k,process.env[k]]));Object.assign(process.env, changes); t.after(()=>{for(const [k,v] of Object.entries(before)) if(v===undefined)delete process.env[k];else process.env[k]=v}) }
 const request = (u, method='GET', action='access', body={}) => ({ user:{u,role:'dev'},method,query:{action},body })
 
+test('boss can read, save and recover plans; explicit dev-only override can revoke access', async t => {
+  env(t,{AUTH_SECRET:'test-boss-release',PRICING_SHEET_ID:'private',SHEET_ID:'main',PRICING_ALLOWED_USERS:'dev,boss'})
+  delete process.env.PRICING_ALLOWED_USERS // Approved rollout works without a Vercel env change.
+  const records=[]
+  const services={loadCatalog:async()=>({catalog:[],recipes:[]}),listRevisions:async()=>records,appendRevision:async r=>records.push(r),loadSales:async()=>({days30:{units:2}})}
+  const bootstrap=response();await opPricing(request('boss','GET','bootstrap'),bootstrap,services);assert.equal(bootstrap.code,200)
+  const sales=response();await opPricing({...request('boss','GET','sales'),query:{action:'sales',sku:'PY001',business:'Payi'}},sales,services);assert.equal(sales.code,200)
+  const body={requestId:'00000000-0000-0000-0000-000000000011',draft:newPricingDraft()}
+  const saved=response();await opPricing(request('boss','POST','save-scenario',body),saved,services);assert.equal(saved.code,200);assert.equal(saved.data.record.createdBy,'boss')
+  const recovered=response();await opPricing({...request('dev','GET','recover'),query:{action:'recover',requestId:body.requestId}},recovered,services);assert.equal(recovered.data.record.revisionId,saved.data.record.revisionId)
+  process.env.PRICING_ALLOWED_USERS='dev'
+  const denied=response();await opPricing(request('boss','GET','bootstrap'),denied,services);assert.equal(denied.code,403)
+})
+
 test('approved store defaults only in production and keeps dev-only API access', async t => {
   env(t,{VERCEL_ENV:'production',PRICING_SHEET_ID:'',SHEET_ID:'main',AUTH_SECRET:'production-test-secret',PRICING_ALLOWED_USERS:'dev'})
   assert.equal(pricingConfigured(),true)
@@ -27,24 +41,24 @@ test('approved store defaults only in production and keeps dev-only API access',
   process.env.PRICING_SHEET_ID='';process.env.SHEET_ID=productionId;assert.equal(pricingConfigured(),false)
 })
 
-test('owner review blocks boss on every Pricing route even with stale dev,boss configuration', async t => {
+test('unapproved accounts are denied on every route regardless of role', async t => {
   env(t,{AUTH_SECRET:'test-review-only',PRICING_ALLOWED_USERS:'dev,boss',PRICING_SHEET_ID:'private-test',SHEET_ID:'public-test'})
   let touched=false
   const services={loadCatalog:async()=>{touched=true},listRevisions:async()=>{touched=true},appendRevision:async()=>{touched=true},loadSales:async()=>{touched=true}}
   for(const role of ['boss','dev']) {
     const access=response()
-    await sheetTools({method:'GET',query:{op:'pricing',action:'access'},headers:{'x-api-token':signToken({u:'boss',role})}},access)
+    await sheetTools({method:'GET',query:{op:'pricing',action:'access'},headers:{'x-api-token':signToken({u:'other-dev',role})}},access)
     assert.equal(access.data.allowed,false)
     for(const [method,action] of [['GET','bootstrap'],['GET','sales'],['GET','recover'],['POST','save-scenario']]) {
       const res=response()
-      await opPricing({...request('boss',method,action),user:{u:'boss',role}},res,services)
+      await opPricing({...request('other-dev',method,action),user:{u:'other-dev',role}},res,services)
       assert.equal(res.code,403)
     }
   }
   assert.equal(touched,false)
   delete process.env.PRICING_ALLOWED_USERS
   const dev=response();await opPricing(request('dev'),dev,services);assert.equal(dev.data.allowed,true)
-  const boss=response();await opPricing(request('boss'),boss,services);assert.equal(boss.data.allowed,false)
+  const boss=response();await opPricing(request('boss'),boss,services);assert.equal(boss.data.allowed,true)
 })
 
 test('pricing store cannot point to Ops, archive, or HR', t => {
@@ -61,13 +75,13 @@ test('pricing API privacy and persistence boundaries', async t => {
   const records=[]
   let writes=0
   const services={listRevisions:async()=>records,appendRevision:async r=>{writes++;records.push(r)},readSheet:async()=>[]}
-  for(const user of ['dev','boss']) {const res=response();await opPricing(request(user),res,services);assert.equal(res.data.allowed,user=='dev')}
+  for(const user of ['dev','boss']) {const res=response();await opPricing(request(user),res,services);assert.equal(res.data.allowed,true)}
   const other=response();await opPricing(request('other-dev','GET','bootstrap'),other,services);assert.equal(other.code,403);assert.equal(writes,0)
   process.env.PRICING_ALLOWED_USERS='boss'
   const revoked=response();await opPricing(request('dev','POST','save-scenario',{draft:newPricingDraft(),requestId:'00000000-0000-0000-0000-000000000001'}),revoked,services);assert.equal(revoked.code,403)
   process.env.PRICING_ALLOWED_USERS='dev,boss'
   const unauthenticated=response();await sheetTools({method:'GET',query:{op:'pricing',action:'access'},headers:{}},unauthenticated);assert.equal(unauthenticated.code,401)
-  const authenticated=response();await sheetTools({method:'GET',query:{op:'pricing',action:'access'},headers:{'x-api-token':signToken({u:'boss',role:'boss'})}},authenticated);assert.equal(authenticated.data.allowed,false)
+  const authenticated=response();await sheetTools({method:'GET',query:{op:'pricing',action:'access'},headers:{'x-api-token':signToken({u:'boss',role:'boss'})}},authenticated);assert.equal(authenticated.data.allowed,true)
   const arbitraryDev=response();await sheetTools({method:'GET',query:{op:'pricing',action:'bootstrap'},headers:{'x-api-token':signToken({u:'other-dev',role:'dev'})}},arbitraryDev);assert.equal(arbitraryDev.code,403)
   const body={draft:newPricingDraft(),requestId:'00000000-0000-0000-0000-000000000001'}
   const saved=response();await opPricing(request('dev','POST','save-scenario',body),saved,services);assert.equal(saved.code,200);assert.equal(writes,1);assert.equal(saved.data.record.createdBy,'dev');assert.equal(saved.data.record.result.profit,18106)

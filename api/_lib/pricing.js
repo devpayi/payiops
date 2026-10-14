@@ -5,9 +5,8 @@ import { appendPricingRevision, listPricingRevisions, pricingConfigured } from '
 import { calculatePricing, normalizePricingDraft, PRICING_ENGINE_VERSION, PRICING_SCHEMA_VERSION } from '../../shared/pricing.js'
 
 export function pricingAccounts() {
-  // Owner review rollout: even an old dev,boss environment must not expose this
-  // module to boss. Expand this ceiling only after the owner approves that release.
-  return String(process.env.PRICING_ALLOWED_USERS ?? 'dev').split(',').map(v => v.trim().toLowerCase()).filter(v => v === 'dev')
+  // Owner-approved accounts only. A broad role never grants Pricing access.
+  return String(process.env.PRICING_ALLOWED_USERS ?? 'dev,boss').split(',').map(v => v.trim().toLowerCase()).filter(v => ['dev', 'boss'].includes(v))
 }
 
 export function hasPricingAccess(user) {
