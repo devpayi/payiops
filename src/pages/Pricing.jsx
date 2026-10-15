@@ -14,6 +14,7 @@ import './ShopeeUltraman.css'
 import PricingHero from '../components/PricingHero.jsx'
 import TikTokPricing from './TikTokPricing.jsx'
 import { isTikTokPlan } from '../../shared/tiktokPricing.js'
+import './PricingTypography.css'
 
 const money = cents => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', maximumFractionDigits: 2 }).format(cents / 100)
 const integer = n => Number(n).toLocaleString('th-TH', { maximumFractionDigits: 0 })

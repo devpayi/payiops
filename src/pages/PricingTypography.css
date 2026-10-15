@@ -1,0 +1,120 @@
+/* Comfortable reading size for pricing only; keep the existing column layout. */
+.pricing-page:is(.pricing-shopee,.pricing-tiktok) .pricing-field {
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.pricing-page:is(.pricing-shopee,.pricing-tiktok) .pricing-field :is(input,select) {
+  font-size: 13.5px;
+  min-height: 33px;
+}
+.pricing-page:is(.pricing-shopee,.pricing-tiktok) .pricing-input-wrap > span {
+  font-size: 11px;
+}
+.pricing-page:is(.pricing-shopee,.pricing-tiktok) > .pricing-heading h1 {
+  font-size: 20.5px;
+}
+.pricing-page:is(.pricing-shopee,.pricing-tiktok) .pricing-tabs button {
+  font-size: 12.5px;
+}
+.pricing-page:is(.pricing-shopee,.pricing-tiktok) .pricing-notice,
+.pricing-page:is(.pricing-shopee,.pricing-tiktok) .pricing-help {
+  font-size: 11px;
+}
+.pricing-page.pricing-shopee .pricing-section-title h2,
+.pricing-page.pricing-shopee .shopee-inline-fees > h3,
+.pricing-page.pricing-shopee .shopee-inline-promotions > h3 {
+  font-size: 13.5px;
+}
+.pricing-page.pricing-shopee .pricing-segmented button,
+.pricing-page.pricing-shopee .shopee-promotion-grid .pricing-program-label strong {
+  font-size: 12.5px;
+}
+.pricing-page.pricing-shopee .shopee-promotion-grid > .pricing-program {
+  min-height: 30px;
+}
+.pricing-page.pricing-shopee .shopee-promotion-grid .pricing-program > .pricing-field input {
+  font-size: 12.5px;
+  min-height: 30px;
+}
+.pricing-page.pricing-shopee :is(.pricing-product-details,.shopee-order-details,.shopee-rate-editor,.shopee-fee-settings) > summary {
+  font-size: 12.5px;
+  min-height: 36px;
+}
+.pricing-page.pricing-shopee .shopee-rate-summary > div {
+  font-size: 11px;
+}
+.pricing-page.pricing-shopee .shopee-sale-field .pricing-field input {
+  font-size: 24.5px;
+}
+.pricing-page.pricing-shopee .shopee-sale-field .pricing-field > span:first-child,
+.pricing-page.pricing-shopee .shopee-price-slider > span:first-child,
+.pricing-page.pricing-shopee .shopee-simple-ledger > div {
+  font-size: 12.5px;
+}
+.pricing-page.pricing-shopee .pricing-receipt-title h2 {
+  font-size: 15.5px;
+}
+.pricing-page.pricing-shopee .pricing-profit strong {
+  font-size: 39px;
+}
+.pricing-page.pricing-shopee .pricing-profit > span,
+.pricing-page.pricing-shopee .shopee-live-heading h3 {
+  font-size: 12.5px;
+}
+.pricing-page.pricing-shopee .shopee-monthly-answer strong {
+  font-size: 25px;
+}
+.pricing-page.pricing-shopee .shopee-volume-source,
+.pricing-page.pricing-shopee .shopee-monthly-answer > span {
+  font-size: 11px;
+}
+.pricing-page.pricing-shopee .pricing-save > .primary,
+.pricing-page.pricing-shopee .shopee-breakdown > summary {
+  font-size: 12.5px;
+}
+.pricing-page.pricing-tiktok .mall-summary table {
+  font-size: 12.5px;
+}
+.pricing-page.pricing-tiktok .mall-summary thead th {
+  font-size: 11px;
+}
+.pricing-page.pricing-tiktok .mall-summary tr.profit :is(th,td) {
+  font-size: 14.5px;
+}
+.pricing-page.pricing-tiktok .mall-summary-title h2,
+.pricing-page.pricing-tiktok .mall-section h2 {
+  font-size: 13.5px;
+}
+.pricing-page.pricing-tiktok .mall-summary-title button {
+  font-size: 11px;
+}
+.pricing-page.pricing-tiktok .mall-row {
+  font-size: 12.5px;
+  line-height: 1.4;
+  min-height: 37px;
+}
+.pricing-page.pricing-tiktok .mall-value input {
+  font-size: 14.5px;
+}
+.pricing-page.pricing-tiktok .mall-value span {
+  font-size: 11px;
+}
+.pricing-page.pricing-tiktok .mall-total,
+.pricing-page.pricing-tiktok .mall-roi {
+  font-size: 12px;
+}
+.pricing-page.pricing-tiktok .mall-roi strong {
+  font-size: 25px;
+}
+.pricing-page.pricing-tiktok .mall-seller-note {
+  font-size: 11px;
+}
+.pricing-page.pricing-tiktok .mall-summary-input {
+  font-size: 13.5px;
+  min-height: 30px;
+}
+@media(max-width:480px) {
+  .pricing-page:is(.pricing-shopee,.pricing-tiktok) .pricing-field :is(input,select) {
+    font-size: 16px;
+  }
+}

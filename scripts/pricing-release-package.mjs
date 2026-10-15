@@ -11,6 +11,7 @@ const files = [
   'shared/roles.js','shared/pricing.js','shared/pricingCatalog.js','shared/pricingPresets.js','shared/pricingComparison.js','shared/pricingFamilies.js','shared/productGroup.js','api/_lib/productGroup.js',
   'src/App.jsx','src/pages/Pricing.jsx','src/pages/TikTokPricing.jsx','src/pages/TikTokWorksheet.jsx','src/pages/TikTokWorksheet.css','src/pages/Pricing.css','src/data/pricingDemo.js','shared/tiktokPricing.js','test/tiktok-pricing.test.js',
   'src/pages/ShopeeCompact.css','src/pages/ShopeeUltraman.css','src/pages/TikTokUltraman.css','src/components/PricingHero.jsx','test/tiktok-worksheet-parity.test.js',
+  'src/pages/PricingTypography.css',
   'test/pricing.test.js','test/pricing-api.test.js','test/pricing-data.test.js','test/pricing-families.test.js',
   'scripts/pricing-preflight.mjs','scripts/pricing-smoke.mjs','scripts/pricing-release-package.mjs',
   'docs/pricing-setup.th.md','docs/payi-pricing-plan.th.md',
