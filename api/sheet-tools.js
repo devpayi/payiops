@@ -1067,27 +1067,8 @@ async function handleStockOrderSearchReply(event, queryOverride = '') {
   const query = rawText.trim().toLowerCase()
   if (!query) return replyMessage(replyToken, [{ type: 'text', text: 'พิมพ์ชื่อสินค้าหรือ SKU ได้เลยค่ะ (สั่งหลายรายการทีเดียวก็ได้ บรรทัดละ 1 รายการ เช่น sky 35-36 = 10 หรือ 37-38 20)' }])
 
-  // พิมพ์ชื่อกลุ่มตรงเป๊ะ (ตั้งไว้ที่ order_group ในหน้า Inventory เช่น "รองเท้าเพื่อสุขภาพ") = สั่งทั้งกลุ่ม
-  // ทีเดียว ไม่ระบุจำนวนต่อ SKU (นับจริงตอนแจ้งของเข้า/Match) — ตัดหน้าก่อนไปเข้า flow ค้นหาสินค้าทีละตัว
-  // ปกติ เพราะไม่ต้องถามจำนวนเลย จบในข้อความเดียว ต่างจากสั่งรายตัวที่ต้องถามทีละรายการ
-  if (!rawText.includes('\n')) {
-    const groups = await loadOrderGroups()
-    const groupMatch = groups.find((g) => g.group.toLowerCase() === query)
-    if (groupMatch) {
-      const manager = await findManagerLink(lineUserId)
-      if (!manager) { await clearStockOrderSession(lineUserId); return replyMessage(replyToken, [{ type: 'text', text: 'เฉพาะบอส/dev สั่งของผ่านไลน์ได้ค่ะ' }]) }
-      const orderDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
-      await clearStockOrderSession(lineUserId)
-      try {
-        await createOrderRequestForGroup({ group: groupMatch.group, order_date: orderDate, note: 'สั่งจาก LINE (ทั้งกลุ่ม)' }, manager.name, manager.role)
-        const list = groupMatch.items.map((it) => `• ${it.display_name}`).join('\n')
-        return replyMessage(replyToken, [{ type: 'text', text: `สั่ง "${groupMatch.group}" ทั้งกลุ่มเรียบร้อยค่ะ (${groupMatch.items.length} รายการ ไม่ระบุจำนวน นับจริงตอนของเข้า):\n${list}` }])
-      } catch (e) {
-        return replyMessage(replyToken, [{ type: 'text', text: `สั่งไม่สำเร็จ: ${e.message}` }])
-      }
-    }
-  }
-
+  // (เดิมตรงนี้พิมพ์ชื่อกลุ่ม order_group แล้วสั่งทั้งกลุ่มทันทีโดยไม่ถามจำนวน — owner ไม่ต้องการ เอาออก 2026-10-15
+  //  ต้องระบุจำนวนทุกรายการเองเสมอ ผ่านการค้นหาสินค้าทีละรายการด้านล่าง)
   const items = await loadOrderableItems()
   const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
   const singleLineHasQty = lines.length === 1 && splitQueryAndQty(lines[0]).qtyText !== null
