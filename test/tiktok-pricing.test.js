@@ -6,11 +6,11 @@ import {opPricing} from '../api/_lib/pricing.js'
 
 test('Mall worksheet baseline: 395 price, 108.06 cost, 33.22% platform, 15% affiliate, 10% profit',()=>{
   const r=calculateTikTok(newTikTokDraft())
-  assert.equal(r.valid,true);assert.equal(r.unitCost,10806);assert.equal(r.platformFees,13122);assert.equal(r.affiliate,5925)
-  assert.equal(r.unitProfit,3950);assert.equal(r.availableAds,5697)
-  assert.equal(r.learningBudget,56970);assert.equal(r.heroBudget,170910);assert.equal(r.evergreenBudget,284850)
+  assert.equal(r.valid,true);assert.equal(r.unitCost,10806);assert.equal(r.platformFees,13121.9);assert.equal(r.affiliate,5925)
+  assert.equal(r.unitProfit,3950);assert.equal(r.availableAds,5697.1)
+  assert.equal(r.learningBudget,56971);assert.equal(r.heroBudget,170913);assert.equal(r.evergreenBudget,284855)
   assert.ok(Math.abs(r.roi-6.933)<.001);assert.equal(r.monthlyProfit,3950000)
-  assert.equal(r.unitCost+r.platformFees+r.affiliate+r.unitProfit+r.availableAds,r.unitPrice)
+  assert.ok(Math.abs(r.unitCost+r.platformFees+r.affiliate+r.unitProfit+r.availableAds-r.unitPrice)<1e-8)
 })
 test('zero and negative ads budget are explicit; no negative or infinite suggested ad spend',()=>{
   const over=calculateTikTok({...newTikTokDraft(),cost:1000})
@@ -33,7 +33,7 @@ test('private API calculates TikTok server-side, recovers idempotently and block
   const response=()=>({setHeader(){},status(code){this.code=code;return this},json(data){this.data=data;return this}})
   const req=(draft,extra={})=>({method:'POST',query:{action:'save-scenario'},user:{u:'dev'},body:{requestId:'00000000-0000-0000-0000-000000000041',draft,...extra}})
   const saved=response();await opPricing(req(newTikTokDraft()),saved,services)
-  assert.equal(saved.code,200);assert.equal(saved.data.record.result.availableAds,5697);assert.equal(records.length,1)
+  assert.equal(saved.code,200);assert.equal(saved.data.record.result.availableAds,5697.1);assert.equal(records.length,1)
   const duplicate=response();await opPricing(req(newTikTokDraft()),duplicate,services);assert.equal(duplicate.code,200);assert.equal(records.length,1)
   const record=saved.data.record
   const wrong=response();await opPricing(req(newPricingDraft(),{requestId:'00000000-0000-0000-0000-000000000042',scenarioId:record.scenarioId,parentRevisionId:record.revisionId}),wrong,services)

@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState } from 'react'
-import { Check, ChevronDown, FolderOpen, LockKeyhole, Save, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Check, FolderOpen, LockKeyhole, Save, SlidersHorizontal, Trash2 } from 'lucide-react'
 import TikTokWorksheet from './TikTokWorksheet.jsx'
 import './TikTokWorksheet.css'
 import PRODUCT_MASTER from '../data/productMaster.json'
@@ -9,11 +9,6 @@ import { calculateTikTok, isTikTokPlan, newTikTokDraft, normalizeTikTokDraft } f
 
 const endpoint='/api/sheet-tools?op=pricing'
 const money=cents=>new Intl.NumberFormat('th-TH',{style:'currency',currency:'THB'}).format(cents/100)
-function Field({label,value,onChange,unit='บาท',max=1e7,step='0.01'}) {
-  const id=useId()
-  return <label className="pricing-field" htmlFor={id}><span>{label}</span><span className="pricing-input-wrap"><input id={id} type="number" inputMode="decimal" min="0" max={max} step={step} value={Number.isNaN(value)?'':value} onChange={e=>onChange(e.target.value)}/><span>{unit}</span></span></label>
-}
-
 export default function TikTokPricing({access,onAccessRevoked}) {
   const [draft,setDraft]=useState(newTikTokDraft)
   const [view,setView]=useState('calculator')
@@ -29,6 +24,10 @@ export default function TikTokPricing({access,onAccessRevoked}) {
   const [trash,setTrash]=useState(false)
   const [deleteId,setDeleteId]=useState(null)
   const [dirty,setDirty]=useState(false)
+  const [editing,setEditing]=useState(false)
+  const editSnapshot=useRef(null)
+  function beginEdit(){editSnapshot.current={draft:structuredClone(draft),dirty,active};setEditing(true)}
+  function cancelEdit(){if(editSnapshot.current){setDraft(editSnapshot.current.draft);setDirty(editSnapshot.current.dirty);setActive(editSnapshot.current.active)}setEditing(false);setError('')}
   const [openCandidate,setOpenCandidate]=useState(null)
   const requestRef=useRef(null)
   const alive=useRef(true)
@@ -61,7 +60,7 @@ export default function TikTokPricing({access,onAccessRevoked}) {
     setRevisions(prev=>prev.some(r=>r.revisionId===record.revisionId)?prev:[...prev,record])
     if(record.operation==='delete-scenario'||record.operation==='restore-scenario') {
       if(active?.scenarioId===record.scenarioId) setActive(record.deleted?null:record)
-    } else {setActive(record);setDirty(false)}
+    } else {setActive(record);setDirty(false);setEditing(false)}
     setPending(null);requestRef.current=null
   }
   async function submit(body) {
@@ -103,7 +102,7 @@ export default function TikTokPricing({access,onAccessRevoked}) {
   }
   function open(record,force=false) {
     if(dirty&&!force){setOpenCandidate(record);return}
-    setDraft(normalizeTikTokDraft(record.draft));setActive(record);setDirty(false);setView('calculator');setOpenCandidate(null);setMessage('เปิดแผน TikTok Mall แล้ว');setError('')
+    setDraft(normalizeTikTokDraft(record.draft));setActive(record);setDirty(false);setView('calculator');setEditing(false);setOpenCandidate(null);setMessage('เปิดแผน TikTok Mall แล้ว');setError('')
   }
   function selectFamily(key) {
     const family=groups.find(g=>g.key===key)
@@ -121,13 +120,13 @@ export default function TikTokPricing({access,onAccessRevoked}) {
     {openCandidate&&<div className="pricing-feedback"><span>มีข้อมูลยังไม่บันทึก เปิดแผนอื่นแทนหรือไม่?</span><button className="pricing-button" onClick={()=>open(openCandidate,true)}>เปิดแผน</button><button className="pricing-button" onClick={()=>setOpenCandidate(null)}>ยกเลิก</button></div>}
     <fieldset className="pricing-editor" disabled={busy||!!pending||loading}>
     {view==='plans'?<section className="pricing-saved"><div className="pricing-section-heading"><h2>{trash?'ถังขยะ TikTok Mall':'แผนราคา TikTok Mall'}</h2><button className="pricing-button subtle" onClick={()=>setTrash(!trash)}>{trash?'กลับรายการแผน':`ถังขยะ (${plans.filter(r=>r.deleted).length})`}</button><label className="pricing-search">ค้นหาแผน<input value={query} onChange={e=>setQuery(e.target.value)} placeholder="ชื่อสินค้า / ชื่อแผน"/></label></div>{!shown.length?<div className="pricing-empty"><FolderOpen size={32}/><h3>{trash?'ไม่มีแผนในถังขยะ':'ยังไม่มีแผน TikTok Mall'}</h3><p>คำนวณแล้วบันทึกไว้เปิดใช้ครั้งถัดไป</p></div>:<div className="pricing-plan-grid">{shown.map(record=><article className="pricing-plan-card" key={record.revisionId}><div className="pricing-plan-meta"><span>TikTok Mall</span><span>{record.draft.productSkus?.length?`รวม ${record.draft.productSkus.length} ตัวเลือก`:''}</span></div><h3>{record.draft.productName}</h3><p>{record.draft.name}</p><div className="pricing-plan-numbers"><div><small>ราคาขาย</small><strong>{money(record.result.unitPrice)}</strong></div><div><small>กำไรเป้าหมาย / ชิ้น</small><strong>{money(record.result.unitProfit)}</strong></div></div><small>{new Date(record.createdAt).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'})} · {record.createdBy}</small><div className="pricing-plan-actions">{!trash&&<button className="pricing-button" onClick={()=>open(record)}>แก้ไข</button>}<button className="pricing-button subtle" onClick={()=>trash?submit({action:'restore-scenario',requestId:crypto.randomUUID(),scenarioId:record.scenarioId,parentRevisionId:record.revisionId}):setDeleteId(record.scenarioId)}><Trash2 size={14}/>{trash?'กู้คืน':'ลบ'}</button></div>{deleteId===record.scenarioId&&<div className="pricing-delete-confirm"><span>ลบแผนนี้? กู้คืนได้จากถังขยะ</span><button className="pricing-button" onClick={()=>{setDeleteId(null);submit({action:'delete-scenario',requestId:crypto.randomUUID(),scenarioId:record.scenarioId,parentRevisionId:record.revisionId})}}>ยืนยันลบ</button><button className="pricing-button" onClick={()=>setDeleteId(null)}>ยกเลิก</button></div>}</article>)}</div>}</section>:<>
-    <div className="mall-controls"><label className="pricing-field">ธุรกิจ<select value={draft.business} onChange={e=>{setDraft({...newTikTokDraft(),business:e.target.value});setActive(null);setDirty(true)}}>{['Payi','Payi Outlet','กรอบรูป'].map(b=><option key={b}>{b}</option>)}</select></label><label className="pricing-field">เลือกสินค้าจาก Payi Ops<select value={draft.productGroupId} onChange={e=>selectFamily(e.target.value)}><option value="">เลือกสินค้า (รวมสี / ไซซ์)</option>{groups.filter(g=>g.business===draft.business&&g.kind==='single').map(g=><option key={g.key} value={g.key}>{g.name}</option>)}</select></label><label className="pricing-field">ชื่อสินค้า<input value={draft.productName} onChange={e=>update('productName',e.target.value)} maxLength={300}/></label></div>
+    <div className="mall-edit-toolbar"><span>{editing?'กำลังแก้ไข · กดบันทึกเพื่อเก็บตัวเลข':'ล็อกตัวเลขไว้แล้ว'}</span>{editing?<button className="pricing-button subtle" onClick={cancelEdit}>ยกเลิกการแก้ไข</button>:<button className="pricing-button" onClick={beginEdit}>แก้ไขตัวเลข</button>}</div>
+    <div className="mall-controls"><label className="pricing-field">ธุรกิจ<select value={draft.business} onChange={e=>{setDraft({...newTikTokDraft(),business:e.target.value});setActive(null);setDirty(true)}}>{['Payi','Payi Outlet','กรอบรูป'].map(b=><option key={b}>{b}</option>)}</select></label><label className="pricing-field">เลือกสินค้าจาก Payi Ops<select value={draft.productGroupId} onChange={e=>selectFamily(e.target.value)}><option value="">เลือกสินค้า (รวมสี / ไซซ์)</option>{groups.filter(g=>g.business===draft.business&&g.kind==='single').map(g=><option key={g.key} value={g.key}>{g.name}</option>)}</select></label><label className="pricing-field">ชื่อสินค้า<input value={draft.productName} onChange={e=>update('productName',e.target.value)} readOnly={!editing} maxLength={300}/></label></div>
     {!result.valid&&<div className="pricing-feedback error" role="status">{result.errors.join(' · ')}</div>}
     {result.valid&&result.availableAds<=0&&<div className="pricing-feedback error">{result.availableAds<0?'ต้นทุนเกินงบ '+money(-result.availableAds)+' ต่อชิ้น ต้องปรับราคาหรือลดต้นทุนเพื่อถึงกำไรเป้าหมาย':'ไม่มีงบเหลือสำหรับ Ads ตามกำไรเป้าหมายนี้'}</div>}
-    <TikTokWorksheet draft={draft} result={result} update={update}/>
-    <div className="mall-save"><label className="pricing-field">ชื่อแผนราคา<input maxLength={300} value={draft.name} onChange={e=>update('name',e.target.value)}/></label><button className="pricing-button primary" disabled={!result.valid} onClick={()=>save()}><Save size={16}/>{access?.demo?'เก็บแผนตัวอย่าง':active?'บันทึกการแก้ไข':'บันทึกแผน'}</button>{active&&<button className="pricing-button" onClick={()=>save(true)}>บันทึกเป็นแผนใหม่</button>}<small>{dirty?'มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก':''}</small></div>
-    <details className="mall-extra pricing-fold"><summary>สมมติฐานเพิ่มเติม / จำลองยอดขาย <ChevronDown size={16}/></summary><div className="pricing-fields"><Field label="ต้นทุนเพิ่มเติมตามชีต" value={draft.extraCost} onChange={v=>update('extraCost',v)}/><Field label="ยอดขายจำลอง / เดือน" value={draft.monthlyVolume} step="1" unit="ชิ้น" onChange={v=>update('monthlyVolume',v)}/></div><p className="pricing-help">ตามชีต: รวม VAT เป็นเปอร์เซ็นต์ของราคาขาย และบวกต้นทุนเพิ่ม 1.06 บาทใน COGS ค่าทั้งหมดเป็นสมมติฐานที่ปรับได้ ไม่ได้ดึงอัตราล่าสุดจาก TikTok</p>{result.valid&&<p>กำไรตามเป้าหมาย {money(result.monthlyProfit)} / เดือน · งบ Ads สูงสุด {money(result.monthlyAds)} / เดือน</p>}</details>
+    <TikTokWorksheet draft={draft} result={result} update={update} editing={editing}/>
+    <div className="mall-save"><label className="pricing-field">ชื่อแผนราคา<input readOnly={!editing} maxLength={300} value={draft.name} onChange={e=>update('name',e.target.value)}/></label><button className="pricing-button primary" disabled={!editing||!result.valid} onClick={()=>save()}><Save size={16}/>{access?.demo?'เก็บแผนตัวอย่าง':active?'บันทึกการแก้ไข':'บันทึกแผน'}</button>{active&&editing&&<button className="pricing-button" onClick={()=>save(true)}>บันทึกเป็นแผนใหม่</button>}<small>{dirty?'มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก':''}</small></div>
     </>}
-    </fieldset><p className="pricing-footer">ค่าพื้นฐานจากชีต Mall · ปัดรายรายการถึงสตางค์ · ใช้สำหรับวางแผนตั้งราคา</p>
+    </fieldset><p className="pricing-footer">ค่าพื้นฐานและสูตรจากชีต Mall · คำนวณทศนิยมต่อเนื่องตามต้นฉบับ</p>
   </div>
 }
