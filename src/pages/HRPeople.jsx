@@ -173,6 +173,7 @@ function RecordEditorForm({ row, headers, sections, onCancel, onSave }) {
   })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  const [q, setQ] = useState('') // ค้นหาช่องจากชื่อช่อง/หัวข้อ — ฟอร์มยาว ไม่ต้องเลื่อนหา
 
   const set = (key, value) => setVals((p) => ({ ...p, [key]: value }))
 
@@ -285,18 +286,33 @@ function RecordEditorForm({ row, headers, sections, onCancel, onSave }) {
     return <div key={it.key}><div style={editLabel}>{label}</div>{control}</div>
   }
 
+  const term = q.trim().toLowerCase()
+  const matches = (it, sec) => !term || (it.label || '').toLowerCase().includes(term) || sec.title.toLowerCase().includes(term)
+  const blocks = sections.map((sec, i) => ({
+    sec, i, items: sec.rows.flat().filter((it) => matches(it, sec)).map((it) => renderItem(it, sec)).filter(Boolean),
+  })).filter((b) => b.items.length)
+  const jump = (i) => { const el = document.getElementById(`edit-sec-${i}`); if (el) el.scrollIntoView({ block: 'start' }) }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {sections.map((sec) => {
-        const items = sec.rows.flat().map((it) => renderItem(it, sec)).filter(Boolean)
-        if (!items.length) return null
-        return (
-          <div key={sec.title} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--payi-text-strong)', borderBottom: '1px solid var(--payi-border)', paddingBottom: 4 }}>{sec.title}</div>
-            {items}
+      <div style={{ position: 'sticky', top: -24, zIndex: 2, background: 'var(--payi-surface)', padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 8, borderBottom: '1px solid var(--payi-border)' }}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาช่อง เช่น เบอร์ / ที่อยู่ / ชื่อเล่น" style={editInput} />
+        {!term && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {blocks.map((b) => (
+              <button key={b.sec.title} type="button" onClick={() => jump(b.i)}
+                style={{ border: '1px solid var(--payi-border)', background: 'var(--payi-surface-muted, transparent)', borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: 'pointer', color: 'var(--payi-text-strong)' }}>{b.sec.title}</button>
+            ))}
           </div>
-        )
-      })}
+        )}
+      </div>
+      {!blocks.length && <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>ไม่พบช่องที่ค้นหา</div>}
+      {blocks.map(({ sec, i, items }) => (
+        <div key={sec.title} id={`edit-sec-${i}`} style={{ display: 'flex', flexDirection: 'column', gap: 10, scrollMarginTop: 90 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--payi-text-strong)', borderBottom: '1px solid var(--payi-border)', paddingBottom: 4 }}>{sec.title}</div>
+          {items}
+        </div>
+      ))}
       {err && <div style={{ color: 'var(--payi-danger, #b91c1c)', fontSize: 13 }}>{err}</div>}
       <div style={{ position: 'sticky', bottom: -24, background: 'var(--payi-surface)', padding: '12px 0', display: 'flex', gap: 8, borderTop: '1px solid var(--payi-border)' }}>
         <button onClick={save} disabled={saving}
