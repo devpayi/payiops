@@ -1,7 +1,23 @@
-import { deriveGroup, buildOverrideMap } from './productGroup.js'
+import { deriveGroup, buildOverrideMap, normalizeGroupLabel, groupKey } from './productGroup.js'
 import { pricingProductKey, draftForPricingProduct } from './pricingCatalog.js'
 
 export const pricingFamilyCostKey = key => `family:${key}`
+
+// Pricing plans share a price across shoe sizes/colors. Keep the model name,
+// and leave grouping used by other Ops pages unchanged.
+function pricingGroup(product, overrides) {
+  if (!overrides.has(product.sku) && ['Payi','Payi Outlet'].includes(product.business) && /^รองเท้า/.test(product.name)) {
+    const sizeSuffix = /\s+(\d{2}(?:[\s/-]+\d{2})*)$/
+    const sizes = product.name.match(sizeSuffix)
+    if (sizes && sizes[1].split(/[\s/-]+/).every(n=>Number(n)>=20 && Number(n)<=50)) {
+      const base = product.name.replace(sizeSuffix,'').replace(/\(([^)]+)\)/g,(_,value)=>
+        /^(?:สี)?(?:ฟ้า(?:อ่อน|เบบี้บลู)?|ดำ|ขาว|แดง|ชมพู|เทา|น้ำเงิน|เขียว|เหลือง)$/.test(value.trim()) ? ' ' : ` ${value} `)
+      const label = normalizeGroupLabel(base)
+      return {key:groupKey(label),label}
+    }
+  }
+  return deriveGroup(product.name,product.sku,overrides)
+}
 
 export function buildPricingFamilies(catalog, aliases = []) {
   const overrides = new Map()
@@ -9,7 +25,7 @@ export function buildPricingFamilies(catalog, aliases = []) {
   for (const p of catalog) {
     if (!overrides.has(p.business)) overrides.set(p.business, buildOverrideMap(aliases.filter(a=>(a.business || 'Payi')===p.business)))
     const bundle = Boolean(p.recipeVariations?.length)
-    const group = bundle ? {key:`bundle:${p.sku}`,label:p.name} : deriveGroup(p.name,p.sku,overrides.get(p.business))
+    const group = bundle ? {key:`bundle:${p.sku}`,label:p.name} : pricingGroup(p,overrides.get(p.business))
     const key = JSON.stringify([p.business,group.key])
     if (!families.has(key)) families.set(key,{key,business:p.business,name:group.label,kind:bundle?'bundle':'single',skus:[],members:[]})
     const family=families.get(key)

@@ -8,6 +8,18 @@ import { loadPricingSales } from '../api/_lib/pricingData.js'
 const item=(sku,name,business='Payi',referencePrice=500,recipeVariations=[])=>({sku,name,business,referencePrice,recipeVariations,key:pricingProductKey(business,sku)})
 const catalog=[item('PY001','ถุงเท้าเจลส้น M'),item('PY002','ถุงเท้าเจลส้น L'),item('PY003','ถุงเท้าเจลฝ่า M'),item('PY001','ถุงเท้าเจลส้น M','Payi Outlet')]
 
+test('pricing combines numeric shoe sizes and colors, preserving models and explicit groups',()=>{
+  const shoes=[item('O1','รองเท้าเพื่อสุขภาพ Ocean 37 38'),item('O2','รองเท้าเพื่อสุขภาพ Ocean 39 40'),item('O3','รองเท้าเพื่อสุขภาพ Ocean(ฟ้า) 35 36'),item('S1','รองเท้าเพื่อสุขภาพ Sky 37 38'),item('S2','รองเท้าเพื่อสุขภาพ Sky(ฟ้าอ่อน) 35 36'),item('F1','รองเท้าสุขภาพ (หูคีบ) 36'),item('F2','รองเท้าสุขภาพ (หูคีบ) 37'),item('Y1','รองเท้า รุ่น 2024'),item('N1','สินค้า 38')]
+  const groups=buildPricingFamilies(shoes)
+  assert.deepEqual(groups.find(g=>g.name==='รองเท้าเพื่อสุขภาพ Ocean').skus,['O1','O2','O3'])
+  assert.deepEqual(groups.find(g=>g.name==='รองเท้าเพื่อสุขภาพ Sky').skus,['S1','S2'])
+  assert.deepEqual(groups.find(g=>g.name==='รองเท้าสุขภาพ หูคีบ').skus,['F1','F2'])
+  assert.ok(groups.some(g=>g.name==='รองเท้า รุ่น 2024'))
+  assert.ok(groups.some(g=>g.name==='สินค้า 38'))
+  const overridden=buildPricingFamilies(shoes,[{business:'Payi',master_sku:'O1',product_group:'รุ่นแยกที่กำหนดเอง'}])
+  assert.deepEqual(overridden.find(g=>g.name==='รุ่นแยกที่กำหนดเอง').skus,['O1'])
+})
+
 test('pricing picker merges colors/sizes into families, preserves business and distinct products/recipes',()=>{
   const groups=buildPricingFamilies([...catalog,item('PY015','แผ่นรองเท้า M ดำ'),item('PY016','แผ่นรองเท้า L ฟ้า'),item('SET-A','เซ็ต M','Payi',500,['shirt']),item('SET-B','เซ็ต L','Payi',500,['socks'])])
   const heel=groups.find(g=>g.business==='Payi'&&g.name==='ถุงเท้าเจลส้น')

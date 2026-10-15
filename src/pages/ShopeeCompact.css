@@ -1,0 +1,202 @@
+/* Shopee: one quiet form and one persistent result sheet. */
+.pricing-shopee{max-width:1200px}
+.pricing-shopee .pricing-workspace{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(340px,.9fr);gap:22px;align-items:start}
+.pricing-shopee .pricing-form-stack{display:flex;flex-direction:column;gap:0;min-width:0;background:#fff;border:1px solid #e0e5df;border-radius:12px;overflow:hidden}
+.pricing-shopee .pricing-form-stack>section,
+.pricing-shopee .pricing-form-stack>section:first-child{padding:20px;border:0;border-radius:0;background:none;box-shadow:none;margin:0}
+.pricing-shopee .pricing-form-stack>section+section{padding-top:8px}
+.pricing-shopee .pricing-section-title{gap:8px;margin-bottom:16px}
+.pricing-shopee .pricing-section-title>span:first-child{display:none}
+.pricing-shopee .pricing-section-title h2{font-size:13px;font-weight:500;color:#6d7c75;white-space:nowrap}
+.pricing-shopee .pricing-section-title:after{content:'';height:1px;background:#dce3d9;flex:1}
+.pricing-shopee .pricing-pill{display:none}
+.pricing-shopee .shopee-inline-fees>h3,.pricing-shopee .shopee-inline-promotions>h3{display:flex;align-items:center;gap:10px;color:#6d7c75;font-size:13px;font-weight:500;margin:0 0 16px}
+.pricing-shopee .shopee-inline-fees>h3:after,.pricing-shopee .shopee-inline-promotions>h3:after{content:'';flex:1;height:1px;background:#dce3d9}
+.pricing-shopee .pricing-segmented{background:#f7f9f6;border:1px solid #dce3d9;border-radius:7px;margin-bottom:16px;padding:3px}
+.pricing-shopee .pricing-segmented button{min-height:32px;font-size:12px;border-radius:5px}
+.pricing-shopee .pricing-segmented button.active{color:#a3501c;background:#fff8f1;box-shadow:none}
+.pricing-shopee .pricing-ops-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.pricing-shopee .pricing-ops-title{display:flex;grid-column:1/-1;align-items:center;justify-content:space-between}
+.pricing-shopee .pricing-ops-title strong{font-size:12px;font-weight:500;color:#6d7c75}
+.pricing-shopee .pricing-ops-picker>label:last-of-type{grid-column:1/-1}
+.pricing-shopee .pricing-ops-picker>.pricing-help{display:none}
+.pricing-shopee .pricing-fields,
+.pricing-shopee .pricing-fields:has(>label:nth-child(3):last-child){grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.pricing-shopee .pricing-field{font-size:12px;gap:6px;color:#65746d}
+.pricing-shopee .pricing-field :is(input,select){font-size:13px;min-height:39px;padding:8px 10px;border:1px solid #d7dfd3;border-radius:7px;background:#fcfdfb;color:#26382e}
+.pricing-shopee .pricing-field input:focus-visible,.pricing-shopee .pricing-field select:focus-visible{outline:2px solid #cf8a51;outline-offset:2px}
+.pricing-shopee .pricing-input-wrap>span{font-size:11px;color:#68766e}
+.pricing-shopee .pricing-input-wrap>input{padding-right:42px}
+.pricing-shopee .pricing-details{border-top:1px solid #e5e9e2;padding-top:0}
+.pricing-shopee .pricing-details>summary,.pricing-shopee .pricing-target>summary{font-size:11px;color:#748078;min-height:32px}
+.pricing-shopee .pricing-product-details{margin-bottom:12px}
+.pricing-shopee .pricing-reference-row{padding:8px 0;margin-bottom:8px}
+.pricing-shopee .pricing-reference-row strong{font-size:14px}
+.pricing-shopee .pricing-cost-note{font-size:10px;margin-bottom:12px}
+.pricing-shopee .pricing-price-panel{padding:0;border:0;background:none;border-radius:0;margin:0 0 15px}
+.pricing-shopee .pricing-price-panel>.pricing-eyebrow{display:none}
+.pricing-shopee .pricing-price-control{font-size:12px;color:#65746d;margin:0}
+.pricing-shopee .pricing-price-control>div{color:#c75e20}
+.pricing-shopee .pricing-price-control input{font-size:28px;width:140px;min-height:36px;color:#c75e20;border-color:#e0c4a9}
+.pricing-shopee .pricing-slider{accent-color:#d37132;min-height:16px;height:16px;margin:8px 0 4px}
+.pricing-shopee .pricing-price-caption{font-size:10px;color:#68766e}
+.pricing-shopee .pricing-price-caption button{font-size:10px;min-height:20px;padding:1px 4px;color:#748078}
+.pricing-shopee .pricing-target{margin-top:8px}
+.pricing-shopee .pricing-target[open]{padding-bottom:10px}
+.pricing-shopee .shopee-store-fields>label:last-child{grid-column:1/-1}
+.pricing-shopee .shopee-rate-summary{display:grid;gap:9px;margin:14px 0 12px}
+.pricing-shopee .shopee-rate-summary>div{display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:12px}
+.pricing-shopee .shopee-rate-summary dt{color:#748078}
+.pricing-shopee .shopee-rate-summary dd{margin:0;color:#33483c;font-variant-numeric:tabular-nums}
+.pricing-shopee .shopee-rate-editor>summary{display:flex;align-items:center;gap:5px;width:fit-content;font-size:11px;color:#a45925;cursor:pointer;list-style:none;padding:4px 0}
+.pricing-shopee .shopee-rate-editor>summary::-webkit-details-marker{display:none}
+.pricing-shopee .shopee-rate-editor[open]>summary{margin-bottom:12px}
+.pricing-shopee .shopee-fee-settings{padding-top:3px}
+.pricing-shopee .shopee-fee-reference{font-size:10px;color:#68766e;margin-top:10px}
+.pricing-shopee .shopee-fee-reference a{color:inherit;text-decoration:underline}
+.pricing-shopee .shopee-section-help{font-size:11px;color:#68766e;margin:-6px 0 16px}
+.pricing-shopee .shopee-program-group{font-size:11px;font-weight:500;color:#68766e;margin:0 0 4px}
+.pricing-shopee .shopee-promotion-grid{display:block}
+.pricing-shopee .shopee-promotion-grid+.shopee-program-group{margin-top:22px}
+.pricing-shopee .shopee-promotion-grid>.pricing-program{display:grid;grid-template-columns:minmax(0,1fr) 86px 38px;align-items:center;column-gap:12px;min-height:58px;padding:10px 0;border:0;border-bottom:1px dashed #dde4d7;background:none}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label{display:contents}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label>span{display:grid;grid-column:1;grid-row:1;gap:3px}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label strong{font-size:12px;font-weight:500;color:#304338}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label small{display:block;font-size:10px;line-height:1.5;color:#68766e}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label>input{grid-column:3;grid-row:1;width:38px;height:22px;background:#d5ddcf}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label>input:after{width:16px;height:16px}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label>input:checked{background:#df6b26}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label>input:checked:after{transform:translateX(16px)}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label>input:focus-visible{outline:2px solid #cf8a51;outline-offset:3px}
+.pricing-shopee .shopee-promotion-grid .pricing-program>.pricing-field{grid-column:2;grid-row:1;margin:0;padding:0;max-width:86px}
+.pricing-shopee .shopee-promotion-grid .pricing-program>.pricing-field>span:first-child{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.pricing-shopee .shopee-promotion-grid .pricing-program>.pricing-field input{min-height:34px;padding:5px 25px 5px 8px;font-size:12px}
+.pricing-shopee .shopee-promotion-grid .pricing-input-wrap>span{right:8px}
+.pricing-shopee .pricing-summary-stack{display:block;position:sticky;top:16px;align-self:start;min-width:0}
+.pricing-shopee .pricing-receipt{position:static!important;background:#fff;border:1px solid #e0e5df;border-radius:9px;box-shadow:none}
+.pricing-shopee .pricing-receipt-header{display:none}
+.pricing-shopee .pricing-receipt-body{padding:20px}
+.pricing-shopee .pricing-receipt-title{text-align:center;margin-bottom:16px;padding-bottom:16px;border-bottom:1px dashed #d4ddce}
+.pricing-shopee .pricing-receipt-title h2{font-size:14px}
+.pricing-shopee .pricing-receipt-title>span{font-size:11px;color:#68766e}
+.pricing-shopee .pricing-profit{background:#e8f6eb;color:#1c744b;border:1px solid #b9e0c3;border-radius:8px;padding:20px 12px;gap:5px}
+.pricing-shopee .pricing-profit strong{font-size:40px;line-height:1.15;letter-spacing:-1px}
+.pricing-shopee .pricing-profit>span{font-size:12px}
+.pricing-shopee .pricing-profit.loss{background:#fff0eb;color:#ad4931;border-color:#f0cabb}
+.pricing-shopee .shopee-live-simulation{margin-top:18px;padding:0;background:none;border:0}
+.pricing-shopee .shopee-live-heading{display:flex;align-items:center;gap:6px;color:#4d6557;margin-bottom:12px}
+.pricing-shopee .shopee-live-heading h3{font-size:12px;font-weight:500}
+.pricing-shopee .shopee-live-simulation .pricing-fields{gap:12px;margin-bottom:10px}
+.pricing-shopee .shopee-volume-source{display:flex;flex-wrap:wrap;gap:4px;font-size:10px;line-height:1.5;color:#68766e;margin:0 0 12px}
+.pricing-shopee .shopee-volume-source button{font:inherit;color:#4b7358;background:none;border:0;text-decoration:underline;padding:0;cursor:pointer}
+.pricing-shopee .shopee-volume-warning{color:#955316}
+.pricing-shopee .shopee-monthly-answer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:12px;border-top:1px dashed #d4ddce}
+.pricing-shopee .shopee-monthly-answer>span{font-size:10px;color:#748078;max-width:140px}
+.pricing-shopee .shopee-monthly-answer strong{font-size:23px;color:#1c744b;white-space:nowrap}
+.pricing-shopee .shopee-simple-ledger{display:grid;gap:0;margin:18px 0 0}
+.pricing-shopee .shopee-simple-ledger>div{display:flex;justify-content:space-between;gap:12px;padding:10px 0;font-size:12px;border-bottom:1px dashed #d4ddce}
+.pricing-shopee .shopee-simple-ledger dt{color:#748078}
+.pricing-shopee .shopee-simple-ledger dd{margin:0;color:#33483c;font-variant-numeric:tabular-nums}
+.pricing-shopee .shopee-order-basis{display:none}
+.pricing-shopee .shopee-breakdown{margin-top:10px}
+.pricing-shopee .shopee-breakdown>summary{display:flex;align-items:center;justify-content:space-between;font-size:11px;min-height:32px;color:#748078;cursor:pointer;list-style:none}
+.pricing-shopee .shopee-breakdown[open]>summary{margin-bottom:10px}
+.pricing-shopee .pricing-save{margin-top:14px;padding-top:14px;border-top:1px dashed #d4ddce;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px}
+.pricing-shopee .pricing-save>.primary{min-height:39px;font-size:11px;padding:7px 10px;background:#33483c;border-color:#33483c}
+.pricing-shopee .pricing-save>small{display:none}
+.pricing-shopee .pricing-history{grid-column:1/-1}
+.pricing-shopee .shopee-simulation-graphs{padding:10px 16px;margin-top:12px;border:1px solid #e0e5df;border-radius:8px;background:#fff}
+.pricing-shopee .shopee-simulation-graphs>summary{display:flex;align-items:center;justify-content:space-between;list-style:none;font-size:12px;color:#65746d;cursor:pointer}
+.pricing-shopee .shopee-simulation-graphs>summary::-webkit-details-marker{display:none}
+.pricing-shopee .shopee-simulation-graphs[open]>summary{margin-bottom:20px}
+.pricing-shopee .shopee-simulation-graphs .pricing-eyebrow{display:none}
+.pricing-shopee .shopee-simulation-graphs .pricing-section-heading{flex-wrap:wrap}
+.pricing-shopee .shopee-simulation-graphs .pricing-section-heading h2{font-size:17px}
+.pricing-shopee .shopee-simulation-graphs .pricing-section-heading p,.pricing-shopee .pricing-sales-basis{font-size:11px}
+.pricing-shopee .pricing-footer{display:none}
+@media(min-width:901px){
+.pricing-shopee .pricing-workspace:has(.shopee-simulation-graphs[open])>.pricing-summary-stack{display:contents;position:static}
+.pricing-shopee .pricing-workspace:has(.shopee-simulation-graphs[open])>.pricing-form-stack{grid-column:1;grid-row:1}
+.pricing-shopee .pricing-workspace:has(.shopee-simulation-graphs[open]) .pricing-receipt{grid-column:2;grid-row:1;align-self:start}
+.pricing-shopee .pricing-workspace:has(.shopee-simulation-graphs[open]) .shopee-simulation-graphs{grid-column:1/-1;grid-row:2;margin-top:0}
+.pricing-shopee .shopee-simulation-graphs .pricing-chart-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+}
+@media(max-width:900px){.pricing-shopee .pricing-workspace{grid-template-columns:1fr}.pricing-shopee .pricing-summary-stack{position:static}}
+@media(max-width:480px){.pricing-shopee .pricing-form-stack>section,.pricing-shopee .pricing-form-stack>section:first-child{padding:16px}.pricing-shopee .pricing-ops-picker,.pricing-shopee .pricing-fields,.pricing-shopee .pricing-fields:has(>label:nth-child(3):last-child){grid-template-columns:1fr}.pricing-shopee .pricing-save{grid-template-columns:1fr}.pricing-shopee .shopee-promotion-grid>.pricing-program{grid-template-columns:minmax(0,1fr) 68px 38px;column-gap:8px}.pricing-shopee .pricing-profit strong{font-size:35px}}
+
+@media(min-width:1100px){
+.pricing-shopee{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 16px}
+.pricing-shopee>.pricing-heading{margin:0;align-items:center}
+.pricing-shopee>.pricing-heading h1{font-size:20px;margin:0}
+.pricing-shopee>.pricing-toolbar{margin:0}
+.pricing-shopee>.pricing-notice{grid-column:1/-1;margin:0;padding:0;font-size:10px}
+.pricing-shopee>.pricing-editor,.pricing-shopee>.pricing-feedback{grid-column:1/-1}
+}
+
+/* Compact default view: details expand only when needed. */
+.pricing-shopee .pricing-form-stack>section,.pricing-shopee .pricing-form-stack>section:first-child{padding:12px 16px}
+.pricing-shopee .pricing-form-stack>section+section{padding-top:4px}
+.pricing-shopee .pricing-section-title{float:left;min-height:30px;margin-bottom:4px}
+.pricing-shopee .pricing-section-title:after{display:none}
+.pricing-shopee .pricing-segmented{margin:0 0 8px auto;width:230px;padding:2px}
+.pricing-shopee .pricing-segmented button{min-height:26px;padding:3px 8px;font-size:11px}
+.pricing-shopee .pricing-ops-picker{clear:both;display:block;margin-bottom:4px}
+.pricing-shopee .pricing-ops-title{display:none}
+.pricing-shopee .pricing-product-details{margin-bottom:7px}
+.pricing-shopee .pricing-field{font-size:11px;gap:3px}
+.pricing-shopee .pricing-field :is(input,select){min-height:30px;padding:5px 8px;font-size:12px}
+.pricing-shopee .pricing-fields,.pricing-shopee .pricing-fields:has(>label:nth-child(3):last-child){gap:8px 12px;margin-bottom:7px}
+.pricing-shopee .shopee-main-amounts>label:first-child input{color:#be5b22;font-weight:600}
+.pricing-shopee .pricing-details>summary,.pricing-shopee .pricing-target>summary{min-height:25px;font-size:10px}
+.pricing-shopee .shopee-inline-fees>h3,.pricing-shopee .shopee-inline-promotions>h3{margin-bottom:10px;font-size:12px}
+.pricing-shopee .shopee-store-fields{margin-bottom:7px}
+.pricing-shopee .shopee-rate-summary{display:flex;flex-wrap:wrap;gap:6px 16px;margin:7px 0}
+.pricing-shopee .shopee-rate-summary>div{font-size:10px;gap:5px}
+.pricing-shopee .shopee-section-help{margin:-4px 0 8px;font-size:10px}
+.pricing-shopee .shopee-program-group{font-size:10px;margin-bottom:2px}
+.pricing-shopee .shopee-promotion-grid+.shopee-program-group{margin-top:9px}
+.pricing-shopee .shopee-promotion-grid>.pricing-program{min-height:31px;padding:4px 0;grid-template-columns:minmax(0,1fr) 78px 34px;column-gap:10px}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label strong{font-size:11px;line-height:1.4}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label small{display:none}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label>input{width:34px;height:20px}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label>input:after{width:14px;height:14px}
+.pricing-shopee .shopee-promotion-grid .pricing-program-label>input:checked:after{transform:translateX(14px)}
+.pricing-shopee .shopee-promotion-grid .pricing-program>.pricing-field input{min-height:26px;height:26px;padding:3px 23px 3px 7px;font-size:11px}
+.pricing-shopee .pricing-receipt-body{padding:14px 16px}
+.pricing-shopee .pricing-receipt-title{padding-bottom:10px;margin-bottom:10px}
+.pricing-shopee .pricing-profit{padding:12px;gap:3px}
+.pricing-shopee .pricing-profit strong{font-size:36px}
+.pricing-shopee .shopee-live-simulation{margin-top:12px}
+.pricing-shopee .shopee-live-heading{margin-bottom:7px}
+.pricing-shopee .shopee-simple-ledger{margin-top:10px}
+.pricing-shopee .shopee-simple-ledger>div{padding:7px 0}
+.pricing-shopee .pricing-save{margin-top:8px;padding-top:10px}
+.pricing-shopee .pricing-save>.primary{min-height:30px;padding:5px 8px}
+@media(max-width:480px){.pricing-shopee .pricing-section-title{float:none}.pricing-shopee .pricing-segmented{width:100%}}
+
+@media(min-width:1100px){
+.payi-main-content:has(.pricing-channel-bar + div:not([hidden])){padding-top:8px!important}
+.pricing-shopee .pricing-form-stack>section,.pricing-shopee .pricing-form-stack>section:first-child{padding:10px 16px}
+.pricing-shopee .pricing-form-stack>section+section{padding-top:2px}
+.pricing-shopee .shopee-main-amounts>.pricing-field,
+.pricing-shopee .shopee-store-fields>.pricing-field{display:grid;grid-template-columns:minmax(0,1fr) minmax(100px,1.2fr);align-items:center;column-gap:7px}
+.pricing-shopee .shopee-main-amounts .pricing-input-wrap{min-width:0}
+.pricing-shopee .shopee-store-fields>label:last-child{grid-column:1/-1;grid-template-columns:120px minmax(0,1fr)}
+.pricing-shopee .shopee-product-form>.pricing-details{margin-bottom:4px}
+.pricing-shopee .shopee-section-help,.pricing-shopee .shopee-program-group{display:none}
+.pricing-shopee .shopee-promotion-grid+.shopee-program-group{margin:0}
+.pricing-shopee .shopee-promotion-grid>.pricing-program{min-height:27px;padding:2px 0}
+.pricing-shopee .shopee-inline-promotions>h3{margin-bottom:6px}
+.pricing-shopee .shopee-rate-summary{gap:4px 12px;margin:6px 0}
+.pricing-shopee .pricing-ops-picker>.pricing-field{display:grid;grid-template-columns:120px minmax(0,1fr);align-items:center;gap:7px}
+.pricing-shopee .pricing-workspace{gap:18px}
+}
+
+.pricing-shopee .shopee-sale-field{min-width:0}
+.pricing-shopee .shopee-sale-field .pricing-slider{display:block;width:100%;height:12px;min-height:12px;margin:4px 0 0}
+.pricing-shopee .shopee-main-amounts{align-items:start}
+.pricing-shopee .shopee-sale-field .pricing-field input{color:#be5b22;font-weight:600}
+@media(min-width:1100px){.pricing-shopee .shopee-main-amounts>.shopee-sale-field>.pricing-field{display:grid;grid-template-columns:minmax(0,1fr) minmax(100px,1.2fr);align-items:center;gap:7px}.pricing-shopee .shopee-main-amounts>.shopee-sale-field>.pricing-slider{width:calc((100% - 7px)*1.2/2.2);margin-left:auto}}
+
+.pricing-shopee .shopee-custom-name{margin:6px 0 10px}
+.pricing-shopee .shopee-custom-name[hidden]{display:none}

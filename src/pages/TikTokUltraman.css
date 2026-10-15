@@ -1,0 +1,64 @@
+/* Comic edges and accents; preserve the worksheet's blue/yellow/red/green cells. */
+.pricing-tiktok{--payi-mint:#2f86cf;--payi-mint-strong:#1f6fb2;--payi-mint-soft:#e4f1fb}
+.pricing-tiktok .mall-summary,.pricing-tiktok .mall-section{border:2px solid #292d34;border-radius:10px;box-shadow:3px 4px 0 #14161c19,0 8px 22px #2f86cf12}
+.pricing-tiktok .mall-section h2{border-bottom:1px solid #292d34}
+.pricing-tiktok .mall-summary h2{background:#16181d}
+.pricing-tiktok .mall-value{border:1px solid #b29b39;border-radius:5px}
+.pricing-tiktok .mall-value:has(input:not([readonly])){outline:none;border-color:#d8c971;background:#fff6b2}
+.pricing-tiktok .pricing-tabs{border:1.5px solid #292d34;background:#e4f1fb}
+.pricing-tiktok .pricing-tabs button.active{background:#ffce1f;color:#16181d;box-shadow:none}
+.pricing-tiktok .mall-edit-toolbar .pricing-button{border:1.5px solid #292d34;background:#ffce1f;color:#16181d;font-weight:700;box-shadow:2px 2px 0 #14161c19}
+.pricing-tiktok .mall-save .primary{border:1.5px solid #292d34;background:#1f6fb2;box-shadow:2px 2px 0 #14161c19}
+.pricing-tiktok .mall-controls .pricing-field :is(input,select){border-color:#98afc4}
+.pricing-tiktok .mall-hero-stage{display:flex;align-items:center;justify-content:center;min-width:0}
+.pricing-tiktok .mall-hero-stage>.pricing-hero{width:210px;height:200px;max-width:100%;pointer-events:none}
+@media(min-width:1100px){.pricing-tiktok .mall-hero-stage{grid-column:1;grid-row:2;align-self:center;height:155px}.pricing-tiktok .mall-hero-stage>.pricing-hero{width:180px;height:170px}}
+
+/* Keep saving directly below the ROI, rather than below the whole worksheet. */
+.pricing-tiktok .mall-summary-column{align-content:start;gap:10px}
+.pricing-tiktok .mall-summary-column>.mall-save{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0;width:100%;align-items:stretch}
+.pricing-tiktok .mall-summary-column>.mall-save>.pricing-field{width:100%;max-width:none;font-size:12px;gap:5px}
+.pricing-tiktok .mall-summary-column>.mall-save>.pricing-field input{min-height:36px;font-size:13px;padding:7px 10px}
+.pricing-tiktok .mall-summary-column>.mall-save>.pricing-button{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 14px;font-size:14px;font-weight:700;border-radius:7px}
+.pricing-tiktok .mall-summary-column>.mall-save>.pricing-button svg{width:19px;height:19px}
+.pricing-tiktok .mall-summary-column>.mall-save>.primary:disabled{opacity:1;background:#d8e8f6;color:#41617c;border-color:#647e96;box-shadow:none}
+.pricing-tiktok .mall-summary-column>.mall-save>small:empty{display:none}
+
+.pricing-tiktok .pricing-editor:has(>.mall-worksheet)>.mall-controls{grid-column:1/-1}
+
+/* One yellow fill for editable cells; quieter summary colors with legible text. */
+.pricing-tiktok .mall-summary tr.sale{background:#f0faf2}
+.pricing-tiktok .mall-summary tr.total{background:#fff0f0;color:#9b2929}
+.pricing-tiktok .mall-summary tr.profit{background:#edf8ef;color:#1a6035}
+.pricing-tiktok .mall-value{box-shadow:none}
+.pricing-tiktok .mall-value input:focus{outline:none;box-shadow:none}
+.pricing-tiktok .mall-value:has(input:focus-visible){border-color:#1f6fb2}
+
+/* Calculated summary stays read-only; yellow is reserved for actual inputs. */
+.pricing-tiktok .mall-summary tbody tr,.pricing-tiktok .mall-summary tr.sale,.pricing-tiktok .mall-summary tr.total,.pricing-tiktok .mall-summary tr.profit{background:#f0f2f5;color:#263341}
+.pricing-tiktok .mall-summary tr.profit :is(th,td){color:#176c36}
+.pricing-tiktok .mall-roi{background:#edf0f3;color:#374455}
+
+/* Stronger Ultraman palette: silver surfaces, red insignia, blue panels and yellow controls. */
+.pricing-tiktok{position:relative;isolation:isolate;--mall-ink:#16181d;--mall-red:#d6322a;--mall-blue:#2f86cf;--mall-yellow:#ffce1f}
+.pricing-tiktok:before{content:'';position:absolute;inset:-10px -12px 0;z-index:-1;pointer-events:none;border-radius:20px;background:radial-gradient(circle at 3% 4%,#ffce1f38,transparent 28%),radial-gradient(circle at 98% 12%,#e5342b20,transparent 26%),linear-gradient(145deg,#eef7ff80,#cbe6f43d)}
+.pricing-tiktok .pricing-heading h1{color:#163e64}
+.pricing-tiktok .mall-summary,.pricing-tiktok .mall-section{border:2px solid #202832;border-radius:12px;box-shadow:4px 5px 0 #14161c24,0 10px 25px #2f86cf16}
+.pricing-tiktok .mall-section h2{position:relative;background:linear-gradient(110deg,#1c6db5,#2f86cf);border-bottom:2px solid #202832;padding-left:14px}
+.pricing-tiktok .mall-section h2:before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:#ffce1f}
+.pricing-tiktok .mall-summary-title{display:flex;align-items:center;gap:8px;padding:7px 9px;background:linear-gradient(110deg,#a52722,#d6322a);border-bottom:2px solid #202832}
+.pricing-tiktok .mall-summary-title h2{flex:1;min-width:0;background:transparent;padding:0;font-size:13px;text-align:left;color:#fff}
+.pricing-tiktok .mall-summary-title button{flex-shrink:0;border:1.5px solid #202832;border-radius:6px;background:#ffce1f;color:#16181d;font-size:10px;font-weight:750;padding:5px 8px;cursor:pointer;box-shadow:1px 2px 0 #16181d38}
+.pricing-tiktok .mall-summary-title button[aria-pressed=true]{background:#fff3b4}
+.pricing-tiktok .mall-summary-edit-hint{padding:6px 9px;background:#fff6d6;color:#66501b;font-size:10px;line-height:1.5}
+.pricing-tiktok .mall-summary-input{width:100%;min-width:0;min-height:27px;padding:3px 5px;border:1px solid #d8ca85;border-radius:4px;background:#fff6b2;color:#18202d;font:inherit;font-weight:650;text-align:right;font-variant-numeric:tabular-nums;-moz-appearance:textfield}
+.pricing-tiktok .mall-summary-input::-webkit-inner-spin-button,.pricing-tiktok .mall-summary-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.pricing-tiktok .mall-summary-input:focus-visible{outline:1px solid #1f6fb2;outline-offset:1px}
+.pricing-tiktok .mall-summary thead{background:#dce8f2;color:#30465a}
+.pricing-tiktok .mall-summary tbody tr,.pricing-tiktok .mall-summary tr.sale,.pricing-tiktok .mall-summary tr.total,.pricing-tiktok .mall-summary tr.profit{background:#eef1f5}
+.pricing-tiktok .mall-roi{border-top:2px solid #202832;background:#e4eef7}
+.pricing-tiktok .mall-roi strong{color:#195b93}
+.pricing-tiktok .mall-total{background:#ffe5e2;color:#98241e;border-top:1px solid #e4b5b0}
+.pricing-tiktok .mall-target{border-top:4px solid #d6322a}
+.pricing-tiktok .mall-save .primary{background:#1f6fb2;border-width:2px}
+@media(min-width:1100px){.pricing-tiktok .mall-summary td:has(.mall-summary-input){padding:3px 6px}.pricing-tiktok .mall-summary tr.profit td:has(.mall-summary-input){font-size:13px}}
