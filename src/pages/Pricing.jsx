@@ -7,6 +7,7 @@ import { applyPricingPreset, PRICING_CATEGORIES, PRICING_PAYMENTS, PRICING_REFER
 import { buildPricingCatalog, pricingProductKey, pricingRecipeKey, latestPricingPlans, savedPricingCosts, draftForPricingProduct, draftForPricingRecipe } from '../../shared/pricingCatalog.js'
 import { pricingDemoData, pricingDemoSales } from '../data/pricingDemo.js'
 import { pricingComparisonDraft } from '../../shared/pricingComparison.js'
+import { buildPricingFamilies, draftForPricingFamily, pricingFamilyCost } from '../../shared/pricingFamilies.js'
 import './Pricing.css'
 
 const money = cents => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', maximumFractionDigits: 2 }).format(cents / 100)
@@ -41,6 +42,7 @@ export default function Pricing({ access, onAccessRevoked }) {
   const [comparisonMode,setComparisonMode] = useState('snapshot')
   const [view, setView] = useState('calculator')
   const [catalog, setCatalog] = useState(() => access?.demo ? sampleCatalog : [])
+  const [productGroups,setProductGroups] = useState(()=>access?.demo ? buildPricingFamilies(sampleCatalog) : [])
   const [recipes, setRecipes] = useState(() => access?.demo ? pricingDemoData.recipes : [])
   const [revisions, setRevisions] = useState([])
   const [activeRecord, setActiveRecord] = useState(null)
@@ -67,16 +69,19 @@ export default function Pricing({ access, onAccessRevoked }) {
   const canPersist = access?.configured && !access.demo
   const canReadOps = Boolean(access?.allowed && !access.demo)
   const costMemory = useMemo(()=>savedPricingCosts(revisions),[revisions])
-  const selectedProduct = catalog.find(p=>p.key===pricingProductKey(draft.business,draft.sku))
-  const visibleCatalog = catalog.filter(p=>p.business===draft.business && `${p.sku} ${p.name} ${p.color} ${p.size} ${(p.variations || []).join(' ')}`.toLowerCase().includes(catalogSearch.toLowerCase()))
-  const selectionIdentity=JSON.stringify([draft.business,draft.sku,draft.variationName])
-  const salesKey=JSON.stringify([draft.business,draft.sku,draft.variationName,salesEndDate])
+  const selectedFamily=productGroups.find(p=>p.key===draft.productGroupId)
+  const rawSelectedProduct=catalog.find(p=>p.key===pricingProductKey(draft.business,draft.sku))
+  const selectedProduct=selectedFamily ? {...rawSelectedProduct,name:selectedFamily.name,referencePrice:selectedFamily.referencePrice,referencePriceSource:selectedFamily.referencePriceSource} : rawSelectedProduct
+  const rememberedCost=selectedFamily ? pricingFamilyCost(selectedFamily,costMemory) : costMemory.get(pricingProductKey(draft.business,draft.sku))
+  const visibleCatalog = productGroups.filter(p=>p.business===draft.business && `${p.name} ${p.members.map(m=>`${m.sku} ${m.name} ${m.color} ${m.size}`).join(' ')}`.toLowerCase().includes(catalogSearch.toLowerCase()))
+  const selectionIdentity=JSON.stringify([draft.business,draft.sku,draft.variationName,draft.productGroupId])
+  const salesKey=JSON.stringify([draft.business,draft.sku,draft.variationName,draft.productGroupId,salesEndDate])
   const hasSalesSelection=Boolean(draft.sku && (draft.kind!=='bundle' || draft.variationName))
   const sales = salesState?.key===salesKey ? salesState : null
   const update = (key, value) => {
     if(key==='monthlyVolume') autoSales.current=null
     if (key === 'kind') setReference(normalizePricingDraft({ ...draft, kind: value }))
-    setDraft(prev => key==='business' && prev.business!==value ? {...prev,business:value,sku:'',productName:'',variationName:'',color:'',size:'',unitCost:'',components:[],referencePrice:null,referencePriceSource:null,salesSnapshot:null,monthlyVolume:0} : ['storeType', 'category', 'payment'].includes(key) && prev.calculationModel === 'reference-v2' ? applyPricingPreset(prev, { [key]: value }) : { ...prev, [key]: value })
+    setDraft(prev => key==='business' && prev.business!==value ? {...prev,business:value,sku:'',productGroupId:'',productSkus:[],productName:'',variationName:'',color:'',size:'',unitCost:'',components:[],referencePrice:null,referencePriceSource:null,salesSnapshot:null,monthlyVolume:0} : ['storeType', 'category', 'payment'].includes(key) && prev.calculationModel === 'reference-v2' ? applyPricingPreset(prev, { [key]: value }) : { ...prev, [key]: value })
     setDirty(true); setMessage('')
   }
   const result = useMemo(() => calculatePricing(draft), [draft])
@@ -90,7 +95,7 @@ export default function Pricing({ access, onAccessRevoked }) {
 
   const denied = response => {
     if (response.status === 403 || response.status === 401) {
-      setDraft(newPricingDraft()); setReference(newPricingDraft()); setRevisions([]); setActiveRecord(null); setCatalog([]); setRecipes([])
+      setDraft(newPricingDraft()); setReference(newPricingDraft()); setRevisions([]); setActiveRecord(null); setCatalog([]); setRecipes([]);setProductGroups([])
       setPending(null); pendingRef.current = null
       onAccessRevoked?.()
       return true
@@ -120,7 +125,7 @@ export default function Pricing({ access, onAccessRevoked }) {
       if (response.status === 403 || response.status === 401) { onAccessRevoked?.(); return }
       const data = await response.json()
       if (!data.success) throw new Error(data.error)
-      if (!controller.signal.aborted && alive.current) { setCatalog(data.catalog); setRecipes(data.recipes); setRevisions(data.revisions); setSourceInfo({at:new Date().toISOString(),source:data.catalogSource}); setError(data.storageError || '') }
+      if (!controller.signal.aborted && alive.current) { setCatalog(data.catalog);setProductGroups(data.productGroups || buildPricingFamilies(data.catalog)); setRecipes(data.recipes); setRevisions(data.revisions); setSourceInfo({at:new Date().toISOString(),source:data.catalogSource}); setError(data.storageError || '') }
     }).catch(e => { if (e.name !== 'AbortError' && alive.current) setError(e.message || 'โหลดข้อมูลไม่สำเร็จ') })
     return () => controller.abort()
   }, [canReadOps, onAccessRevoked, refreshKey])
@@ -128,7 +133,7 @@ export default function Pricing({ access, onAccessRevoked }) {
   useEffect(()=>{
     if(!hasSalesSelection) return
     const controller=new AbortController()
-    const options={sku:draft.sku,business:draft.business,variation:draft.variationName,endDate:salesEndDate}
+    const options={sku:draft.sku,business:draft.business,variation:draft.variationName,productGroupId:draft.productGroupId || '',endDate:salesEndDate}
     const work=canReadOps ? fetch(`${endpoint}&action=sales&${new URLSearchParams(options)}`,{signal:controller.signal}).then(async response=>{
       if(response.status===401 || response.status===403) {onAccessRevoked?.();throw new Error('สิทธิ์ถูกถอน')}
       const data=await response.json();if(!data.success) throw new Error(data.error);return data.summary
@@ -138,12 +143,12 @@ export default function Pricing({ access, onAccessRevoked }) {
       setSalesState({key:salesKey,summary})
       if(summary && autoSales.current===selectionIdentity) {
         const period=summary.days30
-        setDraft(prev=>JSON.stringify([prev.business,prev.sku,prev.variationName])===selectionIdentity ? {...prev,monthlyVolume:period.suggestedMonthlyVolume,salesSnapshot:{...period,sku:summary.sku,business:summary.business,variation:summary.variation}} : prev)
+        setDraft(prev=>JSON.stringify([prev.business,prev.sku,prev.variationName,prev.productGroupId])===selectionIdentity ? {...prev,monthlyVolume:period.suggestedMonthlyVolume,salesSnapshot:{...period,sku:summary.sku,business:summary.business,variation:summary.variation}} : prev)
         autoSales.current=null
       }
     }).catch(e=>{if(e.name!=='AbortError' && !controller.signal.aborted && alive.current) setSalesState({key:salesKey,error:e.message || 'โหลดยอดขายไม่ได้'})})
     return ()=>controller.abort()
-  },[canReadOps,draft.sku,draft.business,draft.variationName,hasSalesSelection,salesEndDate,salesKey,selectionIdentity,onAccessRevoked,refreshKey])
+  },[canReadOps,draft.sku,draft.business,draft.variationName,draft.productGroupId,hasSalesSelection,salesEndDate,salesKey,selectionIdentity,onAccessRevoked,refreshKey])
 
   const priceData = useMemo(() => {
     if (!result.valid) return []
@@ -160,12 +165,12 @@ export default function Pricing({ access, onAccessRevoked }) {
     return [...volumes].sort((a,b) => a-b).map(volume => ({ volume, current: monthlyProfit(draft, volume).afterFixed / 100, original: monthlyProfit(comparisonDraft, volume).afterFixed / 100 }))
   }, [draft, comparisonDraft, result.valid, baseline.valid])
 
-  function selectProduct(sku) {
+  function selectProduct(sku, family = null) {
     const product = catalog.find(p => p.sku.toUpperCase() === sku.toUpperCase() && p.business === draft.business)
-    let next=product ? draftForPricingProduct(draft,product,costMemory) : {...draft,sku,productName:'',kind:'single',components:[],unitCost:'',color:'',size:'',variationName:'',salesSnapshot:null,referencePrice:null,referencePriceSource:null,monthlyVolume:0}
+    let next=family ? draftForPricingFamily(draft,family,costMemory) : product ? draftForPricingProduct(draft,product,costMemory) : {...draft,sku,productGroupId:'',productSkus:[],productName:'',kind:'single',components:[],unitCost:'',color:'',size:'',variationName:'',salesSnapshot:null,referencePrice:null,referencePriceSource:null,monthlyVolume:0}
     if(product?.recipeVariations?.length===1) next=draftForPricingRecipe(next,recipes.filter(r=>r.set_sku===product.sku && r.variation_name===product.recipeVariations[0]),catalog,costMemory)
     setDraft(next);setReference({...next});setComparisonMode('price');setActiveRecord(null);setMessage('');setError('')
-    autoSales.current=JSON.stringify([next.business,next.sku,next.variationName])
+    autoSales.current=JSON.stringify([next.business,next.sku,next.variationName,next.productGroupId])
     setDirty(true)
   }
 
@@ -177,7 +182,7 @@ export default function Pricing({ access, onAccessRevoked }) {
     if (!key) return
     const rows = recipes.filter(r => pricingRecipeKey(r.set_sku,r.variation_name) === key)
     const next=draftForPricingRecipe(draft,rows,catalog,costMemory)
-    setDraft(next);setReference({...next});setComparisonMode('price');autoSales.current=JSON.stringify([next.business,next.sku,next.variationName])
+    setDraft(next);setReference({...next});setComparisonMode('price');autoSales.current=JSON.stringify([next.business,next.sku,next.variationName,next.productGroupId])
     setDirty(true)
     setMessage('นำสูตรมาให้ตรวจแล้ว กรุณายืนยันส่วนประกอบและกรอกต้นทุนทุกตัว')
   }
@@ -295,24 +300,24 @@ export default function Pricing({ access, onAccessRevoked }) {
 
     <fieldset className="pricing-editor" disabled={saving || !!pending}>
     {view === 'plans' ? <section className="pricing-saved"><div className="pricing-section-heading"><div><h2>{showDeleted ? 'ถังขยะ' : 'แผนราคาของคุณ'}</h2><p>เปิดแผนเดิม หรือทำสำเนาเพื่อเปรียบเทียบราคาใหม่</p></div><button className="pricing-button subtle" onClick={()=>setShowDeleted(v=>!v)}>{showDeleted ? 'กลับรายการแผน' : `ถังขยะ (${deletedPlans.length})`}</button><label className="pricing-search">ค้นหาแผน<input value={search} onChange={e => setSearch(e.target.value)} placeholder="ชื่อสินค้า / SKU / ชื่อแผน" /></label></div>
-      {!filteredPlans.length ? <div className="pricing-empty"><FolderOpen size={36} /><h3>{search ? 'ไม่พบแผนที่ตรงกับคำค้น' : showDeleted ? 'ไม่มีแผนในถังขยะ' : 'เริ่มจากแผนราคาของสินค้าหนึ่งตัว'}</h3><p>{search ? 'ลองค้นด้วยชื่อสินค้าหรือ SKU อื่น' : showDeleted ? 'แผนที่ลบจะอยู่ที่นี่และกู้คืนได้' : 'คำนวณต้นทุน ลองราคา แล้วบันทึกไว้เปิดใช้ครั้งถัดไป'}</p><button className="pricing-button primary" onClick={() => {setView('calculator');setSearch('')}}>ไปเครื่องคำนวณ <ArrowRight size={16} /></button></div> : <div className="pricing-plan-grid">{filteredPlans.map(record => <article key={record.revisionId} className="pricing-plan-card"><div className="pricing-plan-meta"><span>{record.draft.kind === 'bundle' ? 'เซ็ตสินค้า' : 'สินค้าเดี่ยว'}</span><span>{record.draft.sku || 'ไม่ระบุ SKU'}</span></div><h3>{record.draft.productName}</h3><p>{record.draft.name}</p><div className="pricing-plan-numbers"><div><small>ราคาขาย</small><strong>{money(record.result.unitPrice)}</strong></div><div><small>กำไร / {record.draft.kind === 'bundle' ? 'เซ็ต' : 'ชิ้น'}</small><strong>{money(record.result.unitProfit)}</strong></div></div><small>{dateLabel(record.createdAt)} · {record.createdBy}</small><div className="pricing-plan-actions">{showDeleted ? <button className="pricing-button" onClick={()=>changePlanStatus(record,false)}>กู้คืน</button> : <><button className="pricing-button" onClick={() => openPlan(record)}>แก้ไข</button><button className="pricing-button subtle" onClick={() => openPlan(record, true)}><Copy size={14} /> สำเนา</button><button className="pricing-button subtle" onClick={() => {setReference(normalizePricingDraft(record.draft));setComparisonMode('snapshot');setView('calculator');setMessage(`ใช้ “${record.draft.name}” เป็นฐานเปรียบเทียบกราฟแล้ว`)}}>เทียบกราฟ</button><button className="pricing-button subtle" onClick={()=>setDeleteCandidate(record.scenarioId)}><Trash2 size={14} /> ลบ</button></>}</div>{deleteCandidate===record.scenarioId && <div className="pricing-delete-confirm" role="group" aria-label="ยืนยันการลบแผน"><span>ลบแผนนี้? กู้คืนได้จากถังขยะ</span><button className="pricing-button" onClick={()=>changePlanStatus(record,true)}>ยืนยันลบ</button><button className="pricing-button subtle" onClick={()=>setDeleteCandidate(null)}>ยกเลิก</button></div>}</article>)}</div>}
+      {!filteredPlans.length ? <div className="pricing-empty"><FolderOpen size={36} /><h3>{search ? 'ไม่พบแผนที่ตรงกับคำค้น' : showDeleted ? 'ไม่มีแผนในถังขยะ' : 'เริ่มจากแผนราคาของสินค้าหนึ่งตัว'}</h3><p>{search ? 'ลองค้นด้วยชื่อสินค้าหรือ SKU อื่น' : showDeleted ? 'แผนที่ลบจะอยู่ที่นี่และกู้คืนได้' : 'คำนวณต้นทุน ลองราคา แล้วบันทึกไว้เปิดใช้ครั้งถัดไป'}</p><button className="pricing-button primary" onClick={() => {setView('calculator');setSearch('')}}>ไปเครื่องคำนวณ <ArrowRight size={16} /></button></div> : <div className="pricing-plan-grid">{filteredPlans.map(record => <article key={record.revisionId} className="pricing-plan-card"><div className="pricing-plan-meta"><span>{record.draft.kind === 'bundle' ? 'เซ็ตสินค้า' : 'สินค้าเดี่ยว'}</span><span>{record.draft.productGroupId ? `รวม ${record.draft.productSkus.length} ตัวเลือก` : record.draft.sku || 'ไม่ระบุ SKU'}</span></div><h3>{record.draft.productName}</h3><p>{record.draft.name}</p><div className="pricing-plan-numbers"><div><small>ราคาขาย</small><strong>{money(record.result.unitPrice)}</strong></div><div><small>กำไร / {record.draft.kind === 'bundle' ? 'เซ็ต' : 'ชิ้น'}</small><strong>{money(record.result.unitProfit)}</strong></div></div><small>{dateLabel(record.createdAt)} · {record.createdBy}</small><div className="pricing-plan-actions">{showDeleted ? <button className="pricing-button" onClick={()=>changePlanStatus(record,false)}>กู้คืน</button> : <><button className="pricing-button" onClick={() => openPlan(record)}>แก้ไข</button><button className="pricing-button subtle" onClick={() => openPlan(record, true)}><Copy size={14} /> สำเนา</button><button className="pricing-button subtle" onClick={() => {setReference(normalizePricingDraft(record.draft));setComparisonMode('snapshot');setView('calculator');setMessage(`ใช้ “${record.draft.name}” เป็นฐานเปรียบเทียบกราฟแล้ว`)}}>เทียบกราฟ</button><button className="pricing-button subtle" onClick={()=>setDeleteCandidate(record.scenarioId)}><Trash2 size={14} /> ลบ</button></>}</div>{deleteCandidate===record.scenarioId && <div className="pricing-delete-confirm" role="group" aria-label="ยืนยันการลบแผน"><span>ลบแผนนี้? กู้คืนได้จากถังขยะ</span><button className="pricing-button" onClick={()=>changePlanStatus(record,true)}>ยืนยันลบ</button><button className="pricing-button subtle" onClick={()=>setDeleteCandidate(null)}>ยกเลิก</button></div>}</article>)}</div>}
     </section> : <>
       <div className="pricing-workspace">
         <div className="pricing-form-stack">
           <section className="pricing-panel"><div className="pricing-section-title"><span>01</span><h2>สินค้าและต้นทุน</h2><span className="pricing-pill">{draft.kind === 'bundle' ? 'จัดเซ็ต' : 'รายสินค้า'}</span></div><div className="pricing-segmented" role="group" aria-label="ประเภทสินค้า"><button aria-pressed={draft.kind === 'single'} className={draft.kind === 'single' ? 'active' : ''} onClick={() => update('kind','single')}>สินค้าเดี่ยว</button><button aria-pressed={draft.kind === 'bundle'} className={draft.kind === 'bundle' ? 'active' : ''} onClick={() => update('kind','bundle')}><Layers3 size={15} /> เซ็ตสินค้า</button></div>
             <div className="pricing-ops-picker">
               <div className="pricing-ops-title"><strong>{access?.demo ? 'ทดลองเลือกสินค้า' : 'เลือกสินค้าจาก Payi Ops'}</strong>{canReadOps && <button className="pricing-button subtle" onClick={()=>{setRefreshKey(v=>v+1);setSalesState(null)}}><RotateCcw size={14} /> โหลดใหม่</button>}</div>
-              <label className="pricing-field">ค้นหาสินค้า<input value={catalogSearch} onChange={e=>setCatalogSearch(e.target.value)} placeholder="ชื่อสินค้า / SKU / สี / ไซซ์" /></label>
-              <label className="pricing-field">สินค้าในธุรกิจ {draft.business}<select value={selectedProduct?.key || ''} onChange={e=>{const p=catalog.find(p=>p.key===e.target.value);if(p) selectProduct(p.sku)}}><option value="">เลือกสินค้าเพื่อเติมข้อมูล</option>{visibleCatalog.map(p=><option key={p.key} value={p.key}>{p.sku} · {p.name}{p.color ? ` · ${p.color}` : ''}{p.size ? ` · ${p.size}` : ''}</option>)}</select></label>
+              <label className="pricing-field">ค้นหาสินค้า<input value={catalogSearch} onChange={e=>setCatalogSearch(e.target.value)} placeholder="ค้นหาชื่อสินค้า" /></label>
+              <label className="pricing-field">สินค้าในธุรกิจ {draft.business}<select value={selectedFamily?.key || ''} onChange={e=>{const p=productGroups.find(p=>p.key===e.target.value);if(p) selectProduct(p.skus[0],p)}}><option value="">เลือกสินค้า (รวมสี / ไซซ์)</option>{visibleCatalog.map(p=><option key={p.key} value={p.key}>{p.name}</option>)}</select></label>
               {!visibleCatalog.length && <p className="pricing-help">ไม่พบสินค้าที่ตรงคำค้นในธุรกิจนี้ ลองเปลี่ยนคำค้นหรือธุรกิจ</p>}
               <p className="pricing-help">{canReadOps ? sourceInfo ? `อ่านจาก Ops เมื่อ ${dateLabel(sourceInfo.at)}` : 'กำลังโหลดทะเบียนจาก Ops…' : 'DEMO เป็นข้อมูลตัวอย่างสำหรับลองราคาและยอดขาย ไม่มีการอ่านยอดขายจริงขณะปิดล็อกอิน'}</p>
             </div>
-            <label className="pricing-field">ชื่อสินค้า / เซ็ต<input value={draft.productName} onChange={e => update('productName',e.target.value)} maxLength={300} /></label><details className="pricing-details pricing-product-details"><summary>รายละเอียดสินค้า / สี / ไซซ์ <ChevronDown size={14} /></summary><div className="pricing-fields"><label className="pricing-field">SKU<input value={draft.sku} list={catalogId} onChange={e => selectProduct(e.target.value)} placeholder="ค้นหา SKU หรือกรอกรหัสใหม่" /></label></div>
-            <div className="pricing-fields"><label className="pricing-field">สี<input value={draft.color || ''} onChange={e=>update('color',e.target.value)} placeholder="ไม่ได้ระบุในทะเบียน" maxLength={300} /></label><label className="pricing-field">ไซซ์<input value={draft.size || ''} onChange={e=>update('size',e.target.value)} placeholder="ไม่ได้ระบุในทะเบียน" maxLength={300} /></label></div>
+            <label className="pricing-field">ชื่อสินค้า / เซ็ต<input value={draft.productName} onChange={e => update('productName',e.target.value)} maxLength={300} /></label><details className="pricing-details pricing-product-details"><summary>รายละเอียดสินค้า / สี / ไซซ์ <ChevronDown size={14} /></summary>{selectedFamily ? <div className="pricing-family-members"><p>แผนราคาเดียวสำหรับทุกตัวเลือก:</p>{selectedFamily.members.map(p=><span key={p.sku}>{p.name} · {p.sku}</span>)}</div> : <div className="pricing-fields"><label className="pricing-field">SKU<input value={draft.sku} list={catalogId} onChange={e => selectProduct(e.target.value)} placeholder="ค้นหา SKU หรือกรอกรหัสใหม่" /></label></div>}
+            {!draft.productGroupId && <div className="pricing-fields"><label className="pricing-field">สี<input value={draft.color || ''} onChange={e=>update('color',e.target.value)} placeholder="ไม่ได้ระบุในทะเบียน" maxLength={300} /></label><label className="pricing-field">ไซซ์<input value={draft.size || ''} onChange={e=>update('size',e.target.value)} placeholder="ไม่ได้ระบุในทะเบียน" maxLength={300} /></label></div>}
             </details>
-            {draft.kind==='single' && !!selectedProduct?.variations?.length && <label className="pricing-field pricing-variation">ตัวเลือกจากออเดอร์<select value={draft.variationName || ''} onChange={e=>{const variationName=e.target.value;setDraft(prev=>({...prev,variationName,salesSnapshot:null,monthlyVolume:0}));autoSales.current=JSON.stringify([draft.business,draft.sku,variationName]);setDirty(true)}}><option value="">รวมตัวเลือกของ SKU นี้</option>{selectedProduct.variations.map(v=><option key={v}>{v}</option>)}</select></label>}
-            {selectedProduct && <div className="pricing-reference-row"><div><small>ราคาอ้างอิง{access?.demo ? ' (ตัวอย่าง)' : 'จากคลัง'}</small><strong>{selectedProduct.referencePrice===null ? 'ยังไม่มีราคาในคลัง' : money(selectedProduct.referencePrice*100)}</strong></div>{selectedProduct.referencePrice!==null && <button className="pricing-button" onClick={()=>{update('price',selectedProduct.referencePrice);setReference({...draft,price:selectedProduct.referencePrice});setComparisonMode('price')}}>ใช้ราคาอ้างอิง</button>}</div>}
-            {selectedProduct && <p className="pricing-help pricing-cost-note">{costMemory.has(pricingProductKey(draft.business,draft.sku)) ? `มีต้นทุนอ้างอิงจากแผนส่วนตัว “${costMemory.get(pricingProductKey(draft.business,draft.sku)).planName}” · แก้เลขได้` : 'ยังไม่มีต้นทุนในแผนส่วนตัว กรอกต้นทุนก่อนคำนวณ · ราคาขายในคลังไม่ใช่ต้นทุน'}</p>}
+            {!draft.productGroupId && draft.kind==='single' && !!selectedProduct?.variations?.length && <label className="pricing-field pricing-variation">ตัวเลือกจากออเดอร์<select value={draft.variationName || ''} onChange={e=>{const variationName=e.target.value;setDraft(prev=>({...prev,variationName,salesSnapshot:null,monthlyVolume:0}));autoSales.current=JSON.stringify([draft.business,draft.sku,variationName,draft.productGroupId]);setDirty(true)}}><option value="">รวมตัวเลือกของ SKU นี้ (แผนเดิม)</option>{selectedProduct.variations.map(v=><option key={v}>{v}</option>)}</select></label>}
+            {selectedProduct && <div className="pricing-reference-row"><div><small>ราคาอ้างอิง{access?.demo ? ' (ตัวอย่าง)' : 'จากคลัง'}</small><strong>{selectedProduct.referencePrice===null ? selectedFamily?.priceConflict ? 'ราคาในคลังต่างกัน กรุณากรอกราคาขาย' : 'ยังไม่มีราคาในคลัง' : money(selectedProduct.referencePrice*100)}</strong></div>{selectedProduct.referencePrice!==null && <button className="pricing-button" onClick={()=>{update('price',selectedProduct.referencePrice);setReference({...draft,price:selectedProduct.referencePrice});setComparisonMode('price')}}>ใช้ราคาอ้างอิง</button>}</div>}
+            {selectedProduct && <p className="pricing-help pricing-cost-note">{rememberedCost ? `ต้นทุนจากแผน “${rememberedCost.planName}” · แก้เลขได้` : 'กรอกต้นทุนสำหรับแผนนี้ · หากต้นทุนต่างกันแต่ละไซซ์ ให้ตรวจต้นทุนที่จะใช้ร่วมกันก่อน'}</p>}
             {draft.kind === 'single' ? <div className="pricing-fields"><Field label="ต้นทุนสินค้า / ชิ้น" value={draft.unitCost} onChange={v => update('unitCost',v)} /><Field label="แพ็ค / ดำเนินการต่อชิ้น" value={draft.packing} onChange={v => update('packing',v)} /></div> : <div className="pricing-bundle">
               {!!activeRecipeKeys.length && <label className="pricing-field">นำสูตรเดิมมาประกอบการตั้งราคา<select value={draft.variationName ? pricingRecipeKey(draft.sku,draft.variationName) : ""} onChange={e => applyRecipe(e.target.value)}><option value="">เลือกสูตรแล้วตรวจส่วนประกอบ</option>{activeRecipeKeys.map(key => <option key={key} value={key}>{JSON.parse(key)[1]}</option>)}</select></label>}
               {draft.components.map((c,index) => <div className="pricing-component" key={index}><label className="pricing-field">SKU ส่วนประกอบ {index+1}<input value={c.sku} list={catalogId} onChange={e => componentUpdate(index,'sku',e.target.value)} placeholder="SKU" /></label><label className="pricing-field">ชื่อสินค้า<input value={c.name} onChange={e => componentUpdate(index,'name',e.target.value)} placeholder="ชื่อส่วนประกอบ" /></label><Field label="จำนวน" value={c.qty} onChange={v => componentUpdate(index,'qty',v)} step="1" min={1} max={1000} unit="ชิ้น" /><Field label="ต้นทุน / ชิ้น" value={c.cost} onChange={v => componentUpdate(index,'cost',v)} /><button className="pricing-icon-button" aria-label={`ลบส่วนประกอบ ${index+1}`} onClick={() => update('components',draft.components.filter((_,i) => i !== index))}><Trash2 size={17} /></button></div>)}
@@ -324,7 +329,7 @@ export default function Pricing({ access, onAccessRevoked }) {
           <details className="pricing-panel pricing-sales-panel pricing-fold"><summary>ยอดขายย้อนหลัง 30 / 90 วัน <ChevronDown size={14} /></summary>
             <label className="pricing-field pricing-sales-date">นับย้อนหลังถึงวันที่<input type="date" value={salesEndDate} max={today()} onChange={e=>{if(e.target.value) setSalesEndDate(e.target.value);autoSales.current=null}} /></label>
             {!draft.sku ? <p className="pricing-help">เลือกสินค้าจากทะเบียนเพื่อดูยอดขายและเติมฐานจำลอง</p> : !hasSalesSelection ? <p className="pricing-help">เลือกสูตรเซ็ตก่อน เพื่อใช้ยอดขายของเซ็ตและตัวเลือกที่ตรงกัน</p> : !sales ? <p className="pricing-help" role="status">กำลังอ่านยอดขาย 30 / 90 วัน…</p> : sales.error ? <div className="pricing-feedback error" role="alert">{sales.error}</div> : !sales.summary ? <p className="pricing-help">ยังไม่เชื่อมยอดขายจริง ลองเลือก SKU ที่ขึ้นต้น DEMO เพื่อดูตัวอย่างการทำงาน</p> : <>
-              <p className="pricing-help">{sales.summary.demo ? 'ข้อมูลตัวอย่าง · ' : ''}จำนวนขายสินค้า{draft.kind==='bundle' ? 'เป็นเซ็ตโดยตรง' : 'ตาม SKU'} ไม่รวมยกเลิก/คืนสินค้า · ขอบเขตธุรกิจและช่องทาง ยังไม่แยกร้าน</p>
+              <p className="pricing-help">{sales.summary.demo ? 'ข้อมูลตัวอย่าง · ' : ''}จำนวนขายสินค้า{draft.kind==='bundle' ? 'เป็นเซ็ตโดยตรง' : draft.productGroupId ? 'รวมทุกสีและไซซ์ในรุ่นนี้' : 'ตาม SKU'} ไม่รวมยกเลิก/คืนสินค้า · ขอบเขตธุรกิจและช่องทาง ยังไม่แยกร้าน</p>
               <div className="pricing-sales-grid">{[sales.summary.days30,sales.summary.days90].map(period=><article key={period.days}><span>{period.days} วันย้อนหลัง</span><strong>{integer(period.units)} <small>{unitLabel}</small></strong><div>ขายเฉลี่ย {period.averagePriceSatang===null ? '—' : money(period.averagePriceSatang)} / {unitLabel}</div><small>{period.from} ถึง {period.to}</small><button className="pricing-button" onClick={()=>applySalesPeriod(period)}>ใช้ฐาน {integer(period.suggestedMonthlyVolume)} {unitLabel}/30 วัน</button></article>)}</div>
               <p className="pricing-help">ราคาขายเฉลี่ย = ยอดขายจากออเดอร์ ÷ จำนวนหน่วย เป็นคนละค่ากับราคาอ้างอิงในคลัง</p>
               <p className="pricing-help">ข้อมูลออเดอร์ล่าสุดที่พบ: {sales.summary.latestDataDate || 'ไม่พบในช่วงที่อ่าน'} · ฐาน 90 วันหาร 3 เพื่อจำลอง 30 วัน</p>
@@ -352,7 +357,7 @@ export default function Pricing({ access, onAccessRevoked }) {
             <details className="pricing-target"><summary><TrendingUp size={15} /> หาราคาจากกำไรเป้าหมาย <ChevronDown size={15} /></summary><div className="pricing-fields"><label className="pricing-field">รูปแบบเป้าหมาย<select value={draft.targetType} onChange={e => update('targetType',e.target.value)}><option value="amount">กำไรบาทต่อหน่วย</option><option value="margin">Margin ต่อราคาขาย</option></select></label><Field label="กำไรเป้าหมาย" value={draft.target} onChange={v => update('target',v)} unit={draft.targetType === 'margin' ? '%' : 'บาท'} max={draft.targetType === 'margin' ? 99.99 : 10000000} /></div><button className="pricing-button" onClick={findTarget}>คำนวณราคาเป้าหมาย <ArrowRight size={15} /></button></details>
           </section>
 
-          <section className="pricing-receipt" ref={receiptRef} style={{top:receiptTop}}><div className="pricing-receipt-header"><span>ประมาณการต่อออเดอร์</span><LockKeyhole size={15} /></div><div className="pricing-receipt-body"><div className="pricing-receipt-title"><h2>{draft.productName || 'สินค้าของคุณ'}</h2><span>{draft.sku || 'ยังไม่ระบุ SKU'} · {draft.unitsPerOrder || '—'} {unitLabel} / ออเดอร์</span></div>
+          <section className="pricing-receipt" ref={receiptRef} style={{top:receiptTop}}><div className="pricing-receipt-header"><span>ประมาณการต่อออเดอร์</span><LockKeyhole size={15} /></div><div className="pricing-receipt-body"><div className="pricing-receipt-title"><h2>{draft.productName || 'สินค้าของคุณ'}</h2><span>{draft.productGroupId ? `รวม ${draft.productSkus.length} ตัวเลือก · ราคาเดียวกัน` : draft.sku || 'ยังไม่ระบุ SKU'} · {draft.unitsPerOrder || '—'} {unitLabel} / ออเดอร์</span></div>
             {!result.valid ? <div className="pricing-invalid" role="status"><h3>รอข้อมูลให้ครบก่อนสรุปกำไร</h3>{result.errors.map(e => <p key={e}>{e}</p>)}</div> : <>
               <dl className="pricing-ledger"><div><dt>ราคาขายรวม</dt><dd>{money(result.gross)}</dd></div>{result.campaign > 0 && <div><dt>ส่วนลดแคมเปญ</dt><dd>−{money(result.campaign)}</dd></div>}{result.voucher > 0 && <div><dt>Seller Voucher</dt><dd>−{money(result.voucher)}</dd></div>}<div><dt>ค่าส่งที่ลูกค้าจ่าย</dt><dd>{money(result.customerShipping)}</dd></div>{result.subsidy > 0 && <div><dt>สนับสนุนค่าส่ง</dt><dd>{money(result.subsidy)}</dd></div>}</dl>
               <details className="pricing-receipt-costs"><summary>ต้นทุนสินค้า แพ็ค และขนส่ง <span>{money(result.rows.filter(r => r.group === 'cost').reduce((sum,r) => sum + r.amount,0))}</span></summary><dl className="pricing-ledger">{result.rows.filter(r => r.group === 'cost' && r.amount > 0).map(row => <div key={row.key}><dt>{row.label}</dt><dd>{money(row.amount)}</dd></div>)}</dl></details><dl className="pricing-ledger deductions">{result.rows.filter(r => r.amount > 0 && r.group !== 'marketing' && r.group !== 'cost').map(row => <div key={row.key}><dt>{row.label}{row.rate !== undefined && <small>{row.rate.toFixed(2)}%</small>}</dt><dd>−{money(row.amount)}</dd></div>)}</dl>{result.rows.some(r => r.group === 'marketing') && <><h3 className="pricing-marketing-heading">งบการตลาด</h3><dl className="pricing-ledger deductions">{result.rows.filter(r => r.group === 'marketing').map(row => <div key={row.key}><dt>{row.label}<small>{row.rate.toFixed(2)}%</small></dt><dd>−{money(row.amount)}</dd></div>)}</dl></>}<dl className="pricing-ledger pricing-totals"><div><dt>รวมค่าธรรมเนียมและงบการตลาด</dt><dd>{money(result.fees + (result.marketing || 0))}</dd></div><div><dt>รวมต้นทุนและค่าใช้จ่ายทั้งหมด</dt><dd>{money(result.expenses)}</dd></div></dl>

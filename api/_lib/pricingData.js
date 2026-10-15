@@ -1,6 +1,7 @@
 import productMaster from '../../src/data/productMaster.json' with { type: 'json' }
 import { batchGetValues, getMetaCached, getSheet } from './sheets.js'
 import { buildPricingCatalog, buildPricingSalesSummary, dateOffset } from '../../shared/pricingCatalog.js'
+import { buildPricingFamilies } from '../../shared/pricingFamilies.js'
 
 export function bangkokDate(now = new Date()) {
   return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(now)
@@ -16,7 +17,8 @@ async function optionalSheet(readSheet, name) {
 export async function loadPricingCatalog(services = {}) {
   const readSheet = services.readSheet || getSheet
   const [aliases,inventory,recipes,redirects] = await Promise.all(['product_aliases','inventory_items','set_recipes','sku_redirects'].map(name=>optionalSheet(readSheet,name)))
-  return buildPricingCatalog({ aliases,inventory,recipes,redirects,master:services.master || productMaster })
+  const data=buildPricingCatalog({ aliases,inventory,recipes,redirects,master:services.master || productMaster })
+  return {...data,productGroups:buildPricingFamilies(data.catalog,aliases)}
 }
 
 const recentRows = new Map(), inflight = new Map()
@@ -61,5 +63,12 @@ export async function loadPricingSales(options, services = {}) {
     }
   }
   const [redirects,recipes]=await Promise.all(['sku_redirects','set_recipes'].map(name=>optionalSheet(readSheet,name)))
-  return buildPricingSalesSummary(source.rows,{...options,endDate,redirects,recipes,missingMonths:source.missingMonths})
+  let skus
+  if(options.productGroupId) {
+    const {productGroups}=await loadPricingCatalog(services)
+    const group=productGroups.find(g=>g.key===options.productGroupId && g.business===options.business)
+    if(!group) throw new Error('ไม่พบกลุ่มสินค้า')
+    skus=group.skus
+  }
+  return buildPricingSalesSummary(source.rows,{...options,skus,endDate,redirects,recipes,missingMonths:source.missingMonths})
 }

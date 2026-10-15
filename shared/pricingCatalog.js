@@ -52,14 +52,17 @@ export function savedPricingCosts(revisions) {
   for (const record of latestPricingPlans(revisions).filter(r=>!r.deleted).sort((a,b) => String(a.createdAt).localeCompare(String(b.createdAt)))) {
     const d = record.draft
     if (!d || !d.sku || d.kind !== 'single' || !validCost(d.unitCost)) continue
-    costs.set(pricingProductKey(d.business,d.sku), { cost: Number(d.unitCost), planName: d.name, createdAt: record.createdAt })
+    if(d.productGroupId) {
+      const value={cost:Number(d.unitCost),planName:d.name,createdAt:record.createdAt}
+      costs.set(`family:${d.productGroupId}`,value)
+    } else costs.set(pricingProductKey(d.business,d.sku), { cost: Number(d.unitCost), planName: d.name, createdAt: record.createdAt })
   }
   return costs
 }
 
 export function draftForPricingProduct(draft, product, costs = new Map()) {
   const saved = costs.get(pricingProductKey(product.business,product.sku))
-  return { ...draft, sku: product.sku, productName: product.name, business: product.business, color: product.color || '', size: product.size || '', variationName: '',
+  return { ...draft, sku: product.sku, productName: product.name, business: product.business, color: product.color || '', size: product.size || '', variationName: '', productGroupId:'',productSkus:[],
     kind: product.recipeVariations?.length ? 'bundle' : 'single', unitCost: saved?.cost ?? '',
     components: [], monthlyVolume: 0, salesSnapshot: null,
     referencePrice: product.referencePrice ?? null, referencePriceSource: product.referencePriceSource || null,
@@ -80,12 +83,13 @@ export function dateOffset(date, days) {
   return value.toISOString().slice(0,10)
 }
 
-export function buildPricingSalesSummary(rows, { sku, business, platform = 'Shopee', variation = '', endDate, redirects = [], recipes = [], missingMonths = [] }) {
+export function buildPricingSalesSummary(rows, { sku, skus, productGroupId = '', business, platform = 'Shopee', variation = '', endDate, redirects = [], recipes = [], missingMonths = [] }) {
   const from90 = dateOffset(endDate,-89), from30 = dateOffset(endDate,-29)
   const redirect = new Map(redirects.map(r => [text(r.old_sku).toUpperCase(), text(r.new_sku).toUpperCase()]))
   const recipeKeys = new Set(recipes.map(r => pricingRecipeKey(r.set_sku,r.variation_name)))
   const corrections = new Set(recipes.filter(r => text(r.keep_set_sales) === '0').map(r => pricingRecipeKey(r.set_sku,r.variation_name)))
   const target = text(sku).toUpperCase(), seen = new Set()
+  const targets=new Set((skus?.length?skus:[sku]).map(v=>text(v).toUpperCase()))
   const windows = { days30: { days:30, from:from30, units:0, salesSatang:0, ids:new Set() }, days90: { days:90, from:from90, units:0, salesSatang:0, ids:new Set() } }
   let latestDataDate = null, skippedCorrections = 0
   for (const r of rows) {
@@ -102,7 +106,7 @@ export function buildPricingSalesSummary(rows, { sku, business, platform = 'Shop
       const chain = new Set()
       while (redirect.get(resolved) && !chain.has(resolved)) { chain.add(resolved); resolved = redirect.get(resolved) }
     }
-    if (resolved !== target || (variation && rowVariation !== variation)) continue
+    if (!targets.has(resolved) || (variation && rowVariation !== variation)) continue
     if (corrections.has(pricingRecipeKey(originalSku,rowVariation))) { skippedCorrections++; continue }
     if (/ยกเลิก|cancel|return|refund|คืนสินค้า|คืนเงิน/i.test(text(r.order_status))) continue
     const qty = number(r.qty), sales = number(r.revenue)
@@ -115,7 +119,7 @@ export function buildPricingSalesSummary(rows, { sku, business, platform = 'Shop
       if (r.order_id) window.ids.add(text(r.order_id))
     }
   }
-  const summary = { sku:target, business, platform, variation, endDate, latestDataDate, missingMonths, skippedCorrections,
+  const summary = { sku:target, productGroupId, productSkus:[...targets], business, platform, variation, endDate, latestDataDate, missingMonths, skippedCorrections,
     scope: 'business-platform', basis: 'original-order-lines', fetchedAt: new Date().toISOString() }
   for (const [key, window] of Object.entries(windows)) summary[key] = { days:window.days, from:window.from, to:endDate, units:window.units,
     salesSatang:window.salesSatang, orders:window.ids.size, averagePriceSatang:window.units ? Math.round(window.salesSatang/window.units) : null,

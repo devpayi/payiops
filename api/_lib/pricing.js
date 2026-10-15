@@ -34,9 +34,11 @@ export async function opPricing(req, res, services = {}) {
     if (req.method === 'GET' && action === 'sales') {
       const sku=String(req.query.sku || '').trim(),business=String(req.query.business || ''),variation=String(req.query.variation || '').trim()
       const endDate=String(req.query.endDate || bangkokDate())
+      const productGroupId=String(req.query.productGroupId || '')
+      if(productGroupId.length>300) return res.status(400).json({success:false,error:'กลุ่มสินค้าไม่ถูกต้อง'})
       if(!sku || sku.length>80 || !['Payi','Payi Outlet','กรอบรูป'].includes(business) || variation.length>300 || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || endDate>bangkokDate()) return res.status(400).json({success:false,error:'เลือกสินค้า ธุรกิจ และวันที่ให้ถูกต้อง'})
-      try { const summary=await (services.loadSales || loadPricingSales)({sku,business,variation,endDate,platform:'Shopee'},services);return res.status(200).json({success:true,summary}) }
-      catch(e) { if(e.message==='วันที่ไม่ถูกต้อง') return res.status(400).json({success:false,error:e.message});throw e }
+      try { const summary=await (services.loadSales || loadPricingSales)({sku,business,variation,productGroupId,endDate,platform:'Shopee'},services);return res.status(200).json({success:true,summary}) }
+      catch(e) { if(['วันที่ไม่ถูกต้อง','ไม่พบกลุ่มสินค้า'].includes(e.message)) return res.status(400).json({success:false,error:e.message});throw e }
     }
     if (!pricingConfigured()) return res.status(409).json({ success: false, setupRequired: true, error: 'ตั้งค่า PRICING_SHEET_ID เป็นชีตส่วนตัวแยกจากชีตหลักเพื่อบันทึกแผนราคา' })
     if (req.method === 'GET' && action === 'recover') {

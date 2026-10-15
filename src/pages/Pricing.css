@@ -79,3 +79,5 @@
 .pricing-plan-card>small{font-size:10px}
 .pricing-plan-actions{padding-top:8px;margin-top:9px;gap:3px}
 .pricing-plan-actions .pricing-button{min-height:30px;padding:4px 8px;font-size:12px}
+
+.pricing-family-members{display:flex;flex-wrap:wrap;gap:6px;padding:6px 0 10px;font-size:11px}.pricing-family-members p{flex-basis:100%;font-size:11px}.pricing-family-members span{padding:4px 7px;background:var(--payi-surface-muted);border-radius:4px;color:var(--payi-text-muted)}

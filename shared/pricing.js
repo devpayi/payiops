@@ -17,7 +17,7 @@ export function newPricingDraft() {
     name: 'แผนราคาปกติ', productName: 'เสื้อยืดคอกลม (ตัวอย่าง)', sku: '', business: 'Payi', store: 'ร้าน Shopee',
     kind: 'single', components: [{ sku: '', name: 'สินค้าตัวอย่าง', qty: 1, cost: 200 }],
     calculationModel: 'reference-v2',
-    color: '', size: '', variationName: '', referencePrice: null, referencePriceSource: null, salesSnapshot: null,
+    color: '', size: '', variationName: '', productGroupId: '', productSkus: [], referencePrice: null, referencePriceSource: null, salesSnapshot: null,
     price: 500, unitCost: 200, packing: 15, parcel: 0, unitsPerOrder: 1,
     customerShipping: 38, actualShipping: 38, shippingSubsidy: 0,
     commission: 17.12, transaction: 3.21, transactionCap: 0, platformFee: 1.07,
@@ -31,7 +31,7 @@ export function newPricingDraft() {
 }
 
 const moneyFields = ['price', 'unitCost', 'packing', 'parcel', 'customerShipping', 'actualShipping', 'shippingSubsidy', 'platformFee', 'voucher', 'exclusivePrice', 'fixedCost']
-const textFields = ['name', 'productName', 'sku', 'business', 'store', 'storeType', 'category', 'payment', 'feeNote', 'color', 'size', 'variationName']
+const textFields = ['name', 'productName', 'sku', 'business', 'store', 'storeType', 'category', 'payment', 'feeNote', 'color', 'size', 'variationName', 'productGroupId']
 const num = v => v === '' || v === null || v === undefined ? NaN : Number(v)
 export const satang = value => {
   // Decimal shift avoids binary rounding such as 10.075 * 100 = 1007.4999…
@@ -47,6 +47,7 @@ export function normalizePricingDraft(value) {
   for (const key of [...moneyFields, 'commission', 'transaction', 'transactionCap', 'unitsPerOrder', 'monthlyVolume', 'target', 'voucherPct', 'exclusivePct']) if (key in value) out[key] = num(value[key])
   // Existing files keep their old meaning until the user explicitly converts them.
   out.calculationModel = value.calculationModel === 'reference-v2' ? 'reference-v2' : 'legacy-v1'
+  out.productSkus=Array.isArray(value.productSkus) ? [...new Set(value.productSkus.slice(0,500).map(v=>String(v).trim().toUpperCase().slice(0,80)).filter(Boolean))] : []
   out.referencePrice = Number.isFinite(num(value.referencePrice)) && num(value.referencePrice)>0 ? num(value.referencePrice) : null
   out.referencePriceSource = value.referencePriceSource === 'inventory_items.retail_price' ? value.referencePriceSource : null
   const snapshot=value.salesSnapshot
