@@ -9,6 +9,8 @@ import { pricingDemoData, pricingDemoSales } from '../data/pricingDemo.js'
 import { pricingComparisonDraft } from '../../shared/pricingComparison.js'
 import { buildPricingFamilies, draftForPricingFamily, pricingFamilyCost } from '../../shared/pricingFamilies.js'
 import './Pricing.css'
+import TikTokPricing from './TikTokPricing.jsx'
+import { isTikTokPlan } from '../../shared/tiktokPricing.js'
 
 const money = cents => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', maximumFractionDigits: 2 }).format(cents / 100)
 const integer = n => Number(n).toLocaleString('th-TH', { maximumFractionDigits: 0 })
@@ -36,7 +38,13 @@ function ChartTooltip({ active, payload, label, unit }) {
   return <div className="pricing-chart-tooltip"><strong>{integer(label)} {unit}</strong>{payload.map(p => <div key={p.dataKey}>{p.name}: {money(p.value * 100)}</div>)}</div>
 }
 
-export default function Pricing({ access, onAccessRevoked }) {
+export default function Pricing(props) {
+  const [channel,setChannel]=useState('shopee')
+  const [tikTokOpened,setTikTokOpened]=useState(false)
+  return <><div className="pricing-page pricing-channel-bar"><div className="pricing-tabs" role="group" aria-label="ช่องทางตั้งราคา">{[['shopee','Shopee'],['tiktok','TikTok Mall']].map(([key,label])=><button key={key} aria-pressed={channel===key} className={channel===key?'active':''} onClick={()=>{setChannel(key);if(key==='tiktok') setTikTokOpened(true)}}>{label}</button>)}</div></div><div hidden={channel!=='shopee'}><ShopeePricing {...props}/></div>{tikTokOpened && <div hidden={channel!=='tiktok'}><TikTokPricing {...props}/></div>}</>
+}
+
+function ShopeePricing({ access, onAccessRevoked }) {
   const [draft, setDraft] = useState(newPricingDraft)
   const [reference, setReference] = useState(newPricingDraft)
   const [comparisonMode,setComparisonMode] = useState('snapshot')
@@ -68,7 +76,7 @@ export default function Pricing({ access, onAccessRevoked }) {
   const [receiptTop,setReceiptTop] = useState(18)
   const canPersist = access?.configured && !access.demo
   const canReadOps = Boolean(access?.allowed && !access.demo)
-  const costMemory = useMemo(()=>savedPricingCosts(revisions),[revisions])
+  const costMemory = useMemo(()=>savedPricingCosts(revisions.filter(r=>!isTikTokPlan(r.draft))),[revisions])
   const selectedFamily=productGroups.find(p=>p.key===draft.productGroupId)
   const rawSelectedProduct=catalog.find(p=>p.key===pricingProductKey(draft.business,draft.sku))
   const selectedProduct=selectedFamily ? {...rawSelectedProduct,name:selectedFamily.name,referencePrice:selectedFamily.referencePrice,referencePriceSource:selectedFamily.referencePriceSource} : rawSelectedProduct
@@ -88,7 +96,7 @@ export default function Pricing({ access, onAccessRevoked }) {
   const monthly = useMemo(() => monthlyProfit(draft), [draft])
   const comparisonDraft = useMemo(()=>pricingComparisonDraft(draft,reference,comparisonMode),[comparisonMode,draft,reference])
   const baseline = useMemo(() => comparisonDraft ? calculatePricing(comparisonDraft) : {valid:false}, [comparisonDraft])
-  const latestPlans = useMemo(() => latestPricingPlans(revisions), [revisions])
+  const latestPlans = useMemo(() => latestPricingPlans(revisions).filter(r=>!isTikTokPlan(r.draft)), [revisions])
   const plans = latestPlans.filter(r=>!r.deleted)
   const deletedPlans = latestPlans.filter(r=>r.deleted)
   const filteredPlans = (showDeleted ? deletedPlans : plans).filter(p => `${p.draft.name} ${p.draft.productName} ${p.draft.sku}`.toLowerCase().includes(search.toLowerCase()))

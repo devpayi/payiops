@@ -81,3 +81,5 @@
 .pricing-plan-actions .pricing-button{min-height:30px;padding:4px 8px;font-size:12px}
 
 .pricing-family-members{display:flex;flex-wrap:wrap;gap:6px;padding:6px 0 10px;font-size:11px}.pricing-family-members p{flex-basis:100%;font-size:11px}.pricing-family-members span{padding:4px 7px;background:var(--payi-surface-muted);border-radius:4px;color:var(--payi-text-muted)}
+
+.pricing-channel-bar{padding-bottom:4px;display:flex;gap:12px}.pricing-channel-bar .pricing-tabs{width:auto}.pricing-channel-bar .pricing-tabs button{min-width:110px}.pricing-tiktok .tiktok-cost-fields{margin-top:14px}.pricing-tiktok .tiktok-profit-note{margin-top:10px}.pricing-tiktok .tiktok-chart{margin-top:18px;min-width:0}.pricing-tiktok .pricing-monthly{display:grid;gap:5px}.pricing-tiktok .pricing-field select{max-width:100%}.pricing-tiktok .pricing-ledger dt{overflow-wrap:anywhere}.pricing-tiktok .pricing-ledger dd{white-space:nowrap}.pricing-tiktok .pricing-ledger small{font-size:10px;background:var(--payi-surface-muted);padding:2px 4px;border-radius:3px}.pricing-tiktok .pricing-price-panel>.pricing-field{margin-top:8px}

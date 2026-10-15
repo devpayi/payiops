@@ -3,6 +3,7 @@ import { authEnabled } from './auth.js'
 import { loadPricingCatalog, loadPricingSales, bangkokDate } from './pricingData.js'
 import { appendPricingRevision, listPricingRevisions, pricingConfigured } from './pricingStore.js'
 import { calculatePricing, normalizePricingDraft, PRICING_ENGINE_VERSION, PRICING_SCHEMA_VERSION } from '../../shared/pricing.js'
+import { isTikTokPlan, normalizeTikTokDraft, calculateTikTok, TIKTOK_PRICING_VERSION } from '../../shared/tiktokPricing.js'
 
 export function pricingAccounts() {
   // Owner-approved accounts only. A broad role never grants Pricing access.
@@ -63,8 +64,9 @@ export async function opPricing(req, res, services = {}) {
       const body = req.body || {}
       if (!/^[a-zA-Z0-9-]{16,80}$/.test(body.requestId || '')) return res.status(400).json({ success: false, error: 'รหัสคำขอบันทึกไม่ถูกต้อง' })
       if (!body.draft || typeof body.draft !== 'object' || Array.isArray(body.draft) || (Array.isArray(body.draft.components) && body.draft.components.length > 30)) return res.status(400).json({ success: false, error: 'รูปแบบแผนราคาไม่ถูกต้อง หรือส่วนประกอบเกิน 30 รายการ' })
-      const draft = normalizePricingDraft(body.draft)
-      const result = calculatePricing(draft)
+      const tiktok=isTikTokPlan(body.draft)
+      const draft = tiktok ? normalizeTikTokDraft(body.draft) : normalizePricingDraft(body.draft)
+      const result = tiktok ? calculateTikTok(draft) : calculatePricing(draft)
       if (!draft.name || !draft.productName || !result.valid) return res.status(400).json({ success: false, error: result.errors?.[0] || 'กรอกชื่อสินค้าและชื่อแผนก่อนบันทึก' })
       const hash = createHash('sha256').update(JSON.stringify({ draft, scenarioId: body.scenarioId || null, parentRevisionId: body.parentRevisionId || null })).digest('hex')
       const revisions = await listRevisions()
@@ -73,8 +75,9 @@ export async function opPricing(req, res, services = {}) {
       if (body.scenarioId) {
         const history = revisions.filter(r => r.scenarioId === body.scenarioId)
         if (!history.length || history.at(-1).deleted || history.at(-1).revisionId !== body.parentRevisionId) return res.status(409).json({ success: false, conflict: true, error: 'แผนนี้ถูกลบหรือมีการแก้ไขแล้ว กรุณาโหลดใหม่หรือบันทึกเป็นแผนใหม่' })
+        if(isTikTokPlan(history.at(-1).draft)!==tiktok) return res.status(409).json({success:false,error:'ไม่สามารถเขียนทับแผนต่างช่องทางได้'})
       }
-      const record = { requestId: body.requestId, hash, scenarioId: body.scenarioId || randomUUID(), revisionId: randomUUID(), parentRevisionId: body.parentRevisionId || null, createdAt: new Date().toISOString(), createdBy: req.user.u, schemaVersion: PRICING_SCHEMA_VERSION, engineVersion: PRICING_ENGINE_VERSION, draft, result }
+      const record = { requestId: body.requestId, hash, scenarioId: body.scenarioId || randomUUID(), revisionId: randomUUID(), parentRevisionId: body.parentRevisionId || null, createdAt: new Date().toISOString(), createdBy: req.user.u, schemaVersion: PRICING_SCHEMA_VERSION, engineVersion: tiktok ? TIKTOK_PRICING_VERSION : PRICING_ENGINE_VERSION, draft, result }
       try { await appendRevision(record) } catch { return res.status(503).json({ success: false, unknown: true, error: 'ยังยืนยันผลบันทึกไม่ได้ กดตรวจสอบผลบันทึกก่อนลองใหม่', requestId: body.requestId }) }
       return res.status(200).json({ success: true, record })
     }
