@@ -260,6 +260,28 @@ export async function ensureExternalSheet(spreadsheetId, sheetName, headers) {
   }
 }
 
+// ชื่อคอลัมน์ Sheets จาก index (0 -> A, 25 -> Z, 26 -> AA ...)
+function colLetter(i) {
+  let n = i + 1
+  let out = ''
+  while (n > 0) { const r = (n - 1) % 26; out = String.fromCharCode(65 + r) + out; n = Math.floor((n - 1) / 26) }
+  return out
+}
+
+// แก้เฉพาะเซลล์ที่ระบุในแถวเดียว (cells = { colIndex: value }) — ห้ามเขียนทั้งแถวทับ เพราะเซลล์ที่ไม่ได้แก้
+// ถ้าถูกเขียนกลับด้วย USER_ENTERED เบอร์โทร/เลขบัตรจะโดนตัดเลข 0 นำหน้า
+export async function updateExternalCells(spreadsheetId, sheetName, rowNumber, cells) {
+  const data = Object.entries(cells).map(([col, value]) => ({
+    range: `${sheetName}!${colLetter(Number(col))}${rowNumber}`,
+    values: [[value]],
+  }))
+  if (!data.length) return
+  await withQuotaRetry(() => getClient().spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: { valueInputOption: 'USER_ENTERED', data },
+  }))
+}
+
 // ลบแถวจริงออกจากแท็บ (rowNumber = เลขแถวใน Sheets เริ่มที่ 1 รวมแถวหัวตาราง)
 export async function deleteExternalRow(spreadsheetId, sheetName, rowNumber) {
   const meta = await withQuotaRetry(() => getClient().spreadsheets.get({ spreadsheetId }))

@@ -217,5 +217,5 @@
     return out + '</div>';
   }
 
-  window.HRPdfForm = { build: build };
+  window.HRPdfForm = { build: build, sections: SECTIONS };
 })();

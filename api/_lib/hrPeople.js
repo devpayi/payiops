@@ -14,7 +14,7 @@
 // (ดู route ใน sheet-tools.js, เช็คก่อนถึง requireAuth เหมือน line-webhook) เพราะผู้สมัครงาน
 // ไม่มีบัญชีในระบบ ไม่เก็บรูป/ไฟล์ใดๆ (owner ตัดสินใจ 2026-09-11 — เก็บแค่ข้อความ ไม่เสี่ยงเรื่อง
 // พื้นที่เก็บไฟล์ฟรีไม่มี/ความเป็นส่วนตัวของรูปบัตร)
-import { getExternalSheet, ensureExternalSheet, appendExternalRows, deleteExternalRow } from './sheets.js'
+import { getExternalSheet, ensureExternalSheet, appendExternalRows, deleteExternalRow, updateExternalCells } from './sheets.js'
 import { uploadToDrive } from './driveBridge.js'
 
 const HR_SHEET_ID = () => (process.env.HR_SHEET_ID || '').trim()
@@ -104,6 +104,64 @@ async function opRestorePerson(req, res, sheetId) {
   }
 }
 
+// แก้ไขข้อมูลคน 1 แถวใน applicants_full / employees_full — รับเฉพาะช่องที่แก้ ({header: ค่าใหม่}) เท่านั้น
+// กฎความปลอดภัย: (1) เช็คประทับเวลาแถวเดิมก่อน กันแก้ผิดคนตอนเลขแถวเลื่อน เหมือนตอนลบ (2) แก้ได้เฉพาะหัวคอลัมน์
+// ที่เป็นช่องคำถามของฟอร์ม — ห้ามแตะ ประทับเวลา / ลิงก์รูปบัตร-ทะเบียนบ้าน / ยืนยันข้อมูล (3) ชื่อ-เบอร์โทร(-เลขบัตร)
+// ห้ามแก้ให้ว่าง (4) จดประวัติก่อน-หลังลงแท็บ hr_edit_log ไว้ย้อนดูได้
+const EDIT_LOG_HEADERS = ['edited_at', 'edited_by', 'source_view', 'name', 'timestamp', 'changes_json']
+const EDIT_PROTECTED_KEYS = new Set(['id_card_photo_url', 'house_registration_photo_url', 'confirmed'])
+async function opUpdatePerson(req, res, sheetId) {
+  const { view, row, ts, changes } = req.body || {}
+  const rowNo = Number(row)
+  if (!['employees_full', 'applicants_full'].includes(view) || !Number.isInteger(rowNo) || rowNo < 2
+    || !changes || typeof changes !== 'object' || Array.isArray(changes)) {
+    return res.status(400).json({ success: false, error: 'ข้อมูลที่ส่งมาไม่ถูกต้อง' })
+  }
+  const fields = view === 'employees_full' ? EMPLOYEE_FULL_FIELDS : APPLICANT_FULL_FIELDS
+  const textForce = view === 'employees_full' ? EMPLOYEE_TEXT_FORCE_KEYS : TEXT_FORCE_KEYS
+  const byLabel = new Map(fields.map(([key, label]) => [label, key]))
+  const required = view === 'employees_full' ? ['full_name', 'mobile_phone', 'id_card_number'] : ['full_name', 'mobile_phone', 'position']
+  const tab = TAB[view]
+  try {
+    const [headerRows, dataRows] = await Promise.all([
+      getExternalSheet(sheetId, `${tab}!A1:ZZ1`),
+      getExternalSheet(sheetId, `${tab}!A${rowNo}:ZZ${rowNo}`),
+    ])
+    const headers = (headerRows[0] || []).map((h) => String(h ?? '').trim())
+    const cells = dataRows[0] || []
+    if (!cells.length || String(cells[0] ?? '').trim() !== String(ts ?? '').trim()) {
+      return res.status(409).json({ success: false, error: 'ข้อมูลเปลี่ยนไปแล้ว (มีการเพิ่ม/ลบรายการ) กรุณากดโหลดใหม่แล้วลองอีกครั้ง' })
+    }
+    const toWrite = {}
+    const log = {}
+    for (const [header, raw] of Object.entries(changes)) {
+      const key = byLabel.get(header)
+      const col = headers.indexOf(header)
+      if (!key || col < 0 || EDIT_PROTECTED_KEYS.has(key)) {
+        return res.status(400).json({ success: false, error: `แก้ช่อง "${header}" ไม่ได้` })
+      }
+      const value = clean(raw)
+      if (required.includes(key) && !value) {
+        return res.status(400).json({ success: false, error: `ช่อง "${header}" ต้องไม่ว่าง` })
+      }
+      const before = String(cells[col] ?? '').trim()
+      if (before === value) continue
+      toWrite[col] = textForce.has(key) && /^\d+$/.test(value) ? `'${value}` : value
+      log[header] = { from: before, to: value }
+    }
+    if (!Object.keys(toWrite).length) return res.status(200).json({ success: true, changed: 0 })
+    const nameCol = headers.indexOf('ชื่อ-นามสกุล')
+    await ensureExternalSheet(sheetId, 'hr_edit_log', EDIT_LOG_HEADERS)
+    // จดประวัติก่อนแก้จริง — พลาดครึ่งทางอย่างมากได้ log เกิน ไม่มีทางแก้แล้วไม่มีร่องรอย
+    await appendExternalRows(sheetId, 'hr_edit_log', [[new Date().toISOString(), actorName(req), view, nameCol >= 0 ? String(cells[nameCol] ?? '') : '', String(ts ?? '').trim(), JSON.stringify(log).slice(0, 45000)]])
+    await updateExternalCells(sheetId, tab, rowNo, toWrite)
+    return res.status(200).json({ success: true, changed: Object.keys(toWrite).length })
+  } catch (e) {
+    console.error('opUpdatePerson:', e.message)
+    return res.status(500).json({ success: false, error: 'บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง' })
+  }
+}
+
 export default async function opHrPeople(req, res) {
   if (req.method === 'POST') {
     const sheetId = HR_SHEET_ID()
@@ -111,6 +169,7 @@ export default async function opHrPeople(req, res) {
     const action = (req.body || {}).action
     if (action === 'delete-person') return opDeletePerson(req, res, sheetId)
     if (action === 'restore-person') return opRestorePerson(req, res, sheetId)
+    if (action === 'update-person') return opUpdatePerson(req, res, sheetId)
     return res.status(400).json({ success: false, error: 'ไม่รู้จัก action นี้' })
   }
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' })

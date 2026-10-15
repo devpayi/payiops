@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { Users, Search, X, ExternalLink, RefreshCw, FilePlus2, Printer, Trash2, RotateCcw } from 'lucide-react'
+import { Users, Search, X, ExternalLink, RefreshCw, FilePlus2, Printer, Trash2, RotateCcw, Pencil } from 'lucide-react'
 import KpiCard from '../components/KpiCard'
 
 const API = '/api/sheet-tools?op=hr-people'
@@ -126,12 +126,197 @@ function LinkOrText({ value }) {
   return <>{value || <span style={{ color: 'var(--payi-text-faint)' }}>—</span>}</>
 }
 
+// ==================== แก้ไขข้อมูล ====================
+// ฟอร์มแก้ไขสร้างจากรายการคำถามชุดเดียวกับ PDF/wizard (window.HRPdfForm.sections จาก public/hr-pdf-form.js)
+// — เพิ่ม/แก้คำถามที่ SECTIONS ที่เดียว ฟอร์มแก้ไข + PDF + ฟอร์มเปล่า ตามกันหมด ส่งขึ้นไปเฉพาะช่องที่แก้จริง
+// (server เช็คประทับเวลา/จดประวัติลงแท็บ hr_edit_log) ช่องที่แก้ไม่ได้: รูปบัตร/ทะเบียนบ้าน (เป็นลิงก์ Drive)
+const MULTI_KEYS = new Set(['documents_ready', 'office_skills', 'computer_programs'])
+const splitList = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean)
+const OTHER_RE = /^อื่นๆ:?\s*/
+const normTableRows = (rows, cols) => (rows || [])
+  .map((r) => ({ ...r, ...Object.fromEntries(cols.map(([k]) => [k, String(r[k] ?? '').trim()])) }))
+  .filter((r) => cols.some(([k]) => r[k]))
+
+const editInput = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--payi-border)', fontSize: 14, background: 'var(--payi-surface)', color: 'var(--payi-text-strong)', boxSizing: 'border-box', fontFamily: 'inherit' }
+const editLabel = { fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 4 }
+
+// โหลด SECTIONS (สคริปต์ตัวสร้าง PDF) ก่อน แล้วค่อยเปิดฟอร์มจริง — ฟอร์มตั้งค่าเริ่มต้นตอน mount ครั้งเดียว
+function RecordEditor(props) {
+  const [sections, setSections] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    loadHrPdfForm().then(() => setSections(window.HRPdfForm.sections[props.kind])).catch(() => setErr('โหลดฟอร์มแก้ไขไม่สำเร็จ ลองรีเฟรชหน้า'))
+  }, [props.kind])
+  if (!sections) return <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>{err || 'กำลังโหลดฟอร์มแก้ไข...'}</div>
+  return <RecordEditorForm {...props} sections={sections} />
+}
+
+function RecordEditorForm({ row, headers, sections, onCancel, onSave }) {
+  // key ของคำถาม -> หัวคอลัมน์จริงในชีตของ view นี้ (บางคำถามหัวต่างกันระหว่างผู้สมัคร/พนักงาน)
+  const headerOf = (key) => (PDF_HEADERS[key] || []).find((h) => headers.includes(h))
+  const eachItem = (fn) => {
+    for (const sec of sections) for (const r of sec.rows) for (const it of r) {
+      const h = headerOf(it.key)
+      if (h && it.t !== 'ok' && it.t !== 'f') fn(it, h, sec)
+    }
+  }
+  const [vals, setVals] = useState(() => {
+    const v = {}
+    eachItem((it, h) => {
+      const raw = row[h] ?? ''
+      if (it.t === 'table') v[it.key] = parseJsonRows(raw) || []
+      else if (it.t === 'y') v[it.key] = raw === 'ไม่มี' ? { mode: 'no', detail: '' } : raw ? { mode: 'yes', detail: raw === 'มี' ? '' : raw } : { mode: '', detail: '' }
+      else if (it.t === 'c' && MULTI_KEYS.has(it.key)) v[it.key] = splitList(raw)
+      else v[it.key] = raw
+    })
+    return v
+  })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const set = (key, value) => setVals((p) => ({ ...p, [key]: value }))
+
+  const save = async () => {
+    const changes = {}
+    eachItem((it, h) => {
+      const v = vals[it.key]
+      let nv
+      if (it.t === 'table') {
+        const next = normTableRows(v, it.cols)
+        if (JSON.stringify(next) === JSON.stringify(normTableRows(parseJsonRows(row[h]) || [], it.cols))) return
+        nv = JSON.stringify(next)
+      } else if (it.t === 'y') {
+        nv = v.mode === 'no' ? 'ไม่มี' : v.mode === 'yes' ? (v.detail.trim() || 'มี') : ''
+      } else if (it.t === 'c' && MULTI_KEYS.has(it.key)) {
+        nv = v.join(', ')
+      } else {
+        nv = String(v ?? '').trim()
+      }
+      if (nv !== String(row[h] ?? '').trim()) changes[h] = nv
+    })
+    if (!Object.keys(changes).length) { onCancel(); return }
+    setSaving(true); setErr('')
+    try { await onSave(changes) } catch (e) { setErr(e.message || 'บันทึกไม่สำเร็จ'); setSaving(false) }
+  }
+
+  const renderItem = (it, sec) => {
+    const h = headerOf(it.key)
+    if (!h) return null
+    const label = it.label || sec.title
+    if (it.t === 'f') {
+      return (
+        <div key={it.key}><div style={editLabel}>{label}</div>
+          <div style={{ fontSize: 13 }}><LinkOrText value={row[h]} /> <span style={{ color: 'var(--payi-text-faint)' }}>(แก้ไม่ได้ — ไฟล์เก็บใน Drive)</span></div></div>
+      )
+    }
+    if (it.t === 'ok') return null
+    const v = vals[it.key]
+    let control = null
+    if (it.t === 't') {
+      control = (it.grow || 1) >= 3
+        ? <textarea rows={2} value={v} onChange={(e) => set(it.key, e.target.value)} style={editInput} />
+        : <input value={v} onChange={(e) => set(it.key, e.target.value)} style={editInput} />
+    } else if (it.t === 'c' && MULTI_KEYS.has(it.key)) {
+      const hasOther = v.some((x) => x.startsWith('อื่นๆ'))
+      control = (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {it.options.map((o) => {
+            const checked = o === 'อื่นๆ' ? hasOther : v.includes(o)
+            return (
+              <label key={o} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+                <input type="checkbox" checked={checked} onChange={(e) => {
+                  const rest = v.filter((x) => (o === 'อื่นๆ' ? !x.startsWith('อื่นๆ') : x !== o))
+                  set(it.key, e.target.checked ? [...rest, o] : rest)
+                }} /> {o}
+              </label>
+            )
+          })}
+          {hasOther && it.key === 'computer_programs' && (
+            <input placeholder="อื่นๆ (ระบุ)" style={editInput}
+              value={(v.find((x) => x.startsWith('อื่นๆ')) || '').replace(OTHER_RE, '')}
+              onChange={(e) => {
+                const d = e.target.value.replace(/,/g, ' ')
+                set(it.key, v.map((x) => (x.startsWith('อื่นๆ') ? (d.trim() ? `อื่นๆ: ${d}` : 'อื่นๆ') : x)))
+              }} />
+          )}
+        </div>
+      )
+    } else if (it.t === 'c') {
+      const opts = v && !it.options.includes(v) ? [v, ...it.options] : it.options // ค่าเดิมที่ไม่อยู่ในตัวเลือก ไม่ทิ้ง
+      control = (
+        <select value={v} onChange={(e) => set(it.key, e.target.value)} style={editInput}>
+          <option value="">—</option>
+          {opts.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      )
+    } else if (it.t === 'y') {
+      control = (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 14, fontSize: 14 }}>
+            {[['no', 'ไม่มี'], ['yes', 'มี (ระบุ)']].map(([m, t]) => (
+              <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <input type="radio" name={`y-${it.key}`} checked={v.mode === m} onChange={() => set(it.key, { ...v, mode: m })} /> {t}
+              </label>
+            ))}
+          </div>
+          {v.mode === 'yes' && <textarea rows={2} placeholder="ระบุ" value={v.detail} onChange={(e) => set(it.key, { ...v, detail: e.target.value })} style={editInput} />}
+        </div>
+      )
+    } else if (it.t === 'table') {
+      const rows = v
+      const setCell = (i, k, val) => set(it.key, rows.map((r, j) => (j === i ? { ...r, [k]: val } : r)))
+      control = (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {rows.map((r, i) => (
+            <div key={i} style={{ border: '1px solid var(--payi-border)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {it.cols.map(([k, lbl]) => (
+                <div key={k}><div style={{ ...editLabel, fontWeight: 600 }}>{lbl}</div>
+                  <input value={r[k] ?? ''} onChange={(e) => setCell(i, k, e.target.value)} style={editInput} /></div>
+              ))}
+              <button type="button" onClick={() => set(it.key, rows.filter((_, j) => j !== i))}
+                style={{ alignSelf: 'flex-end', border: 'none', background: 'transparent', color: '#b91c1c', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>ลบแถวนี้</button>
+            </div>
+          ))}
+          <button type="button" onClick={() => set(it.key, [...rows, {}])}
+            style={{ alignSelf: 'flex-start', border: '1px dashed var(--payi-border)', background: 'transparent', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13, color: 'var(--payi-mint-strong)', fontWeight: 600 }}>+ เพิ่มแถว</button>
+        </div>
+      )
+    }
+    return <div key={it.key}><div style={editLabel}>{label}</div>{control}</div>
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {sections.map((sec) => {
+        const items = sec.rows.flat().map((it) => renderItem(it, sec)).filter(Boolean)
+        if (!items.length) return null
+        return (
+          <div key={sec.title} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--payi-text-strong)', borderBottom: '1px solid var(--payi-border)', paddingBottom: 4 }}>{sec.title}</div>
+            {items}
+          </div>
+        )
+      })}
+      {err && <div style={{ color: 'var(--payi-danger, #b91c1c)', fontSize: 13 }}>{err}</div>}
+      <div style={{ position: 'sticky', bottom: -24, background: 'var(--payi-surface)', padding: '12px 0', display: 'flex', gap: 8, borderTop: '1px solid var(--payi-border)' }}>
+        <button onClick={save} disabled={saving}
+          style={{ flex: 1, border: 'none', borderRadius: 10, padding: '10px 14px', cursor: saving ? 'default' : 'pointer', fontSize: 14, fontWeight: 700, color: '#fff', background: 'var(--payi-gradient-primary)', opacity: saving ? 0.6 : 1 }}>
+          {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+        </button>
+        <button onClick={onCancel} disabled={saving}
+          style={{ border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', borderRadius: 10, padding: '10px 14px', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: 'var(--payi-text-strong)' }}>ยกเลิก</button>
+      </div>
+    </div>
+  )
+}
+
 // พิมพ์เฉพาะเนื้อหา drawer (ซ่อนทุกอย่างอื่นตอนสั่งพิมพ์) — ไม่ต้องใช้ library, ใช้ browser
 // print เดิม เหมือน public/apply.html แค่ scope ด้วย class .hr-print-area แทน
-function DetailDrawer({ row, headers, onClose, onDelete, onRestore }) {
+function DetailDrawer({ row, headers, kind, onClose, onDelete, onRestore, onSave }) {
+  const [editing, setEditing] = useState(false)
   if (!row) return null
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }}>
+    <div onClick={editing ? undefined : onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }}>
       {/* พิมพ์: ฟอร์มถูก portal ออกไปเป็นลูกตรงของ <body> (ดูด้านล่าง) แล้วซ่อนทุกอย่างอื่นด้วย display:none
           — ห้ามใช้วิธีซ่อนด้วย visibility + จัด position ให้ drawer เอง เพราะ drawer อยู่ใต้ overlay
           ที่เป็น position:fixed (ancestor แบบ fixed ขังเนื้อหาไว้แค่ 1 หน้ากระดาษ ต่อให้ลูกเป็น
@@ -146,27 +331,37 @@ function DetailDrawer({ row, headers, onClose, onDelete, onRestore }) {
       <div className="app-side-drawer" onClick={(e) => e.stopPropagation()}
         style={{ background: 'var(--payi-surface)', width: 'min(460px,100vw)', height: '100%', overflowY: 'auto', padding: 24, boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <strong style={{ fontSize: 16, color: 'var(--payi-text-strong)' }}>รายละเอียด</strong>
+          <strong style={{ fontSize: 16, color: 'var(--payi-text-strong)' }}>{editing ? 'แก้ไขข้อมูล' : 'รายละเอียด'}</strong>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button onClick={() => window.print()} title="สร้าง PDF / พิมพ์"
+            {!editing && onSave && (
+              <button onClick={() => setEditing(true)} title="แก้ไขข้อมูล"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--payi-mint-strong)' }}>
+                <Pencil size={14} /> แก้ไขข้อมูล
+              </button>
+            )}
+            {!editing && <button onClick={() => window.print()} title="สร้าง PDF / พิมพ์"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--payi-text-strong)' }}>
               <Printer size={14} /> สร้าง PDF
-            </button>
-            {onDelete && (
+            </button>}
+            {onDelete && !editing && (
               <button onClick={onDelete} title="ลบ (ย้ายไปประวัติที่ลบ กู้คืนได้)"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#b91c1c' }}>
                 <Trash2 size={14} /> ลบ
               </button>
             )}
-            {onRestore && (
+            {onRestore && !editing && (
               <button onClick={onRestore} title="กู้คืนกลับไปที่เดิม"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid var(--payi-border)', background: 'var(--payi-surface)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--payi-mint-strong)' }}>
                 <RotateCcw size={14} /> กู้คืน
               </button>
             )}
-            <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--payi-text-muted)' }}><X size={20} /></button>
+            <button onClick={editing ? () => setEditing(false) : onClose} title={editing ? 'ยกเลิกการแก้ไข' : 'ปิด'} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--payi-text-muted)' }}><X size={20} /></button>
           </div>
         </div>
+        {editing ? (
+          <RecordEditor row={row} headers={headers} kind={kind} onCancel={() => setEditing(false)}
+            onSave={async (changes) => { await onSave(changes); setEditing(false) }} />
+        ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {headers.map((h) => (
             <div key={h}>
@@ -175,6 +370,7 @@ function DetailDrawer({ row, headers, onClose, onDelete, onRestore }) {
             </div>
           ))}
         </div>
+        )}
       </div>
       {createPortal(<div className="hr-print-portal"><LockedApplicationForm row={row} /></div>, document.body)}
     </div>
@@ -220,7 +416,8 @@ export default function HRPeople() {
   useEffect(() => { load() }, [load])
 
   const isTrash = view === 'deleted'
-  const post = (body) => fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json())
+  const post = (body) => fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(async (r) => { try { return await r.json() } catch { return { success: false, error: `เซิร์ฟเวอร์ตอบผิดปกติ (รหัส ${r.status}) ลองใหม่อีกครั้ง` } } })
 
   // ลบ = ย้ายไปประวัติที่ลบ (server เช็คว่าแถวยังเป็นคนเดิมจริงก่อนลบ กันเลขแถวเลื่อนจนลบผิดคน)
   const deleteRow = async (row) => {
@@ -232,6 +429,13 @@ export default function HRPeople() {
       setSelected(null)
       load()
     } catch (e) { window.alert(e.message) }
+  }
+  // แก้ไข: ส่งเฉพาะช่องที่เปลี่ยน — สำเร็จแล้วอัปเดตแถวที่เปิดอยู่ทันที (PDF ที่สร้างจากแถวนี้เลยเป็นข้อมูลใหม่) แล้วโหลดตารางใหม่
+  const saveEdit = async (changes) => {
+    const d = await post({ action: 'update-person', view, row: selected.__row, ts: selected['ประทับเวลา'], changes })
+    if (!d.success) throw new Error(d.error || 'บันทึกไม่สำเร็จ')
+    setSelected((s) => ({ ...s, ...changes }))
+    load()
   }
   const restoreRow = async (row) => {
     if (!window.confirm(`กู้คืน "${row['ชื่อ'] || 'รายการนี้'}" กลับไปที่เดิม?`)) return
@@ -376,7 +580,7 @@ export default function HRPeople() {
 
       {selected && (isTrash
         ? <DetailDrawer row={selected.__data || {}} headers={Object.keys(selected.__data || {})} onClose={() => setSelected(null)} onRestore={() => restoreRow(selected)} />
-        : <DetailDrawer row={selected} headers={headers} onClose={() => setSelected(null)} onDelete={() => deleteRow(selected)} />)}
+        : <DetailDrawer row={selected} headers={headers} kind={view === 'employees_full' ? 'employee' : 'applicant'} onClose={() => setSelected(null)} onDelete={() => deleteRow(selected)} onSave={saveEdit} />)}
     </div>
   )
 }

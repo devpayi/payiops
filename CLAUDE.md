@@ -431,6 +431,17 @@ Sheets rate limits.
       in `ensureExternalSheet`): the `*_full` tabs have 60-66 columns, everything past column Z (marital,
       military, education, skills, references…) was silently missing from the dashboard/PDF ("checkbox
       empty" bug). Verified end-to-end against a scratch tab (submit→delete→trash→restore, 60 columns intact).
+    - **✅ DONE (2026-10-15) — "แก้ไขข้อมูล" button in the detail drawer (applicants_full / employees_full only).**
+      `RecordEditor` (HRPeople.jsx) builds its form from `window.HRPdfForm.sections` — the same question list
+      the PDF/blank form use (now exported from `hr-pdf-form.js`), so adding a question to `SECTIONS` updates
+      editor + PDF together. Sends only changed cells: `op=hr-people` `{action:'update-person', view, row, ts, changes:{header:newValue}}`
+      → `opUpdatePerson`: 409 unless col A timestamp still matches; only question headers editable (NOT ประทับเวลา /
+      photo URLs / ยืนยันข้อมูล); name/phone(/id card or position) can't be blanked; before/after appended to new tab
+      **`hr_edit_log`**; writes **individual cells** via `updateExternalCells` (sheets.js) — never rewrite the whole
+      row, USER_ENTERED would strip leading zeros of untouched phone/ID cells. Photos not editable (Drive links).
+      After save the open row is merged in place, so "สร้าง PDF" prints the edited data. Verified end-to-end against a
+      scratch tab (edit → sheet → UI → print portal). Pre-existing eslint errors in HRPeople.jsx (refs-in-render,
+      set-state-in-effect in `load`) are unchanged from before.
     - **✅ DONE (2026-09-18) — same locked-pattern PDF ported to the applicant/employee
       wizards' own done-screens too.** Owner tested the dashboard's "สร้าง PDF" and then
       asked why the wizard's own "พิมพ์ใบสมัคร (PDF)" button (on `apply.html`'s/
