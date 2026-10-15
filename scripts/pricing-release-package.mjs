@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto'
 const files = [
   '.env.example','api/sheet-tools.js','api/_lib/pricing.js','api/_lib/pricingData.js','api/_lib/pricingStore.js',
   'shared/roles.js','shared/pricing.js','shared/pricingCatalog.js','shared/pricingPresets.js','shared/pricingComparison.js','shared/pricingFamilies.js','shared/productGroup.js','api/_lib/productGroup.js',
-  'src/App.jsx','src/pages/Pricing.jsx','src/pages/TikTokPricing.jsx','src/pages/Pricing.css','src/data/pricingDemo.js','shared/tiktokPricing.js','test/tiktok-pricing.test.js',
+  'src/App.jsx','src/pages/Pricing.jsx','src/pages/TikTokPricing.jsx','src/pages/TikTokWorksheet.jsx','src/pages/TikTokWorksheet.css','src/pages/Pricing.css','src/data/pricingDemo.js','shared/tiktokPricing.js','test/tiktok-pricing.test.js',
   'test/pricing.test.js','test/pricing-api.test.js','test/pricing-data.test.js','test/pricing-families.test.js',
   'scripts/pricing-preflight.mjs','scripts/pricing-smoke.mjs','scripts/pricing-release-package.mjs',
   'docs/pricing-setup.th.md','docs/payi-pricing-plan.th.md',
