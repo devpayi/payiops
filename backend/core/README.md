@@ -1,5 +1,7 @@
 # MONA Operations
 
+**LINE workflow ล่าสุด:** จดข้อความแท็กโดยไม่จัดหมวด ตอบ `.` และส่งสรุปส่วนตัวพี่หยก ดู [คู่มือจดคำขอ LINE](../../docs/line-notes-guide.th.md) ส่วนหน้าจัดซื้อบนเว็บเดิมยังใช้ได้แยกต่างหาก
+
 Next.js / Express / strict TypeScript / PostgreSQL 18.4 / Ollama พร้อม tenant isolation, accrual profit, payment idempotency, procurement และ LINE Bot จัดซื้อแยกตัว
 
 เริ่มจาก [คู่มือเปิดระบบบนเครื่องร้าน](../../docs/operations-free.th.md) ซึ่งอธิบายบัญชีเริ่มต้น การสำรอง และการตั้งค่าบอทใหม่

@@ -10,8 +10,9 @@ export function settingsRoutes(db:TenantDatabase):Router{
  const r=Router();r.use(requirePermission(db,'users.manage'));
  r.get('/',async(_req,res)=>{
   const company=db.currentCompanyId(),connections=(await db.query(sql`SELECT id,external_account_id,webhook_route_id,is_active FROM app.integration_connections WHERE company_id=${company} AND provider='LINE'`)).rows;
+  const groups=(await db.query(sql`SELECT group_id,connection_id FROM app.line_shop_groups WHERE company_id=${company}`)).rows;
   const events=(await db.query(sql`SELECT status,last_error,created_at,delivered_at FROM app.outbox_events WHERE company_id=${company} AND topic='LINE_PROCUREMENT' ORDER BY created_at DESC LIMIT 10`)).rows;
-  res.json({connections,events,localConfiguration:!!process.env['LOCAL_RUNTIME_FILE'],sendEnabled:process.env['LINE_SEND_ENABLED']==='true',publicWebUrl:process.env['PUBLIC_WEB_URL']??'http://localhost:3000',ai:{url:process.env['OLLAMA_URL']??null,model:process.env['OLLAMA_MODEL']??null},timezone:'Asia/Bangkok'});
+  res.json({connections,groups,events,localConfiguration:!!process.env['LOCAL_RUNTIME_FILE'],sendEnabled:process.env['LINE_SEND_ENABLED']==='true',publicWebUrl:process.env['PUBLIC_WEB_URL']??'http://localhost:3000',ai:{url:process.env['OLLAMA_URL']??null,model:process.env['OLLAMA_MODEL']??null},timezone:'Asia/Bangkok'});
  });
  r.post('/line',async(req,res)=>{
   const file=process.env['LOCAL_RUNTIME_FILE'];if(!file)throw new HttpError(503,'ENV_CONFIGURATION_REQUIRED','การติดตั้งนี้ต้องกำหนด LINE ผ่าน environment ของเซิร์ฟเวอร์');
@@ -30,6 +31,7 @@ export function settingsRoutes(db:TenantDatabase):Router{
   const result=await db.transaction(async()=>{
    await db.query(sql`UPDATE app.integration_connections SET is_active=false WHERE company_id=${company} AND provider='LINE' AND external_account_id<>${botId}`);
    const row=(await db.query<{id:string;webhook_route_id:string}>(sql`INSERT INTO app.integration_connections(company_id,id,provider,external_account_id,webhook_route_id,credentials_secret_ref) VALUES(${company},${connection},'LINE',${botId},${route},${'env:'+reference}) ON CONFLICT(company_id,provider,external_account_id) DO UPDATE SET credentials_secret_ref=EXCLUDED.credentials_secret_ref,is_active=true RETURNING id,webhook_route_id`)).rows[0]!;
+   await db.query(sql`UPDATE app.line_recipients SET daily_summary_enabled=false WHERE company_id=${company} AND connection_id=${row.id} AND line_user_id<>${lineUserId}`);
    await db.query(sql`INSERT INTO app.line_recipients(company_id,connection_id,line_user_id,user_id) VALUES(${company},${row.id},${lineUserId},${actor}) ON CONFLICT(company_id,connection_id,line_user_id) DO UPDATE SET user_id=EXCLUDED.user_id,daily_summary_enabled=true`);
    await db.query(sql`INSERT INTO app.audit_logs(company_id,actor_user_id,action,entity_type,entity_id,changes) VALUES(${company},${actor},'LINE_CONFIGURED','INTEGRATION',${row.id},'{}'::jsonb)`);
    return row;

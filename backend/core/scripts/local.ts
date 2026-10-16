@@ -32,7 +32,7 @@ async function setup():Promise<void>{
  const db=new pg.Client({host:'127.0.0.1',port,user:'postgres',password:c.adminPassword,database:'mona_ops'});await db.connect();
  try{
   await db.query('CREATE TABLE IF NOT EXISTS public.schema_migrations(name text PRIMARY KEY,sha256 text NOT NULL,applied_at timestamptz NOT NULL DEFAULT now())');
-  for(const name of ['bootstrap.sql','migrations/0001_initial.sql','migrations/0002_backend_core.sql','migrations/0003_procurement.sql']){
+  for(const name of ['bootstrap.sql','migrations/0001_initial.sql','migrations/0002_backend_core.sql','migrations/0003_procurement.sql','migrations/0004_line_notes.sql','migrations/0005_line_workflow.sql']){
    const source=await readFile(path.join(root,'database',name),'utf8'),hash=createHash('sha256').update(source).digest('hex'),old=await db.query<{sha256:string}>('SELECT sha256 FROM public.schema_migrations WHERE name=$1',[name]);
    if(old.rows[0]){if(old.rows[0].sha256!==hash)throw new Error('Applied migration changed: '+name);continue;}
    await db.query(source.replace(/COMMIT;\s*$/,`SET LOCAL ROLE NONE;\nINSERT INTO public.schema_migrations(name,sha256) VALUES(${pg.escapeLiteral(name)},${pg.escapeLiteral(hash)});\nCOMMIT;`));

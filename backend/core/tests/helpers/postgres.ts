@@ -27,7 +27,7 @@ export async function testDatabase():Promise<{admin:pg.Client;db:TenantDatabase;
   const admin=new pg.Client({host:'127.0.0.1',port,user:'postgres',password,database:'postgres'});
   await admin.connect();
   try {
-    for(const migration of ['bootstrap.sql','migrations/0001_initial.sql','migrations/0002_backend_core.sql','migrations/0003_procurement.sql']) {
+    for(const migration of ['bootstrap.sql','migrations/0001_initial.sql','migrations/0002_backend_core.sql','migrations/0003_procurement.sql','migrations/0004_line_notes.sql','migrations/0005_line_workflow.sql']) {
       if(migration==='migrations/0002_backend_core.sql'){
         const tenant='30000000-0000-4000-8000-000000000003';
         await admin.query("INSERT INTO app.companies(company_id,slug,legal_name) VALUES ($1,'migration-probe','Migration probe')",[tenant]);

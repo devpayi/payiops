@@ -4,7 +4,7 @@ Date: 2026-09-11 (Asia/Bangkok)
 
 - TypeScript strict typecheck: PASS
 - Production TypeScript build: PASS
-- Integration tests: **35 passed, 0 failed, 0 skipped**
+- Integration tests: **41 passed, 0 failed, 0 skipped**
 - Database engine: PostgreSQL 18.4, isolated local cluster
 - Production dependency audit: 0 reported vulnerabilities at verification time
 
@@ -48,3 +48,7 @@ Commands: `npm run typecheck`, `npm test`, `npm run build`, `npm audit --omit=de
 - Next.js production build and strict TypeScript: passed.
 - Browser QA uses an isolated fixture company; real store data is untouched.
 - Dedicated LINE channel credentials and public HTTPS delivery remain unconfigured; no live message or bank transfer was performed.
+
+## Plain LINE note workflow
+
+Six added tests pass: boss-only first-group binding and bot rename, ignored chatter/images, concurrent deduplication with post-commit dot, owner/boss quoted amendments and cancellation, durable storage after reply failure, private summary and once-only quoted completion dot without accounting writes. New migrations tested on PostgreSQL 18.4. Live LINE delivery is still untested.

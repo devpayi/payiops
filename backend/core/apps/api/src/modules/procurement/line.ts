@@ -8,6 +8,8 @@ import { ProcurementService } from './service.js';
 import { hasPermission } from './routes.js';
 import { bangkokDate, id, locationNames, record, string, type Location } from './input.js';
 
+import { LineNotes, noteSummaryRound } from './line-notes.js';
+
 interface Connection {id:string;credentials_secret_ref:string;external_account_id:string}
 interface Recipient {id:string;user_id:string;line_user_id:string}
 interface SummaryItem {id:string;title:string;shop_url:string|null;location:Location;status:string;amount:string}
@@ -26,8 +28,11 @@ export class ProcurementLine {
   const u=new URL(webUrl);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw new Error('Invalid web URL');
  }
  get db(){return this.service.db;}
- async prepare(day=bangkokDate()):Promise<number>{
+ async prepare(day=bangkokDate(),round:'evening'|'morning'='evening',now=new Date()):Promise<number>{
   const company=this.db.currentCompanyId();
+  const noteCount=await new LineNotes(this.db,this.transport).prepare(day,round,now);
+  if((await this.db.query(sql`SELECT 1 FROM app.line_shop_groups WHERE company_id=${company}`)).rowCount)return noteCount;
+   if(round==='morning')return 0;
   return this.db.transaction(async()=>{
    await this.db.query(sql`SELECT pg_advisory_xact_lock(hashtextextended(${company+'summary'+day},0))`);
    const rows=(await this.db.query<SummaryItem>(sql`SELECT id,title,shop_url,coalesce(confirmed_location,suggested_location,'LOCAL_SHOP') AS location,status,coalesce(actual_amount,estimated_amount)::text AS amount FROM app.purchase_requests WHERE company_id=${company} AND business_date<=${day}::date AND status IN('SUBMITTED','NEEDS_REVIEW','APPROVED','PURCHASED') ORDER BY business_date,requested_at LIMIT 1000`)).rows;
@@ -85,7 +90,9 @@ export class ProcurementLine {
    if(payload['destination']!==connection.external_account_id)throw new HttpError(401,'WRONG_CHANNEL','LINE destination mismatch');
    if(!Array.isArray(payload['events']))throw new HttpError(400,'INVALID_EVENTS','Invalid events');
    for(const input of payload['events']){
-    const event=record(input);if(event['type']!=='postback')continue;
+    const event=record(input);
+    if(await new LineNotes(this.db,this.transport).handle(event,connection,string(secret['accessToken'],'access token',4096)))continue;
+    if(event['type']!=='postback')continue;
     const postback=record(event['postback']),data=string(postback['data'],'postback');if(!data.startsWith('proc:'))continue;
     const source=record(event['source']),userId=string(source['userId'],'LINE user'),eventId=string(event['webhookEventId'],'event id');
     await this.db.transaction(async()=>{
@@ -117,8 +124,8 @@ export function startProcurementScheduler(line:ProcurementLine,companies:readonl
  let running=false;
  const tick=async():Promise<void>=>{
   if(running)return;running=true;
-  try{const now=new Date(),hour=new Date(now.getTime()+25200000).getUTCHours();
-   for(const company of companies)await line.db.runAsTenant(company,async()=>{if(hour>=17)await line.prepare(bangkokDate(now));if(sendEnabled)await line.dispatch();});
+  try{const now=new Date();
+   for(const company of companies)await line.db.runAsTenant(company,async()=>{const round=noteSummaryRound(now);if(round)await line.prepare(bangkokDate(now),round,now);if(sendEnabled)await line.dispatch();});
   }catch(e){console.error(JSON.stringify({event:'procurement_scheduler_error',name:e instanceof Error?e.name:'Error'}));}finally{running=false;}
  };
  const timer=setInterval(()=>{void tick();},60000);timer.unref();void tick();return()=>clearInterval(timer);

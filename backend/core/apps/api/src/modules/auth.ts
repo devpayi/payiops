@@ -30,5 +30,15 @@ export function authRoutes(db:TenantDatabase,config:LocalAuth):Router{
   const key=await importPKCS8(config.privateKey,'RS256');
   const token=await new SignJWT({company_id:company}).setProtectedHeader({alg:'RS256',kid:config.kid}).setIssuer(config.issuer).setAudience(config.audience).setSubject(result.auth_subject).setIssuedAt().setExpirationTime('1h').sign(key);
   res.json({token,expiresIn:3600});
- });return router;
+ });
+ router.get('/local-session/:companyId',async(req,res)=>{
+  if(!process.env['LOCAL_RUNTIME_FILE'])throw new HttpError(404,'NOT_FOUND','ไม่พบเส้นทาง');
+  const company=id(req.params['companyId']);
+  const user=await db.runAsTenant(company,()=>db.query<{auth_subject:string}>(sql`SELECT u.auth_subject FROM app.users u JOIN app.companies co ON co.company_id=u.company_id AND co.status='ACTIVE' WHERE u.company_id=${company} AND u.auth_subject='owner' AND u.auth_issuer=${config.issuer} AND u.status='ACTIVE'`));
+  const owner=user.rows[0];if(!owner)throw new HttpError(404,'NOT_FOUND','ไม่พบบัญชีเจ้าของร้าน');
+  const key=await importPKCS8(config.privateKey,'RS256');
+  const token=await new SignJWT({company_id:company}).setProtectedHeader({alg:'RS256',kid:config.kid}).setIssuer(config.issuer).setAudience(config.audience).setSubject(owner.auth_subject).setIssuedAt().setExpirationTime('1h').sign(key);
+  res.json({token,expiresIn:3600});
+ });
+ return router;
 }
