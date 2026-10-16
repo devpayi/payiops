@@ -40,3 +40,10 @@ backend/.env
 reports/
 tmp/orders-sqlite/
 __pycache__/
+
+# งานชั่วคราว/ผลรัน/ไฟล์ใหญ่ ไม่ขึ้น repo (ยังอยู่ในเครื่อง)
+/tmp/
+/output/
+/outputs/
+/*.cmd
+*.tsbuildinfo
