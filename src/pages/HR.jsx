@@ -4,6 +4,7 @@ import {
   Send, UsersRound, X,
 } from 'lucide-react'
 import './HR.css'
+import './HRSpace.css'
 import LeaveEditPanel from '../components/LeaveEditPanel'
 import { canManageOperations } from '../../shared/roles.js'
 
@@ -248,33 +249,21 @@ export default function HR() {
   return (
     <main className="hr-page" id="main-content">
       <section className="hr-dashboard-hero" aria-labelledby="hr-dashboard-title">
+        <img className="hr-cover-image" src="/hr-space-rangers-soft-v2.png" alt="ทีมนักสำรวจอวกาศในชุดขาว เขียว และม่วง บนสถานีที่มองเห็นโลก" width="2172" height="724" />
         <div className="hr-hero-copy">
           <span>OPERATIONS PLANNING</span>
           <h1 id="hr-dashboard-title">พนักงาน (ลา)</h1>
           <p>คำขอลา การอนุมัติ และวันลาพักร้อนคงเหลือ</p>
         </div>
-        <svg className="hr-magic-link" viewBox="0 0 360 110" aria-hidden="true" focusable="false">
-          <defs>
-            <linearGradient id="hr-magic-gradient" x1="100%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#fff" />
-              <stop offset="42%" stopColor="#f2ceff" />
-              <stop offset="100%" stopColor="#d692ff" />
-            </linearGradient>
-          </defs>
-          <path className="hr-magic-link-glow" d="M350 29 C282 35 210 66 145 76 S58 80 12 91" />
-          <path className="hr-magic-link-core" d="M350 29 C282 35 210 66 145 76 S58 80 12 91" />
-          <circle cx="13" cy="91" r="4.5" />
-          <circle cx="50" cy="83" r="2.2" />
-        </svg>
         <header className="hr-page-header">
           <button className="hr-icon-button" onClick={load} aria-label="รีเฟรชข้อมูล" title="รีเฟรชข้อมูล"><RefreshCw size={18} /></button>
         </header>
-        <section className="hr-metrics" aria-label="ภาพรวมวันลา">
+      </section>
+      <section className="hr-metrics hr-space-metrics" aria-label="ภาพรวมวันลา">
           <article className="hr-metric is-emphasis"><div className="hr-metric-icon"><Clock3 size={20} /></div><div><span>รออนุมัติ</span><strong>{pendingLeave.length}</strong><small>รายการที่ต้องจัดการ</small></div></article>
           <article className="hr-metric"><div className="hr-metric-icon"><CalendarDays size={20} /></div><div><span>ลาวันนี้</span><strong>{peopleOnLeaveToday}</strong><small>คนที่อนุมัติแล้ว</small></div></article>
           <article className="hr-metric"><div className="hr-metric-icon"><Check size={20} /></div><div><span>อนุมัติเดือนนี้</span><strong>{approvedThisMonth}</strong><small>รายการ</small></div></article>
           <article className="hr-metric"><div className="hr-metric-icon"><UsersRound size={20} /></div><div><span>พนักงานในระบบ</span><strong>{people.length}</strong><small>คน</small></div></article>
-        </section>
       </section>
 
       {error && <div className="hr-alert is-error" role="alert"><AlertTriangle size={18} /><span>{error}</span></div>}

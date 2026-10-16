@@ -1,0 +1,75 @@
+.ultra-workforce {
+  --ultra-red: #bc2435;
+  --ultra-border: #d5dde5;
+  --ultra-ink: #243446;
+  --ultra-light: #007eae;
+  color: var(--ultra-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.ultra-emblem { position: relative; width: 160px; height: 174px; flex-shrink: 0; margin-right: 5%; filter: drop-shadow(0 10px 12px #24344635); }
+.ultra-helmet { position: absolute; z-index: 2; top: 6px; left: 31px; width: 98px; height: 127px; border-radius: 47% 47% 40% 40%; background: linear-gradient(95deg, #8394a4, #f8fbff 42%, #c9d5e0 52%, #eef4f9 64%, #7e91a3); border: 1px solid #a1afbb; }
+.ultra-crest { position: absolute; left: 43px; top: -15px; width: 12px; height: 88px; clip-path: polygon(45% 0, 100% 28%, 75% 100%, 22% 100%, 0 28%); background: linear-gradient(90deg, #95a6b5, #fff 48%, #8195a7 52%); }
+.ultra-eye { position: absolute; top: 43px; width: 35px; height: 23px; background: #ffefad; border: 2px solid #94a3ae; box-shadow: 0 0 10px #fff0ad; }
+.ultra-eye-left { left: 7px; border-radius: 65% 40% 55% 40%; transform: rotate(22deg); }
+.ultra-eye-right { right: 7px; border-radius: 40% 65% 40% 55%; transform: rotate(-22deg); }
+.ultra-mouth { position: absolute; bottom: 21px; left: 34px; width: 29px; height: 9px; border-block: 2px solid #738695; border-radius: 2px; }
+.ultra-chest { position: absolute; bottom: 0; width: 160px; height: 74px; border-radius: 60px 60px 12px 12px; background: linear-gradient(125deg, #b0bfcc, #eef5fb 45%, #8e9eac); clip-path: polygon(12% 0, 88% 0, 100% 100%, 0 100%); }
+.ultra-chest::before { content: ''; position: absolute; inset: 0; background: #bd2739; clip-path: polygon(0 0, 23% 0, 50% 55%, 77% 0, 100% 0, 50% 97%); }
+.ultra-timer { position: absolute; top: 26px; left: 68px; width: 24px; height: 29px; border: 3px solid #dce8f2; border-radius: 50%; background: radial-gradient(circle at 38% 30%, #e5ffff, #2ad6ff 42%, #0075af 80%); box-shadow: 0 0 0 2px #536b80, 0 0 18px #1bcaffb3; }
+.ultra-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 1px solid var(--ultra-border);
+  border-left: 4px solid var(--ultra-red);
+  border-radius: 14px;
+  background: linear-gradient(100deg, #e5ebf0, #fff 22%);
+}
+.ultra-toolbar-mascot { width: 96px; height: 104px; flex-shrink: 0; position: relative; }
+.ultra-toolbar-mascot .ultra-emblem { position: absolute; left: 0; top: 0; margin: 0; transform: scale(.6); transform-origin: top left; }
+.ultra-tabs { align-items: center; flex-shrink: 0; }
+.ultra-source-status { display: none !important; }
+.ultra-calendar-tools-slot { margin-left: auto; }
+.ultra-shell-actions { flex-shrink: 0; }
+.ultra-shell-actions .payi-topbar-search { width: 170px !important; box-shadow: none !important; }
+.ultra-shell-actions > div { flex-wrap: nowrap !important; gap: 6px !important; }
+.ultra-pending { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #eed49a; border-radius: 8px; padding: 8px 10px; background: #fff9e9; color: #80520d; cursor: pointer; }
+.ultra-pending strong { border-radius: 5px; background: #fbe6b1; padding: 0 6px; }
+.ultra-calendar-controls { display: flex; align-items: center; gap: 8px; }
+.ultra-calendar-controls > div { flex-wrap: nowrap !important; }
+.ultra-calendar-controls input[type="month"] { width: 178px !important; font-size: 16px !important; }
+.ultra-calendar-blank { position: relative; display: grid; place-items: center; }
+.ultra-calendar-hint { color: #64748b; font-size: 13px; }
+.ultra-workforce button { transition: background-color 120ms ease, box-shadow 120ms ease; }
+.ultra-workforce button:active { transform: translateY(1px); }
+.ultra-workforce :is(button, input, select, textarea):focus-visible { outline: 3px solid var(--ultra-light); outline-offset: 3px; }
+.ultra-workforce button:disabled { opacity: .5; cursor: not-allowed; }
+.ultra-calendar { border-top: 4px solid var(--ultra-red) !important; }
+.ultra-calendar input[type="month"] { width: 195px !important; max-width: 100%; }
+.ultra-calendar button[aria-label^="แก้ Manpower"] { background: #dfe7ee !important; color: #344d61 !important; }
+.ultra-calendar button[aria-label^="เพิ่ม OT"] { background: var(--ultra-red) !important; color: #fff !important; opacity: 1 !important; }
+.ultra-calendar button[aria-label^="เพิ่ม OT"],
+.ultra-calendar button[aria-label^="แก้ Manpower"] { min-height: 28px; }
+.ultra-day[data-today="true"] { border: 2px solid var(--ultra-light) !important; box-shadow: inset 0 3px 0 #3ac4ec, 0 3px 12px #007eae21 !important; }
+.ultra-day[data-today="true"] > div:first-child > span:first-child > span:first-child { background: var(--ultra-light) !important; }
+.ultra-weekdays { background: #e3e9ee !important; border-block: 1px solid var(--ultra-border); }
+.ultra-weekdays > div { color: #455967 !important; }
+.ultra-weekdays > div:first-child { color: var(--ultra-red) !important; }
+@media (hover: hover) and (pointer: fine) {
+  .ultra-workforce button:hover { box-shadow: 0 2px 8px #24344626; }
+}
+@media (max-width: 700px) {
+  .ultra-toolbar { gap: 8px; padding-right: 8px; flex-wrap: wrap; }
+  .ultra-source-status { display: none !important; }
+}
+@media (min-width: 701px) and (max-width: 1450px) {
+  .ultra-shell-actions .payi-topbar-search { display: none !important; }
+  .ultra-toolbar { gap: 6px; }
+  .ultra-toolbar .ultra-tabs button { padding-inline: 8px !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ultra-workforce button { transition: none; }
+}

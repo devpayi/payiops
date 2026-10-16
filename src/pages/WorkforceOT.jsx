@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, Plus, RefreshCw, UserRoundPen, X } from 'lucide-react'
 import { canManageOperations } from '../../shared/roles.js'
+import { createPortal } from 'react-dom'
+import './WorkforceOT.css'
 
 const API = '/api/sheet-tools?op=workforce'
 const MANPOWER_CACHE_KEY = 'payi-manpower-today-cache'
@@ -20,10 +22,11 @@ const fmtMinutes = (value) => {
   const h = Math.floor(n / 60); const m = n % 60
   return h ? `${h} ชม.${m ? ` ${m} นาที` : ''}` : `${m} นาที`
 }
-const inputStyle = { width: '100%', boxSizing: 'border-box', border: '1px solid #e3d9f5', borderRadius: 10, padding: '10px 12px', background: '#fff', color: '#0f172a', fontSize: 17, outline: 'none' }
-const card = { background: '#fff', border: '1px solid #ece4f8', borderRadius: 16, boxShadow: '0 10px 28px rgba(30, 64, 175, .05)' }
+const inputStyle = { width: '100%', boxSizing: 'border-box', border: '1px solid var(--ultra-border)', borderRadius: 10, padding: '10px 12px', background: '#fff', color: '#0f172a', fontSize: 17 }
+const card = { background: '#fff', border: '1px solid var(--ultra-border)', borderRadius: 16, boxShadow: '0 8px 24px rgba(28, 44, 62, .06)' }
 
-export default function WorkforceOT({ preview = false }) {
+export default function WorkforceOT({ preview = false, shellActions }) {
+  const [calendarToolsTarget, setCalendarToolsTarget] = useState(null)
   const loadStarted = useRef(false)
   // copy มาจาก payi-floor (ที่ให้สิทธิ์เต็มเสมอ) แต่ PAYI Ops แยก role จริง — หน้านี้เปิดให้ dev/boss เท่านั้น (App.jsx) ภายในนี้จึงเช็คซ้ำอีกชั้น
   const [authEnabled, setAuthEnabled] = useState(true)
@@ -171,19 +174,20 @@ export default function WorkforceOT({ preview = false }) {
   }
 
   return (
-    <div className="workforce-page" style={{ display: 'grid', gap: 10 }}>
-      <div style={{ ...card, minHeight: 34, padding: '10px 14px', display: 'flex', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 15, color: sourceStatus.state === 'ok' ? '#16866f' : '#be123c' }}><span style={{ width: 8, height: 8, borderRadius: 99, background: sourceStatus.state === 'ok' ? '#16866f' : sourceStatus.state === 'loading' ? '#d97706' : '#be123c' }} />{sourceStatus.state === 'ok' ? 'ตาราง Manpower ปี 2026 พร้อมใช้ · ข้อมูลภายในระบบ' : sourceStatus.state === 'loading' ? 'กำลังโหลด Manpower…' : 'โหลดตาราง Manpower ไม่สำเร็จ'}</div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {[['calendar','ปฏิทิน'], ...(isBoss ? [['overview','ภาพรวม'], ['summary','สรุป OT']] : [])].map(([id,label]) => <button key={id} onClick={() => { setError(''); setTab(id) }} style={miniTab(tab === id)}>{label}</button>)}
-          <button onClick={load} aria-label="รีเฟรช" style={{ border: '1px solid #e3d9f5', background: '#fff', borderRadius: 9, padding: 7, color: '#6E56CF', cursor: 'pointer' }}><RefreshCw size={15} /></button>
+    <div className="workforce-page ultra-workforce" style={{ display: 'grid', gap: 12 }}>
+      <div className="ultra-toolbar">
+        <div className="ultra-toolbar-mascot"><UltramanEmblem /></div>
+        <div className="ultra-source-status" style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 15, color: sourceStatus.state === 'ok' ? '#16866f' : '#be123c' }}><span style={{ width: 8, height: 8, borderRadius: 99, background: sourceStatus.state === 'ok' ? '#16866f' : sourceStatus.state === 'loading' ? '#d97706' : '#be123c' }} />{sourceStatus.state === 'ok' ? 'พร้อมใช้' : sourceStatus.state === 'loading' ? 'กำลังโหลด Manpower…' : 'โหลดตาราง Manpower ไม่สำเร็จ'}</div>
+        <div className="ultra-tabs" style={{ display: 'flex', gap: 6 }}>
+          {[['calendar','ปฏิทิน'], ...(isBoss ? [['overview','ภาพรวม'], ['summary','สรุป OT']] : [])].map(([id,label]) => <button key={id} aria-pressed={tab === id} onClick={() => { setError(''); setTab(id) }} style={miniTab(tab === id)}>{label}</button>)}
+          <button onClick={load} aria-label="รีเฟรช" style={{ border: '1px solid #d5dde5', background: '#fff', borderRadius: 9, padding: 7, color: '#a82233', cursor: 'pointer' }}><RefreshCw size={15} /></button>
+          {pendingApprovals.length > 0 && tab !== 'summary' && <button className="ultra-pending" onClick={() => setTab('summary')} title="OT รออนุมัติ เดือนนี้และเดือนก่อน">รออนุมัติ OT <strong>{pendingApprovals.length}</strong></button>}
         </div>
+        <div className="ultra-calendar-tools-slot" ref={setCalendarToolsTarget} />
+        <div className="ultra-shell-actions">{shellActions}</div>
       </div>
       {error && <div style={{ padding: '10px 14px', background: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3', borderRadius: 10 }}>{error}</div>}
-      {pendingApprovals.length > 0 && tab !== 'summary' && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 14px', background: 'linear-gradient(135deg, rgba(255,255,255,.8), rgba(253,230,138,.4))', color: '#8a5a10', border: '1px solid rgba(217,119,6,.3)', borderRadius: 14, fontSize: 16, fontWeight: 800, boxShadow: '0 4px 14px rgba(180,120,10,.08)' }}>
-        <span>มี {pendingApprovals.length} รายการที่ยังไม่ approve OT (เดือนนี้/เดือนก่อน)</span>
-        <button onClick={() => setTab('summary')} style={{ border: 0, background: 'linear-gradient(135deg, #f0ad4e, #d97706)', color: '#fff', borderRadius: 9, padding: '7px 14px', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 4px 10px rgba(217,119,6,.28)' }}>ไปที่สรุป OT</button>
-      </div>}
+
 
       {tab === 'plan' && <form onSubmit={createPlan} style={{ ...card, padding: 20, display: 'grid', gap: 18 }}>
         <div><div style={{ fontSize: 21, fontWeight: 900, color: '#102a43' }}>1. วางแผน OT ล่วงหน้า</div><div style={{ fontSize: 16, color: '#64748b', marginTop: 3 }}>เลือกหลายคนพร้อมกัน รายการหนึ่งครั้งจะสร้างแผนให้ทุกคน</div></div>
@@ -196,8 +200,8 @@ export default function WorkforceOT({ preview = false }) {
           <Field label="จบ OT"><input type="time" value={form.planned_end} onChange={(e) => setForm({ ...form, planned_end: e.target.value })} style={inputStyle} required /></Field>
           <Field label="หมายเหตุ"><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="ไม่จำเป็นต้องกรอก" style={inputStyle} /></Field>
         </div>
-        <div><div style={{ fontSize: 16, fontWeight: 800, color: '#334155', marginBottom: 9 }}>เลือกคนทำ OT · {selected.length} คน</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{names.map((name) => { const on = selected.includes(name); return <button type="button" key={name} onClick={() => setSelected(on ? selected.filter((n) => n !== name) : [...selected, name])} style={{ border: `1px solid ${on ? '#8E75FF' : '#cbd5e1'}`, background: on ? '#f2edfc' : '#fff', color: on ? '#6E56CF' : '#64748b', borderRadius: 999, padding: '8px 13px', fontWeight: 800, cursor: 'pointer' }}>{on ? '✓ ' : ''}{name}</button>})}</div></div>
-        <div style={{ display: 'flex', gap: 8, maxWidth: 330 }}><input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addName() } }} placeholder="เพิ่มชื่อ" style={inputStyle} /><button type="button" onClick={addName} style={{ border: 0, borderRadius: 10, background: '#f2edfc', color: '#6E56CF', width: 44, cursor: 'pointer' }}><Plus size={17} /></button></div>
+        <div><div style={{ fontSize: 16, fontWeight: 800, color: '#334155', marginBottom: 9 }}>เลือกคนทำ OT · {selected.length} คน</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{names.map((name) => { const on = selected.includes(name); return <button type="button" key={name} onClick={() => setSelected(on ? selected.filter((n) => n !== name) : [...selected, name])} style={{ border: `1px solid ${on ? '#bc2435' : '#cbd5e1'}`, background: on ? '#fff0f1' : '#fff', color: on ? '#a82233' : '#64748b', borderRadius: 999, padding: '8px 13px', fontWeight: 800, cursor: 'pointer' }}>{on ? '✓ ' : ''}{name}</button>})}</div></div>
+        <div style={{ display: 'flex', gap: 8, maxWidth: 330 }}><input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addName() } }} placeholder="เพิ่มชื่อ" style={inputStyle} /><button type="button" onClick={addName} style={{ border: 0, borderRadius: 10, background: '#fff0f1', color: '#a82233', width: 44, cursor: 'pointer' }}><Plus size={17} /></button></div>
         <button disabled={saving || !selected.length} style={{ justifySelf: 'start', border: 0, borderRadius: 10, padding: '11px 20px', background: '#397fb5', color: '#fff', fontWeight: 900, cursor: 'pointer', opacity: saving ? .6 : 1 }}>{saving ? 'กำลังบันทึก…' : `บันทึกแผน ${selected.length} คน`}</button>
       </form>}
 
@@ -205,7 +209,7 @@ export default function WorkforceOT({ preview = false }) {
         {loading ? <Empty text="กำลังโหลด…" /> : !planned.length ? <Empty text="ไม่มีรายการ OT ที่รอยืนยัน" /> : <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820, fontSize: 17 }}><thead><tr style={{ background: '#f0f7fd', color: '#52677a', textAlign: 'left' }}>{['วันที่','ชื่อ','งาน','เวลาแผน','เริ่มจริง','จบจริง','สถานะ',''].map((h) => <th key={h} style={{ padding: '10px 12px' }}>{h}</th>)}</tr></thead><tbody>{planned.map((r) => { const e = edits[r.id] || {}; return <tr key={r.id} style={{ borderTop: '1px solid #e5eef7' }}><td style={td}>{r.date}</td><td style={{ ...td, fontWeight: 900 }}>{r.employee}</td><td style={td}>{r.task}</td><td style={td}>{r.planned_start}–{r.planned_end}<div style={{ fontSize: 15, color: '#94a3b8' }}>{fmtMinutes(r.planned_minutes)}</div></td><td style={td}><input type="time" value={e.actual_start ?? r.planned_start} onChange={(x) => setEdits({ ...edits, [r.id]: { ...e, actual_start: x.target.value } })} style={{ ...inputStyle, width: 105, padding: 7 }} /></td><td style={td}><input type="time" value={e.actual_end ?? r.planned_end} onChange={(x) => setEdits({ ...edits, [r.id]: { ...e, actual_end: x.target.value } })} style={{ ...inputStyle, width: 105, padding: 7 }} /></td><td style={td}><select value={e.status || 'completed'} onChange={(x) => setEdits({ ...edits, [r.id]: { ...e, status: x.target.value } })} style={{ ...inputStyle, width: 110, padding: 7 }}><option value="completed">ทำแล้ว</option><option value="cancelled">ยกเลิก</option></select></td><td style={td}><button onClick={() => closeRows([r])} aria-label={`ยืนยัน ${r.employee}`} style={{ border: 0, background: '#e7f7f2', color: '#16866f', borderRadius: 8, padding: 8, cursor: 'pointer' }}><CheckCircle2 size={17} /></button></td></tr> })}</tbody></table></div>}
       </section>}
 
-      {tab === 'calendar' && <CalendarPlanner rows={rows} manpower={manpower} events={events} history={history} names={names} preview={preview} onSaved={load} error={error} setError={setError} otLimits={otLimits} closeRows={closeRows} deleteRows={deleteRows} edits={edits} setEdits={setEdits} saving={saving} groupByName={groupByName} officePeople={officePeople} inactiveNames={inactiveNames} schedulePeople={schedulePeople} canEditManpower={canEditManpowerSchedule && !preview} dayRecords={dayRecords} swapLeaves={swapLeaves} holidays={holidays} isBoss={isBoss} />}
+      {tab === 'calendar' && <CalendarPlanner toolbarTarget={calendarToolsTarget} rows={rows} manpower={manpower} events={events} history={history} names={names} preview={preview} onSaved={load} error={error} setError={setError} otLimits={otLimits} closeRows={closeRows} deleteRows={deleteRows} edits={edits} setEdits={setEdits} saving={saving} groupByName={groupByName} officePeople={officePeople} inactiveNames={inactiveNames} schedulePeople={schedulePeople} canEditManpower={canEditManpowerSchedule && !preview} dayRecords={dayRecords} swapLeaves={swapLeaves} holidays={holidays} isBoss={isBoss} />}
       {tab === 'overview' && isBoss && <OverviewOT rows={rows} approvals={approvals} otLimits={otLimits} />}
       {tab === 'summary' && isBoss && <PlanControlSummary rows={rows} approvals={approvals} setApprovals={setApprovals} approvalHistory={approvalHistory} preview={preview} setError={setError} otLimits={otLimits} setOtLimits={saveOtLimit} currentUser={currentUser} onSaved={load} />}
     </div>
@@ -220,7 +224,7 @@ const td = { padding: '11px 12px', color: '#334155', verticalAlign: 'middle' }
 // ป้าย OT เต็มวัน/ชดเชย ในปฏิทิน — มาจาก workforce_dayrecords (บันทึกที่หน้า HR) แสดงแยกจากชื่อในกล่องปกติ
 const DAY_RECORD_LABEL = { ot_full: 'OT', comp: 'ชดเชย' }
 
-function CalendarPlanner({ rows, manpower, events, history = [], names, preview, onSaved, error, setError, otLimits = {}, closeRows, deleteRows, edits = {}, setEdits, saving, groupByName = {}, officePeople = [], inactiveNames = new Set(), schedulePeople = [], canEditManpower = false, dayRecords = [], swapLeaves = [], holidays = [], isBoss = false }) {
+function CalendarPlanner({ toolbarTarget, rows, manpower, events, history = [], names, preview, onSaved, error, setError, otLimits = {}, closeRows, deleteRows, edits = {}, setEdits, saving, groupByName = {}, officePeople = [], inactiveNames = new Set(), schedulePeople = [], canEditManpower = false, dayRecords = [], swapLeaves = [], holidays = [], isBoss = false }) {
   const holidayByDate = useMemo(() => new Map(holidays.map((h) => [h.date, h])), [holidays])
   const dayRecordByNameDate = useMemo(() => {
     const map = new Map()
@@ -434,9 +438,8 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
   // มุมมองรายวัน (MobileDayAgenda) ยังเก็บไว้เป็นตัวเลือกสำรอง สลับได้จากปุ่มด้านบน ไม่ได้ตัดทิ้ง
   const [mobileView, setMobileView] = useState('calendar')
 
-  return <section style={{ ...card, width: '100%', minWidth: 0, maxWidth: '100%', boxSizing: 'border-box', overflow: 'hidden', borderRadius: 22, background: 'linear-gradient(180deg,#ffffff,#f7fbff)' }}>
-    <div style={{ padding: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-      <div><div style={{ fontSize: 21, fontWeight: 900, color: '#102a43' }}>ปฏิทิน Manpower & OT</div><div style={{ fontSize: 16, color: '#64748b', marginTop: 3 }}>ปุ่ม “คน” ใช้แก้รายชื่อมาทำงาน · ปุ่ม + ใช้เพิ่ม OT{isMobile && mobileView === 'calendar' ? ' · บีบสองนิ้วเพื่อซูม' : ''}</div></div>
+  return <section className="ultra-calendar" style={{ ...card, width: '100%', minWidth: 0, maxWidth: '100%', boxSizing: 'border-box', overflow: 'hidden', borderRadius: 22, background: 'linear-gradient(180deg,#ffffff,#f1f4f7)' }}>
+    {toolbarTarget && createPortal(<div className="ultra-calendar-controls">
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {isMobile && <div style={{ display: 'flex', gap: 4 }}>
           <button type="button" onClick={() => setMobileView('calendar')} style={miniTab(mobileView === 'calendar')}>ปฏิทิน</button>
@@ -447,9 +450,9 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
         <button onClick={() => setModal({ type: 'holiday' })} style={miniTab(false)}>🎌 วันนักขัต{holidays.length ? ` (${holidays.length})` : ''}</button>
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ ...inputStyle, width: 155 }} />
       </div>
-    </div>
+    </div>, toolbarTarget)}
     {warning && <div style={{ margin: '0 18px 12px', padding: '10px 14px', background: '#fef6da', color: '#8a6d1f', border: '1px solid #fbe6a8', borderRadius: 10, fontSize: 16, fontWeight: 800 }}>{warning}</div>}
-    <div style={{ padding: '9px 16px', display: 'flex', gap: 14, flexWrap: 'wrap', background: '#f8fbff', fontSize: 15, color: '#64748b' }}><Legend color="#d3c2f2" text="วันโปร"/><Legend color="#f0eafb" text="ช่วงเตรียมฟีด (กำหนดเองได้)"/></div>
+    <div className="ultra-legend" style={{ padding: '9px 16px', display: 'flex', gap: 14, flexWrap: 'wrap', background: '#f1f4f7', fontSize: 15, color: '#475569' }}><Legend color="#dc3d49" text="วันโปร"/><Legend color="#bae6fd" text="ช่วงเตรียมฟีด (กำหนดเองได้)"/></div>
     {isMobile && mobileView === 'list' && (
       <MobileDayAgenda
         monthDates={monthDates}
@@ -483,18 +486,18 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
           ปัญหาตาดู): เนื้อหาที่สูงเกินช่อง (เช่นช่องที่มีทั้งชื่อคนและ OT) ไม่ดันให้แถวกริดสูงขึ้นเหมือน Chrome/Firefox
           กลายเป็นล้นทับแถวถัดไปเห็นเป็นตัวหนังสือซ้อนกัน — เปลี่ยนมาใช้ flex row แยกทีละสัปดาห์แทน ซึ่ง align-items
           stretch การันตีความสูงเท่ากันในแถวเดียวกันได้จริงข้ามเบราว์เซอร์ ไม่มีบั๊กนี้ */}
-      <div style={{ display: 'flex', gap: 5, background: 'linear-gradient(180deg,#eef6ff,#f7fbff)', borderRadius: 12 }}>{['อา','จ','อ','พ','พฤ','ศ','ส'].map((d) => <div key={d} style={{ flex: '1 1 0', minWidth: 0, padding: 7, textAlign: 'center', fontSize: 15, fontWeight: 900, color: '#7a94b8' }}>{d}</div>)}</div>
+      <div className="ultra-weekdays" style={{ display: 'flex', gap: 5, background: 'linear-gradient(180deg,#eef6ff,#f7fbff)', borderRadius: 12 }}>{['อา','จ','อ','พ','พฤ','ศ','ส'].map((d) => <div key={d} style={{ flex: '1 1 0', minWidth: 0, padding: 7, textAlign: 'center', fontSize: 15, fontWeight: 900, color: '#7a94b8' }}>{d}</div>)}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 5 }}>
         {Array.from({ length: cells.length / 7 }, (_, w) => cells.slice(w * 7, w * 7 + 7)).map((week, wi) => (
           <div key={wi} style={{ display: 'flex', gap: 5, alignItems: 'stretch' }}>
             {week.map((date, i) => {
-              if (!date) return <div key={`blank-${wi}-${i}`} style={{ flex: '1 1 0', minWidth: 0, minHeight: 132, borderRadius: 12, background: 'transparent' }} />
+              if (!date) return <div key={`blank-${wi}-${i}`} className="ultra-calendar-blank" style={{ flex: '1 1 0', minWidth: 0, minHeight: 132 }}></div>
               const { isPromo, isFeed, partTime, packers, feedNames, regularNames, officePresentNames, regularHeadcount, lowPackingManpower, isToday, holiday } = computeDayInfo(date)
-              return <div key={date} style={{ flex: '1 1 0', minWidth: 0, minHeight: 132, padding: 7, textAlign: 'left', borderRadius: 12, border: isToday ? '2px solid #355872' : holiday ? '1px solid #fbbf24' : `1px solid ${isPromo ? '#c3b1ea' : isFeed ? '#e4d9f7' : '#e2e8ef'}`, background: holiday ? 'linear-gradient(135deg,#fffbeb,#fffef5)' : isPromo ? 'linear-gradient(135deg,#ede7fb,#f5f1fd)' : isFeed ? 'linear-gradient(180deg,#f5f1fd,#faf8fe)' : 'linear-gradient(180deg,#ffffff,#fbfdff)', boxShadow: isToday ? '0 4px 16px rgba(53,88,114,.20)' : '0 2px 10px rgba(53,88,114,.07)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', overflow: 'visible' }}>
+              return <div key={date} className="ultra-day" data-today={isToday} style={{ flex: '1 1 0', minWidth: 0, minHeight: 132, padding: 7, textAlign: 'left', borderRadius: 12, border: isToday ? '2px solid #355872' : holiday ? '1px solid #fbbf24' : `1px solid ${isPromo ? '#e9a4ad' : isFeed ? '#b8deed' : '#e2e8ef'}`, background: holiday ? 'linear-gradient(135deg,#fffbeb,#fffef5)' : isPromo ? 'linear-gradient(135deg,#ffe9ec,#edf8fd)' : isFeed ? 'linear-gradient(180deg,#edf8fd,#f5fbfe)' : 'linear-gradient(180deg,#ffffff,#fbfdff)', boxShadow: isToday ? '0 4px 16px rgba(53,88,114,.20)' : '0 2px 10px rgba(53,88,114,.07)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', overflow: 'visible' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
                     <span style={isToday ? { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 18, height: 18, borderRadius: 6, background: '#355872', color: '#fff', fontSize: 15, fontWeight: 900 } : { fontSize: 16, fontWeight: 900, color: '#334155' }}>{Number(date.slice(-2))}</span>
-                    <span style={{ color: isPromo ? '#5b4b8a' : '#8a76c0', fontSize: 13 }}>{isPromo ? 'วันโปร' : isFeed ? 'เตรียมฟีด' : ''}</span>
+                    <span style={{ color: isPromo ? '#a82233' : '#007eae', fontSize: 13 }}>{isPromo ? 'วันโปร' : isFeed ? 'เตรียมฟีด' : ''}</span>
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                     {canEditManpower && <button type="button" onClick={() => openSchedule(date)} aria-label={`แก้ Manpower วันที่ ${date}`} title="แก้คนมาทำงาน" style={{ minWidth: 30, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 3, border: 0, borderRadius: 7, padding: '0 7px', background: '#9CD5FF', color: '#355872', cursor: 'pointer', fontSize: 13, fontWeight: 900 }}><UserRoundPen size={12} /><span>คน</span></button>}
@@ -557,8 +560,8 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
           ...names.filter((name) => !inactiveNames.has(name) && (!monthsByName[name] || monthsByName[name].has((modal?.date || month).slice(0, 7)))),
           // คนออฟฟิศเลือกได้ทุกคนทุกวันเสมอ ไม่กรองตามประวัติเดือนหรือวันลา — มาช่วยทำ OT ได้ไม่ว่าปกติจะหยุดวันนั้นหรือไม่
           ...officePeople.map((p) => p.name).filter((name) => name && !names.includes(name)),
-        ].map((name) => { const on = selected.includes(name); return <button key={name} onClick={() => setSelected(on ? selected.filter((n) => n !== name) : [...selected, name])} style={{ border: `1px solid ${on ? '#ec4899' : '#e3d9f5'}`, background: on ? '#fff0f7' : '#fff', color: on ? '#be185d' : '#475569', borderRadius: 999, padding: '8px 12px', fontWeight: 800, cursor: 'pointer' }}>{on ? '✓ ' : ''}{name}</button> })}</div></Field><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}><Field label="เริ่ม OT · HH:MM"><ManualTime24 value={start} onChange={setStart}/></Field><Field label="จบ OT · HH:MM"><ManualTime24 value={end} onChange={setEnd}/></Field></div>{validTime24(start) && validTime24(end) && timeToMinutes(end) > timeToMinutes(start) && <div style={{ padding: '8px 10px', borderRadius: 9, background: '#eaf5ff', color: '#6E56CF', fontSize: 16, fontWeight: 900 }}>รวม {fmtMinutes(timeToMinutes(end) - timeToMinutes(start))} ต่อคน</div>}<Field label="หมายเหตุ"><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="ไม่จำเป็นต้องกรอก" style={inputStyle}/></Field></div> : <div style={{ display: 'grid', gap: 12, marginTop: 18 }}><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}><Field label="ตั้งแต่วันที่"><input type="date" value={modal.date} onChange={(e) => { setModal({ ...modal, date: e.target.value }); if (!promoEnd || promoEnd < e.target.value) setPromoEnd(e.target.value) }} style={inputStyle}/></Field><Field label="ถึงวันที่"><input type="date" value={promoEnd} min={modal.date} onChange={(e) => setPromoEnd(e.target.value)} style={inputStyle}/></Field></div><Field label="ชื่อโปร / ช่วงเตรียมฟีด">{customTitle
-          ? <div style={{ display: 'flex', gap: 8 }}><input value={promoTitle} onChange={(e) => setPromoTitle(e.target.value)} placeholder="ระบุชื่อ" style={inputStyle} autoFocus /><button type="button" onClick={() => { setCustomTitle(false); setPromoTitle(PROMO_TITLE_OPTIONS[0]) }} style={{ border: '1px solid #e3d9f5', background: '#fff', color: '#64748b', borderRadius: 10, padding: '0 12px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>เลือกจากรายการ</button></div>
+        ].map((name) => { const on = selected.includes(name); return <button key={name} onClick={() => setSelected(on ? selected.filter((n) => n !== name) : [...selected, name])} style={{ border: `1px solid ${on ? '#ec4899' : '#d5dde5'}`, background: on ? '#fff0f7' : '#fff', color: on ? '#be185d' : '#475569', borderRadius: 999, padding: '8px 12px', fontWeight: 800, cursor: 'pointer' }}>{on ? '✓ ' : ''}{name}</button> })}</div></Field><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}><Field label="เริ่ม OT · HH:MM"><ManualTime24 value={start} onChange={setStart}/></Field><Field label="จบ OT · HH:MM"><ManualTime24 value={end} onChange={setEnd}/></Field></div>{validTime24(start) && validTime24(end) && timeToMinutes(end) > timeToMinutes(start) && <div style={{ padding: '8px 10px', borderRadius: 9, background: '#eaf5ff', color: '#a82233', fontSize: 16, fontWeight: 900 }}>รวม {fmtMinutes(timeToMinutes(end) - timeToMinutes(start))} ต่อคน</div>}<Field label="หมายเหตุ"><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="ไม่จำเป็นต้องกรอก" style={inputStyle}/></Field></div> : <div style={{ display: 'grid', gap: 12, marginTop: 18 }}><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}><Field label="ตั้งแต่วันที่"><input type="date" value={modal.date} onChange={(e) => { setModal({ ...modal, date: e.target.value }); if (!promoEnd || promoEnd < e.target.value) setPromoEnd(e.target.value) }} style={inputStyle}/></Field><Field label="ถึงวันที่"><input type="date" value={promoEnd} min={modal.date} onChange={(e) => setPromoEnd(e.target.value)} style={inputStyle}/></Field></div><Field label="ชื่อโปร / ช่วงเตรียมฟีด">{customTitle
+          ? <div style={{ display: 'flex', gap: 8 }}><input value={promoTitle} onChange={(e) => setPromoTitle(e.target.value)} placeholder="ระบุชื่อ" style={inputStyle} autoFocus /><button type="button" onClick={() => { setCustomTitle(false); setPromoTitle(PROMO_TITLE_OPTIONS[0]) }} style={{ border: '1px solid #d5dde5', background: '#fff', color: '#64748b', borderRadius: 10, padding: '0 12px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>เลือกจากรายการ</button></div>
           : <select value={promoTitle} onChange={(e) => { if (e.target.value === '__other__') { setCustomTitle(true); setPromoTitle('') } else setPromoTitle(e.target.value) }} style={inputStyle}>
               {PROMO_TITLE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
               <option value="__other__">อื่นๆ โปรดระบุ</option>
@@ -568,7 +571,7 @@ function CalendarPlanner({ rows, manpower, events, history = [], names, preview,
           <Field label="เตรียมล่วงหน้ากี่วัน (ก่อนวันโปร)"><input type="number" min="0" value={leadDays} onChange={(e) => setLeadDays(e.target.value)} style={inputStyle}/></Field>
           <Field label="เก็บงานหลังกี่วัน (หลังวันโปร)"><input type="number" min="0" value={lagDays} onChange={(e) => setLagDays(e.target.value)} style={inputStyle}/></Field>
         </div></div>}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}><button onClick={() => setModal(null)} style={{ minHeight: 44, border: '1px solid #e3d9f5', background: '#fff', borderRadius: 10, padding: '9px 15px', color: '#64748b', fontWeight: 800 }}>ยกเลิก</button><button onClick={save} disabled={busy} style={{ minHeight: 44, border: 0, background: modal.type === 'schedule' ? '#0284c7' : '#ec4899', color: '#fff', borderRadius: 10, padding: '9px 17px', fontWeight: 900 }}>{busy ? 'กำลังบันทึก…' : modal.type === 'schedule' ? 'บันทึก Manpower' : 'บันทึก'}</button></div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}><button onClick={() => setModal(null)} style={{ minHeight: 44, border: '1px solid #d5dde5', background: '#fff', borderRadius: 10, padding: '9px 15px', color: '#64748b', fontWeight: 800 }}>ยกเลิก</button><button onClick={save} disabled={busy} style={{ minHeight: 44, border: 0, background: modal.type === 'schedule' ? '#0284c7' : '#ec4899', color: '#fff', borderRadius: 10, padding: '9px 17px', fontWeight: 900 }}>{busy ? 'กำลังบันทึก…' : modal.type === 'schedule' ? 'บันทึก Manpower' : 'บันทึก'}</button></div>
     </div></div> })()}
   </section>
 }
@@ -628,13 +631,13 @@ function ScheduleDayEditor({ people = [], draft = {}, setDraft, otDraft = {}, se
   const selectedCount = people.filter((person) => draft[person.code]).length
   const groups = [...new Set(people.map((person) => person.group || 'อื่น ๆ'))]
   return <div style={{ display: 'grid', gap: 14, marginTop: 18 }}>
-    <div style={{ padding: '10px 12px', borderRadius: 11, background: '#f5f0fd', color: '#6E56CF', fontSize: 16, lineHeight: 1.55 }}>
+    <div style={{ padding: '10px 12px', borderRadius: 11, background: '#f5f0fd', color: '#a82233', fontSize: 16, lineHeight: 1.55 }}>
       เลือกเฉพาะคนที่มาทำงานวันนี้ · เมื่อบันทึก ระบบจะใช้รายการนี้แทนข้อมูล SKJ เฉพาะวันนี้
     </div>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
       <strong style={{ color: '#102a43', fontSize: 17 }}>มาทำงาน {selectedCount} คน</strong>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button type="button" onClick={() => setDraft(Object.fromEntries(people.map((person) => [person.code, true])))} style={{ minHeight: 36, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#6E56CF', borderRadius: 9, padding: '0 10px', fontSize: 15, fontWeight: 900, cursor: 'pointer' }}>เลือกทุกคน</button>
+        <button type="button" onClick={() => setDraft(Object.fromEntries(people.map((person) => [person.code, true])))} style={{ minHeight: 36, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#a82233', borderRadius: 9, padding: '0 10px', fontSize: 15, fontWeight: 900, cursor: 'pointer' }}>เลือกทุกคน</button>
         <button type="button" onClick={() => setDraft(Object.fromEntries(people.map((person) => [person.code, false])))} style={{ minHeight: 36, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', borderRadius: 9, padding: '0 10px', fontSize: 15, fontWeight: 900, cursor: 'pointer' }}>หยุดทั้งหมด</button>
       </div>
     </div>
@@ -709,10 +712,10 @@ function MobileDayAgenda({ monthDates, activeDate, onSelectDate, computeDayInfo,
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 17, fontWeight: 900, color: '#102a43' }}>{dateLabel}</div>
-          {(info.isPromo || info.isFeed) && <div style={{ fontSize: 15, fontWeight: 800, color: info.isPromo ? '#5b4b8a' : '#8a76c0', marginTop: 2 }}>{info.isPromo ? 'วันโปร' : 'เตรียมฟีด'}</div>}
+          {(info.isPromo || info.isFeed) && <div style={{ fontSize: 15, fontWeight: 800, color: info.isPromo ? '#a82233' : '#007eae', marginTop: 2 }}>{info.isPromo ? 'วันโปร' : 'เตรียมฟีด'}</div>}
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
-          {canEditManpower && <button type="button" onClick={() => openSchedule(activeDate)} style={{ minHeight: 36, display: 'inline-flex', alignItems: 'center', gap: 5, border: 0, borderRadius: 10, padding: '0 12px', background: '#eaf5ff', color: '#6E56CF', cursor: 'pointer', fontSize: 16, fontWeight: 900 }}><UserRoundPen size={14} /><span>คน</span></button>}
+          {canEditManpower && <button type="button" onClick={() => openSchedule(activeDate)} style={{ minHeight: 36, display: 'inline-flex', alignItems: 'center', gap: 5, border: 0, borderRadius: 10, padding: '0 12px', background: '#eaf5ff', color: '#a82233', cursor: 'pointer', fontSize: 16, fontWeight: 900 }}><UserRoundPen size={14} /><span>คน</span></button>}
           <button type="button" onClick={() => openOT(activeDate)} style={{ minHeight: 36, display: 'inline-flex', alignItems: 'center', gap: 5, border: 0, borderRadius: 10, padding: '0 12px', background: 'var(--payi-gradient-primary)', color: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 900, boxShadow: '0 6px 14px rgba(37,99,235,.22)' }}><Plus size={14} /><span>OT</span></button>
         </div>
       </div>
@@ -847,7 +850,7 @@ function OverviewOT({ rows = [], approvals = [], otLimits = {} }) {
       <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ ...inputStyle, width: 160 }} />
     </div>
     <div className="workforce-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 12 }}>
-      <Kpi icon={CheckCircle2} label="คนมี OT เดือนนี้" value={`${people.length} คน`} tone="#6E56CF" />
+      <Kpi icon={CheckCircle2} label="คนมี OT เดือนนี้" value={`${people.length} คน`} tone="#a82233" />
       <Kpi icon={CheckCircle2} label="ชม.แผนรวม" value={fmtMinutes(totalPlanned)} tone="#7c5bb6" />
       <Kpi icon={CheckCircle2} label="ชม.จริงรวม (ที่กรอก/approve แล้ว)" value={fmtMinutes(totalActual)} tone="#16866f" />
       <Kpi icon={CheckCircle2} label="เกินลิมิต / รอ approve" value={`${overCount} / ${pendingCount} คน`} tone={overCount ? '#be123c' : '#d97706'} />
@@ -960,7 +963,7 @@ function PlanControlSummary({ rows = [], approvals = [], setApprovals, approvalH
   return <section style={{ ...card, overflow: 'hidden' }}>
     <div style={{ padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
       <div><div style={{ fontSize: 21, fontWeight: 900, color: '#102a43' }}>สรุป OT</div><div style={{ fontSize: 16, color: '#64748b', marginTop: 3 }}>ชั่วโมงที่วางแผน : ชั่วโมงที่ทำจริง โดยหัวหน้าเป็นผู้กรอกเวลาจริง — approve แล้วจะล็อกไว้ ต้องกด "แก้ไข" ถึงจะเปลี่ยนได้ (มีบันทึกประวัติ)</div></div>
-      <div style={{ display: 'flex', gap: 8 }}><button onClick={() => exportOtSummaryCsv(people, month, otLimits)} disabled={!people.length} style={{ border: '1px solid #e3d9f5', background: '#fff', borderRadius: 9, padding: '8px 14px', color: '#6E56CF', fontWeight: 800, cursor: 'pointer', opacity: people.length ? 1 : .5 }}>ส่งออก CSV</button><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ ...inputStyle, width: 160 }} /></div>
+      <div style={{ display: 'flex', gap: 8 }}><button onClick={() => exportOtSummaryCsv(people, month, otLimits)} disabled={!people.length} style={{ border: '1px solid #d5dde5', background: '#fff', borderRadius: 9, padding: '8px 14px', color: '#a82233', fontWeight: 800, cursor: 'pointer', opacity: people.length ? 1 : .5 }}>ส่งออก CSV</button><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ ...inputStyle, width: 160 }} /></div>
     </div>
     <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900, fontSize: 17 }}><thead><tr style={{ background: '#f0f7fd', textAlign: 'left', color: '#52677a' }}>{['ชื่อ', 'จำนวนวันที่มีแผน', 'จำนวนแผน', 'ชม.ที่วางแผน : ชม.ที่ทำจริง', 'กรอกเวลาจริง / Approve', 'ลิมิตต่อเดือน (ชม.)', 'สถานะลิมิต'].map((h) => <th key={h} style={{ padding: '10px 14px' }}>{h}</th>)}</tr></thead><tbody>{people.map((p) => {
       const approved = approvals.find((a) => a.month === month && a.employee === p.name)
@@ -983,16 +986,16 @@ function PlanControlSummary({ rows = [], approvals = [], setApprovals, approvalH
                 <span style={{ background: '#e7f7f2', color: '#16866f', borderRadius: 8, padding: '8px 10px', fontWeight: 900, whiteSpace: 'nowrap' }}>Approved</span>
                 <span style={{ ...inputStyle, width: 68, padding: '7px 8px', background: '#f8fafc', color: '#94a3b8', display: 'inline-block', textAlign: 'center' }}>{Math.floor(Number(approved.actual_minutes) / 60)} ชม.</span>
                 <span style={{ ...inputStyle, width: 72, padding: '7px 8px', background: '#f8fafc', color: '#94a3b8', display: 'inline-block', textAlign: 'center' }}>{Number(approved.actual_minutes) % 60} นาที</span>
-                <button onClick={() => setUnlocked((u) => ({ ...u, [p.name]: true }))} style={{ border: '1px solid #e3d9f5', background: '#fff', color: '#6E56CF', borderRadius: 8, padding: '8px 10px', fontWeight: 900, cursor: 'pointer' }}>แก้ไข</button>
+                <button onClick={() => setUnlocked((u) => ({ ...u, [p.name]: true }))} style={{ border: '1px solid #d5dde5', background: '#fff', color: '#a82233', borderRadius: 8, padding: '8px 10px', fontWeight: 900, cursor: 'pointer' }}>แก้ไข</button>
               </div>
             : <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <input type="number" min="0" step="1" value={input.hours ?? (approved ? Math.floor(Number(approved.actual_minutes) / 60) : '')} onChange={(e) => setActualInputs({ ...actualInputs, [p.name]: { ...input, hours: e.target.value } })} placeholder="ชม." aria-label={`ชั่วโมงจริง ${p.name}`} style={{ ...inputStyle, width: 68, padding: '7px 8px' }} />
                 <input type="number" min="0" max="59" step="1" value={input.minutes ?? (approved ? Number(approved.actual_minutes) % 60 : '')} onChange={(e) => setActualInputs({ ...actualInputs, [p.name]: { ...input, minutes: e.target.value } })} placeholder="นาที" aria-label={`นาทีจริง ${p.name}`} style={{ ...inputStyle, width: 72, padding: '7px 8px' }} />
                 <button onClick={() => approveActual(p)} disabled={approving === p.name} style={{ border: 0, borderRadius: 8, padding: '8px 10px', background: approved ? '#d97706' : '#397fb5', color: '#fff', fontWeight: 900, cursor: 'pointer' }}>{approving === p.name ? '…' : approved ? 'บันทึกการแก้ไข' : 'Approve'}</button>
-                {approved && <button onClick={() => { setUnlocked((u) => ({ ...u, [p.name]: false })); setActualInputs((a) => ({ ...a, [p.name]: {} }) )}} style={{ border: '1px solid #e3d9f5', background: '#fff', color: '#64748b', borderRadius: 8, padding: '8px 10px', fontWeight: 800, cursor: 'pointer' }}>ยกเลิก</button>}
+                {approved && <button onClick={() => { setUnlocked((u) => ({ ...u, [p.name]: false })); setActualInputs((a) => ({ ...a, [p.name]: {} }) )}} style={{ border: '1px solid #d5dde5', background: '#fff', color: '#64748b', borderRadius: 8, padding: '8px 10px', fontWeight: 800, cursor: 'pointer' }}>ยกเลิก</button>}
               </div>}
           {approved && <div style={{ marginTop: 4, fontSize: 13, color: '#16866f' }}>Approved by {approved.approved_by || 'Boss'} · {new Date(approved.approved_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</div>}
-          {rowHistory.length > 0 && <button onClick={() => setHistoryModal({ employee: p.name, month })} style={{ marginTop: 4, border: 0, background: 'transparent', color: '#6E56CF', fontSize: 13, fontWeight: 800, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>ดูรายละเอียด ({rowHistory.length} ครั้ง)</button>}
+          {rowHistory.length > 0 && <button onClick={() => setHistoryModal({ employee: p.name, month })} style={{ marginTop: 4, border: 0, background: 'transparent', color: '#a82233', fontSize: 13, fontWeight: 800, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>ดูรายละเอียด ({rowHistory.length} ครั้ง)</button>}
         </td>
         <td style={td}><input type="number" min="0" step="0.5" value={rawLimit ?? ''} onChange={(e) => setOtLimits?.(p.name, e.target.value)} placeholder="ไม่จำกัด" style={{ ...inputStyle, width: 105, padding: '7px 9px' }} /></td>
         <td style={td}>{over ? <span style={{ color: '#be123c', background: '#fff1f2', borderRadius: 999, padding: '4px 9px', fontWeight: 900 }}>เกินลิมิต</span> : hasLimit ? <span style={{ color: '#16866f', fontWeight: 800 }}>ยังไม่เกิน</span> : <span style={{ color: '#94a3b8' }}>ไม่จำกัด</span>}</td>
@@ -1020,5 +1023,9 @@ function PlanControlSummary({ rows = [], approvals = [], setApprovals, approvalH
 }
 
 
-const miniTab = (on) => ({ border: `1px solid ${on ? '#8E75FF' : '#e3d9f5'}`, borderRadius: 9, padding: '7px 12px', background: on ? '#f2edfc' : '#fff', color: on ? '#6E56CF' : '#64748b', fontWeight: 800, cursor: 'pointer' })
+const miniTab = (on) => ({ border: `1px solid ${on ? 'var(--ultra-red)' : 'var(--ultra-border)'}`, borderRadius: 9, padding: '9px 14px', background: on ? 'var(--ultra-red)' : '#fff', color: on ? '#fff' : '#475569', fontWeight: 800, cursor: 'pointer' })
 function Legend({ color, text }) { return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><i style={{ width: 9, height: 9, background: color, borderRadius: 3 }} />{text}</span> }
+
+function UltramanEmblem() {
+  return <div className="ultra-emblem" aria-hidden="true"><div className="ultra-helmet"><i className="ultra-crest" /><i className="ultra-eye ultra-eye-left" /><i className="ultra-eye ultra-eye-right" /><i className="ultra-mouth" /></div><div className="ultra-chest"><i className="ultra-timer" /></div></div>
+}

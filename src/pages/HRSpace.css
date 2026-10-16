@@ -1,0 +1,101 @@
+/* Space ranger skin. Keep data, forms and approval behavior in HR.jsx. */
+.hr-page {
+  --hr-navy: #4c3183;
+  --hr-navy-2: #63439b;
+  --hr-blue: #63439b;
+  --hr-blue-soft: #f0ebf9;
+  --hr-mint: #42751f;
+  --hr-mint-soft: #eef7e4;
+  --hr-ink: #263143;
+  --hr-muted: #687185;
+  --hr-line: #dce2eb;
+  --hr-surface: #ffffff;
+  gap: 18px;
+}
+.hr-page .hr-dashboard-hero {
+  min-height: 0;
+  padding: 0;
+  border: 1px solid #c5d4dc;
+  border-radius: 24px;
+  background: #0b1127;
+  box-shadow: 0 12px 32px #2631431a, inset 0 1px 0 #ffffff40;
+}
+.hr-page .hr-dashboard-hero::before {
+  inset: auto 0 0;
+  height: 4px;
+  background: linear-gradient(90deg, #a8df48 0 32%, #7856b2 32% 64%, #d8e2f4 64%);
+  animation: none;
+}
+.hr-cover-image { display: block; width: 100%; height: clamp(200px, 18vw, 290px); object-fit: contain; object-position: right center; mask-image: linear-gradient(90deg, transparent 42%, #000 64%); }
+.hr-page .hr-hero-copy { position: absolute; top: 28px; left: 32px; max-width: 43%; }
+.hr-page .hr-space-metrics { position: static; width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.hr-page .hr-space-metrics .hr-metric { min-height: 62px; padding: 10px 14px; gap: 10px; border: 1px solid var(--hr-line); border-radius: 12px; background: #fff; color: var(--hr-ink); box-shadow: 0 4px 14px #24314a06; }
+.hr-page .hr-space-metrics .hr-metric.is-emphasis { border-color: #d0dfba; background: #f4f9ec; }
+.hr-page .hr-space-metrics .hr-metric-icon { color: #68498d; background: #f0ebf9; }
+.hr-page .hr-space-metrics .hr-metric.is-emphasis .hr-metric-icon { color: #4c7527; background: #e7f0d7; }
+.hr-page .hr-space-metrics .hr-metric span,
+.hr-page .hr-space-metrics .hr-metric small { color: var(--hr-muted); }
+.hr-page .hr-space-metrics .hr-metric strong { color: var(--hr-ink); font-size: 22px; }
+.hr-page .hr-space-metrics .hr-metric-icon { width: 34px; height: 34px; border-radius: 10px; }
+.hr-page .hr-hero-copy > span { color: #c7f291; letter-spacing: .16em; font-size: 10px; }
+.hr-page .hr-hero-copy h1 { margin-top: 10px; font-size: clamp(28px, 3vw, 38px); text-shadow: none; }
+.hr-page .hr-hero-copy p { font-weight: 400; color: #e2e5f2; }
+.hr-page .hr-dashboard-hero .hr-metrics {
+  left: 28px;
+  bottom: 24px;
+  width: min(640px, 49%);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.hr-page .hr-dashboard-hero .hr-metric,
+.hr-page .hr-dashboard-hero .hr-metric.is-emphasis {
+  min-height: 72px;
+  padding: 12px 14px;
+  border: 1px solid #ffffff30;
+  border-radius: 12px;
+  background: #ffffff0f;
+  backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 #ffffff12;
+}
+.hr-page .hr-dashboard-hero .hr-metric.is-emphasis { border-color: #b5e75d70; background: #9dcc351c; }
+.hr-page .hr-dashboard-hero .hr-metric-icon,
+.hr-page .hr-dashboard-hero .hr-metric:nth-child(3) .hr-metric-icon { color: #d0f4a0; background: #b7e47712; box-shadow: none; border: 1px solid #c5ed9333; border-radius: 10px; }
+.hr-page .hr-dashboard-hero .hr-metric span,
+.hr-page .hr-dashboard-hero .hr-metric small { color: #e2e6f1; }
+.hr-page .hr-dashboard-hero .hr-icon-button { background: #19213d66; border-color: #ffffff55; border-radius: 12px; box-shadow: none; }
+.hr-page .hr-panel { border: 1px solid var(--hr-line); background: #fff; border-radius: 20px; box-shadow: 0 3px 6px #24314a03, 0 8px 24px #24314a08; }
+.hr-page .hr-section-heading { background: #fafbfd; border-bottom-color: var(--hr-line); }
+.hr-page .hr-section-heading h2 { color: var(--hr-ink); }
+.hr-page .hr-section-kicker { color: #66528c; font-size: 10px; letter-spacing: .06em; }
+.hr-page .hr-balance-card { border-color: #dce3d4; background: #fff; border-radius: 14px; box-shadow: inset 0 3px 0 #b7de77; }
+.hr-page .hr-balance-card-top strong { font-size: 16px; }
+.hr-page .hr-balance-card-top span { font-size: 13px; }
+.hr-page .hr-balance-card .hr-avatar.is-small { font-size: 15px; }
+.hr-page .hr-balance-value strong { font-size: 26px; }
+.hr-page .hr-balance-value span { font-size: 14px; }
+.hr-page .hr-balance-card.is-empty { border-color: #e1ddeb; background: #fcfbfe; box-shadow: inset 0 3px 0 #c9b9df; }
+.hr-page .hr-avatar { background: linear-gradient(140deg, #7052a0, #493173); box-shadow: inset 0 1px 0 #ffffff30; }
+.hr-page .hr-progress { background: #e8eddf; }
+.hr-page .hr-progress span { background: #6c9d35; }
+.hr-page .hr-balance-card.is-empty .hr-progress span { background: #a18bbd; }
+.hr-page .hr-button.is-secondary { border-color: #d9d0e8; color: #583c88; background: #fff; border-radius: 10px; }
+.hr-page .hr-button.is-primary { background: #56378b; }
+.hr-page .hr-empty.is-success span { color: #4a7b25; background: #edf5e1; }
+.hr-page .hr-request-card { border-color: var(--hr-line); background: #fff; }
+.hr-page :is(button, input, select):focus-visible { outline: 3px solid #8058b9; outline-offset: 3px; }
+.payi-sidebar-nav [data-nav-id="HR"][data-active="true"] { background: linear-gradient(105deg, #523480, #70509c) !important; box-shadow: inset 3px 0 0 #b8e675, 0 4px 12px #56378b21 !important; }
+@media (hover: hover) and (pointer: fine) {
+  .hr-page .hr-button.is-secondary:hover { background: #f3effa; border-color: #b5a0d4; }
+  .hr-page .hr-balance-card:hover { border-color: #a8bc91; }
+}
+@media (max-width: 1100px) {
+  .hr-page .hr-space-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .hr-page .hr-dashboard-hero { display: flex; flex-direction: column; min-height: 0; padding: 0; }
+  .hr-cover-image { height: auto; mask-image: none; }
+  .hr-page .hr-hero-copy { position: static; order: -1; max-width: 100%; padding: 20px 65px 16px 20px; }
+  .hr-page .hr-hero-copy h1 { font-size: 26px; }
+  .hr-page .hr-hero-copy p { max-width: 30ch; font-size: 13px; }
+  .hr-page .hr-space-metrics .hr-metric { padding: 12px; gap: 8px; }
+}

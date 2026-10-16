@@ -862,6 +862,46 @@ export default function App() {
   const isLinksHubMode = activeTab === 'Links Hub'
   const isSwanPastelPage = activeTab === 'Inventory' || activeTab === 'Stock Movement'
 
+  const shellActions = (
+<div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div className="payi-topbar-search" style={{ display: 'flex', alignItems: 'center', gap: 10, width: 280, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.6)', borderRadius: 999, padding: '10px 14px', boxShadow: '0 8px 20px rgba(16,24,40,0.06)' }}>
+              <Search size={16} color="var(--payi-text-muted)" />
+              <input
+                placeholder="ค้นหา SKU หรือแคมเปญ"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                autoComplete="off"
+                style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: 13, color: 'var(--payi-surface-dark)', background: 'transparent' }}
+              />
+            </div>
+            <button title="Notifications" style={{ width: 40, height: 40, borderRadius: 999, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.6)', display: 'grid', placeItems: 'center', boxShadow: '0 8px 20px rgba(16,24,40,0.06)' }}>
+              <Bell size={18} color={getMeUser()?.avatar_emoji ? AVATAR_COLORS[getMeUser()?.avatar_color]?.to : 'var(--payi-mint-strong)'} />
+            </button>
+            <button
+              title="ออกจากระบบ"
+              onClick={() => {
+                if (!localStorage.getItem('payi-api-token')) return // โหมด dev ไม่มี login
+                if (window.confirm('ออกจากระบบ?')) {
+                  localStorage.removeItem('payi-api-token')
+                  localStorage.removeItem('payi-user')
+                  window.location.reload()
+                }
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 9, border: '1px solid rgba(255,255,255,0.6)', borderRadius: 999, padding: '9px 14px 9px 9px', background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', boxShadow: '0 8px 20px rgba(16,24,40,0.06)', color: 'var(--payi-surface-dark)', cursor: 'pointer' }}>
+              <span style={{
+                width: 26, height: 26, borderRadius: '50%', display: 'grid', placeItems: 'center', flexShrink: 0,
+                background: getMeUser()?.avatar_emoji ? avatarGradient(getMeUser()?.avatar_color) : 'var(--payi-gradient-primary)',
+                fontSize: 13,
+              }}>
+                {getMeUser()?.avatar_emoji || <UserCircle2 size={16} color="#fff" />}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>
+                {getMeUser()?.name || 'Nook'}
+              </span>
+            </button>
+          </div>
+  )
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f7fbff', fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif', color: 'var(--payi-text-strong)' }}>
       
@@ -952,54 +992,18 @@ export default function App() {
       )}
 
       {/* MAIN CONTENT AREA */}
-      <div className="payi-main-content" style={{ flex: 1, minHeight: '100vh', overflow: activeTab === 'Pricing' ? 'visible' : 'auto', padding: isLinksHubMode ? '32px 34px 40px' : '24px 32px 40px', boxSizing: 'border-box', width: '100%' }}>
+      <div className={activeTab === 'WHT Cert' ? 'payi-main-content wht-active' : 'payi-main-content'} style={{ flex: 1, minHeight: '100vh', overflow: activeTab === 'Pricing' ? 'visible' : 'auto', padding: isLinksHubMode ? '32px 34px 40px' : '24px 32px 40px', boxSizing: 'border-box', width: '100%' }}>
 
         {/* HEADER TOP ROW — เดิมเป็นกล่องไล่สีมนๆ เหมือน hero การ์ดยอดขายด้านล่าง (Executive) ทำให้ดูซ้ำ
             หลุดโฟกัส (feedback เจ้าของ 2026-07-29) — เปลี่ยนเป็น header เรียบๆ แค่ตัวหนังสือ ให้ gradient
             เหลือแค่การ์ดตัวเลขสำคัญจริงๆ (เช่น Total Revenue) เด่นแทน */}
-        {!isLinksHubMode && <div className="payi-topbar" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 18, marginBottom: 18, alignItems: 'center' }}>
-          <div style={{ width: isMobileViewport ? '100%' : 'auto' }}>
+        {!isLinksHubMode && activeTab !== 'Workforce OT' && <div className="payi-topbar" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: ['Workforce OT', 'WHT Cert'].includes(activeTab) ? 'flex-end' : 'space-between', gap: 18, marginBottom: 18, alignItems: 'center' }}>
+          {!['Workforce OT', 'WHT Cert'].includes(activeTab) && <div style={{ width: isMobileViewport ? '100%' : 'auto' }}>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: isSwanPastelPage ? '#a782da' : 'var(--payi-mint-strong)', marginBottom: 4 }}>{pageMeta.eyebrow}</div>
             <div style={{ fontSize: 24, fontWeight: 850, letterSpacing: 0, color: 'var(--payi-text-strong)', marginBottom: 2 }}>{pageMeta.title}</div>
             <div style={{ fontSize: 13, color: 'var(--payi-text-muted)' }}>{pageMeta.subtitle}</div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <div className="payi-topbar-search" style={{ display: 'flex', alignItems: 'center', gap: 10, width: 280, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.6)', borderRadius: 999, padding: '10px 14px', boxShadow: '0 8px 20px rgba(16,24,40,0.06)' }}>
-              <Search size={16} color="var(--payi-text-muted)" />
-              <input
-                placeholder="ค้นหา SKU หรือแคมเปญ"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                autoComplete="off"
-                style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: 13, color: 'var(--payi-surface-dark)', background: 'transparent' }}
-              />
-            </div>
-            <button title="Notifications" style={{ width: 40, height: 40, borderRadius: 999, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.6)', display: 'grid', placeItems: 'center', boxShadow: '0 8px 20px rgba(16,24,40,0.06)' }}>
-              <Bell size={18} color={getMeUser()?.avatar_emoji ? AVATAR_COLORS[getMeUser()?.avatar_color]?.to : 'var(--payi-mint-strong)'} />
-            </button>
-            <button
-              title="ออกจากระบบ"
-              onClick={() => {
-                if (!localStorage.getItem('payi-api-token')) return // โหมด dev ไม่มี login
-                if (window.confirm('ออกจากระบบ?')) {
-                  localStorage.removeItem('payi-api-token')
-                  localStorage.removeItem('payi-user')
-                  window.location.reload()
-                }
-              }}
-              style={{ display: 'flex', alignItems: 'center', gap: 9, border: '1px solid rgba(255,255,255,0.6)', borderRadius: 999, padding: '9px 14px 9px 9px', background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', boxShadow: '0 8px 20px rgba(16,24,40,0.06)', color: 'var(--payi-surface-dark)', cursor: 'pointer' }}>
-              <span style={{
-                width: 26, height: 26, borderRadius: '50%', display: 'grid', placeItems: 'center', flexShrink: 0,
-                background: getMeUser()?.avatar_emoji ? avatarGradient(getMeUser()?.avatar_color) : 'var(--payi-gradient-primary)',
-                fontSize: 13,
-              }}>
-                {getMeUser()?.avatar_emoji || <UserCircle2 size={16} color="#fff" />}
-              </span>
-              <span style={{ fontSize: 13, fontWeight: 700 }}>
-                {getMeUser()?.name || 'Nook'}
-              </span>
-            </button>
-          </div>
+          </div>}
+          {shellActions}
         </div>}
 
         {/* SUB-TABS ของ Dashboard ใหญ่ (สรุปยอดขาย / สินค้า) */}
@@ -1471,7 +1475,7 @@ export default function App() {
           ['Fulfillment', ['dev', 'boss', 'finance', 'tang'].includes(currentRole) ? <Fulfillment /> : <DevOnlyLock label="Fulfillment" />],
           ['Stock Movement', <StockMovement />],
           ['HR', <HR />],
-          ['Workforce OT', ['dev', 'boss'].includes(currentRole) ? <WorkforceOT /> : <DevOnlyLock label="Manpower & OT" />],
+          ['Workforce OT', ['dev', 'boss'].includes(currentRole) ? <WorkforceOT shellActions={shellActions} /> : <DevOnlyLock label="Manpower & OT" />],
           ['HR People', ['dev', 'boss'].includes(currentRole) ? <HRPeople /> : <DevOnlyLock label="ข้อมูลพนักงาน" />],
           ['Import Orders', <Upload onNavigate={handleNavigate} />],
           ['Links Hub', <LinksHub />],

@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Download, Loader2 } from 'lucide-react'
+import { Download, Loader2, FileCheck2, ArrowRight, Building2, ShieldCheck } from 'lucide-react'
 import { PDFDocument, rgb } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
+import './WhtCert.css'
 
 // ── ค่าคงที่ (ไม่ต้องกรอกทุกครั้ง) ─────────────────────────────
 const PAYER = {
@@ -219,9 +220,6 @@ async function buildPdf({ runNo, dateISO, bookNo }) {
   return pdf.save()
 }
 
-const inp = { width: '100%', border: '1px solid var(--payi-border)', borderRadius: 10, padding: '10px 12px', fontSize: 14, background: 'var(--payi-surface)', color: 'var(--payi-text-strong)', boxSizing: 'border-box' }
-const lbl = { fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 6, display: 'block' }
-
 export default function WhtCert() {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
   const [runNo, setRunNo] = useState('')
@@ -254,43 +252,39 @@ export default function WhtCert() {
   const tax = Math.round(SERVICE_FEE * WHT_RATE)
 
   return (
-    <div style={{ maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 18 }}>
-      {err && <div style={{ background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', borderRadius: 10, padding: '10px 14px', fontSize: 13 }}>{err}</div>}
-
-      <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: 12 }}>
-          <div>
-            <label style={lbl}>เล่มที่</label>
-            <input value={bookNo} onChange={(e) => setBookNo(e.target.value)} style={inp} />
-          </div>
-          <div>
-            <label style={lbl}>เลขที่ *</label>
-            <input value={runNo} onChange={(e) => setRunNo(e.target.value)} style={inp} placeholder="เช่น 21" autoFocus />
-          </div>
+    <main className="wht-space-page">
+      <section className="wht-command" aria-labelledby="wht-title">
+        <img className="wht-scene" src="/wht-orbital-observatory-v1.png" alt="" />
+        <div className="wht-command-content">
+          <header className="wht-heading">
+            <span className="wht-eyebrow"><span /> FINANCE · DOCUMENT STATION</span>
+            <h1 id="wht-title">ใบหัก ณ ที่จ่าย</h1>
+            <p>กรอกเลขที่และวันที่จ่าย<br />แล้วสร้างหนังสือรับรอง 50 ทวิ พร้อมพิมพ์</p>
+          </header>
+          <form className="wht-form" onSubmit={(e) => { e.preventDefault(); gen() }}>
+            <div className="wht-form-heading"><span className="wht-form-icon"><FileCheck2 size={22} /></span><div><h2>ออกหนังสือรับรอง</h2><p>ข้อมูลสำหรับเอกสารใบนี้</p></div><span className="wht-form-tag">50 ทวิ</span></div>
+            {err && <div className="wht-error" role="alert">{err}</div>}
+            <div className="wht-number-row">
+              <label htmlFor="wht-book">เล่มที่<input id="wht-book" value={bookNo} onChange={(e) => setBookNo(e.target.value)} /></label>
+              <label htmlFor="wht-number">เลขที่ <span aria-hidden="true">*</span><input id="wht-number" value={runNo} onChange={(e) => setRunNo(e.target.value)} placeholder="เช่น 21" required autoFocus /></label>
+            </div>
+            <label htmlFor="wht-date">วันที่จ่าย <span aria-hidden="true">*</span><input id="wht-date" type="date" value={dateISO} onChange={(e) => setDateISO(e.target.value)} required aria-describedby="wht-date-hint" /></label>
+            <p className="wht-input-hint" id="wht-date-hint">ใช้เป็นวันที่จ่ายและวันที่ออกหนังสือรับรอง</p>
+            <button className="wht-generate" type="submit" disabled={busy}>{busy ? <><Loader2 size={18} className="payi-spin" />กำลังสร้าง…</> : <><Download size={18} />สร้าง PDF<ArrowRight size={17} /></>}</button>
+            <span className="wht-form-footer"><ShieldCheck size={14} />ข้อมูลผู้จ่ายและผู้ถูกหักเติมให้อัตโนมัติ</span>
+          </form>
         </div>
-        <div>
-          <label style={lbl}>วันที่จ่าย *</label>
-          <input type="date" value={dateISO} onChange={(e) => setDateISO(e.target.value)} style={inp} />
-          <div style={{ fontSize: 11.5, color: 'var(--payi-text-faint)', marginTop: 5 }}>
-            ลงทั้งช่อง "วัน เดือน ที่จ่าย" ของรายการ และช่องวันที่ออกหนังสือรับรอง
-          </div>
-        </div>
-
-        <button onClick={gen} disabled={busy} style={{
-          marginTop: 4, background: 'var(--payi-gradient-primary)', color: '#fff', border: 'none', borderRadius: 10,
-          padding: '12px 16px', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: busy ? 0.6 : 1,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-        }}>
-          {busy ? <><Loader2 size={16} className="payi-spin" /> กำลังสร้าง...</> : <><Download size={16} /> สร้าง PDF</>}
-        </button>
-      </div>
-
-      <div style={{ background: 'var(--payi-surface-muted)', border: '1px solid var(--payi-border)', borderRadius: 12, padding: 16, fontSize: 12.5, color: 'var(--payi-text)', lineHeight: 1.7 }}>
-        <b style={{ color: 'var(--payi-text-strong)' }}>คงที่ทุกใบ:</b><br />
-        ผู้จ่าย: {PAYER.name} ({PAYER.tin})<br />
-        ผู้ถูกหัก: {PAYEE.name} ({PAYEE.tin})<br />
-        รายการ: ข้อ 5 ค่าบริการออกของ · ฐาน ฿{SERVICE_FEE.toLocaleString()} · หัก 3% = ฿{tax} · ภ.ง.ด.53 · หัก ณ ที่จ่าย
-      </div>
-    </div>
+        <aside className="wht-mission-summary" aria-label="สรุปยอดในเอกสาร">
+          <span className="wht-summary-kicker">DOCUMENT SUMMARY</span>
+          <div className="wht-summary-amounts"><div><span>ค่าบริการออกของ</span><strong>฿{SERVICE_FEE.toLocaleString()}</strong></div><div><span>ภาษีหัก ณ ที่จ่าย 3%</span><strong>฿{tax.toLocaleString()}</strong></div></div>
+          <div className="wht-summary-meta"><span>รายการข้อ 5</span><span>ภ.ง.ด.53</span><span>หัก ณ ที่จ่าย</span></div>
+        </aside>
+        <span className="wht-scene-caption">ORBITAL OBSERVATORY / FINANCE UNIT</span>
+      </section>
+      <section className="wht-parties" aria-label="ข้อมูลคงที่ทุกใบ">
+        <article><span className="wht-party-icon"><Building2 size={20} /></span><div><span className="wht-party-label">ผู้จ่ายเงิน</span><h2>{PAYER.name}</h2><p>เลขประจำตัวผู้เสียภาษี <strong>{PAYER.tin}</strong></p></div></article>
+        <article><span className="wht-party-icon"><FileCheck2 size={20} /></span><div><span className="wht-party-label">ผู้ถูกหักภาษี ณ ที่จ่าย</span><h2>{PAYEE.name}</h2><p>เลขประจำตัวผู้เสียภาษี <strong>{PAYEE.tin}</strong></p></div></article>
+      </section>
+    </main>
   )
 }
