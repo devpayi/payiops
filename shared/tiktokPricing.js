@@ -1,6 +1,13 @@
+import { latestPricingPlans } from './pricingCatalog.js'
+
 // Explicit baseline from the owner's Mall worksheet, not a live TikTok fee feed.
 export const TIKTOK_PRICING_VERSION = 2
 export const isTikTokPlan = draft => draft?.calculationModel === 'tiktok-mall-v1'
+export function latestTikTokFamilyPlan(revisions, key) {
+  return latestPricingPlans(revisions)
+    .filter(r=>!r.deleted && isTikTokPlan(r.draft) && r.draft.productGroupId===key)
+    .sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)))[0]
+}
 export function newTikTokDraft() {
   return {calculationModel:'tiktok-mall-v1',name:'แผนราคาปกติ',productName:'สินค้า A',business:'Payi',sku:'',productGroupId:'',productSkus:[],kind:'single',price:395,cost:100,packing:5,overhead:2,extraCost:1.06,transaction:3.21,commission:11.77,campaign:8.03,deals:3.21,vat:7,affiliate:15,targetMargin:10,monthlyVolume:1000}
 }

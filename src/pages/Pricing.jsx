@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ReferenceLine, R
 import PRODUCT_MASTER from '../data/productMaster.json'
 import { calculatePricing, monthlyProfit, newPricingDraft, normalizePricingDraft, PRICING_PROGRAMS, solvePricingTarget } from '../../shared/pricing.js'
 import { applyPricingPreset, PRICING_CATEGORIES, PRICING_PAYMENTS, PRICING_REFERENCE } from '../../shared/pricingPresets.js'
-import { buildPricingCatalog, pricingProductKey, pricingRecipeKey, latestPricingPlans, savedPricingCosts, draftForPricingProduct, draftForPricingRecipe } from '../../shared/pricingCatalog.js'
+import { buildPricingCatalog, pricingProductKey, pricingRecipeKey, latestPricingPlans, savedPricingCosts, draftForPricingProduct, draftForPricingRecipe, pricingDraftWithSales } from '../../shared/pricingCatalog.js'
 import { pricingDemoData, pricingDemoSales } from '../data/pricingDemo.js'
 import { pricingComparisonDraft } from '../../shared/pricingComparison.js'
 import { buildPricingFamilies, draftForPricingFamily, pricingFamilyCost } from '../../shared/pricingFamilies.js'
@@ -78,6 +78,7 @@ function ShopeePricing({ access, onAccessRevoked }) {
   const [catalogSearch,setCatalogSearch] = useState('')
   const [sourceInfo,setSourceInfo] = useState(null)
   const [refreshKey,setRefreshKey] = useState(0)
+  const [salesRefreshKey,setSalesRefreshKey] = useState(0)
   const [salesState,setSalesState] = useState(null)
   const salesEndDate = today()
   const autoSales = useRef(null)
@@ -161,13 +162,12 @@ function ShopeePricing({ access, onAccessRevoked }) {
       if(controller.signal.aborted || !alive.current) return
       setSalesState({key:salesKey,summary})
       if(summary && autoSales.current===selectionIdentity) {
-        const period=summary.days30
-        setDraft(prev=>JSON.stringify([prev.business,prev.sku,prev.variationName,prev.productGroupId])===selectionIdentity ? {...prev,monthlyVolume:period.suggestedMonthlyVolume,salesSnapshot:{...period,sku:summary.sku,business:summary.business,variation:summary.variation}} : prev)
+        setDraft(prev=>JSON.stringify([prev.business,prev.sku,prev.variationName,prev.productGroupId])===selectionIdentity ? pricingDraftWithSales(prev,summary) : prev)
         autoSales.current=null
       }
     }).catch(e=>{if(e.name!=='AbortError' && !controller.signal.aborted && alive.current) setSalesState({key:salesKey,error:e.message || 'โหลดยอดขายไม่ได้'})})
     return ()=>controller.abort()
-  },[canReadOps,draft.sku,draft.business,draft.variationName,draft.productGroupId,hasSalesSelection,salesEndDate,salesKey,selectionIdentity,onAccessRevoked,refreshKey])
+  },[canReadOps,draft.sku,draft.business,draft.variationName,draft.productGroupId,hasSalesSelection,salesEndDate,salesKey,selectionIdentity,onAccessRevoked,refreshKey,salesRefreshKey])
 
   const priceData = useMemo(() => {
     if (!result.valid) return []
@@ -232,9 +232,11 @@ function ShopeePricing({ access, onAccessRevoked }) {
     setCustomProduct(!next.sku && !next.productGroupId)
     const nextIdentity = JSON.stringify([next.business,next.sku,next.variationName,next.productGroupId])
     const summary = nextIdentity===selectionIdentity ? sales?.summary : null
-    const period = summary?.days30
-    next = {...next,monthlyVolume:period?.units ?? 0,salesSnapshot:period ? {...period,sku:summary.sku,business:summary.business,variation:summary.variation} : null}
-    autoSales.current = next.sku && !summary ? nextIdentity : null
+    next = pricingDraftWithSales(next,summary)
+    const needsSales = Boolean(next.sku && (next.kind!=='bundle' || next.variationName) && !summary)
+    autoSales.current = needsSales ? nextIdentity : null
+    // Reopening the same product must retry a failed/missing sales lookup too.
+    if (needsSales && nextIdentity===selectionIdentity) setSalesRefreshKey(value=>value+1)
     if (copy) next.name = `${next.name} (สำเนา)`
     setDraft(next); setReference(normalizePricingDraft(record.draft));setComparisonMode('snapshot'); setActiveRecord(copy ? null : record); setDirty(copy); setView('calculator'); setMessage(copy ? 'สร้างสำเนาแล้ว ปรับสมมติฐานก่อนบันทึกเป็นแผนใหม่ได้' : 'เปิดแผนที่บันทึกไว้แล้ว'); setError('')
   }

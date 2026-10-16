@@ -1,6 +1,27 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildPricingCatalog,buildPricingSalesSummary,pricingProductKey,savedPricingCosts,draftForPricingProduct,draftForPricingRecipe,dateOffset } from '../shared/pricingCatalog.js'
+import { buildPricingCatalog,buildPricingSalesSummary,pricingProductKey,savedPricingCosts,draftForPricingProduct,draftForPricingRecipe,dateOffset,pricingDraftWithSales } from '../shared/pricingCatalog.js'
+
+test('reopening a custom plan preserves its saved monthly simulation without Ops sales',()=>{
+  const draft={...newPricingDraft(),sku:'',productGroupId:'',monthlyVolume:750,salesSnapshot:null}
+  const reopened=pricingDraftWithSales(draft,null)
+  assert.equal(reopened.monthlyVolume,750)
+  assert.deepEqual(monthlyProfit(reopened),monthlyProfit(draft))
+  assert.equal(pricingDraftWithSales(draft,{days30:{units:9}}).monthlyVolume,750)
+})
+
+test('Ops plans retain their saved basis on lookup failure and use actual 30-day units when available, including zero',()=>{
+  const draft={...newPricingDraft(),sku:'A',monthlyVolume:750,salesSnapshot:{units:750}}
+  assert.deepEqual(pricingDraftWithSales(draft,null),draft)
+  for(const units of [0,123]) {
+    const summary={sku:'A',business:'Payi',variation:'',days30:{days:30,units,from:'2026-09-17',to:'2026-10-16'}}
+    const reopened=pricingDraftWithSales(draft,summary)
+    assert.equal(reopened.monthlyVolume,units)
+    assert.equal(reopened.salesSnapshot.units,units)
+    assert.equal(reopened.salesSnapshot.sku,'A')
+    assert.equal(draft.monthlyVolume,750)
+  }
+})
 
 test('deleted scenarios no longer seed costs; restoring retains the saved cost', () => {
   const first={scenarioId:'plan-a',createdAt:'2026-01-01',draft:{business:'Payi',sku:'A',kind:'single',unitCost:150}}
@@ -9,7 +30,7 @@ test('deleted scenarios no longer seed costs; restoring retains the saved cost',
   const restored={...removed,createdAt:'2026-01-03',deleted:false}
   assert.equal(savedPricingCosts([first,removed,restored]).get(pricingProductKey('Payi','A')).cost,150)
 })
-import { newPricingDraft,calculatePricing,normalizePricingDraft } from '../shared/pricing.js'
+import { newPricingDraft,calculatePricing,normalizePricingDraft,monthlyProfit } from '../shared/pricing.js'
 import { bangkokDate,loadPricingSales,loadPricingCatalog } from '../api/_lib/pricingData.js'
 
 test('catalog preserves business, canonical SKU, real variant metadata, price provenance and excludes packaging/correction recipes',()=>{

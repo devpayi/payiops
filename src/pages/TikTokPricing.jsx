@@ -6,7 +6,7 @@ import './TikTokUltraman.css'
 import PRODUCT_MASTER from '../data/productMaster.json'
 import { buildPricingCatalog, latestPricingPlans } from '../../shared/pricingCatalog.js'
 import { buildPricingFamilies } from '../../shared/pricingFamilies.js'
-import { calculateTikTok, isTikTokPlan, newTikTokDraft, normalizeTikTokDraft } from '../../shared/tiktokPricing.js'
+import { calculateTikTok, isTikTokPlan, latestTikTokFamilyPlan, newTikTokDraft, normalizeTikTokDraft } from '../../shared/tiktokPricing.js'
 
 const endpoint='/api/sheet-tools?op=pricing'
 const money=cents=>new Intl.NumberFormat('th-TH',{style:'currency',currency:'THB'}).format(cents/100)
@@ -111,7 +111,7 @@ export default function TikTokPricing({access,onAccessRevoked}) {
     const family=groups.find(g=>g.key===key)
     if(!family)return
     setCustomProduct(false)
-    const previous=plans.filter(r=>!r.deleted&&r.draft.productGroupId===key).at(-1)
+    const previous=latestTikTokFamilyPlan(revisions,key)
     setDraft({...newTikTokDraft(),...(previous?.draft||{}),name:'แผนราคาปกติ',productName:family.name,business:family.business,sku:family.skus[0],productGroupId:key,productSkus:family.skus,price:previous?.draft.price??family.referencePrice??'',cost:previous?.draft.cost??''})
     setActive(null);setDirty(true);setMessage('เลือกสินค้าแล้ว ตรวจราคาและต้นทุนสำหรับ TikTok Mall')
   }

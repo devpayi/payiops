@@ -1,8 +1,22 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {newTikTokDraft,normalizeTikTokDraft,calculateTikTok,isTikTokPlan} from '../shared/tiktokPricing.js'
+import process from 'node:process'
+import {newTikTokDraft,normalizeTikTokDraft,calculateTikTok,isTikTokPlan,latestTikTokFamilyPlan} from '../shared/tiktokPricing.js'
 import {calculatePricing,newPricingDraft} from '../shared/pricing.js'
 import {opPricing} from '../api/_lib/pricing.js'
+
+test('family selection seeds the most recently saved TikTok plan, including updates to an older scenario',()=>{
+  const draft={...newTikTokDraft(),productGroupId:'family-a'}
+  const first={scenarioId:'first',createdAt:'2026-10-14T00:00:00Z',draft:{...draft,cost:100}}
+  const second={scenarioId:'second',createdAt:'2026-10-15T00:00:00Z',draft:{...draft,cost:200}}
+  const updated={...first,createdAt:'2026-10-16T00:00:00Z',draft:{...draft,cost:300}}
+  assert.equal(latestTikTokFamilyPlan([first,second],'family-a').draft.cost,200)
+  assert.equal(latestTikTokFamilyPlan([first,second,updated],'family-a').draft.cost,300)
+  const deleted={...updated,createdAt:'2026-10-16T01:00:00Z',deleted:true}
+  const shopee={scenarioId:'shopee',createdAt:'2026-10-17T00:00:00Z',draft:{...newPricingDraft(),productGroupId:'family-a',cost:999}}
+  assert.equal(latestTikTokFamilyPlan([first,second,updated,deleted,shopee],'family-a').draft.cost,200)
+  assert.equal(latestTikTokFamilyPlan([first,second],'family-b'),undefined)
+})
 
 test('Mall worksheet baseline: 395 price, 108.06 cost, 33.22% platform, 15% affiliate, 10% profit',()=>{
   const r=calculateTikTok(newTikTokDraft())

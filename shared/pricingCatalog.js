@@ -47,6 +47,14 @@ export function latestPricingPlans(revisions) {
   return [...new Map(revisions.map(r=>[r.scenarioId || r,r])).values()].reverse()
 }
 
+// Custom products have no Ops sales history: retain their saved simulation.
+// Also keep saved values while an Ops lookup is pending or unavailable.
+export function pricingDraftWithSales(draft, summary) {
+  const period = draft.sku ? summary?.days30 : null
+  if (!period) return draft
+  return {...draft,monthlyVolume:period.units,salesSnapshot:{...period,sku:summary.sku,business:summary.business,variation:summary.variation}}
+}
+
 export function savedPricingCosts(revisions) {
   const costs = new Map()
   for (const record of latestPricingPlans(revisions).filter(r=>!r.deleted).sort((a,b) => String(a.createdAt).localeCompare(String(b.createdAt)))) {
