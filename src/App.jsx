@@ -26,6 +26,7 @@ const MonthlyDashboard = lazy(() => import('./pages/MonthlyDashboard'))
 const DailyDashboard = lazy(() => import('./pages/DailyDashboard'))
 const HR = lazy(() => import('./pages/HR'))
 const HRPeople = lazy(() => import('./pages/HRPeople'))
+const WorkforceOT = lazy(() => import('./pages/WorkforceOT'))
 const ProductDashboard = lazy(() => import('./pages/ProductDashboard'))
 const ProductTrends = lazy(() => import('./pages/ProductTrends'))
 const AdsChannels = lazy(() => import('./pages/AdsChannels'))
@@ -98,6 +99,7 @@ const Icons = {
   CFO: Wallet,
   Fulfillment: Warehouse,
   HR: CalendarCheck,
+  'Workforce OT': Users,
   'HR People': Users,
   SOPs: BookOpen,
   LinksHub: Link2,
@@ -109,7 +111,7 @@ const Icons = {
 const KNOWN_TABS = new Set([
   'Home', 'Workspace', 'Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends',
   'AdsChannels', 'ContentOS', 'Inventory',
-  'Import Tracking', 'WHT Cert', 'Stock Movement', 'HR', 'HR People', 'CFO', 'Fulfillment',
+  'Import Tracking', 'WHT Cert', 'Stock Movement', 'HR', 'Workforce OT', 'HR People', 'CFO', 'Fulfillment',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings', 'Pricing',
 ])
 
@@ -139,6 +141,7 @@ const menuGroups = [
       { id: 'Import Tracking', label: 'ติดตามนำเข้า', renderIcon: Icons.ImportTracking, dotColor: '#0ea5e9' },
       { id: 'WHT Cert', label: 'ใบหัก ณ ที่จ่าย', renderIcon: Icons.WhtCert, dotColor: '#0ea5e9' },
       { id: 'HR', label: 'พนักงาน (ลา)', renderIcon: Icons.HR },
+      { id: 'Workforce OT', label: 'Manpower & OT', renderIcon: Icons['Workforce OT'] },
       { id: 'HR People', label: 'ข้อมูลพนักงาน', renderIcon: Icons['HR People'] }
     ]
   },
@@ -810,6 +813,11 @@ export default function App() {
       eyebrow: 'Operations Planning',
       subtitle: 'คำขอลา + อนุมัติ และวันลาพักร้อนคงเหลือ'
     },
+    'Workforce OT': {
+      title: 'Manpower & OT',
+      eyebrow: 'Operations Planning',
+      subtitle: 'ตารางกะ + OT รายวัน (ชีตเดียวกับ payi-floor) — dev/boss เท่านั้น'
+    },
     'HR People': {
       title: 'ข้อมูลพนักงาน',
       eyebrow: 'Operations Planning',
@@ -1463,6 +1471,7 @@ export default function App() {
           ['Fulfillment', ['dev', 'boss', 'finance', 'tang'].includes(currentRole) ? <Fulfillment /> : <DevOnlyLock label="Fulfillment" />],
           ['Stock Movement', <StockMovement />],
           ['HR', <HR />],
+          ['Workforce OT', ['dev', 'boss'].includes(currentRole) ? <WorkforceOT /> : <DevOnlyLock label="Manpower & OT" />],
           ['HR People', ['dev', 'boss'].includes(currentRole) ? <HRPeople /> : <DevOnlyLock label="ข้อมูลพนักงาน" />],
           ['Import Orders', <Upload onNavigate={handleNavigate} />],
           ['Links Hub', <LinksHub />],

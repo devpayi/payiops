@@ -2372,9 +2372,12 @@ function generateCalendarPresence(personMap, leaveRows, dayOffMap = {}, onlyCode
 // ปฏิทินบ้านล่างใช้ตารางพนักงานปี 2026 ในระบบ และกรองแถวออฟฟิศออกด้วย roster บ้านล่าง
 // ถ้ามีคำขอลาอนุมัติผ่านระบบ ให้ยึด hr_leave แทนตารางตั้งต้น
 async function getCalendarPresence(personMap, overrideScopeCodes = Object.keys(personMap), applyLeaves = true, officeCodes = []) {
-  const [snapshotRows, overrideRows, leaveRows, dayOffMap] = await Promise.all([
-    getSheet('workforce_schedule_snapshot'), getSheet('workforce_schedule_overrides'), getSheet('hr_leave'), getDayOffMap(),
+  const [snapshotRows, overrideRows, leaveRows, dayOffMap, holidayRows] = await Promise.all([
+    getSheet('workforce_schedule_snapshot'), getSheet('workforce_schedule_overrides'), getSheet('hr_leave'), getDayOffMap(), getHolidayRows(),
   ])
+  // วันนักขัตฤกษ์ = วันหยุดของทุกคน (owner, ตาม payi-floor 2026-10-01) — ตัดคนออกจากทุกวันที่อยู่ใน workforce_holidays
+  // ทั้งแถวปกติ override และ swap-back ส่วนข้อความ "X ชนวันหยุด" (getHolidaysWithConflicts) ยังเป็นแค่ป้ายแจ้งเตือน
+  const holidayDates = new Set(holidayRows.map((h) => h.date).filter(Boolean))
   const swapBackMap = buildSwapBackDates(leaveRows)
   let baseRows = (snapshotRows.length ? snapshotRows : generateCalendarPresence(personMap, [], dayOffMap, null, swapBackMap))
     .filter((r) => personMap[String(r.code || '').toUpperCase()])
@@ -2401,6 +2404,7 @@ async function getCalendarPresence(personMap, overrideScopeCodes = Object.keys(p
     }
   }
   baseRows = applyScheduleOverrides({ baseRows, overrideRows, personMap, overrideScopeCodes, officeCodes, dayOffMap })
+  baseRows = baseRows.filter((r) => !holidayDates.has(r.date))
   // applyScheduleOverrides แทนที่รายชื่อทั้งวันด้วย entries_json ของ override (ไม่รู้จัก swapBackMap เลย) — ถ้า
   // override วันนั้นถูกบันทึกไว้ก่อนคำขอสลับวันหยุดจะได้รับอนุมัติ (หรือถูกแก้ซ้ำทีหลังโดยไม่รู้เรื่องสลับ) คนที่ควร
   // กลับมาทำงานวันนั้นจะหายไปอีกเหมือนเดิม ทั้งที่ baseRows ชั้นก่อนหน้าคำนวณถูกแล้ว (เจอจริง 2026-08-10 กรณีมี่
@@ -2412,6 +2416,7 @@ async function getCalendarPresence(personMap, overrideScopeCodes = Object.keys(p
       const person = personMap[code]
       if (!person) continue
       for (const date of dates) {
+        if (holidayDates.has(date)) continue
         const key = `${date}|${code}`
         if (presentKeys.has(key)) continue
         presentKeys.add(key)
