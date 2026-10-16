@@ -43,6 +43,8 @@ export function canAccessTab(role, tab) {
   // Pricing uses a server-checked account allowlist; a broad role grants no access.
   if (tab === 'Pricing') return false
   const normalized = normalizeRole(role)
+  // The Dashboard shell is wider than the audience of manual marketing inputs.
+  if (tab === 'TikTokSales') return [ROLES.DEV, ROLES.BOSS].includes(normalized)
   if (normalized === ROLES.DEV) return true
   if (normalized === ROLES.BOSS) return !BOSS_HIDDEN_TABS.has(tab)
   if (normalized === ROLES.STOCK) return STOCK_TAB_SET.has(tab)

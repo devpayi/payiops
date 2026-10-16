@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import useMarketingRevision from '../hooks/useMarketingRevision.js'
 import { DollarSign, ShoppingBag, Package, Megaphone, Loader2, Info, Receipt } from 'lucide-react'
 import { canManageMarketing } from '../../shared/roles.js'
 import Mascot from '../components/Mascot.jsx'
@@ -141,6 +142,7 @@ export default function MonthlyDashboard() {
 
   // ค่า Ads รายเดือน (กรอกมือ, marketing_inputs) — เป็นข้อมูลต้นทุน โชว์เฉพาะ dev/boss/marketing
   const [ads, setAds] = useState(null)
+  const marketingRevision = useMarketingRevision()
   const [authOn, setAuthOn] = useState(true)
   const me = (() => { try { return JSON.parse(localStorage.getItem('payi-user') || 'null') } catch { return null } })()
   const canSeeAds = !authOn || canManageMarketing(me?.role)
@@ -162,7 +164,7 @@ export default function MonthlyDashboard() {
       })
       .catch(() => {})
     return () => { alive = false }
-  }, [canSeeAds])
+  }, [canSeeAds, marketingRevision])
 
   useEffect(() => {
     let alive = true
@@ -282,7 +284,7 @@ export default function MonthlyDashboard() {
             title="ค่า Ads (กรอกมือ)"
             value={adsCur == null ? '—' : fmtBaht(adsCur)}
             subtitle={
-              adsCur == null ? 'ยังไม่ได้กรอก — ไปหน้า Ads & Channels'
+              adsCur == null ? 'ยังไม่ได้กรอก — วิเคราะห์โฆษณา → ข้อมูลเดิม / กรอกยอด'
                 : adsPctCur != null ? `${adsPctCur}% ของยอดขาย${adsPctPrev != null ? ` · ${monthLabel(prev.month)}: ${adsPctPrev}%` : ''}`
                   : periodLabel(month)
             }

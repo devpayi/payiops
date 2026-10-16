@@ -1,0 +1,42 @@
+{
+  "capturedAt": "2026-10-16T05:59:38.3097369Z",
+  "purpose": "Before monthly marketing read-only preview; file hashes only, no credentials or business data",
+  "files": [
+    {
+      "path": "api/_lib/marketingInputs.js",
+      "sha256": "ad986248d1cb51eb262aa3367ad0129d0a2afb8321a82aedd101513dcb40f99e"
+    },
+    {
+      "path": "api/_lib/cfo.js",
+      "sha256": "ffcde1329660a4e530a1b8a9cb3a0da4a984efb6eb938fcc8079f9e975ceb6c3"
+    },
+    {
+      "path": "api/monthly.js",
+      "sha256": "c9a3e524d4512ecaef7a58a2fccc201766433cca8ec2eba92d8f55b580cc23fc"
+    },
+    {
+      "path": "api/marketing.js",
+      "sha256": "bbd513e92852cf1d91fe115af20fe09efa252a9d9506b83cfa707405101898d8"
+    },
+    {
+      "path": "src/pages/AdsChannels.jsx",
+      "sha256": "b9afc076cd5da1c55d4333296676b2748f4b1c7c4a78db467d000c97f0489275"
+    },
+    {
+      "path": "src/pages/MonthlyDashboard.jsx",
+      "sha256": "fec168e0ebb5a23f0609868f4c92e6c73cefcce58a6644de41eddf3ae29c6801"
+    },
+    {
+      "path": "src/App.jsx",
+      "sha256": "1a766c104610ac7acd67d1ee24241cbca1a250d9e23e8eee28bbd9aae84f7ab0"
+    },
+    {
+      "path": "src/main.jsx",
+      "sha256": "35366e1db69fe0ae92f5705d71ab5165e3850f0f2bb69e7b879cbaccd161fc31"
+    },
+    {
+      "path": "shared/roles.js",
+      "sha256": "e566440dc4894842dd5854a1479e9621b5e38418585c821d97dd613f95653216"
+    }
+  ]
+}

@@ -6,9 +6,11 @@
 import eventsHandler from './_lib/marketingEvents.js'
 import inputsHandler from './_lib/marketingInputs.js'
 import basketHandler from './_lib/marketingBasket.js'
+import monthlyReadHandler from './_lib/marketingMonthlyRead.js'
 
 export default async function handler(req, res) {
   const kind = String(req.query.kind || 'events')
+  if (kind === 'monthly-reports' || kind === 'sales-channels-read') return monthlyReadHandler(req, res)
   if (kind === 'inputs') return inputsHandler(req, res)
   if (kind === 'basket') return basketHandler(req, res)
   return eventsHandler(req, res)

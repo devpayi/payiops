@@ -1,5 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import payiLogo from './assets/payi-logo.png'
+import useMarketingRevision from './hooks/useMarketingRevision.js'
+import MarketingLegacyProvider from './components/marketing/MarketingLegacyProvider.jsx'
 import { canAccessTab, normalizeRole } from '../shared/roles.js'
 import { avatarGradient, AVATAR_COLORS } from '../shared/avatar.js'
 import AvatarPicker from './components/AvatarPicker.jsx'
@@ -29,7 +31,8 @@ const HRPeople = lazy(() => import('./pages/HRPeople'))
 const WorkforceOT = lazy(() => import('./pages/WorkforceOT'))
 const ProductDashboard = lazy(() => import('./pages/ProductDashboard'))
 const ProductTrends = lazy(() => import('./pages/ProductTrends'))
-const AdsChannels = lazy(() => import('./pages/AdsChannels'))
+const AdsChannels = lazy(() => import('./pages/MarketingWorkspace'))
+const TikTokSalesDashboard = lazy(() => import('./pages/TikTokSalesDashboard'))
 const ContentOSPrototype = lazy(() => import('./pages/ContentOSPrototype'))
 const Inventory = lazy(() => import('./pages/Inventory'))
 const StockMovement = lazy(() => import('./pages/StockMovement'))
@@ -109,7 +112,7 @@ const Icons = {
 }
 
 const KNOWN_TABS = new Set([
-  'Home', 'Workspace', 'Executive', 'Daily', 'Monthly', 'Products', 'ProductTrends',
+  'Home', 'Workspace', 'Executive', 'Daily', 'Monthly', 'TikTokSales', 'Products', 'ProductTrends',
   'AdsChannels', 'ContentOS', 'Inventory',
   'Import Tracking', 'WHT Cert', 'Stock Movement', 'HR', 'Workforce OT', 'HR People', 'CFO', 'Fulfillment',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings', 'Pricing',
@@ -120,7 +123,7 @@ const menuGroups = [
     title: 'ภาพรวมธุรกิจ',
     items: [
       { id: 'Workspace', label: 'Workspace (ทดลอง)', renderIcon: Icons.Workspace, dotColor: '#0ea5e9' },
-      { id: 'Executive', label: 'Dashboard สรุปยอดขาย', renderIcon: Icons.Executive, group: ['Executive', 'Daily', 'Monthly'] },
+      { id: 'Executive', label: 'Dashboard สรุปยอดขาย', renderIcon: Icons.Executive, group: ['Executive', 'Daily', 'Monthly', 'TikTokSales'] },
       { id: 'Products', label: 'Dashboard สินค้า', renderIcon: Icons.Products, group: ['Products', 'ProductTrends'] }
     ]
   },
@@ -129,7 +132,7 @@ const menuGroups = [
     items: [
       { id: 'Pricing', label: 'ตั้งราคาและกำไร', renderIcon: Icons.Pricing },
       { id: 'Import Orders', label: 'Import Orders', renderIcon: Icons.ImportOrders, dotColor: 'var(--payi-success)' },
-      { id: 'AdsChannels', label: 'Ads & Channels', renderIcon: Icons.AdsChannels },
+      { id: 'AdsChannels', label: 'วิเคราะห์โฆษณา', renderIcon: Icons.AdsChannels },
       { id: 'ContentOS', label: 'Content OS Prototype', renderIcon: Icons.ContentOS, dotColor: 'var(--payi-mint)' }
     ]
   },
@@ -172,7 +175,7 @@ const menuGroups = [
 // ใช้เฉพาะ role ที่เห็นแท็บเยอะ (boss/dev/staff) — role แคบๆ ที่เห็นแค่ไม่กี่แท็บ (เช่น stock)
 // ใช้ทุกแท็บที่ตัวเองเห็นตรงๆ แทน ไม่ต้องมีปุ่ม "เมนู" เลย ดู MOBILE_TAB_LIMIT ด้านล่าง
 const MOBILE_TAB_CANDIDATES = [
-  { id: 'Executive', label: 'หน้าหลัก', renderIcon: Icons.Executive, group: ['Executive', 'Daily', 'Monthly'] },
+  { id: 'Executive', label: 'หน้าหลัก', renderIcon: Icons.Executive, group: ['Executive', 'Daily', 'Monthly', 'TikTokSales'] },
   { id: 'Inventory', label: 'สต็อก', renderIcon: Icons.Inventory },
 ]
 // ป้ายสั้นสำหรับ role แคบที่โชว์ทุกแท็บตรงๆ บน bottom bar (label เต็มใน menuGroups ยาวเกินจะพอดีปุ่มเล็ก)
@@ -181,10 +184,10 @@ const MOBILE_SHORT_LABELS = { Inventory: 'สต็อก', 'Stock Movement': '�
 const MOBILE_TAB_LIMIT = 5
 
 // แท็บย่อยของ Dashboard ใหญ่ที่ยุบมาจากหลายหน้า (render เดิมของแต่ละหน้ายังอยู่ครบ)
-const SALES_SUBTABS = [['Executive', 'ภาพรวม'], ['Daily', 'รายวัน'], ['Monthly', 'รายเดือน']]
+const SALES_SUBTABS = [['Executive', 'ภาพรวม'], ['Daily', 'รายวัน'], ['Monthly', 'รายเดือน'], ['TikTokSales', 'ช่องทางขาย TikTok']]
 const PRODUCT_SUBTABS = [['Products', 'ภาพรวมสินค้า'], ['ProductTrends', '% เปลี่ยนแปลง']]
 const SUB_TABS = {
-  Executive: SALES_SUBTABS, Daily: SALES_SUBTABS, Monthly: SALES_SUBTABS,
+  Executive: SALES_SUBTABS, Daily: SALES_SUBTABS, Monthly: SALES_SUBTABS, TikTokSales: SALES_SUBTABS,
   Products: PRODUCT_SUBTABS, ProductTrends: PRODUCT_SUBTABS,
 }
 
@@ -263,6 +266,7 @@ const roiMonthLabel = (ym) => `${ROI_THAI_MONTH[Number(ym.slice(5, 7)) - 1]} ${y
 // filterMonth = 'YYYY-MM' คือเจาะจงเดือนนั้นตามที่ผู้ใช้เลือกบน dropdown) — คืน null ถ้ายังไม่มีใครกรอกค่า
 // Ads เลย หรือเดือนที่เลือกยังไม่มีค่า Ads (กันการ์ดโชว์เลขเปล่า)
 function useRoiStats(filterMonth) {
+  const marketingRevision = useMarketingRevision()
   const [state, setState] = useState({ loading: true, months: [] })
   useEffect(() => {
     let cancelled = false
@@ -283,7 +287,7 @@ function useRoiStats(filterMonth) {
       setState({ loading: false, months, adsByMonth, salesByMonth })
     }).catch(() => { if (!cancelled) setState({ loading: false, months: [] }) })
     return () => { cancelled = true }
-  }, [])
+  }, [marketingRevision])
 
   if (state.loading) return null
   const { months = [], adsByMonth = {}, salesByMonth = {} } = state
@@ -456,6 +460,10 @@ function DevOnlyLock({ label }) {
 }
 
 export default function App() {
+  return <MarketingLegacyProvider><AppContent/></MarketingLegacyProvider>
+}
+
+function AppContent() {
   const [pricingAccess, setPricingAccess] = useState(null)
   const handlePricingRevoked = useCallback(() => setPricingAccess({ allowed: false }), [])
   useEffect(() => {
@@ -804,9 +812,14 @@ export default function App() {
       subtitle: 'วางแผนราคาสินค้าเดี่ยวและเซ็ต · พื้นที่ส่วนตัว'
     },
     AdsChannels: {
-      title: 'Ads & Channels',
+      title: 'วิเคราะห์โฆษณา',
       eyebrow: 'Marketing',
-      subtitle: 'ค่า Ads และ TikTok channel (Affiliate/Live/VDO) รายเดือน · กรอกมือ + กราฟเทียบกับ Orders'
+      subtitle: 'ค่าโฆษณา Shopee และ TikTok รายเดือน'
+    },
+    TikTokSales: {
+      title: 'Dashboard สรุปยอดขาย',
+      eyebrow: 'Sales channels',
+      subtitle: 'ช่องทางขาย TikTok รายเดือน · ยอดขายแยกจากค่าโฆษณา'
     },
     HR: {
       title: 'พนักงาน (ลา)',
@@ -1009,7 +1022,7 @@ export default function App() {
         {/* SUB-TABS ของ Dashboard ใหญ่ (สรุปยอดขาย / สินค้า) */}
         {SUB_TABS[activeTab] && (
           <div style={{ display: 'flex', gap: 4, marginBottom: 18, borderBottom: '1px solid var(--payi-border)' }}>
-            {SUB_TABS[activeTab].map(([id, label]) => {
+            {SUB_TABS[activeTab].filter(([id]) => canAccessTab(currentRole, id)).map(([id, label]) => {
               const on = activeTab === id
               return (
                 <button key={id} onClick={() => setActiveTab(id)} style={{
@@ -1130,7 +1143,7 @@ export default function App() {
                   {
                     title: `ค่า Ads · ${roiStats.label}`,
                     value: 'ยังไม่ได้กรอก',
-                    note: 'กดเพื่อไปกรอกที่ Ads & Channels',
+                    note: 'เปิดวิเคราะห์โฆษณา → ข้อมูลเดิม / กรอกยอด',
                     icon: Megaphone, color: '#d64545', muted: true,
                     onClick: () => setActiveTab('AdsChannels'),
                   },
@@ -1464,9 +1477,10 @@ export default function App() {
           ['Workspace', isDev ? <Workspace onOpenTab={setActiveTab} /> : <DevOnlyLock label="Workspace" />],
           ['Daily', <DailyDashboard />],
           ['Monthly', <MonthlyDashboard />],
+          ['TikTokSales', canAccessTab(currentRole, 'TikTokSales') ? <TikTokSalesDashboard active={activeTab==='TikTokSales'} /> : null],
           ['Products', <ProductDashboard />],
           ['ProductTrends', <ProductTrends />],
-          ['AdsChannels', <AdsChannels />],
+          ['AdsChannels', canAccessTab(currentRole, 'AdsChannels') ? <AdsChannels active={activeTab==='AdsChannels'} /> : null],
           ['ContentOS', <ContentOSPrototype />],
           ['Inventory', <Inventory />],
           ['Import Tracking', ['dev', 'boss'].includes(currentRole) ? <ImportTracking /> : <DevOnlyLock label="ติดตามนำเข้า" />],

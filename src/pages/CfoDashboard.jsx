@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
+import useMarketingRevision from '../hooks/useMarketingRevision.js'
 
 const thb = (n) => `฿${Math.round(n).toLocaleString()}`
 
 export default function CfoDashboard() {
+  const marketingRevision = useMarketingRevision()
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -18,7 +20,7 @@ export default function CfoDashboard() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }
-  useEffect(load, [])
+  useEffect(load, [marketingRevision])
 
   const submitCapital = async (e) => {
     e.preventDefault()

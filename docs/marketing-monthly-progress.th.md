@@ -1,0 +1,81 @@
+# ความคืบหน้ารายงานรายเดือน — 16 ต.ค. 2569
+
+## รอบล่าสุด: นำเข้าเมนู Payi Ops ในเครื่องแล้ว
+
+### แก้ตำแหน่ง TikTok Channel รอบล่าสุด
+
+- ย้ายช่องกรอก TikTok ออกจากหน้าโฆษณาจริงแล้ว: **Dashboard สรุปยอดขาย → ช่องทางขาย TikTok → กรอกยอด TikTok** ส่วนหน้าโฆษณาเหลือ **กรอกค่าแอด**
+- ใช้ editor owner เดียวและ portal ย้ายตำแหน่งแสดงผล ไม่สร้าง writer สองตัวที่ถือ snapshot คนละชุด; เก็บ draft แยกเดือน/ส่วนเมื่อสลับหน้า
+- Payload แก้เฉพาะช่องที่ฟอร์มรองรับ เก็บค่าอีกส่วนและแถวไม่รู้จักไว้จาก snapshot เดิม ไม่คูณ/หาร VAT ของอีกส่วน ไม่คำนวณ Other ใหม่ และเอากราฟ TikTok แบบ stack ข้ามมิติออก
+- หลัง POST สำเร็จอัปเดต snapshot ทันที ป้องกัน GET refresh ล้มเหลวแล้ว save อีกส่วนย้อนยอดเดิม; ปิดช่องแก้ไขระหว่างบันทึก
+- 79 tests และ build ผ่าน (เพิ่ม 5 กรณี section isolation/unsupported rows/confirmed snapshot); targeted lint ของไฟล์ใหม่ผ่าน หน้า Ads เดิมยังมี set-state-in-effect lint เดิมหนึ่งจุด
+- API full-month writer เดิมไม่เปลี่ยน ยังมีความเสี่ยงการเขียนพร้อมกันข้ามหน้าต่าง/ผู้ใช้ตาม gate เดิม จึงยังไม่เปิด production และไม่อ้างว่าเป็น atomic writer ใหม่
+
+รายการด้านล่างเป็นสถานะก่อนแก้ตำแหน่งนี้; คำว่า “ฟอร์มเดิมอยู่ในแท็บเดียว” ถูกแทนด้วย editor owner เดียวที่แสดงสองตำแหน่งด้านบนแล้ว
+
+- เมนู **วิเคราะห์โฆษณา → รายงานรายเดือน** เพิ่มภาพรวม แคมเปญ รายสินค้า และแหล่งข้อมูล ใช้เดือนปฏิทิน
+- ฟอร์มเดิมอยู่ใน **ข้อมูลเดิม / กรอกยอด** คง payload สูตร VAT และ API บันทึกเดิม
+- **Dashboard สรุปยอดขาย → ช่องทางขาย TikTok** อ่านยอดกรอกเดิมแยกจากสองมุมใหม่ ไม่รวม Affiliate/Live/Video ข้ามมิติ และไม่คำนวณ Other ใหม่
+- API อ่านใหม่จำกัด Boss/Dev; production ไม่มี auth จะปฏิเสธก่อนอ่าน และไม่เปิด local report store บน production
+- หลัง legacy save ส่ง event ให้หน้าอ่านใหม่และ ROI/Monthly/CFO ที่ mount อยู่โหลด source เดิมใหม่ โดยไม่เปลี่ยนสูตร
+- เปิดในเครื่อง `http://127.0.0.1:5199/?tab=AdsChannels` แทน preview เดิม ส่วน main entry กลับเหมือนฐานก่อนแก้แล้ว
+- รายงานกันยายนนำเข้า offline ผ่าน `scripts/import-monthly-ads-local.mjs` เก็บ revision/hash ใน `reports/marketing-monthly` ที่ Git ignore; Vite ปฏิเสธ URL ตรงด้วย 403 ไม่ใส่ CSV จริงใน client bundle
+- เริ่ม server ใหม่: ตั้ง `MARKETING_REPORTS_LOCAL_DIR` เป็น absolute path ของโฟลเดอร์รายงาน แล้วรัน `npm run dev -- --host 127.0.0.1 --port 5199 --strictPort`
+
+ตรวจล่าสุด: 74 tests ผ่าน รวม parity TikTok 1,000 กรณี; targeted lint ผ่าน; build ผ่านพร้อม bundle warning เดิม; API writer/CFO/monthly และ main entry ตรง baseline
+
+Chrome ตรวจจริงแล้ว: เมนูรายงานแสดงกันยายน, สลับสิงหาคมไม่มีข้อมูลแล้วกลับกันยายนได้, ตาราง 32 สินค้า, แท็บ TikTok อ่านยอดเดิมจากชีตได้ นำเข้าซ้ำไม่เพิ่มยอด รายสินค้าเทียบภาพรวมตรงกัน 968,543.27 บาท
+
+ผู้ตรวจพบ comma-formatted legacy amount และ mounted-reader refresh: แก้แล้ว พร้อม regression API → read model สำหรับตัวเลข
+
+**ยังไม่ release:** ไม่มี commit/push, deploy หรือเขียนชีตจริง ยังต้องทำ production report store/revisions, mapping item ID → สินค้า Ops, ยืนยัน VAT/attribution และตรวจไฟล์ TikTok หลัง OTP ก่อนแยก writer ต้องออกแบบ atomic commit และเลิก full-month rewrite อย่างปลอดภัย
+
+ยังไม่ได้ตรวจ end-to-end การกดบันทึกจริงแล้ว refresh mounted readers และ browser file chooser ที่ Chrome extension ยังไม่อนุญาต file URLs จึงไม่อ้างว่าเส้นทางนี้ผ่าน
+
+---
+
+## บันทึกรอบก่อนหน้า: standalone preview (ถูกแทนที่ด้วยเมนูด้านบนแล้ว)
+
+รอบนี้เป็นงานในเครื่อง ไม่มีการเขียนชีตจริง ย้ายฟอร์มเดิม เปิดสิทธิ์ เปลี่ยนยอด Dashboard/CFO หรือ commit/push
+
+## สถานะตาม 7 ขั้น
+
+| ขั้น | สิ่งที่ทำแล้ว | สิ่งที่ยังไม่ทำ |
+|---|---|---|
+| 1 เก็บฐาน | เก็บ SHA256 ของ API/หน้า/สิทธิ์เดิม 9 ไฟล์ และมี script ตรวจซ้ำ | ยังไม่ snapshot ข้อมูลจริงและผลคำนวณ CFO ใน production |
+| 2 แยกส่วนอ่าน | เพิ่ม pure read models แยก TikTok legacy และยอด Ads ไม่เปลี่ยน consumer เดิม | ยังไม่แทน reader ใน Dashboard/CFO |
+| 3 รายงาน Shopee | CSV parser, full-month validation, decimal sums, metadata/shop/currency checks, root/member selectors และตรวจไฟล์จริง | ยังไม่เก็บรายงานขึ้น server หรือจัดการ publish บนชีต |
+| 4 หน้ารายงาน | หน้าทดลองภาพรวม/แคมเปญ/สินค้า/แหล่งข้อมูล; เลือกเดือนภาษาไทย ธุรกิจ ร้าน และตรวจ replacement ก่อนใช้ | ยังเป็น session ใน browser ไม่ใช่หน้าระบบจริง |
+| 5 ช่องทาง TikTok | component อ่านอย่างเดียว แยกสองมุม และอ่าน legacy ผ่าน props โดยรักษา absent/0/conflict | ยังไม่ย้ายไป Dashboard จริง ยังไม่มีไฟล์ TikTok จึงไม่มี parser หรือยอดสมมติที่อ้างว่าเป็นยอดจริง |
+| 6 แยกบันทึก | ไม่เปิด writer ใหม่ตาม gate ในแผน | ยังต้องปิดแบบ canonical store/atomic commit/reader cutover และ concurrency tests |
+| 7 ตรวจและเปิดใช้ | unit/regression tests, targeted lint, production build, baseline diff, walkthrough ใน Chrome | ยังไม่ทดสอบ browser file selection จบเส้นทางและยังไม่พร้อม release |
+
+## เปิดดูในเครื่อง
+
+รัน `npm run dev -- --host 127.0.0.1 --port 5197` แล้วเข้า `http://127.0.0.1:5197/?marketingPreview=1`
+
+เส้นทางนี้เปิดเฉพาะ `import.meta.env.DEV` ไม่ bypass login ใน production และไม่เรียก API สำหรับข้อมูลของระบบจริง CSV ใช้ `File.arrayBuffer`/TextDecoder/Web Crypto ใน browser ไม่ upload ให้ server ไม่เก็บใน localStorage และ refresh จะล้างรายงานของหน้าตัวอย่าง
+
+มีปุ่ม “ลองหน้าจอด้วยข้อมูลสมมติ” เพื่อทดสอบมุมมองโดยไม่ใช้ข้อมูลธุรกิจจริง ติดป้ายตัวอย่างเสมอ ผลจากตัวอย่างไม่ใช่หลักฐานว่าการเลือกไฟล์จริงใน browser ผ่านแล้ว
+
+## ผลตรวจ
+
+- ชุดทดสอบรวม 69 เคสผ่าน: 12 เคสรายงาน/read models ใหม่, role เดิม, marketing เดิม และชุด pricing เดิม รวมกรณีสูตร TikTok 1,000 ชุด
+- Targeted ESLint ของไฟล์ใหม่และ main entry ผ่าน Main entry ระบุข้อยกเว้นเฉพาะ `react-refresh/only-export-components` เพราะ bootstrap ด้วย createRoot โดยไม่มี component exports ตามรูปแบบไฟล์เดิม ไม่มีการปิดกฎอื่น
+- Production build ผ่าน มี warning ขนาด bundle เดิม ยังไม่ได้ทำงานลด bundle ของทั้งแอป
+- `node scripts/verify-marketing-baseline.mjs` ยืนยันว่า API marketing/Monthly/CFO, หน้า Ads/Monthly/App และ roles เดิมไม่เปลี่ยน main.jsx เปลี่ยนเฉพาะทางเข้า preview สำหรับ dev และคำอธิบาย lint
+- ตรวจไฟล์ Shopee จริงใน Downloads ผ่าน Node: กันยายน 2569, 23 แถวภาพรวม, 32 สินค้าหลังเลือก root/member ถูกระดับ; overview spend และ product spend เท่ากัน 968,543.27 บาท ไม่มี reconciliation issue ตามกติกาที่รองรับ
+- ใน Chrome ตรวจด้วยข้อมูลสมมติ: ภาพรวม, สินค้าเดียวรับค่าแอดสองแคมเปญ 200+100=300, ค้นหาไม่พบ, สลับธุรกิจไม่แสดงยอดเดิม, เดือนสิงหาคมที่ไม่มีข้อมูลแสดง missing และกลับกันยายนได้, แท็บ TikTok แยกสองมุมและรอรายงาน
+- ผู้ตรวจอิสระพบตัวกรองร้านอาจขัดกับ candidate และ Currency USD ถูกติดป้าย THB: แก้แล้วพร้อม regression tests; การเลือก shop เปลี่ยน candidate และ selector ตรวจ month/business/shop ซ้ำ
+
+## ข้อจำกัดที่พบจริง
+
+Chrome extension ปฏิเสธ fileChooser.setFiles เพราะยังไม่ได้เปิด Allow access to file URLs จึงยังไม่ได้ยืนยันเส้นทางเลือก CSV จริง → browser parser → preview แบบ end-to-end ผู้ใช้สามารถเลือกไฟล์ด้วยตัวเองจากหน้าตัวอย่างได้ แต่ต้องตรวจผลจริงก่อนนับว่าขั้นนี้ผ่าน ไม่เปลี่ยนสิทธิ์ extension ให้เอง
+
+ยังไม่จับคู่ Shopee item ID กับกลุ่มสินค้า Ops เพราะยังไม่มี mapping ที่ยืนยันแล้ว หน้าแสดง “ยังไม่จับคู่ทะเบียน Ops” ไว้ครบทุกสินค้า ไม่เดาจากชื่อ และยังไม่คำนวณกำไร/ค่าแอดต่อชิ้นด้วยยอดออเดอร์คนละฐาน
+
+เก็บไฟล์ CSV จริงไว้ใน Downloads ไม่ใส่ source bundle หรือ Git ข้อมูลที่เพิ่มใน src/data/monthlyAdsExample.js เป็นข้อมูลแต่งเพื่อทดสอบเท่านั้น
+
+## จุดเริ่มงานถัดไป
+
+ปิดการตรวจ browser file selection แล้วทำแหล่งเก็บรายงานอ่านอย่างเดียวที่มีสิทธิ์ server และ report-set revisions ก่อนย้ายหน้าหรือฟอร์มจริง TikTok ต้องตรวจไฟล์จากบัญชีจริงหลัง OTP ส่วน writer เดิมยังไม่แยกและห้ามมีผู้เขียนใหม่มาเขียนชนกับ full-month rewrite

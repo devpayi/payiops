@@ -1,5 +1,7 @@
 // SellerAdsReports (snapshot จาก topsecret) ซ่อนไว้ก่อน 2026-10-05 — ไฟล์ยังอยู่ ไม่ได้ลบ: เปิดคืนด้วย import + <SellerAdsReports /> ด้านบนของหน้า
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
+import {replaceLegacyMarketingSection,commitLegacyMarketingMonth,LEGACY_AD_BUSINESSES,LEGACY_AD_PLATFORMS,LEGACY_TIKTOK_BUSINESSES} from '../../shared/legacyMarketingRows.js'
 import {
   ResponsiveContainer, ComposedChart, BarChart, Bar, Line, XAxis, YAxis, Tooltip,
   CartesianGrid, Legend, Cell, PieChart, Pie, LabelList,
@@ -12,10 +14,10 @@ const fmtShort = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math
 const THAI_MONTH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 const monthLabel = (ym) => (THAI_MONTH[parseInt(String(ym).slice(5, 7), 10) - 1] || ym) + ' ' + String(ym).slice(2, 4)
 
-const BUSINESSES = ['Payi', 'Payi Outlet', 'กรอบรูป']
-const PLATFORMS = ['Shopee', 'TikTok Shop', 'Lazada']
+const BUSINESSES = LEGACY_AD_BUSINESSES
+const PLATFORMS = LEGACY_AD_PLATFORMS
 // ช่องทาง TikTok ที่แยกในรูป — Payi และ กรอบรูป
-const TT_BUSINESSES = ['Payi', 'กรอบรูป']
+const TT_BUSINESSES = LEGACY_TIKTOK_BUSINESSES
 const CHANNELS = [
   ['affiliate', 'Affiliate', '#2f6fe0'],
   ['live', 'Live', '#d64545'],
@@ -28,14 +30,15 @@ const comboKey = (b, p) => `${b}|${p}`
 // กรอกเลขก่อน VAT ตามที่เห็นในแอดแมเนเจอร์ได้เลย ระบบคูณให้ตอนบันทึก
 const ADS_VAT_MULT = 1.07
 
-export default function AdsChannels() {
+export default function AdsChannels({onSaved,surface='ads',portalTarget}) {
+  const render=content=>portalTarget?createPortal(content,portalTarget):content
   const [inputs, setInputs] = useState(null)   // /api/marketing?kind=inputs
   const [monthly, setMonthly] = useState(null) // /api/monthly
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
-  const [selMonth, setSelMonth] = useState('')
-  const [form, setForm] = useState({ ads: {}, tt: {} }) // ค่ากรอกของเดือนที่เลือก
+  const [selectedMonth, setSelMonth] = useState('')
+  const [drafts,setDrafts]=useState({})
 
   const load = () => {
     setLoading(true); setError(null)
@@ -59,9 +62,7 @@ export default function AdsChannels() {
     return [...s].sort()
   }, [monthly, inputs])
 
-  useEffect(() => {
-    if (!selMonth && months.length) setSelMonth(months[months.length - 1])
-  }, [months, selMonth])
+  const selMonth=selectedMonth || months.at(-1) || ''
 
   // pivot inputs → adsByMonth[m][combo], ttByMonth[m][business][channel]
   const { adsByMonth, ttByMonth } = useMemo(() => {
@@ -91,15 +92,15 @@ export default function AdsChannels() {
       tt[b] = {}
       for (const [id] of CHANNELS) {
         const v = ttByMonth[selMonth]?.[b]?.[id]
-        tt[b][id] = v ? String(v) : ''
+        tt[b][id] = v===undefined || v===null ? '' : String(v)
       }
       const g = ttByMonth[selMonth]?.[b]?.tt_gmv
-      tt[b].gmv = g ? String(g) : ''
+      tt[b].gmv = g===undefined || g===null ? '' : String(g)
     }
     return { ads, tt }
   }, [selMonth, adsByMonth, ttByMonth])
 
-  useEffect(() => { if (savedForm) setForm(savedForm) }, [savedForm])
+  const form={ads:{...savedForm?.ads,...drafts[selMonth]?.ads},tt:Object.fromEntries(TT_BUSINESSES.map(b=>[b,{...savedForm?.tt[b],...drafts[selMonth]?.tt?.[b]}]))}
 
   // ช่องที่ค่าตรงกับที่บันทึกไว้แล้ว → เทาอ่อน (แก้แล้วยังไม่บันทึก = สีเข้ม)
   const isSaved = (cur, saved) => !!saved && String(cur ?? '') === String(saved)
@@ -135,18 +136,6 @@ export default function AdsChannels() {
     return m
   }, [monthly])
 
-  // GMV รวมที่ใช้คิด "อื่น ๆ" — เลขที่กรอกเอง (จาก Compass) ก่อน, ไม่มีค่อย fallback raw_orders
-  const gmvBasis = (b) => {
-    const typed = parseFloat(form.tt[b]?.gmv)
-    return Number.isFinite(typed) && typed > 0 ? typed : ((ttGmvByMonthBiz[selMonth]?.[b] || 0) + (ttCancelByMonthBiz[selMonth]?.[b] || 0))
-  }
-
-  // "อื่น ๆ" ไม่ต้องกรอก — ส่วนที่เหลือของ GMV รวมหลังหัก Affiliate/Live/VDO
-  const calcOther = (b) => {
-    const rest = ['affiliate', 'live', 'vdo'].reduce((s, id) => s + (parseFloat(form.tt[b]?.[id]) || 0), 0)
-    return Math.max(0, Math.round((gmvBasis(b) - rest) * 100) / 100)
-  }
-
   // ── กราฟ: Ads รวมต่อเดือน เทียบกับ ยอดขาย และ Orders ──
   const adsVsSales = useMemo(() => months.map((m) => {
     const ads = Object.values(adsByMonth[m] || {}).reduce((s, v) => s + v, 0)
@@ -169,55 +158,53 @@ export default function AdsChannels() {
       .sort((a, b) => b.value - a.value)
   }, [adsByMonth, selMonth])
 
-  // ── TikTok channel stacked (ต่อ business) ──
-  const ttSeries = (business) => months.map((m) => {
-    const c = ttByMonth[m]?.[business] || {}
-    return { label: monthLabel(m), affiliate: c.affiliate || 0, live: c.live || 0, vdo: c.vdo || 0, other: c.other || 0 }
-  })
-  const ttPayi = useMemo(() => ttSeries('Payi'), [months, ttByMonth])
-  const ttKitti = useMemo(() => ttSeries('กรอบรูป'), [months, ttByMonth])
-
-  const setAds = (k, v) => setForm((f) => ({ ...f, ads: { ...f.ads, [k]: v } }))
-  const setTt = (b, ch, v) => setForm((f) => ({ ...f, tt: { ...f.tt, [b]: { ...f.tt[b], [ch]: v } } }))
+  const setAds = (k,v)=>setDrafts(all=>({...all,[selMonth]:{...all[selMonth],ads:{...all[selMonth]?.ads,[k]:v}}}))
+  const setTt = (b,ch,v)=>setDrafts(all=>({...all,[selMonth]:{...all[selMonth],tt:{...all[selMonth]?.tt,[b]:{...all[selMonth]?.tt?.[b],[ch]:v}}}}))
 
   const save = async () => {
     setSaving(true); setError(null)
     try {
       const rows = []
-      for (const b of BUSINESSES) for (const p of PLATFORMS) {
+      if(surface==='ads')for (const b of BUSINESSES) for (const p of PLATFORMS) {
         const v = parseFloat(form.ads[comboKey(b, p)]) || 0
         if (v) rows.push({ business: b, platform: p, metric: 'ads', value: Math.round(v * ADS_VAT_MULT * 100) / 100 })
       }
-      for (const b of TT_BUSINESSES) {
+      if(surface==='tiktok')for (const b of TT_BUSINESSES) {
         const g = parseFloat(form.tt[b]?.gmv) || 0
         if (g) rows.push({ business: b, platform: 'TikTok Shop', metric: 'tt_gmv', value: g })
         for (const [id] of CHANNELS) {
-          const v = id === 'other' ? calcOther(b) : (parseFloat(form.tt[b]?.[id]) || 0)
+          const v = parseFloat(form.tt[b]?.[id]) || 0
           if (v) rows.push({ business: b, platform: 'TikTok Shop', metric: id, value: v })
         }
       }
+      const submittedRows=replaceLegacyMarketingSection(inputs.inputs,selMonth,surface,rows)
       const res = await fetch('/api/marketing?kind=inputs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month: selMonth, rows }),
+        body: JSON.stringify({ month: selMonth, rows:submittedRows }),
       })
       const json = await res.json()
       if (!json.success) throw new Error(json.error || 'บันทึกไม่สำเร็จ')
+      // A failed refresh must never roll a successful save back in the next section.
+      setInputs(current=>commitLegacyMarketingMonth(current,selMonth,submittedRows))
+      setDrafts(all=>({...all,[selMonth]:{...all[selMonth],[surface==='ads'?'ads':'tt']:{}}}))
+      onSaved?.()
       load()
     } catch (e) { setError(e.message) } finally { setSaving(false) }
   }
 
-  if (loading && !inputs) return <Center><Loader2 size={18} className="payi-spin" /> กำลังโหลดค่า Ads ของ Ops...</Center>
-  if (error && !inputs) return <Center danger><Info size={18} /> โหลดค่า Ads ของ Ops ไม่สำเร็จ: {error}</Center>
+  if (loading && !inputs) return render(<Center><Loader2 size={18} className="payi-spin" /> กำลังโหลดข้อมูลของ Ops...</Center>)
+  if (error && !inputs) return render(<Center danger><Info size={18} /> โหลดข้อมูลของ Ops ไม่สำเร็จ: {error}</Center>)
 
   // รวมจากช่องกรอก (ก่อน VAT) — ตรงกับที่เห็นในตาราง ไม่ปนกับค่าที่บันทึกไว้แล้ว
   const adsInputTotal = BUSINESSES.reduce((s, b) => s + PLATFORMS.reduce((t, p) => t + (parseFloat(form.ads[comboKey(b, p)]) || 0), 0), 0)
 
-  return (
+  return render(
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {error && <div style={{ padding: '10px 12px', background: 'var(--payi-danger-bg)', color: 'var(--payi-danger)', border: '1px solid var(--payi-danger)', borderRadius: 8, fontSize: 13 }}>{error}</div>}
 
       {/* ── กรอกมือ ── */}
-      <Card title="กรอกค่า Ads & TikTok Channel (รายเดือน)" sub="ตัวเลขพวกนี้ไม่มีในออเดอร์ ต้องกรอกเอง · เลือกเดือนแล้วกรอก แล้วกดบันทึก">
+      <Card title={surface==='ads'?'กรอกค่าแอดรายเดือน':'กรอกยอดช่องทางขาย TikTok'} sub={surface==='ads'?'กรอกค่าแอดก่อน VAT · บันทึกเฉพาะค่าแอด':'ข้อมูลเดิมจาก Compass · ไม่รวมยอดข้ามมิติ และไม่คำนวณ “อื่น ๆ” ใหม่'}>
+        <fieldset disabled={saving||loading} style={{border:0,padding:0,margin:0,minWidth:0}}>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 14 }}>
           {months.map((m) => (
             <button key={m} onClick={() => setSelMonth(m)} style={pillStyle(selMonth === m)}>{monthLabel(m)}</button>
@@ -226,7 +213,7 @@ export default function AdsChannels() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 18 }}>
           {/* Ads grid */}
-          <div>
+          {surface==='ads'&&<div>
             <SectionLabel>ค่า Ads (บาท) — แยกร้าน/แพลตฟอร์ม</SectionLabel>
             <div style={{ fontSize: 12, marginBottom: 8, padding: '6px 10px', borderRadius: 8, background: '#fff7ed', color: '#c2410c', fontWeight: 600 }}>
               ช่องกรอก = ราคา "ก่อน VAT" (ตามแอดแมเนเจอร์) · ระบบ +7% ให้ตอนบันทึก
@@ -244,7 +231,7 @@ export default function AdsChannels() {
                     <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{b}</td>
                     {PLATFORMS.map((p) => (
                       <td key={p} style={{ ...tdStyle, textAlign: 'right' }}>
-                        <input inputMode="numeric" value={form.ads[comboKey(b, p)] ?? ''} onChange={(e) => setAds(comboKey(b, p), e.target.value.replace(/[^\d.]/g, ''))}
+                        <input aria-label={`${b} ${p} ค่าแอด`} inputMode="numeric" value={form.ads[comboKey(b, p)] ?? ''} onChange={(e) => setAds(comboKey(b, p), e.target.value.replace(/[^\d.]/g, ''))}
                           placeholder="0" style={{ ...cellInput, ...(savedAdsCell(comboKey(b, p)) ? savedStyle : null) }} />
                       </td>
                     ))}
@@ -252,10 +239,10 @@ export default function AdsChannels() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </div>}
 
           {/* TikTok channel grid */}
-          <div style={{ overflowX: 'auto' }}>
+          {surface==='tiktok'&&<div style={{ overflowX: 'auto' }}>
             <SectionLabel>TikTok GMV แยก channel (บาท)</SectionLabel>
             <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
@@ -271,8 +258,8 @@ export default function AdsChannels() {
                   <tr key={b} style={{ borderTop: '1px solid var(--payi-border)' }}>
                     <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--payi-text-strong)' }}>{b}</td>
                     <td style={{ ...tdStyle, textAlign: 'right' }}>
-                      <input inputMode="numeric" value={form.tt[b]?.gmv ?? ''} onChange={(e) => setTt(b, 'gmv', e.target.value.replace(/[^\d.]/g, ''))}
-                        placeholder={ttGmvByMonthBiz[selMonth]?.[b] ? fmt(Math.round(ttGmvByMonthBiz[selMonth][b] + (ttCancelByMonthBiz[selMonth]?.[b] || 0))) : '0'} style={{ ...cellInput, ...(savedTtCell(b, 'gmv') ? savedStyle : null) }} />
+                      <input aria-label={`${b} GMV`} inputMode="numeric" value={form.tt[b]?.gmv ?? ''} onChange={(e) => setTt(b, 'gmv', e.target.value.replace(/[^\d.]/g, ''))}
+                        placeholder="ยังไม่กรอก" style={{ ...cellInput, ...(savedTtCell(b, 'gmv') ? savedStyle : null) }} />
                     </td>
                     <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--payi-text-muted)' }}>
                       {fmt(Math.round(ttGmvByMonthBiz[selMonth]?.[b] || 0))}
@@ -281,12 +268,9 @@ export default function AdsChannels() {
                     {CHANNELS.map(([id]) => (
                       <td key={id} style={{ ...tdStyle, textAlign: 'right' }}>
                         {id === 'other' ? (
-                          <span title="คำนวณอัตโนมัติ = GMV รวม − Affiliate − Live − VDO"
-                            style={{ ...cellInput, display: 'inline-block', background: 'var(--payi-surface-dark)', color: 'var(--payi-text-muted)', cursor: 'default' }}>
-                            {fmt(calcOther(b))}
-                          </span>
+                          <input aria-label={`อื่น ๆ ${b}`} inputMode="numeric" value={form.tt[b]?.other ?? ''} onChange={(e)=>setTt(b,'other',e.target.value.replace(/[^\d.]/g,''))} placeholder="0" style={{...cellInput,...(savedTtCell(b,'other')?savedStyle:null)}}/>
                         ) : (
-                          <input inputMode="numeric" value={form.tt[b]?.[id] ?? ''} onChange={(e) => setTt(b, id, e.target.value.replace(/[^\d.]/g, ''))}
+                          <input aria-label={`${b} ${id}`} inputMode="numeric" value={form.tt[b]?.[id] ?? ''} onChange={(e) => setTt(b, id, e.target.value.replace(/[^\d.]/g, ''))}
                             placeholder="0" style={{ ...cellInput, ...(savedTtCell(b, id) ? savedStyle : null) }} />
                         )}
                       </td>
@@ -296,26 +280,26 @@ export default function AdsChannels() {
               </tbody>
             </table>
             <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 6 }}>
-              GMV รวม = เลข GMV จาก Compass (การวิเคราะห์ร้านค้า, ทั้งเดือน) · ถ้าไม่กรอกจะใช้ orders (ขายจริง + ยกเลิก) แทน — ตรงกับที่ Compass นับ<br />
-              อื่น ๆ = GMV รวม − Affiliate − Live − VDO (คำนวณอัตโนมัติ ไม่ต้องกรอก)
+              ใช้เลขที่กรอกจากรายงานเดิมเท่านั้น · ช่องว่างไม่ใช้ยอด orders แทน · Affiliate อาจทับซ้อน Live / VDO จึงไม่หักจาก GMV เพื่อหา “อื่น ๆ”
             </div>
-          </div>
+          </div>}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
-          <button onClick={save} disabled={saving || !selMonth} style={{ ...primaryBtn, opacity: saving || !selMonth ? 0.6 : 1 }}>
+          <button onClick={save} disabled={loading || saving || !selMonth} style={{ ...primaryBtn, opacity: loading || saving || !selMonth ? 0.6 : 1 }}>
             {saving ? <Loader2 size={15} className="payi-spin" /> : <Save size={15} />} บันทึกเดือน {selMonth && monthLabel(selMonth)}
           </button>
-          <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'baseline' }}>
+          {surface==='ads'&&<div style={{ fontSize: 12, color: 'var(--payi-text-muted)', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'baseline' }}>
             <span>ที่กรอก (ก่อน VAT): <b style={{ color: 'var(--payi-text-strong)' }}>{fmtBaht(adsInputTotal)}</b></span>
             <span>+ VAT 7%: <b style={{ color: 'var(--payi-text-strong)' }}>{fmtBaht(adsInputTotal * (ADS_VAT_MULT - 1))}</b></span>
             <span>= รวม VAT (ที่เก็บในระบบ): <b style={{ color: 'var(--payi-mint-dark, #0f766e)', fontSize: 14 }}>{fmtBaht(adsInputTotal * ADS_VAT_MULT)}</b></span>
-          </div>
+          </div>}
         </div>
+        </fieldset>
       </Card>
 
       {/* ── Ads เทียบ ยอดขาย + Orders ── */}
-      <Card title="Ads เทียบยอดขาย & Orders (รายเดือน)" sub="แท่ง = ค่า Ads · เส้นเขียว = ยอดขาย · เส้นส้ม = จำนวนออเดอร์ · ตัวเลขบนแท่ง = Ads คิดเป็น % ของยอดขาย">
+      {surface==='ads'&&<><Card title="Ads เทียบยอดขาย & Orders (รายเดือน)" sub="แท่ง = ค่า Ads · เส้นเขียว = ยอดขาย · เส้นส้ม = จำนวนออเดอร์ · ตัวเลขบนแท่ง = Ads คิดเป็น % ของยอดขาย">
         <ResponsiveContainer width="100%" height={300}>
           <ComposedChart data={adsVsSales} margin={{ top: 18, right: 12, left: 4, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
@@ -366,72 +350,7 @@ export default function AdsChannels() {
             </ResponsiveContainer>
           ) : <EmptyBox text="ยังไม่มีข้อมูล" />}
         </Card>
-      </div>
-
-      {/* ── TikTok channel stacks ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
-        <ChannelStack title="TikTok — PAYI" data={ttPayi} />
-        <ChannelStack title="TikTok — กรอบรูป" data={ttKitti} />
-      </div>
-    </div>
-  )
-}
-
-function ChannelStack({ title, data }) {
-  const hasData = data.some((d) => d.affiliate || d.live || d.vdo || d.other)
-  // เติม: total ต่อเดือน, สัดส่วน % ของแต่ละ channel, และ % เทียบเดือนก่อน (MoM)
-  const enriched = useMemo(() => data.map((d, i) => {
-    const prev = data[i - 1]
-    const total = (d.affiliate || 0) + (d.live || 0) + (d.vdo || 0) + (d.other || 0)
-    const e = { ...d, _total: total }
-    for (const [id] of CHANNELS) {
-      e[`_pct_${id}`] = total ? (d[id] || 0) / total : 0
-      e[`_mom_${id}`] = prev && prev[id] ? ((d[id] || 0) - prev[id]) / prev[id] : null
-    }
-    return e
-  }), [data])
-  return (
-    <Card title={title} sub="GMV แยก channel รายเดือน · ชี้เมาส์ดู % สัดส่วน + % เทียบเดือนก่อน">
-      {hasData ? (
-        <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={enriched} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
-            <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--payi-text-muted)' }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 10, fill: '#888' }} axisLine={false} tickLine={false} tickFormatter={(v) => '฿' + fmtShort(v)} />
-            <Tooltip content={<ChannelTip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            {CHANNELS.map(([id, lbl, color]) => (
-              <Bar key={id} dataKey={id} name={lbl} stackId="a" fill={color} radius={id === 'other' ? [4, 4, 0, 0] : 0} maxBarSize={46} />
-            ))}
-          </BarChart>
-        </ResponsiveContainer>
-      ) : <EmptyBox text="ยังไม่มีข้อมูล channel — กรอกด้านบนแล้วบันทึก" />}
-    </Card>
-  )
-}
-
-function ChannelTip({ active, payload, label }) {
-  if (!active || !payload?.length) return null
-  const row = payload[0]?.payload || {}
-  return (
-    <div style={{ background: 'var(--payi-surface-dark)', borderRadius: 10, padding: '10px 13px', fontSize: 12, color: '#fff', minWidth: 230 }}>
-      <div style={{ color: 'var(--payi-line)', marginBottom: 7, fontWeight: 700, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-        <span>{label}</span><span>รวม {fmtBaht(row._total)}</span>
-      </div>
-      {CHANNELS.map(([id, lbl, color]) => {
-        const mom = row[`_mom_${id}`]
-        return (
-          <div key={id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 3 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
-            <span style={{ color: '#cbd5e1', flex: 1 }}>{lbl}</span>
-            <span style={{ fontWeight: 700, width: 78, textAlign: 'right' }}>{fmtBaht(row[id])}</span>
-            <span style={{ color: '#94a3b8', width: 34, textAlign: 'right' }}>{Math.round((row[`_pct_${id}`] || 0) * 100)}%</span>
-            <span style={{ width: 52, textAlign: 'right', fontWeight: 700, color: mom == null ? '#64748b' : mom >= 0 ? '#4ade80' : '#f87171' }}>
-              {mom == null ? '–' : (mom >= 0 ? '▲' : '▼') + Math.abs(Math.round(mom * 100)) + '%'}
-            </span>
-          </div>
-        )
-      })}
+      </div></>}
     </div>
   )
 }
