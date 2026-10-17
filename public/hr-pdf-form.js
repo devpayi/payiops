@@ -189,6 +189,7 @@
   function photoSrc(v) {
     if (v && typeof v === 'object' && v.base64Data) return 'data:' + (v.mimeType || 'image/jpeg') + ';base64,' + v.base64Data;
     var u = typeof v === 'string' ? v.trim() : '';
+    if (/^data:image\/(jpeg|png|webp);base64,/.test(u)) return u; // รูปย่อที่เก็บในชีต
     var m = u.match(/\/d\/([\w-]+)/) || u.match(/[?&]id=([\w-]+)/);
     return /^https?:/.test(u) && m ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w400' : '';
   }
@@ -201,7 +202,7 @@
     var isEmp = kind === 'employee';
     S = Object.assign({}, (override && override.blank ? BLANK_SCALES : SCALES)[isEmp ? 'employee' : 'applicant'], override || {});
     var out = '<div style="font-family:-apple-system,\'Noto Sans Thai\',Arial,sans-serif;color:#111;font-size:' + S.fs + 'px;line-height:' + S.lh + '">' +
-      '<div style="position:relative;text-align:center;margin:0 0 ' + S.sec + 'px;' + (isEmp ? 'min-height:120px;padding:0 110px;' : '') + '">' + (isEmp ? photoBox(photoSrc(get('employee_photo'))) : '') + '<div style="font-size:' + (S.fs + 5) + 'px;font-weight:800">' + (isEmp ? 'ประวัติพนักงาน' : 'ใบสมัครงาน') + '</div>' +
+      '<div style="position:relative;text-align:center;margin:0 0 ' + S.sec + 'px;' + (isEmp ? 'min-height:120px;padding:0 110px;' : '') + '">' + (isEmp ? photoBox(photoSrc(get('employee_photo_thumb')) || photoSrc(get('employee_photo'))) : '') + '<div style="font-size:' + (S.fs + 5) + 'px;font-weight:800">' + (isEmp ? 'ประวัติพนักงาน' : 'ใบสมัครงาน') + '</div>' +
       '<div style="font-size:' + (S.fs - 1) + 'px;color:#333;font-weight:600">บริษัท ปลาใหญ่ มาร์เก็ตติ้ง จำกัด</div></div>';
     var secs = SECTIONS[isEmp ? 'employee' : 'applicant'];
     secs.forEach(function (sec, i) {

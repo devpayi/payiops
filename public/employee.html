@@ -221,7 +221,16 @@ function compressToJpeg(srcUrl, maxSide = 1600, quality = 0.8) {
     img.src = srcUrl;
   });
 }
-function fileInputField(key) {
+// รูปย่อ ~240x300 เก็บในชีตไว้ใช้ใน PDF (ไม่พึ่งลิงก์ Drive) — ลดคุณภาพลงเรื่อยๆ จนไม่เกินเพดานเซลล์ (เซิร์ฟเวอร์ทิ้งถ้าเกิน 30,000 ตัวอักษร)
+async function makeThumb(srcUrl) {
+  let d = '';
+  for (const q of [0.7, 0.55, 0.4]) {
+    d = await compressToJpeg(srcUrl, 300, q);
+    if (d.length <= 30000) return d;
+  }
+  return d;
+}
+function fileInputField(key, thumbKey) {
   const wrap = el('div', {});
   const status = el('div', { class: 'file-status' }, answers[key] ? `เลือกไฟล์แล้ว: ${answers[key].fileName}` : 'ยังไม่ได้เลือกไฟล์ (ถ่ายรูปหรือเลือกจากเครื่อง)');
   const inp = el('input', { type: 'file', accept: 'image/*' });
@@ -233,10 +242,12 @@ function fileInputField(key) {
     try {
       const dataUrl = await compressToJpeg(url);
       answers[key] = { fileName: f.name.replace(/\.[^.]+$/, '') + '.jpg', mimeType: 'image/jpeg', base64Data: dataUrl.split(',')[1] || '' };
+      if (thumbKey) answers[thumbKey] = await makeThumb(url);
       status.textContent = `เลือกไฟล์แล้ว: ${f.name}`;
       saveDraft();
     } catch (e) {
       answers[key] = null;
+      if (thumbKey) answers[thumbKey] = null;
       status.textContent = e.message || 'อ่านรูปไม่ได้ ลองเลือกรูปอื่น';
     } finally {
       URL.revokeObjectURL(url);
@@ -298,7 +309,7 @@ const steps = [
       c.appendChild(field('ที่อยู่ตามทะเบียนบ้าน', textarea('house_registration_address')));
       c.appendChild(field('รูปทะเบียนบ้าน', fileInputField('house_registration_photo')));
       // บอส 2026-10-17: เตรียมช่องรูปถ่ายหน้าตรง (ไปอยู่มุมบนขวาของ PDF) — ไม่บังคับ ปรับเป็นบังคับได้ทีหลัง
-      c.appendChild(field('รูปถ่ายหน้าตรง (สำหรับติดใบประวัติ)', fileInputField('employee_photo'), true));
+      c.appendChild(field('รูปถ่ายหน้าตรง (สำหรับติดใบประวัติ)', fileInputField('employee_photo', 'employee_photo_thumb'), true));
     },
     required: () => !!answers.id_card_number && !!answers.id_card_photo
       && !!answers.house_registration_address && !!answers.house_registration_photo,
@@ -614,8 +625,12 @@ async function submit() {
   payload.id_card_photo = answers.id_card_photo || null;
   payload.house_registration_photo = answers.house_registration_photo || null;
   payload.employee_photo = answers.employee_photo || null;
+  payload.employee_photo_thumb = answers.employee_photo_thumb || '';
 
   try {
+    if (payload.employee_photo && payload.employee_photo.base64Data && !payload.employee_photo_thumb) {
+      payload.employee_photo_thumb = await makeThumb(`data:${payload.employee_photo.mimeType || 'image/jpeg'};base64,${payload.employee_photo.base64Data}`);
+    }
     // รูปที่ค้างใน draft จากก่อนมีการย่อรูป (ใหญ่หลาย MB) ย่อซ้ำก่อนส่ง
     for (const k of ['id_card_photo', 'house_registration_photo', 'employee_photo']) {
       const ph = payload[k];

@@ -109,7 +109,7 @@ async function opRestorePerson(req, res, sheetId) {
 // ที่เป็นช่องคำถามของฟอร์ม — ห้ามแตะ ประทับเวลา / ลิงก์รูปบัตร-ทะเบียนบ้าน / ยืนยันข้อมูล (3) ชื่อ-เบอร์โทร(-เลขบัตร)
 // ห้ามแก้ให้ว่าง (4) จดประวัติก่อน-หลังลงแท็บ hr_edit_log ไว้ย้อนดูได้
 const EDIT_LOG_HEADERS = ['edited_at', 'edited_by', 'source_view', 'name', 'timestamp', 'changes_json']
-const EDIT_PROTECTED_KEYS = new Set(['id_card_photo_url', 'house_registration_photo_url', 'employee_photo_url', 'confirmed'])
+const EDIT_PROTECTED_KEYS = new Set(['id_card_photo_url', 'house_registration_photo_url', 'employee_photo_url', 'employee_photo_thumb', 'confirmed'])
 async function opUpdatePerson(req, res, sheetId) {
   const { view, row, ts, changes } = req.body || {}
   const rowNo = Number(row)
@@ -425,6 +425,9 @@ export const EMPLOYEE_FULL_FIELDS = [
   ['emergency_contact2_relation', 'ผู้ติดต่อฉุกเฉิน คนที่ 2 (ความสัมพันธ์)'],
   ['emergency_contact2_phone', 'ผู้ติดต่อฉุกเฉิน คนที่ 2 (เบอร์โทร)'],
   ['employee_photo_url', 'รูปถ่ายพนักงาน (หน้าตรง)'],
+  // รูปย่อ (data URI JPEG ~240x300 ไม่เกิน ~30K ตัวอักษร) เก็บในเซลล์เลย — PDF ในแดชบอร์ดใช้ตัวนี้ ไม่พึ่งลิงก์ Drive
+  // (ลิงก์ Drive ใช้เป็น <img> ไม่ได้ถ้าไฟล์ไม่ได้แชร์/ติดหน้าล็อกอิน) ชีต HR เป็นชีตส่วนตัวเดียวกับเลขบัตร ปชช
+  ['employee_photo_thumb', 'รูปถ่ายพนักงาน (ย่อ สำหรับ PDF)'],
 ]
 const EMPLOYEE_FULL_HEADERS = ['ประทับเวลา', ...EMPLOYEE_FULL_FIELDS.map(([, label]) => label)]
 const EMPLOYEE_TEXT_FORCE_KEYS = new Set([
@@ -432,7 +435,12 @@ const EMPLOYEE_TEXT_FORCE_KEYS = new Set([
   'id_card_number', 'bank_account_number', 'emergency_contact_phone',
   'father_phone', 'mother_phone', 'emergency_contact2_phone',
 ])
+const THUMB_MAX = 30000 // ต้องไม่เกินนี้ — เซลล์ Sheets จุได้ 50,000 ตัวอักษร และตอนลบ/กู้คืนทั้งแถวถูกเก็บเป็น JSON เซลล์เดียว (เพดาน 45,000)
 const cleanEmployeeField = (key, v) => {
+  if (key === 'employee_photo_thumb') {
+    const t = String(v ?? '').trim()
+    return t.length <= THUMB_MAX && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(t) ? t : '' // ไม่ใช่รูป/ใหญ่เกิน = ทิ้ง (PDF ถอยไปใช้ลิงก์ Drive)
+  }
   const s = clean(v)
   return EMPLOYEE_TEXT_FORCE_KEYS.has(key) && /^\d+$/.test(s) ? `'${s}` : s
 }

@@ -454,9 +454,12 @@ Sheets rate limits.
       `mother_phone`) added to BOTH wizards, PDFs, sheets. (3) **Employee: 2 emergency contacts** — the original 3
       `emergency_contact_*` columns = person 1, new `emergency_contact2_*` = person 2; both required. (4) **Employee face
       photo** (`employee_photo`, optional upload in the เอกสารประจำตัว step, Drive → column `employee_photo_url`) shown top-right
-      of the employee PDF: wizard print uses the local base64, dashboard PDF turns the Drive link into
-      `drive.google.com/thumbnail?id=` (needs the file shared "anyone with link" — the Apps Script does that; **not yet verified
-      against a real Drive file**); empty box (`รูปถ่ายหน้าตรง`) when no photo, also on the blank printable form. All new
+      of the employee PDF; empty box (`รูปถ่ายหน้าตรง`) when no photo, also on the blank printable form. **The PDF does NOT
+      depend on the Drive link:** the wizard also stores a ~240x300 JPEG thumbnail as a data URI in column `employee_photo_thumb`
+      (≤30,000 chars; server drops anything bigger/non-JPEG; hidden from the drawer list + search; protected from editing) —
+      Drive links can't be used as `<img>` unless the file is shared and logged-out-readable. Fallback order in
+      `hr-pdf-form.js`: thumb → wizard base64 → Drive `thumbnail?id=` URL (old rows only have the Drive link, so they may show an
+      empty box). Verified: wizard→real server→sheet→headless-Chrome PDF has the photo top-right; delete/restore/edit keep it. All new
       columns appended at the end; `GET` of `*_full` views now runs `ensureExternalSheet` first so the header row gains the new
       columns immediately (tested on an old-format sheet: old rows intact, edits to new columns work). (5) **Client-side photo
       shrink re-added** to `employee.html` (1600px JPEG, also shrinks oversized photos left in a draft at submit, friendly message

@@ -58,6 +58,8 @@ const nameHint = (h) => /ชื่อ|name|พนักงาน|ผู้สม
 // "คำถามในฟอร์ม" เท่านั้น: ทุกคำถามต้องมีในไฟล์ (ไม่มีคำตอบก็เว้นว่าง) อะไรที่ฟอร์มไม่ได้ถามไม่มีในไฟล์
 // ที่นี่แค่แปลง row (หัวคอลัมน์ภาษาไทยจากชีต) -> key เดียวกับที่ wizard ใช้ ให้ตรงกับ APPLICANT_FULL_FIELDS /
 // EMPLOYEE_FULL_FIELDS ใน api/_lib/hrPeople.js
+// คอลัมน์รูปย่อ (data URI ยาวหลายหมื่นตัวอักษร) — ใช้สร้าง PDF เท่านั้น ห้ามโชว์เป็นข้อความในรายละเอียด/ค้นหา
+const THUMB_HEADER = 'รูปถ่ายพนักงาน (ย่อ สำหรับ PDF)'
 const PDF_HEADERS = {
   position: ['ตำแหน่งงานที่สมัคร', 'ตำแหน่งงาน'], expected_salary: ['เงินเดือนที่ต้องการ'],
   available_date: ['วันที่เริ่มงานได้'], start_date: ['วันที่เริ่มงาน'], current_status: ['สถานภาพการทำงานปัจจุบัน'],
@@ -86,6 +88,7 @@ const PDF_HEADERS = {
   father_phone: ['เบอร์โทรบิดา'], mother_phone: ['เบอร์โทรมารดา'], employee_photo: ['รูปถ่ายพนักงาน (หน้าตรง)'],
   emergency_contact2_name: ['ผู้ติดต่อฉุกเฉิน คนที่ 2 (ชื่อ)'], emergency_contact2_relation: ['ผู้ติดต่อฉุกเฉิน คนที่ 2 (ความสัมพันธ์)'],
   emergency_contact2_phone: ['ผู้ติดต่อฉุกเฉิน คนที่ 2 (เบอร์โทร)'],
+  employee_photo_thumb: [THUMB_HEADER],
 }
 
 let hrPdfScript = null
@@ -382,7 +385,7 @@ function DetailDrawer({ row, headers, kind, onClose, onDelete, onRestore, onSave
             onSave={async (changes) => { await onSave(changes); setEditing(false) }} />
         ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {headers.map((h) => (
+          {headers.filter((h) => h !== THUMB_HEADER).map((h) => (
             <div key={h}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--payi-text-muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>{displayLabel(h)}</div>
               <div style={{ fontSize: 14, color: 'var(--payi-text-strong)', wordBreak: 'break-word' }}><JsonRowsView value={row[h]} /></div>
@@ -481,7 +484,7 @@ export default function HRPeople() {
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase()
     if (!t) return rows
-    return rows.filter((row) => headers.some((h) => String(row[h] || '').toLowerCase().includes(t)))
+    return rows.filter((row) => headers.some((h) => h !== THUMB_HEADER && String(row[h] || '').toLowerCase().includes(t)))
   }, [rows, headers, q])
 
   return (
