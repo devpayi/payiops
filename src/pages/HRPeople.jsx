@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { Users, Search, X, ExternalLink, RefreshCw, FilePlus2, Printer, Trash2, RotateCcw, Pencil } from 'lucide-react'
+import { Users, Search, X, ExternalLink, RefreshCw, FilePlus2, Printer, Trash2, RotateCcw, Pencil, Camera } from 'lucide-react'
 import KpiCard from '../components/KpiCard'
 
 const API = '/api/sheet-tools?op=hr-people'
@@ -257,7 +257,11 @@ function RecordEditorForm({ row, headers, sections, onCancel, onSave, canEditPho
               : (row[THUMB_HEADER] ? <img src={row[THUMB_HEADER]} alt="รูปปัจจุบัน" style={{ width: 72, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--payi-border)' }} /> : null)}
             <div style={{ fontSize: 13 }}>
               {!newPhoto && <div style={{ marginBottom: 6 }}><LinkOrText value={row[h]} /></div>}
-              <input type="file" accept="image/*" disabled={saving} onChange={(e) => { pickPhoto(e.target.files[0]); e.target.value = '' }} />
+              {/* input จริงซ่อนไว้ ใช้ label เป็นปุ่ม (ปุ่ม "Choose File" ของเบราว์เซอร์เป็นภาษาอังกฤษและไม่ตรงธีม) */}
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: '1px solid var(--payi-mint-strong)', background: 'var(--payi-mint-soft)', color: 'var(--payi-mint-strong)', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+                <Camera size={15} />{newPhoto || row[THUMB_HEADER] || row[h] ? 'เปลี่ยนรูป' : 'เลือกรูป'}
+                <input type="file" accept="image/*" disabled={saving} style={{ display: 'none' }} onChange={(e) => { pickPhoto(e.target.files[0]); e.target.value = '' }} />
+              </label>
               {newPhoto && <div style={{ color: 'var(--payi-text-muted)', marginTop: 4 }}>เลือกรูปใหม่แล้ว — กด "บันทึก" เพื่ออัปโหลด</div>}
             </div>
           </div>
