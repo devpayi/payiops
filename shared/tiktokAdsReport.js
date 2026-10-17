@@ -1,6 +1,7 @@
 // TikTok Shop GMV Max (product + LIVE) monthly totals -> read-only monthly report.
 // Source is the Seller Center ads dashboard, entered offline; never writes marketing_inputs.
 import {sumReportMoney} from './monthlyAdsReports.js'
+import {attachTikTokProductDetails} from './tiktokProductDetails.js'
 
 const BUSINESSES=['Payi','Payi Outlet','กรอบรูป']
 const same=(a,b)=>sumReportMoney([a])===sumReportMoney([b])
@@ -25,16 +26,18 @@ export function buildTikTokMonthlyReport(input,{business=''}={}) {
   const campaigns=input.campaigns.map((row,index)=>{
     const name=text(row.name)
     if(!name || !['product','live'].includes(row.grain))throw Error(`ชื่อหรือประเภทแคมเปญไม่ถูกต้องที่แถว ${index+1}`)
-    return {id:`tiktok:${index+1}`,sourceRow:index+1,name,itemId:null,grain:row.grain,spend:money(row.spend,`ค่าแอด (แถว ${index+1})`),sales:money(row.sales,`รายได้ขั้นต้น (แถว ${index+1})`),orders:money(row.orders,`คำสั่งซื้อ (แถว ${index+1})`),sourceRoas:text(row.roas) || null}
+    if(row.campaignId!==undefined&&(typeof row.campaignId!=='string'||!/^\d+$/.test(row.campaignId)))throw Error('รหัสแคมเปญต้องเป็นข้อความตัวเลข')
+    return {id:`tiktok:${index+1}`,sourceRow:index+1,name,itemId:null,grain:row.grain,...(row.campaignId?{platformCampaignId:row.campaignId}:{}),spend:money(row.spend,`ค่าแอด (แถว ${index+1})`),sales:money(row.sales,`รายได้ขั้นต้น (แถว ${index+1})`),orders:money(row.orders,`คำสั่งซื้อ (แถว ${index+1})`),sourceRoas:text(row.roas) || null}
   })
   const spend=sumReportMoney(campaigns.map(r=>r.spend)),sales=sumReportMoney(campaigns.map(r=>r.sales)),orders=sumReportMoney(campaigns.map(r=>r.orders))
   const issues=[]
   if(!same(spend,reported.spend))issues.push('ค่าแอดรวมรายแคมเปญไม่ตรงยอดรวมบนแดชบอร์ด')
   if(!same(sales,reported.sales))issues.push('รายได้ขั้นต้นรวมรายแคมเปญไม่ตรงยอดรวมบนแดชบอร์ด')
   if(!same(orders,reported.orders))issues.push('จำนวนคำสั่งซื้อรวมรายแคมเปญไม่ตรงยอดรวมบนแดชบอร์ด')
-  return {schemaVersion:1,platform:'TikTok Shop',business,month,dateFrom:input.dateFrom,dateTo:input.dateTo,shopId:text(input.shopId),shopName:text(input.shopName),
+  const report={schemaVersion:1,platform:'TikTok Shop',business,month,dateFrom:input.dateFrom,dateTo:input.dateTo,shopId:text(input.shopId),shopName:text(input.shopName),
     sources:[{kind:'seller-center-dashboard',filename:text(input.source) || 'TikTok Seller Center · แดชบอร์ดโฆษณา',exportedAt:input.capturedAt || null}],taxBasis:'unknown',
     spend,sales,orders,reportedTotals:reported,
     productSpend:null,campaigns,products:[],status:issues.length?'needs-review':'reconciled',issues,
     coverage:{dateRange:'full-month',productDetail:'not-applicable',adTypes:'gmv-max-product-and-live',orders:'platform-reported'}}
+  return input.productDetails===undefined?report:attachTikTokProductDetails(report,input.productDetails)
 }
