@@ -111,8 +111,12 @@ async function opRestorePerson(req, res, sheetId) {
 const EDIT_LOG_HEADERS = ['edited_at', 'edited_by', 'source_view', 'name', 'timestamp', 'changes_json']
 const EDIT_PROTECTED_KEYS = new Set(['id_card_photo_url', 'house_registration_photo_url', 'employee_photo_url', 'employee_photo_thumb', 'confirmed'])
 async function opUpdatePerson(req, res, sheetId) {
-  const { view, row, ts, changes } = req.body || {}
+  const { view, row, ts, changes, photo } = req.body || {}
   const rowNo = Number(row)
+  // รูปหน้าตรงพนักงาน (แก้ไขรูปจากหน้า drawer) — เฉพาะ employees_full ; รูปต้องถูกย่อมาจากฝั่งเว็บแล้ว (JPEG ~1600px) กันเกินเพดาน body 4.5MB ของ Vercel
+  if (photo && (view !== 'employees_full' || typeof photo.base64Data !== 'string' || !photo.base64Data || photo.base64Data.length > 3_000_000)) {
+    return res.status(400).json({ success: false, error: 'รูปไม่ถูกต้องหรือใหญ่เกินไป ลองเลือกรูปอื่น' })
+  }
   if (!['employees_full', 'applicants_full'].includes(view) || !Number.isInteger(rowNo) || rowNo < 2
     || !changes || typeof changes !== 'object' || Array.isArray(changes)) {
     return res.status(400).json({ success: false, error: 'ข้อมูลที่ส่งมาไม่ถูกต้อง' })
@@ -149,13 +153,28 @@ async function opUpdatePerson(req, res, sheetId) {
       toWrite[col] = textForce.has(key) && /^\d+$/.test(value) ? `'${value}` : value
       log[header] = { from: before, to: value }
     }
-    if (!Object.keys(toWrite).length) return res.status(200).json({ success: true, changed: 0 })
     const nameCol = headers.indexOf('ชื่อ-นามสกุล')
+    let photoResult = null
+    if (photo) {
+      const labelOf = (k) => fields.find(([key]) => key === k)?.[1]
+      const urlCol = headers.indexOf(labelOf('employee_photo_url'))
+      const thumbCol = headers.indexOf(labelOf('employee_photo_thumb'))
+      if (urlCol < 0 || thumbCol < 0) return res.status(400).json({ success: false, error: 'ชีตยังไม่มีคอลัมน์รูป กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง' })
+      const who = nameCol >= 0 ? String(cells[nameCol] ?? '').trim() : ''
+      const url = await uploadEmployeePhoto({ base64Data: photo.base64Data, mimeType: 'image/jpeg' }, `${who || 'employee'}-photo`)
+      if (!url) return res.status(502).json({ success: false, error: 'อัปโหลดรูปไม่สำเร็จ ลองใหม่อีกครั้ง' }) // ยังไม่เขียนอะไรลงชีต
+      const thumb = cleanEmployeeField('employee_photo_thumb', photo.thumb)
+      toWrite[urlCol] = url
+      toWrite[thumbCol] = thumb
+      log[labelOf('employee_photo_url')] = { from: String(cells[urlCol] ?? '').trim(), to: url }
+      photoResult = { url, thumb }
+    }
+    if (!Object.keys(toWrite).length) return res.status(200).json({ success: true, changed: 0 })
     await ensureExternalSheet(sheetId, 'hr_edit_log', EDIT_LOG_HEADERS)
     // จดประวัติก่อนแก้จริง — พลาดครึ่งทางอย่างมากได้ log เกิน ไม่มีทางแก้แล้วไม่มีร่องรอย
     await appendExternalRows(sheetId, 'hr_edit_log', [[new Date().toISOString(), actorName(req), view, nameCol >= 0 ? String(cells[nameCol] ?? '') : '', String(ts ?? '').trim(), JSON.stringify(log).slice(0, 45000)]])
     await updateExternalCells(sheetId, tab, rowNo, toWrite)
-    return res.status(200).json({ success: true, changed: Object.keys(toWrite).length })
+    return res.status(200).json({ success: true, changed: Object.keys(toWrite).length, photo: photoResult })
   } catch (e) {
     console.error('opUpdatePerson:', e.message)
     return res.status(500).json({ success: false, error: 'บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง' })

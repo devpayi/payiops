@@ -143,6 +143,34 @@ const normTableRows = (rows, cols) => (rows || [])
   .map((r) => ({ ...r, ...Object.fromEntries(cols.map(([k]) => [k, String(r[k] ?? '').trim()])) }))
   .filter((r) => cols.some(([k]) => r[k]))
 
+// ย่อรูปก่อนส่ง (เหตุผลเดียวกับ public/employee.html: รูปต้นฉบับหลาย MB เกินเพดาน body 4.5MB ของ Vercel) + รูปย่อ ~240x300 ไว้ใช้ใน PDF
+function compressToJpeg(srcUrl, maxSide = 1600, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight))
+      const w = Math.max(1, Math.round(img.naturalWidth * scale))
+      const h = Math.max(1, Math.round(img.naturalHeight * scale))
+      const cv = document.createElement('canvas')
+      cv.width = w; cv.height = h
+      const ctx = cv.getContext('2d')
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h)
+      ctx.drawImage(img, 0, 0, w, h)
+      resolve(cv.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = () => reject(new Error('อ่านรูปไม่ได้ ลองเลือกรูปอื่น'))
+    img.src = srcUrl
+  })
+}
+async function makeThumb(srcUrl) {
+  let d = ''
+  for (const q of [0.7, 0.55, 0.4]) {
+    d = await compressToJpeg(srcUrl, 300, q)
+    if (d.length <= 30000) return d
+  }
+  return d
+}
+
 const editInput = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--payi-border)', fontSize: 14, background: 'var(--payi-surface)', color: 'var(--payi-text-strong)', boxSizing: 'border-box', fontFamily: 'inherit' }
 const editLabel = { fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', marginBottom: 4 }
 
@@ -154,10 +182,10 @@ function RecordEditor(props) {
     loadHrPdfForm().then(() => setSections(window.HRPdfForm.sections[props.kind])).catch(() => setErr('โหลดฟอร์มแก้ไขไม่สำเร็จ ลองรีเฟรชหน้า'))
   }, [props.kind])
   if (!sections) return <div style={{ color: 'var(--payi-text-muted)', fontSize: 13 }}>{err || 'กำลังโหลดฟอร์มแก้ไข...'}</div>
-  return <RecordEditorForm {...props} sections={sections} />
+  return <RecordEditorForm {...props} sections={sections} canEditPhoto={props.kind === 'employee'} />
 }
 
-function RecordEditorForm({ row, headers, sections, onCancel, onSave }) {
+function RecordEditorForm({ row, headers, sections, onCancel, onSave, canEditPhoto }) {
   // key ของคำถาม -> หัวคอลัมน์จริงในชีตของ view นี้ (บางคำถามหัวต่างกันระหว่างผู้สมัคร/พนักงาน)
   const headerOf = (key) => (PDF_HEADERS[key] || []).find((h) => headers.includes(h))
   const eachItem = (fn) => {
@@ -179,6 +207,7 @@ function RecordEditorForm({ row, headers, sections, onCancel, onSave }) {
   })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  const [newPhoto, setNewPhoto] = useState(null) // { base64Data, thumb, preview } — รูปหน้าตรงใหม่ที่เลือกไว้ รออัปโหลดตอนกดบันทึก
   const [q, setQ] = useState('') // ค้นหาช่องจากชื่อช่อง/หัวข้อ — ฟอร์มยาว ไม่ต้องเลื่อนหา
 
   const set = (key, value) => setVals((p) => ({ ...p, [key]: value }))
@@ -201,15 +230,40 @@ function RecordEditorForm({ row, headers, sections, onCancel, onSave }) {
       }
       if (nv !== String(row[h] ?? '').trim()) changes[h] = nv
     })
-    if (!Object.keys(changes).length) { onCancel(); return }
+    if (!Object.keys(changes).length && !newPhoto) { onCancel(); return }
     setSaving(true); setErr('')
-    try { await onSave(changes) } catch (e) { setErr(e.message || 'บันทึกไม่สำเร็จ'); setSaving(false) }
+    try { await onSave(changes, newPhoto) } catch (e) { setErr(e.message || 'บันทึกไม่สำเร็จ'); setSaving(false) }
   }
 
   const renderItem = (it, sec) => {
     const h = headerOf(it.key)
     if (!h) return null
     const label = it.label || sec.title
+    if (it.t === 'f' && it.key === 'employee_photo' && canEditPhoto) {
+      const pickPhoto = async (file) => {
+        if (!file) return
+        setErr('')
+        const url = URL.createObjectURL(file)
+        try {
+          const full = await compressToJpeg(url)
+          setNewPhoto({ base64Data: full.split(',')[1] || '', thumb: await makeThumb(url), preview: full })
+        } catch (e) { setErr(e.message || 'อ่านรูปไม่ได้'); setNewPhoto(null) } finally { URL.revokeObjectURL(url) }
+      }
+      return (
+        <div key={it.key}><div style={editLabel}>{label}</div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            {newPhoto
+              ? <img src={newPhoto.preview} alt="รูปใหม่" style={{ width: 72, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--payi-border)' }} />
+              : (row[THUMB_HEADER] ? <img src={row[THUMB_HEADER]} alt="รูปปัจจุบัน" style={{ width: 72, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--payi-border)' }} /> : null)}
+            <div style={{ fontSize: 13 }}>
+              {!newPhoto && <div style={{ marginBottom: 6 }}><LinkOrText value={row[h]} /></div>}
+              <input type="file" accept="image/*" disabled={saving} onChange={(e) => { pickPhoto(e.target.files[0]); e.target.value = '' }} />
+              {newPhoto && <div style={{ color: 'var(--payi-text-muted)', marginTop: 4 }}>เลือกรูปใหม่แล้ว — กด "บันทึก" เพื่ออัปโหลด</div>}
+            </div>
+          </div>
+        </div>
+      )
+    }
     if (it.t === 'f') {
       return (
         <div key={it.key}><div style={editLabel}>{label}</div>
@@ -382,7 +436,7 @@ function DetailDrawer({ row, headers, kind, onClose, onDelete, onRestore, onSave
         </div>
         {editing ? (
           <RecordEditor row={row} headers={headers} kind={kind} onCancel={() => setEditing(false)}
-            onSave={async (changes) => { await onSave(changes); setEditing(false) }} />
+            onSave={async (changes, photo) => { await onSave(changes, photo); setEditing(false) }} />
         ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {headers.filter((h) => h !== THUMB_HEADER).map((h) => (
@@ -453,10 +507,12 @@ export default function HRPeople() {
     } catch (e) { window.alert(e.message) }
   }
   // แก้ไข: ส่งเฉพาะช่องที่เปลี่ยน — สำเร็จแล้วอัปเดตแถวที่เปิดอยู่ทันที (PDF ที่สร้างจากแถวนี้เลยเป็นข้อมูลใหม่) แล้วโหลดตารางใหม่
-  const saveEdit = async (changes) => {
-    const d = await post({ action: 'update-person', view, row: selected.__row, ts: selected['ประทับเวลา'], changes })
+  const saveEdit = async (changes, photo) => {
+    const d = await post({ action: 'update-person', view, row: selected.__row, ts: selected['ประทับเวลา'], changes, ...(photo ? { photo: { base64Data: photo.base64Data, thumb: photo.thumb } } : {}) })
     if (!d.success) throw new Error(d.error || 'บันทึกไม่สำเร็จ')
-    setSelected((s) => ({ ...s, ...changes }))
+    // อัปเดตแถวที่เปิดอยู่ให้ PDF/หน้าจอใช้รูปใหม่ทันที (ลิงก์ + รูปย่อ)
+    const photoCells = d.photo ? { 'รูปถ่ายพนักงาน (หน้าตรง)': d.photo.url, [THUMB_HEADER]: d.photo.thumb } : {}
+    setSelected((s) => ({ ...s, ...changes, ...photoCells }))
     load()
   }
   const restoreRow = async (row) => {
