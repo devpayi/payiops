@@ -515,19 +515,19 @@ const steps = [
     required: () => !!answers.bank_name && !!answers.bank_account_number && !!answers.bank_account_name,
   },
   {
-    title: 'บุคคลที่ติดต่อได้กรณีฉุกเฉิน', sub: 'กรอก 2 คน',
+    title: 'บุคคลที่ติดต่อได้กรณีฉุกเฉิน', sub: 'คนที่ 1 บังคับ คนที่ 2 ไม่บังคับ',
     render: (c) => {
       c.appendChild(el('div', { class: 'field' }, el('label', {}, 'คนที่ 1')));
       c.appendChild(field('ชื่อ', textInput('emergency_contact_name')));
       c.appendChild(field('ความสัมพันธ์', textInput('emergency_contact_relation')));
       c.appendChild(field('เบอร์โทร', textInput('emergency_contact_phone', 'tel')));
-      c.appendChild(el('div', { class: 'field' }, el('label', {}, 'คนที่ 2')));
-      c.appendChild(field('ชื่อ', textInput('emergency_contact2_name')));
-      c.appendChild(field('ความสัมพันธ์', textInput('emergency_contact2_relation')));
-      c.appendChild(field('เบอร์โทร', textInput('emergency_contact2_phone', 'tel')));
+      c.appendChild(el('div', { class: 'field' }, el('label', {}, 'คนที่ 2', el('span', { class: 'opt' }, '  (ไม่บังคับ)'))));
+      c.appendChild(field('ชื่อ', textInput('emergency_contact2_name'), true));
+      c.appendChild(field('ความสัมพันธ์', textInput('emergency_contact2_relation'), true));
+      c.appendChild(field('เบอร์โทร', textInput('emergency_contact2_phone', 'tel'), true));
     },
-    required: () => !!answers.emergency_contact_name && !!answers.emergency_contact_relation && !!answers.emergency_contact_phone
-      && !!answers.emergency_contact2_name && !!answers.emergency_contact2_relation && !!answers.emergency_contact2_phone,
+    // บอส 2026-10-17: คนที่ 2 ไม่บังคับ (คนที่ 1 บังคับเหมือนเดิม)
+    required: () => !!answers.emergency_contact_name && !!answers.emergency_contact_relation && !!answers.emergency_contact_phone,
   },
   {
     title: 'ยืนยันและส่งข้อมูล', sub: 'ตรวจสอบก่อนกดส่ง',

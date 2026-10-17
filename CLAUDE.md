@@ -452,7 +452,7 @@ Sheets rate limits.
       (wizard step, PDF section, editor) — but the `reference_*` columns stay in `EMPLOYEE_FULL_FIELDS` (append-only: deleting
       them would shift every later column); applicants keep the reference step. (2) **Parents' phone** (`father_phone`/
       `mother_phone`) added to BOTH wizards, PDFs, sheets. (3) **Employee: 2 emergency contacts** — the original 3
-      `emergency_contact_*` columns = person 1, new `emergency_contact2_*` = person 2; both required. (4) **Employee face
+      `emergency_contact_*` columns = person 1, new `emergency_contact2_*` = person 2 (person 1 required, person 2 optional). (4) **Employee face
       photo** (`employee_photo`, optional upload in the เอกสารประจำตัว step, Drive → column `employee_photo_url`) shown top-right
       of the employee PDF; empty box (`รูปถ่ายหน้าตรง`) when no photo, also on the blank printable form. **The PDF does NOT
       depend on the Drive link:** the wizard also stores a ~240x300 JPEG thumbnail as a data URI in column `employee_photo_thumb`
