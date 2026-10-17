@@ -8,8 +8,8 @@ export default function MarketingWorkspace({active=true}) {
   const [view,setView]=useState('reports')
   const [legacyOpened,setLegacyOpened]=useState(false)
   const source=useMarketingRead('monthly-reports')
-  // The monthly reports have no production store yet: when the API says they are not
-  // available (or this account may not read them), the manual ad-cost form is the page.
+  // Keep the manual form available when no private report store is configured
+  // or this account may not read reports.
   const reportsShown=source.loading || (Boolean(source.error) && !source.denied) || Boolean(source.data?.available)
   const current=reportsShown?view:'legacy'
   function openLegacy(){setLegacyOpened(true);setView('legacy')}
@@ -19,7 +19,7 @@ export default function MarketingWorkspace({active=true}) {
       <button aria-pressed={current==='legacy'} onClick={openLegacy}><PencilLine size={17}/> กรอกค่าแอด</button>
       {reportsShown&&current==='reports'&&<button className="mm-refresh" onClick={source.refresh}><RotateCcw size={15}/> รีเฟรช</button>}
     </nav>
-    {reportsShown&&<div hidden={current!=='reports'}><MarketingMonthlyPreview embedded serverReports={source.data?.reports || []} sourceLoading={source.loading} sourceError={source.error} denied={source.denied}/></div>}
+    {reportsShown&&<div hidden={current!=='reports'}><MarketingMonthlyPreview embedded serverReports={source.data?.reports || []} sourceLoading={source.loading} sourceError={source.error} denied={source.denied} canSave={source.data?.writeAvailable===true} onSaved={source.refresh}/></div>}
     {(legacyOpened||!reportsShown)&&<div hidden={current!=='legacy'}><MarketingLegacyHost active={active&&current==='legacy'} surface="ads"/></div>}
   </section>
 }
