@@ -2665,6 +2665,36 @@ async function opWorkforceInner(req, res) {
   return res.status(400).json({ error: `Unknown workforce action: ${action || '(empty)'}` })
 }
 
+// กระดิ่งแจ้งเตือนบนเว็บ (owner ขอเปิดใช้ 2026-10-17) — boss/dev เท่านั้น รวม 4 อย่างที่ต้องลงมือ: ของใกล้หมด,
+// สั่งของค้างเกินกำหนด, แจ้งของเข้ารอ Match, ลารออนุมัติ ใช้ฟังก์ชันชุดเดียวกับการ์ดไลน์ จะได้ตัวเลขตรงกัน
+// computeLowStockList อ่านยอดขายสด (fresh) หนัก → cache 3 นาที กันกระดิ่งของหลายคนยิง Sheets ซ้ำ
+let notificationsCache = { at: 0, data: null }
+async function opNotifications(req, res) {
+  try {
+    if (Date.now() - notificationsCache.at < 180000 && notificationsCache.data) return res.status(200).json(notificationsCache.data)
+    const [lowItems, overdueOrders, requests, leaves] = await Promise.all([
+      computeLowStockList().catch((e) => { console.error('notif low-stock:', e.message); return [] }),
+      computeOverdueOrders().catch((e) => { console.error('notif overdue:', e.message); return [] }),
+      loadStockInRequests({ status: 'pending', role: 'boss' }).catch((e) => { console.error('notif stock-in:', e.message); return [] }),
+      getSheet('hr_leave').catch((e) => { console.error('notif leave:', e.message); return [] }),
+    ])
+    const arrivals = requests.filter((r) => !r.order_only)
+    const pendingLeave = leaves.filter((l) => l.status === 'pending' || l.edit_pending === '1')
+    const groups = [
+      { key: 'leave', title: 'ลารออนุมัติ', tab: 'HR', count: pendingLeave.length, items: pendingLeave.slice(0, 5).map((l) => `${l.employee_name || l.username} · ${l.leave_type || ''} ${l.start_date || ''}${l.end_date && l.end_date !== l.start_date ? ` – ${l.end_date}` : ''}`) },
+      { key: 'arrival', title: 'ของเข้ารอ Match', tab: 'Stock Movement', count: arrivals.length, items: arrivals.slice(0, 5).map((r) => `${r.display_name} × ${r.qty}`) },
+      { key: 'overdue', title: 'สั่งของเลยกำหนด ยังไม่มีของเข้า', tab: 'Stock Movement', count: overdueOrders.length, items: overdueOrders.slice(0, 5).map((o) => `${o.display_name}${o.qty > 0 ? ` × ${o.qty}` : ''} · ครบกำหนด ${o.expected_date}`) },
+      { key: 'low', title: 'ของใกล้หมด / หมด (ยังไม่ได้สั่ง)', tab: 'Inventory', count: lowItems.length, items: [...lowItems].sort((a, b) => (b.recommendedOrder || 0) - (a.recommendedOrder || 0)).slice(0, 5).map((i) => `${i.display_name} · เหลือ ${i.balance}${i.recommendedOrder ? ` · แนะนำสั่ง ${i.recommendedOrder}` : ''}`) },
+    ].filter((g) => g.count > 0)
+    const data = { success: true, total: groups.reduce((s, g) => s + g.count, 0), groups, generatedAt: new Date().toISOString() }
+    notificationsCache = { at: Date.now(), data }
+    return res.status(200).json(data)
+  } catch (e) {
+    console.error('opNotifications:', e)
+    return res.status(500).json({ success: false, error: e.message })
+  }
+}
+
 async function opHr(req, res) {
   try {
     return await opHrInner(req, res)
@@ -4127,6 +4157,12 @@ export default async function handler(req, res) {
   }
   // Workspace รุ่นแรก — ตอนนี้ dev เท่านั้น (เช็คสิทธิ์ใน _lib/workspace.js)
   if (op === 'workspace') return opWorkspace(req, res)
+  if (op === 'notifications') {
+    if (authEnabled() && !canManageOperations(req.user?.role)) {
+      return res.status(200).json({ success: true, total: 0, groups: [] }) // role อื่นไม่มีงานให้ตามกระดิ่ง
+    }
+    return opNotifications(req, res)
+  }
   if (op === 'hr-people') {
     // ข้อมูลพนักงาน / ผู้สมัครงาน (PII: เลขบัตร ปชช, ทะเบียนบ้าน) — dev + boss เท่านั้น
     if (authEnabled() && !canManageOperations(req.user?.role)) {

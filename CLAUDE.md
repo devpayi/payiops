@@ -58,6 +58,12 @@ demand planning, marketing tracking, and a LINE bot.
   `req.user` is `undefined` and would otherwise get normalized down to `staff` and
   rejected — bit the team once building the stock-in-request matcher).
 
+**Notification bell (2026-10-17) — dev + boss ONLY (bell not rendered for other roles; owner: bosses read the changelog to see what dev shipped):** top-right bell (`src/components/NotificationBell.jsx`) shows
+(a) pending work for boss/dev via `sheet-tools.js?op=notifications` (leave approvals, stock-in to match,
+overdue orders, low stock — same functions as the LINE cards, 3-min cache) and (b) a **"มีอะไรใหม่"**
+changelog from `src/changelog.js` (unseen tracked in localStorage `payi-changelog-seen`).
+**When shipping any user-visible feature/fix, add an entry to `src/changelog.js`** (newest first, unique `id`).
+
 ## Data (Google Sheets: "mona-ops-db", SHEET_ID in .env)
 
 **Sales/product tabs**: `raw_orders_2026_MM` (~190k+ order rows),

@@ -2,7 +2,8 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import payiLogo from './assets/payi-logo.png'
 import useMarketingRevision from './hooks/useMarketingRevision.js'
 import MarketingLegacyProvider from './components/marketing/MarketingLegacyProvider.jsx'
-import { canAccessTab, normalizeRole } from '../shared/roles.js'
+import { canAccessTab, canManageOperations, normalizeRole } from '../shared/roles.js'
+import NotificationBell from './components/NotificationBell.jsx'
 import { avatarGradient, AVATAR_COLORS } from '../shared/avatar.js'
 import AvatarPicker from './components/AvatarPicker.jsx'
 import Mascot from './components/Mascot.jsx'
@@ -10,7 +11,7 @@ import Sparkline from './components/Sparkline.jsx'
 
 const getMeUser = () => { try { return JSON.parse(localStorage.getItem('payi-user') || 'null') } catch { return null } }
 import {
-  Bell, Search, UserCircle2, Target, ShoppingBag, Package, TrendingUp, Percent,
+  Search, UserCircle2, Target, ShoppingBag, Package, TrendingUp, Percent,
   AlertTriangle, AlertCircle, ArrowRight, X, Sparkles, TrendingDown, Loader2,
   LayoutDashboard, UploadCloud, Megaphone, Boxes, Calculator,
   ArrowLeftRight, BookOpen, Link2,
@@ -887,9 +888,12 @@ function AppContent() {
                 style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: 13, color: 'var(--payi-surface-dark)', background: 'transparent' }}
               />
             </div>
-            <button title="Notifications" style={{ width: 40, height: 40, borderRadius: 999, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.6)', display: 'grid', placeItems: 'center', boxShadow: '0 8px 20px rgba(16,24,40,0.06)' }}>
-              <Bell size={18} color={getMeUser()?.avatar_emoji ? AVATAR_COLORS[getMeUser()?.avatar_color]?.to : 'var(--payi-mint-strong)'} />
-            </button>
+            {canManageOperations(currentRole) && (
+              <NotificationBell
+                color={getMeUser()?.avatar_emoji ? AVATAR_COLORS[getMeUser()?.avatar_color]?.to : 'var(--payi-mint-strong)'}
+                onNavigate={(tab) => { if (canAccessTab(currentRole, tab)) setActiveTab(tab) }}
+              />
+            )}
             <button
               title="ออกจากระบบ"
               onClick={() => {
