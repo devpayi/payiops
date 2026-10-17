@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertTriangle, Bell, CalendarClock, CheckCircle2, ChevronRight, Clock, PackageCheck, Sparkles } from 'lucide-react'
 import { CHANGELOG } from '../changelog.js'
 
@@ -31,6 +32,10 @@ export default function NotificationBell({ color, onNavigate }) {
   const [failed, setFailed] = useState(false)
   const [tab, setTab] = useState('tasks')
   const wrapRef = useRef(null)
+  const bellRef = useRef(null)
+  const panelRef = useRef(null)
+  const [panelTop, setPanelTop] = useState(0)
+  const [panelRight, setPanelRight] = useState(12)
   const [seen, setSeen] = useState(readSeen)
   // ตอนเปิดกระดิ่ง จำไว้ว่าอันไหนยังใหม่ (ติดป้าย "ใหม่") แล้วค่อย mark ว่าอ่านแล้ว ปิดแล้วเปิดใหม่ป้ายหาย
   const [freshIds, setFreshIds] = useState(() => new Set())
@@ -59,7 +64,10 @@ export default function NotificationBell({ color, onNavigate }) {
 
   useEffect(() => {
     if (!open) return undefined
-    const onDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
+    const onDown = (e) => {
+      if (wrapRef.current?.contains(e.target) || panelRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
     const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
@@ -68,6 +76,10 @@ export default function NotificationBell({ color, onNavigate }) {
 
   const toggle = () => {
     if (!open) {
+      // มือถือ: panel เป็น fixed เต็มความกว้าง (ดู .nb-panel ใน theme.css) ต้องรู้ว่ากระดิ่งอยู่สูงแค่ไหน เพราะแถวปุ่มห่อบรรทัดได้
+      const rect = bellRef.current?.getBoundingClientRect()
+      setPanelTop(rect ? Math.round(rect.bottom + 8) : 70)
+      setPanelRight(rect ? Math.max(12, Math.round(window.innerWidth - rect.right)) : 12)
       const fresh = CHANGELOG.filter((c) => !seen.has(c.id)).map((c) => c.id)
       setFreshIds(new Set(fresh))
       // ไม่มีงานค้างแต่มีของใหม่ → เปิดแท็บ "มีอะไรใหม่" ให้เลย
@@ -84,13 +96,14 @@ export default function NotificationBell({ color, onNavigate }) {
 
   return (
     <div ref={wrapRef} className="nb-wrap">
-      <button className="nb-bell" title="การแจ้งเตือน" aria-label="การแจ้งเตือน" aria-expanded={open} onClick={toggle}>
+      <button ref={bellRef} className="nb-bell" title="การแจ้งเตือน" aria-label="การแจ้งเตือน" aria-expanded={open} onClick={toggle}>
         <Bell size={18} color={color} />
         {badge > 0 && <span className="nb-badge">{badge > 99 ? '99+' : badge}</span>}
       </button>
 
-      {open && (
-        <div className="nb-panel" role="dialog" aria-label="การแจ้งเตือน">
+      {/* portal ไป body: ไม่งั้นโดน stacking context ของ header/การ์ดหน้าเพจทับ (เจอจริงบนมือถือ) */}
+      {open && createPortal(
+        <div ref={panelRef} className="nb-panel" style={{ '--nb-top': `${panelTop}px`, '--nb-right': `${panelRight}px` }} role="dialog" aria-label="การแจ้งเตือน">
           <div className="nb-head">
             <div>
               <div className="nb-title">การแจ้งเตือน</div>
@@ -154,7 +167,8 @@ export default function NotificationBell({ color, onNavigate }) {
               )
             }) : <div className="nb-empty">ยังไม่มีรายการใหม่</div>)}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

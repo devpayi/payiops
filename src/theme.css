@@ -613,7 +613,7 @@ body {
 .nb-bell { position: relative; width: 40px; height: 40px; border-radius: 999px; background: rgba(255,255,255,0.7); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,0.6); display: grid; place-items: center; box-shadow: 0 8px 20px rgba(16,24,40,0.06); cursor: pointer; transition: transform .15s ease, box-shadow .15s ease; }
 .nb-bell:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(16,24,40,0.12); }
 .nb-badge { position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--payi-danger); color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; box-sizing: border-box; border: 2px solid #fff; }
-.nb-panel { position: absolute; top: 50px; right: 0; width: min(380px, calc(100vw - 24px)); background: #fff; border: 1px solid var(--payi-border); border-radius: 22px; box-shadow: 0 24px 56px rgba(15,23,42,0.18); z-index: 60; overflow: hidden; animation: nb-pop .16s ease-out; transform-origin: top right; }
+.nb-panel { position: fixed; top: var(--nb-top, 60px); right: var(--nb-right, 12px); width: min(380px, calc(100vw - 24px)); background: #fff; border: 1px solid var(--payi-border); border-radius: 22px; box-shadow: 0 24px 56px rgba(15,23,42,0.18); z-index: 200; overflow: hidden; animation: nb-pop .16s ease-out; transform-origin: top right; }
 @keyframes nb-pop { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: none; } }
 .nb-head { padding: 16px 18px 12px; background: var(--payi-gradient-soft); }
 .nb-title { font-size: 16px; font-weight: 800; color: var(--payi-text-strong); }
@@ -640,3 +640,8 @@ body {
 .nb-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 12px 22px; font-size: 13px; color: var(--payi-text-muted); text-align: center; }
 .nb-empty-icon { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: var(--payi-success-bg); color: var(--payi-success); }
 .nb-empty-icon.is-warn { background: var(--payi-warning-bg); color: var(--payi-warning); }
+@media (max-width: 640px) {
+  /* มือถือ: กระดิ่งอยู่ซ้ายของแถว panel แบบ absolute right:0 จะล้นจอซ้าย → ปักเต็มความกว้างจอแทน ไม่ให้ทับ tab bar ล่าง */
+  .nb-panel { left: 12px; right: 12px; width: auto; transform-origin: top center; }
+  .nb-body { max-height: calc(100vh - var(--nb-top, 76px) - 190px); }
+}
