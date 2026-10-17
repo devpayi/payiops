@@ -32,3 +32,13 @@ test('platform selector keeps Shopee and TikTok reports of the same month apart'
   assert.equal(selectMonthlyReport([shopee,tiktok],{...scope,platform:'TikTok Shop'}),tiktok)
   assert.equal(selectMonthlyReport([shopee],{...scope,platform:'TikTok Shop'}),null)
 })
+
+test('missing figures are rejected, an explicit zero is accepted',()=>{
+  const bare=(patch)=>input({campaigns:[{name:'A',grain:'product',spend:'0',sales:'0',orders:'0',...patch}],totals:{spend:'0',sales:'0',orders:'0'}})
+  assert.equal(buildTikTokMonthlyReport(bare({}),{business:'Payi'}).status,'reconciled')
+  for(const field of ['spend','sales','orders'])
+    for(const empty of [undefined,null,'',' '])assert.throws(()=>buildTikTokMonthlyReport(bare({[field]:empty}),{business:'Payi'}),/ขาดค่า/,`${field}=${empty}`)
+  for(const field of ['spend','sales','orders'])assert.throws(()=>buildTikTokMonthlyReport(input({totals:{...input().totals,[field]:undefined}}),{business:'Payi'}),/ขาดค่า/,`totals.${field}`)
+  assert.throws(()=>buildTikTokMonthlyReport(input({totals:undefined}),{business:'Payi'}),/ขาดค่า/)
+  assert.throws(()=>buildTikTokMonthlyReport(bare({spend:'abc'}),{business:'Payi'}))
+})

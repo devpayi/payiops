@@ -5,6 +5,11 @@ import {sumReportMoney} from './monthlyAdsReports.js'
 const BUSINESSES=['Payi','Payi Outlet','กรอบรูป']
 const same=(a,b)=>sumReportMoney([a])===sumReportMoney([b])
 const text=value=>String(value ?? '').trim()
+// Missing is not zero: every figure must be present; an explicit "0" is fine.
+function money(value,label) {
+  if(value===null || value===undefined || text(value)==='')throw Error(`ขาดค่า ${label}`)
+  return sumReportMoney([value])
+}
 
 export function buildTikTokMonthlyReport(input,{business=''}={}) {
   if(!BUSINESSES.includes(business))throw Error('เลือกธุรกิจสำหรับรายงาน')
@@ -16,19 +21,20 @@ export function buildTikTokMonthlyReport(input,{business=''}={}) {
   if(!/^\d+$/.test(text(input.shopId)))throw Error('ไม่พบรหัสบัญชี')
   if(!Array.isArray(input.campaigns) || !input.campaigns.length)throw Error('ไม่มีแถวแคมเปญ ยังยืนยันค่าแอดเป็นศูนย์ไม่ได้')
   const totals=input.totals || {}
+  const reported={spend:money(totals.spend,'ค่าแอดรวมบนแดชบอร์ด'),sales:money(totals.sales,'รายได้ขั้นต้นรวมบนแดชบอร์ด'),orders:money(totals.orders,'คำสั่งซื้อรวมบนแดชบอร์ด')}
   const campaigns=input.campaigns.map((row,index)=>{
     const name=text(row.name)
     if(!name || !['product','live'].includes(row.grain))throw Error(`ชื่อหรือประเภทแคมเปญไม่ถูกต้องที่แถว ${index+1}`)
-    return {id:`tiktok:${index+1}`,sourceRow:index+1,name,itemId:null,grain:row.grain,spend:sumReportMoney([row.spend]),sales:sumReportMoney([row.sales]),orders:sumReportMoney([row.orders]),sourceRoas:text(row.roas) || null}
+    return {id:`tiktok:${index+1}`,sourceRow:index+1,name,itemId:null,grain:row.grain,spend:money(row.spend,`ค่าแอด (แถว ${index+1})`),sales:money(row.sales,`รายได้ขั้นต้น (แถว ${index+1})`),orders:money(row.orders,`คำสั่งซื้อ (แถว ${index+1})`),sourceRoas:text(row.roas) || null}
   })
   const spend=sumReportMoney(campaigns.map(r=>r.spend)),sales=sumReportMoney(campaigns.map(r=>r.sales)),orders=sumReportMoney(campaigns.map(r=>r.orders))
   const issues=[]
-  if(!same(spend,totals.spend))issues.push('ค่าแอดรวมรายแคมเปญไม่ตรงยอดรวมบนแดชบอร์ด')
-  if(!same(sales,totals.sales))issues.push('รายได้ขั้นต้นรวมรายแคมเปญไม่ตรงยอดรวมบนแดชบอร์ด')
-  if(!same(orders,totals.orders))issues.push('จำนวนคำสั่งซื้อรวมรายแคมเปญไม่ตรงยอดรวมบนแดชบอร์ด')
+  if(!same(spend,reported.spend))issues.push('ค่าแอดรวมรายแคมเปญไม่ตรงยอดรวมบนแดชบอร์ด')
+  if(!same(sales,reported.sales))issues.push('รายได้ขั้นต้นรวมรายแคมเปญไม่ตรงยอดรวมบนแดชบอร์ด')
+  if(!same(orders,reported.orders))issues.push('จำนวนคำสั่งซื้อรวมรายแคมเปญไม่ตรงยอดรวมบนแดชบอร์ด')
   return {schemaVersion:1,platform:'TikTok Shop',business,month,dateFrom:input.dateFrom,dateTo:input.dateTo,shopId:text(input.shopId),shopName:text(input.shopName),
     sources:[{kind:'seller-center-dashboard',filename:text(input.source) || 'TikTok Seller Center · แดชบอร์ดโฆษณา',exportedAt:input.capturedAt || null}],taxBasis:'unknown',
-    spend,sales,orders,reportedTotals:{spend:sumReportMoney([totals.spend]),sales:sumReportMoney([totals.sales]),orders:sumReportMoney([totals.orders])},
+    spend,sales,orders,reportedTotals:reported,
     productSpend:null,campaigns,products:[],status:issues.length?'needs-review':'reconciled',issues,
     coverage:{dateRange:'full-month',productDetail:'not-applicable',adTypes:'gmv-max-product-and-live',orders:'platform-reported'}}
 }

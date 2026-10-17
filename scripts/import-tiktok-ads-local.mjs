@@ -4,6 +4,7 @@ import {resolve,join} from 'node:path'
 import {createHash,randomUUID} from 'node:crypto'
 import process from 'node:process'
 import {buildTikTokMonthlyReport} from '../shared/tiktokAdsReport.js'
+import {reportScope} from '../shared/marketingReadModels.js'
 
 const args=Object.fromEntries(process.argv.slice(2).reduce((pairs,value,index,all)=>index%2===0?[...pairs,[value.replace(/^--/,''),all[index+1]]]:pairs,[]))
 if(!args.input || !args.business)throw Error('ระบุ --input <JSON> --business Payi และ --out-dir ได้')
@@ -22,14 +23,22 @@ try {
   try {manifest=JSON.parse(await readFile(join(root,'active.json'),'utf8'))}
   catch(error) {if(error.code!=='ENOENT')throw error;manifest={version:1,entries:[]}}
   if(manifest.version!==1 || !Array.isArray(manifest.entries))throw Error('manifest ไม่ถูกต้อง')
-  const scope=JSON.stringify([result.business,result.shopId,result.month])
+  const scope=reportScope(result)
   const existing=manifest.entries.find(e=>e.scope===scope)
   const filename=`report-${identity}.json`
   if(existing?.file===filename)console.log('ชุดนี้มีอยู่แล้ว ไม่เพิ่มยอดซ้ำ')
   else {
-    const json=JSON.stringify(report,null,2)+'\n'
-    await writeFile(join(root,filename),json,{flag:'wx'})
-    const next={version:1,entries:[...manifest.entries.filter(e=>e.scope!==scope),{scope,file:filename,sha256:digest(json),supersedes:existing?.file || null}]}
+    // Going back to an earlier set (A -> B -> A): its file is still on disk, so reuse it.
+    let json=JSON.stringify(report,null,2)+'\n'
+    try {await writeFile(join(root,filename),json,{flag:'wx'})}
+    catch(error) {
+      if(error.code!=='EEXIST')throw error
+      const previous=await readFile(join(root,filename),'utf8')
+      report.importedAt=JSON.parse(previous).importedAt
+      json=JSON.stringify(report,null,2)+'\n'
+      if(previous!==json)throw Error('ไฟล์ชุดเดิมมีเนื้อหาไม่ตรง')
+    }
+    const next={version:1,entries:[...manifest.entries.filter(e=>e.scope!==scope && e.file!==filename),{scope,file:filename,sha256:digest(json),supersedes:existing?.file || null}]}
     const temp=join(root,`active-${randomUUID()}.tmp`)
     await writeFile(temp,JSON.stringify(next,null,2)+'\n',{flag:'wx'})
     await rename(temp,join(root,'active.json'))

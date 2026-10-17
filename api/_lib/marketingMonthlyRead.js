@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto'
 import process from 'node:process'
 import {requireManager,authEnabled} from './auth.js'
 import {getSheet} from './sheets.js'
+import {reportScope} from '../../shared/marketingReadModels.js'
 
 // Local review data never enters the client bundle, public directory, or Sheets.
 export async function readLocalMonthlyReports(directory=process.env.MARKETING_REPORTS_LOCAL_DIR) {
@@ -21,19 +22,21 @@ export async function readLocalMonthlyReports(directory=process.env.MARKETING_RE
     if(report.schemaVersion!==1 || report.synthetic || report.status!=='reconciled' || !report.fingerprints?.length)throw Error('รายงานในเครื่องยังไม่ผ่านการตรวจยอด')
     return report
   }))
-  const keys=reports.map(r=>JSON.stringify([r.business,r.shopId,r.month]))
+  const keys=reports.map(reportScope)
   if(new Set(keys).size!==keys.length)throw Error('มีรายงานเดือนและร้านเดียวกันซ้ำในชุดที่เปิดใช้')
   return reports
 }
 
-export function createMarketingMonthlyRead({authorize=requireManager,readReports=readLocalMonthlyReports,readInputs=()=>getSheet('marketing_inputs'),production=()=>Boolean(process.env.VERCEL || process.env.NODE_ENV==='production'),hasAuth=authEnabled}={}) {
+export const reportsAvailable=()=>Boolean(process.env.MARKETING_REPORTS_LOCAL_DIR) && !(process.env.VERCEL || process.env.NODE_ENV==='production')
+
+export function createMarketingMonthlyRead({authorize=requireManager,available=reportsAvailable,readReports=readLocalMonthlyReports,readInputs=()=>getSheet('marketing_inputs'),production=()=>Boolean(process.env.VERCEL || process.env.NODE_ENV==='production'),hasAuth=authEnabled}={}) {
   return async function handler(req,res) {
     if(production() && !hasAuth())return res.status(503).json({success:false,error:'ต้องตั้งค่าการเข้าสู่ระบบก่อนเปิดรายงานส่วนตัว'})
     if(!authorize(req,res))return
     res.setHeader('Cache-Control','no-store')
     if(req.method!=='GET')return res.status(405).json({success:false,error:'รายงานนี้เปิดให้อ่านอย่างเดียว'})
     try {
-      if(req.query.kind==='monthly-reports')return res.status(200).json({success:true,reports:await readReports(),storage:'local-read-only'})
+      if(req.query.kind==='monthly-reports')return res.status(200).json({success:true,reports:await readReports(),storage:'local-read-only',available:Boolean(available())})
       // Deliberately no ensureSheet, append, update, or migration on GET.
       const source=await readInputs()
       const inputs=source.map(row=>({month:String(row.month || '').slice(0,7),business:String(row.business || '').trim(),platform:String(row.platform || '').trim(),metric:String(row.metric || '').trim(),value:row.value})).filter(r=>r.month && r.metric)

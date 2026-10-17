@@ -4,6 +4,7 @@ import {resolve,join} from 'node:path'
 import {createHash,randomUUID} from 'node:crypto'
 import process from 'node:process'
 import {parseShopeeMonthlyReport,buildShopeeMonthlyReport} from '../shared/monthlyAdsReports.js'
+import {reportScope} from '../shared/marketingReadModels.js'
 
 const args=Object.fromEntries(process.argv.slice(2).reduce((pairs,value,index,all)=>index%2===0?[...pairs,[value.replace(/^--/,''),all[index+1]]]:pairs,[]))
 if(!args.overview || !args.detail || !args.business)throw Error('ระบุ --overview <CSV> --detail <CSV> --business Payi และ --out-dir ได้')
@@ -28,7 +29,7 @@ try {
   try {manifest=JSON.parse(await readFile(join(root,'active.json'),'utf8'))}
   catch(error) {if(error.code!=='ENOENT')throw error;manifest={version:1,entries:[]}}
   if(manifest.version!==1 || !Array.isArray(manifest.entries))throw Error('manifest ไม่ถูกต้อง')
-  const scope=JSON.stringify([result.business,result.shopId,result.month])
+  const scope=reportScope(result)
   const existing=manifest.entries.find(e=>e.scope===scope)
   const filename=`report-${identity}.json`
   if(existing?.file===filename)console.log('ชุดนี้มีอยู่แล้ว ไม่เพิ่มยอดซ้ำ')

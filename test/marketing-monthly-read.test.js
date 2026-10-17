@@ -68,3 +68,47 @@ test('formatted Sheets amounts survive the API to TikTok read model',async()=>{
     {value:1234.5,status:'present'},{value:0,status:'present'},{value:null,status:'invalid'},{value:null,status:'invalid'},
   ])
 })
+
+const sha=value=>createHash('sha256').update(value).digest('hex')
+async function store(reports,legacyScopes=false) {
+  const dir=await mkdtemp(join(tmpdir(),'mm-store-'))
+  const entries=[]
+  for(const report of reports) {
+    const raw=JSON.stringify(report),file=`report-${sha(raw)}.json`
+    await writeFile(join(dir,file),raw)
+    entries.push({scope:legacyScopes?JSON.stringify([report.business,report.shopId,report.month]):'x',file,sha256:sha(raw)})
+  }
+  await writeFile(join(dir,'active.json'),JSON.stringify({version:1,entries}))
+  return dir
+}
+const stored=(platform,over={})=>({schemaVersion:1,...(platform?{platform}:{}),business:'Payi',shopId:'555',month:'2026-09',status:'reconciled',fingerprints:['f'+(platform||'old')],...over})
+
+test('Shopee and TikTok reports with the same shop id and month coexist; same platform twice is rejected',async()=>{
+  const both=await store([stored('Shopee'),stored('TikTok Shop')])
+  const one=await store([stored('TikTok Shop'),stored('TikTok Shop',{fingerprints:['other']})])
+  try {
+    assert.equal((await readLocalMonthlyReports(both)).length,2)
+    await assert.rejects(readLocalMonthlyReports(one),/ซ้ำ/)
+  } finally {await rm(both,{recursive:true});await rm(one,{recursive:true})}
+})
+test('a report saved before the platform field existed still reads as Shopee and conflicts only with Shopee',async()=>{
+  const old=await store([stored(null)],true)
+  const mixed=await store([stored(null),stored('TikTok Shop')])
+  const clash=await store([stored(null),stored('Shopee',{fingerprints:['x']})])
+  try {
+    assert.equal((await readLocalMonthlyReports(old)).length,1)
+    assert.equal((await readLocalMonthlyReports(mixed)).length,2)
+    await assert.rejects(readLocalMonthlyReports(clash),/ซ้ำ/)
+  } finally {for(const d of [old,mixed,clash])await rm(d,{recursive:true})}
+})
+test('API says reports are unavailable without a local store or in production',async()=>{
+  const original=process.env.AUTH_SECRET
+  delete process.env.AUTH_SECRET
+  try {
+    for(const [available,expected] of [[()=>false,false],[()=>true,true]]) {
+      const res=response()
+      await createMarketingMonthlyRead({production:()=>false,available,readReports:async()=>[]})({method:'GET',query:{kind:'monthly-reports'},headers:{}},res)
+      assert.equal(res.body.available,expected)
+    }
+  } finally {if(original!==undefined)process.env.AUTH_SECRET=original}
+})

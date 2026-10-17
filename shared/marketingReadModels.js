@@ -31,6 +31,13 @@ export function legacyAdsTotals(inputs) {
   return totals
 }
 
+// One identity for the local report store. Shopee keeps its original 3-part key so
+// manifests written before the platform field existed still match.
+export function reportScope(report) {
+  const platform=report.platform || 'Shopee'
+  return JSON.stringify(platform==='Shopee'?[report.business,report.shopId,report.month]:[platform,report.business,report.shopId,report.month])
+}
+
 export function selectMonthlyReport(reports,{month,business,shopId='',platform='Shopee'},candidate=null) {
   // Reports saved before the platform field existed are Shopee reports.
   const matches=r=>r && r.month===month && r.business===business && (r.platform || 'Shopee')===platform && (!shopId || r.shopId===shopId)
