@@ -175,14 +175,20 @@ const menuGroups = [
 // bottom tab bar มือถือ — 4 อันที่ใช้บ่อยสุด (พื้นที่นิ้วโป้งจำกัด) ที่เหลือเข้าถึงผ่านปุ่ม "เมนู" (sheet เต็ม visibleMenuGroups)
 // ใช้เฉพาะ role ที่เห็นแท็บเยอะ (boss/dev/staff) — role แคบๆ ที่เห็นแค่ไม่กี่แท็บ (เช่น stock)
 // ใช้ทุกแท็บที่ตัวเองเห็นตรงๆ แทน ไม่ต้องมีปุ่ม "เมนู" เลย ดู MOBILE_TAB_LIMIT ด้านล่าง
-const MOBILE_TAB_CANDIDATES = [
-  { id: 'Executive', label: 'หน้าหลัก', renderIcon: Icons.Executive, group: ['Executive', 'Daily', 'Monthly', 'TikTokSales'] },
-  { id: 'Inventory', label: 'สต็อก', renderIcon: Icons.Inventory },
-]
+// รูปแบบ (owner ขอ 2026-10-17): [หน้าหลัก 1] + [งานของแต่ละ role 2] + [เมนู 1] — role ไหนมีหน้าให้เข้าน้อยก็โชว์น้อยลงตามจริง
+// (ดู showAllTabsDirect) ; "งานของ role" = MOBILE_WORK_TABS ด้านล่าง เรียงตามความสำคัญ ตัวที่ role นั้นเข้าไม่ได้จะถูกข้าม
+const MOBILE_HOME_TAB = { id: 'Executive', label: 'หน้าหลัก', renderIcon: Icons.Executive, group: ['Executive', 'Daily', 'Monthly', 'TikTokSales'] }
+const MOBILE_WORK_TABS = {
+  dev: ['Inventory', 'HR'],
+  boss: ['Inventory', 'HR'],
+  staff: ['Inventory', 'Stock Movement'],
+  tang: ['Inventory', 'Stock Movement'],
+}
+const MOBILE_WORK_TAB_COUNT = 2
 // ป้ายสั้นสำหรับ role แคบที่โชว์ทุกแท็บตรงๆ บน bottom bar (label เต็มใน menuGroups ยาวเกินจะพอดีปุ่มเล็ก)
-const MOBILE_SHORT_LABELS = { Inventory: 'สต็อก', 'Stock Movement': 'เข้า-ออก', Executive: 'หน้าหลัก' }
+const MOBILE_SHORT_LABELS = { Inventory: 'สต็อก', 'Stock Movement': 'เข้า-ออก', Executive: 'หน้าหลัก', HR: 'ลางาน' }
 // จำนวนแท็บสูงสุดที่ยัดลง bottom bar ได้พอดีโดยไม่ต้องมีปุ่ม "เมนู" เพิ่ม (นิ้วโป้งกดถนัด)
-const MOBILE_TAB_LIMIT = 5
+const MOBILE_TAB_LIMIT = 4
 
 // แท็บย่อยของ Dashboard ใหญ่ที่ยุบมาจากหลายหน้า (render เดิมของแต่ละหน้ายังอยู่ครบ)
 const SALES_SUBTABS = [['Executive', 'ภาพรวม'], ['Daily', 'รายวัน'], ['Monthly', 'รายเดือน'], ['TikTokSales', 'ช่องทางขาย TikTok']]
@@ -493,7 +499,14 @@ function AppContent() {
   const showAllTabsDirect = allVisibleTabs.length > 0 && allVisibleTabs.length <= MOBILE_TAB_LIMIT
   const mobileTabItems = showAllTabsDirect
     ? allVisibleTabs.map((item) => ({ ...item, label: MOBILE_SHORT_LABELS[item.id] || item.label }))
-    : MOBILE_TAB_CANDIDATES.filter((item) => canAccessTab(currentRole, item.id))
+    : [
+      ...(canAccessTab(currentRole, MOBILE_HOME_TAB.id) ? [MOBILE_HOME_TAB] : []),
+      ...(MOBILE_WORK_TABS[currentRole] || [])
+        .map((id) => allVisibleTabs.find((item) => item.id === id))
+        .filter(Boolean)
+        .slice(0, MOBILE_WORK_TAB_COUNT)
+        .map((item) => ({ ...item, label: MOBILE_SHORT_LABELS[item.id] || item.label })),
+    ]
   // เดิมแต่ละ role มี fallback tab ต่างกัน (เช่น marketing → Executive) แต่ localStorage
   // `payi-active-tab` ใช้ key เดียวข้ามทุก user ในเครื่องเดียวกัน — สลับ user/role แล้วแท็บเก่าที่ role
   // ใหม่เข้าไม่ได้ ก็เด้งไป fallback ทันที ถ้า fallback ไม่ใช่ Home ก็เท่ากับเปิดแอปมาแล้วโดดไปหน้าอื่นเลย
