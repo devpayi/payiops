@@ -23,6 +23,13 @@ const fmtDate = (iso) => {
   return `${Number(m[3])} ${months[Number(m[2]) - 1]} ${Number(m[1]) + 543}`
 }
 
+// วัน-เวลาที่แจ้งเตือนครั้งแรก (เวลาไทย) เช่น "17 ต.ค. 13:29" ; ค่าว่าง/อ่านไม่ออก → ไม่โชว์
+const fmtDateTime = (iso) => {
+  const d = iso ? new Date(iso) : null
+  if (!d || Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
 // กระดิ่งแจ้งเตือน (dev + boss เท่านั้น — App.jsx ไม่ render ให้ role อื่น) :
 // แท็บ "งานค้าง" ดึงจาก /api/sheet-tools?op=notifications, แท็บ "มีอะไรใหม่" มาจาก src/changelog.js
 export default function NotificationBell({ color, onNavigate }) {
@@ -140,7 +147,8 @@ export default function NotificationBell({ color, onNavigate }) {
                         <span className="nb-card-title">{g.title}</span>
                         <span className="nb-pill" style={{ background: st.bg, color: st.fg }}>{g.count}</span>
                       </span>
-                      {g.items.map((line, i) => <span key={i} className="nb-line">{line}</span>)}
+                      {g.items.map((line, i) => <span key={i} className="nb-line">{line.text}</span>)}
+                      {fmtDateTime(g.latestAt) && <span className="nb-date">ล่าสุด {fmtDateTime(g.latestAt)}</span>}
                       {g.count > g.items.length && <span className="nb-more">+ อีก {g.count - g.items.length} รายการ</span>}
                     </span>
                     <ChevronRight size={16} className="nb-chev" />

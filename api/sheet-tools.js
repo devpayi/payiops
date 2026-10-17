@@ -2669,22 +2669,65 @@ async function opWorkforceInner(req, res) {
 // สั่งของค้างเกินกำหนด, แจ้งของเข้ารอ Match, ลารออนุมัติ ใช้ฟังก์ชันชุดเดียวกับการ์ดไลน์ จะได้ตัวเลขตรงกัน
 // computeLowStockList อ่านยอดขายสด (fresh) หนัก → cache 3 นาที กันกระดิ่งของหลายคนยิง Sheets ซ้ำ
 let notificationsCache = { at: 0, data: null }
+
+// "แจ้งเตือนครั้งแรกเมื่อไหร่" ของหมวดที่ไม่มี timestamp ในข้อมูลเอง (ของใกล้หมด / สั่งของเลยกำหนด) —
+// จดตอนเห็นครั้งแรกลงชีต notification_firstseen (key, first_seen_at); พอเรื่องนั้นหายไป (สั่งแล้ว/ของเข้าแล้ว)
+// ลบแถวทิ้ง ถ้ากลับมาเป็นอีกครั้งจะนับเป็นครั้งแรกใหม่ ; หมวดที่โหลดพัง (okPrefixes ไม่มี) ห้ามลบ ไม่งั้นเวลาหายหมด
+const NOTIF_SEEN_SHEET = 'notification_firstseen'
+const NOTIF_SEEN_HEADERS = ['key', 'first_seen_at']
+const notifSeenMem = new Map() // กัน getSheet cache ล้าหลังหลัง append ในเครื่อง instance เดียวกัน (อ่านซ้ำแล้ว append ซ้ำ)
+async function resolveFirstSeen(currentKeys, okPrefixes) {
+  await ensureSheet(NOTIF_SEEN_SHEET, NOTIF_SEEN_HEADERS)
+  const rows = await getSheet(NOTIF_SEEN_SHEET)
+  const seen = new Map()
+  const consider = (key, at) => { if (key && at && (!seen.has(key) || at < seen.get(key))) seen.set(key, at) }
+  for (const r of rows) consider(String(r.key || ''), String(r.first_seen_at || ''))
+  for (const [k, at] of notifSeenMem) consider(k, at)
+  const now = new Date().toISOString()
+  const fresh = currentKeys.filter((k) => !seen.has(k))
+  for (const k of fresh) { seen.set(k, now); notifSeenMem.set(k, now) }
+  if (fresh.length) await appendRows(NOTIF_SEEN_SHEET, fresh.map((k) => [k, now]))
+  const current = new Set(currentKeys)
+  const stale = [...seen.keys()].filter((k) => !current.has(k) && okPrefixes.some((p) => k.startsWith(p)))
+  if (stale.length) {
+    for (const k of stale) { seen.delete(k); notifSeenMem.delete(k) }
+    await overwriteSheet(NOTIF_SEEN_SHEET, NOTIF_SEEN_HEADERS, [...seen].map(([k, at]) => [k, at]))
+  }
+  return seen
+}
+
 async function opNotifications(req, res) {
   try {
     if (Date.now() - notificationsCache.at < 180000 && notificationsCache.data) return res.status(200).json(notificationsCache.data)
-    const [lowItems, overdueOrders, requests, leaves] = await Promise.all([
-      computeLowStockList().catch((e) => { console.error('notif low-stock:', e.message); return [] }),
-      computeOverdueOrders().catch((e) => { console.error('notif overdue:', e.message); return [] }),
-      loadStockInRequests({ status: 'pending', role: 'boss' }).catch((e) => { console.error('notif stock-in:', e.message); return [] }),
-      getSheet('hr_leave').catch((e) => { console.error('notif leave:', e.message); return [] }),
+    const failed = (label) => (e) => { console.error(`notif ${label}:`, e.message); return null }
+    const [lowRaw, overdueRaw, requestsRaw, leavesRaw] = await Promise.all([
+      computeLowStockList().catch(failed('low-stock')),
+      computeOverdueOrders().catch(failed('overdue')),
+      loadStockInRequests({ status: 'pending', role: 'boss' }).catch(failed('stock-in')),
+      getSheet('hr_leave').catch(failed('leave')),
     ])
-    const arrivals = requests.filter((r) => !r.order_only)
-    const pendingLeave = leaves.filter((l) => l.status === 'pending' || l.edit_pending === '1')
+    const lowItems = lowRaw || []
+    const overdueOrders = overdueRaw || []
+    const arrivals = (requestsRaw || []).filter((r) => !r.order_only)
+    const pendingLeave = (leavesRaw || []).filter((l) => l.status === 'pending' || l.edit_pending === '1')
+    const okPrefixes = [lowRaw ? 'low:' : null, overdueRaw ? 'overdue:' : null].filter(Boolean)
+    let firstSeen = new Map()
+    try {
+      firstSeen = await resolveFirstSeen([...lowItems.map((i) => `low:${i.sku}`), ...overdueOrders.map((o) => `overdue:${o.id}`)], okPrefixes)
+    } catch (e) { console.error('notif first-seen:', e.message) } // เวลาหายก็ยังโชว์รายการได้
+    const byOldest = (a, b) => String(a.at || '').localeCompare(String(b.at || ''))
+    const leaveItems = pendingLeave.map((l) => ({ text: `${l.employee_name || l.username} · ${l.leave_type || ''} ${l.start_date || ''}${l.end_date && l.end_date !== l.start_date ? ` – ${l.end_date}` : ''}`, at: (l.edit_pending === '1' && l.edit_requested_at) || l.requested_at || '' })).sort(byOldest)
+    const arrivalItems = arrivals.map((r) => ({ text: `${r.display_name} × ${r.qty}`, at: r.created_at || '' })).sort(byOldest)
+    const overdueItems = overdueOrders.map((o) => ({ text: `${o.display_name}${o.qty > 0 ? ` × ${o.qty}` : ''} · ครบกำหนด ${o.expected_date}`, at: firstSeen.get(`overdue:${o.id}`) || '' })).sort(byOldest)
+    const lowSorted = [...lowItems].sort((a, b) => (b.recommendedOrder || 0) - (a.recommendedOrder || 0))
+    const lowItemsOut = lowSorted.map((i) => ({ text: `${i.display_name} · เหลือ ${i.balance}${i.recommendedOrder ? ` · แนะนำสั่ง ${i.recommendedOrder}` : ''}`, at: firstSeen.get(`low:${i.sku}`) || '' }))
+    // เก่าสุดขึ้นก่อน (ค้างนานสุด) ยกเว้นของใกล้หมดที่เรียงตามจำนวนที่แนะนำสั่ง
+    const latestOf = (list) => list.reduce((m, i) => (i.at && i.at > m ? i.at : m), '') // เวลาล่าสุดของทั้งกล่อง (ไม่ใช่แค่ 5 แถวที่โชว์)
     const groups = [
-      { key: 'leave', title: 'ลารออนุมัติ', tab: 'HR', count: pendingLeave.length, items: pendingLeave.slice(0, 5).map((l) => `${l.employee_name || l.username} · ${l.leave_type || ''} ${l.start_date || ''}${l.end_date && l.end_date !== l.start_date ? ` – ${l.end_date}` : ''}`) },
-      { key: 'arrival', title: 'ของเข้ารอ Match', tab: 'Stock Movement', count: arrivals.length, items: arrivals.slice(0, 5).map((r) => `${r.display_name} × ${r.qty}`) },
-      { key: 'overdue', title: 'สั่งของเลยกำหนด ยังไม่มีของเข้า', tab: 'Stock Movement', count: overdueOrders.length, items: overdueOrders.slice(0, 5).map((o) => `${o.display_name}${o.qty > 0 ? ` × ${o.qty}` : ''} · ครบกำหนด ${o.expected_date}`) },
-      { key: 'low', title: 'ของใกล้หมด / หมด (ยังไม่ได้สั่ง)', tab: 'Inventory', count: lowItems.length, items: [...lowItems].sort((a, b) => (b.recommendedOrder || 0) - (a.recommendedOrder || 0)).slice(0, 5).map((i) => `${i.display_name} · เหลือ ${i.balance}${i.recommendedOrder ? ` · แนะนำสั่ง ${i.recommendedOrder}` : ''}`) },
+      { key: 'leave', title: 'ลารออนุมัติ', tab: 'HR', count: leaveItems.length, latestAt: latestOf(leaveItems), items: leaveItems.slice(0, 5) },
+      { key: 'arrival', title: 'ของเข้ารอ Match', tab: 'Stock Movement', count: arrivalItems.length, latestAt: latestOf(arrivalItems), items: arrivalItems.slice(0, 5) },
+      { key: 'overdue', title: 'สั่งของเลยกำหนด ยังไม่มีของเข้า', tab: 'Stock Movement', count: overdueItems.length, latestAt: latestOf(overdueItems), items: overdueItems.slice(0, 5) },
+      { key: 'low', title: 'ของใกล้หมด / หมด (ยังไม่ได้สั่ง)', tab: 'Inventory', count: lowItemsOut.length, latestAt: latestOf(lowItemsOut), items: lowItemsOut.slice(0, 5) },
     ].filter((g) => g.count > 0)
     const data = { success: true, total: groups.reduce((s, g) => s + g.count, 0), groups, generatedAt: new Date().toISOString() }
     notificationsCache = { at: Date.now(), data }
