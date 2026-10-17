@@ -448,6 +448,20 @@ Sheets rate limits.
       After save the open row is merged in place, so "สร้าง PDF" prints the edited data. Verified end-to-end against a
       scratch tab (edit → sheet → UI → print portal). Pre-existing eslint errors in HRPeople.jsx (refs-in-render,
       set-state-in-effect in `load`) are unchanged from before.
+    - **✅ DONE (2026-10-17) — form changes per owner.** (1) **Employee form: บุคคลอ้างอิง removed**
+      (wizard step, PDF section, editor) — but the `reference_*` columns stay in `EMPLOYEE_FULL_FIELDS` (append-only: deleting
+      them would shift every later column); applicants keep the reference step. (2) **Parents' phone** (`father_phone`/
+      `mother_phone`) added to BOTH wizards, PDFs, sheets. (3) **Employee: 2 emergency contacts** — the original 3
+      `emergency_contact_*` columns = person 1, new `emergency_contact2_*` = person 2; both required. (4) **Employee face
+      photo** (`employee_photo`, optional upload in the เอกสารประจำตัว step, Drive → column `employee_photo_url`) shown top-right
+      of the employee PDF: wizard print uses the local base64, dashboard PDF turns the Drive link into
+      `drive.google.com/thumbnail?id=` (needs the file shared "anyone with link" — the Apps Script does that; **not yet verified
+      against a real Drive file**); empty box (`รูปถ่ายหน้าตรง`) when no photo, also on the blank printable form. All new
+      columns appended at the end; `GET` of `*_full` views now runs `ensureExternalSheet` first so the header row gains the new
+      columns immediately (tested on an old-format sheet: old rows intact, edits to new columns work). (5) **Client-side photo
+      shrink re-added** to `employee.html` (1600px JPEG, also shrinks oversized photos left in a draft at submit, friendly message
+      on non-JSON/413) — 3 raw iPhone photos would exceed Vercel's 4.5MB body limit (see the 2026-10-08 Safari "string did not
+      match the expected pattern" incident).
     - **✅ DONE (2026-09-18) — same locked-pattern PDF ported to the applicant/employee
       wizards' own done-screens too.** Owner tested the dashboard's "สร้าง PDF" and then
       asked why the wizard's own "พิมพ์ใบสมัคร (PDF)" button (on `apply.html`'s/

@@ -83,6 +83,9 @@ const PDF_HEADERS = {
   bank_name: ['ธนาคาร'], bank_account_number: ['เลขบัญชี'], bank_account_name: ['ชื่อบัญชี'],
   emergency_contact_name: ['บุคคลที่ติดต่อได้กรณีฉุกเฉิน (ชื่อ)'], emergency_contact_relation: ['ความสัมพันธ์'],
   emergency_contact_phone: ['เบอร์โทรฉุกเฉิน'], confirmed: ['ยืนยันข้อมูลถูกต้อง'],
+  father_phone: ['เบอร์โทรบิดา'], mother_phone: ['เบอร์โทรมารดา'], employee_photo: ['รูปถ่ายพนักงาน (หน้าตรง)'],
+  emergency_contact2_name: ['ผู้ติดต่อฉุกเฉิน คนที่ 2 (ชื่อ)'], emergency_contact2_relation: ['ผู้ติดต่อฉุกเฉิน คนที่ 2 (ความสัมพันธ์)'],
+  emergency_contact2_phone: ['ผู้ติดต่อฉุกเฉิน คนที่ 2 (เบอร์โทร)'],
 }
 
 let hrPdfScript = null

@@ -200,21 +200,48 @@ function yesNoDetailField(key) {
 }
 // ---- ไฟล์รูป (บัตร ปชช/ทะเบียนบ้าน) — แปลงเป็น base64 เก็บใน answers ตรงๆ ไม่ผ่าน Drive
 // จนกว่าจะกดส่งข้อมูล (เซิร์ฟเวอร์เป็นคนอัพโหลดจริงผ่าน Apps Script bridge) ----
+// ย่อรูปก่อนเก็บ/ส่ง (ด้านยาวสุด 1600px, JPEG 0.8 ≈ 200-500KB) — บั๊กจริง 2026-10-08: รูปจาก iPhone ส่งต้นฉบับ
+// (หลาย MB ต่อรูป) เกินเพดาน body 4.5MB ของ Vercel -> 413 ตอบเป็นข้อความธรรมดา -> r.json() พังเป็น
+// "The string did not match the expected pattern." (ข้อความของ Safari) — ตอนนี้มี 3 รูป (บัตร/ทะเบียนบ้าน/หน้าตรง) ยิ่งต้องย่อ
+function compressToJpeg(srcUrl, maxSide = 1600, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); // PNG โปร่งใส -> พื้นขาว
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(cv.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => reject(new Error('อ่านรูปไม่ได้ ลองเลือกรูปอื่น หรือถ่ายใหม่'));
+    img.src = srcUrl;
+  });
+}
 function fileInputField(key) {
   const wrap = el('div', {});
   const status = el('div', { class: 'file-status' }, answers[key] ? `เลือกไฟล์แล้ว: ${answers[key].fileName}` : 'ยังไม่ได้เลือกไฟล์ (ถ่ายรูปหรือเลือกจากเครื่อง)');
   const inp = el('input', { type: 'file', accept: 'image/*' });
-  inp.addEventListener('change', () => {
+  inp.addEventListener('change', async () => {
     const f = inp.files[0];
     if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      answers[key] = { fileName: f.name, mimeType: f.type, base64Data: String(reader.result).split(',')[1] || '' };
+    status.textContent = 'กำลังย่อรูป...';
+    const url = URL.createObjectURL(f);
+    try {
+      const dataUrl = await compressToJpeg(url);
+      answers[key] = { fileName: f.name.replace(/\.[^.]+$/, '') + '.jpg', mimeType: 'image/jpeg', base64Data: dataUrl.split(',')[1] || '' };
       status.textContent = `เลือกไฟล์แล้ว: ${f.name}`;
       saveDraft();
+    } catch (e) {
+      answers[key] = null;
+      status.textContent = e.message || 'อ่านรูปไม่ได้ ลองเลือกรูปอื่น';
+    } finally {
+      URL.revokeObjectURL(url);
       refreshNextState();
-    };
-    reader.readAsDataURL(f);
+    }
   });
   wrap.appendChild(inp);
   wrap.appendChild(status);
@@ -264,12 +291,14 @@ const steps = [
     required: () => !!answers.position && !!answers.start_date,
   },
   {
-    title: 'เอกสารประจำตัว', sub: 'บัตรประชาชน / ทะเบียนบ้าน',
+    title: 'เอกสารประจำตัว', sub: 'บัตรประชาชน / ทะเบียนบ้าน / รูปถ่ายหน้าตรง',
     render: (c) => {
       c.appendChild(field('เลขบัตรประชาชน', textInput('id_card_number')));
       c.appendChild(field('รูปบัตรประชาชน', fileInputField('id_card_photo')));
       c.appendChild(field('ที่อยู่ตามทะเบียนบ้าน', textarea('house_registration_address')));
       c.appendChild(field('รูปทะเบียนบ้าน', fileInputField('house_registration_photo')));
+      // บอส 2026-10-17: เตรียมช่องรูปถ่ายหน้าตรง (ไปอยู่มุมบนขวาของ PDF) — ไม่บังคับ ปรับเป็นบังคับได้ทีหลัง
+      c.appendChild(field('รูปถ่ายหน้าตรง (สำหรับติดใบประวัติ)', fileInputField('employee_photo'), true));
     },
     required: () => !!answers.id_card_number && !!answers.id_card_photo
       && !!answers.house_registration_address && !!answers.house_registration_photo,
@@ -350,9 +379,11 @@ const steps = [
     render: (c) => {
       c.appendChild(field('ชื่อบิดา', textInput('father_name'), true));
       c.appendChild(field('สถานะบิดา / อาชีพ', textInput('father_status', 'text', 'เช่น มีชีวิตอยู่ / ถึงแก่กรรม, อาชีพ'), true));
+      c.appendChild(field('เบอร์โทรบิดา', textInput('father_phone', 'tel'), true));
       c.appendChild(field('ที่อยู่/จังหวัดบิดา', textInput('father_address'), true));
       c.appendChild(field('ชื่อมารดา', textInput('mother_name'), true));
       c.appendChild(field('สถานะมารดา / อาชีพ', textInput('mother_status'), true));
+      c.appendChild(field('เบอร์โทรมารดา', textInput('mother_phone', 'tel'), true));
       c.appendChild(field('ที่อยู่/จังหวัดมารดา', textInput('mother_address'), true));
     },
     required: () => true,
@@ -460,15 +491,6 @@ const steps = [
     required: () => true,
   },
   {
-    title: 'บุคคลอ้างอิง', sub: 'ไม่บังคับ',
-    render: (c) => {
-      c.appendChild(field('ชื่อบุคคลอ้างอิง / ความสัมพันธ์', textInput('reference_name'), true));
-      c.appendChild(field('อาชีพบุคคลอ้างอิง', textInput('reference_occupation'), true));
-      c.appendChild(field('เบอร์โทรบุคคลอ้างอิง', textInput('reference_phone', 'tel'), true));
-    },
-    required: () => true,
-  },
-  {
     title: 'บัญชีธนาคาร', sub: 'สำหรับโอนเงินเดือน (ใช้บัญชีธนาคารไทยพาณิชย์เท่านั้น)',
     render: (c) => {
       // บอส 2026-10-07: ธนาคารบังคับ = ไทยพาณิชย์ — ล็อกค่า ไม่ให้พิมพ์ธนาคารอื่น (เขียนทับค่าเก่าใน draft ด้วย)
@@ -482,13 +504,19 @@ const steps = [
     required: () => !!answers.bank_name && !!answers.bank_account_number && !!answers.bank_account_name,
   },
   {
-    title: 'บุคคลที่ติดต่อได้กรณีฉุกเฉิน', sub: '',
+    title: 'บุคคลที่ติดต่อได้กรณีฉุกเฉิน', sub: 'กรอก 2 คน',
     render: (c) => {
+      c.appendChild(el('div', { class: 'field' }, el('label', {}, 'คนที่ 1')));
       c.appendChild(field('ชื่อ', textInput('emergency_contact_name')));
       c.appendChild(field('ความสัมพันธ์', textInput('emergency_contact_relation')));
       c.appendChild(field('เบอร์โทร', textInput('emergency_contact_phone', 'tel')));
+      c.appendChild(el('div', { class: 'field' }, el('label', {}, 'คนที่ 2')));
+      c.appendChild(field('ชื่อ', textInput('emergency_contact2_name')));
+      c.appendChild(field('ความสัมพันธ์', textInput('emergency_contact2_relation')));
+      c.appendChild(field('เบอร์โทร', textInput('emergency_contact2_phone', 'tel')));
     },
-    required: () => !!answers.emergency_contact_name && !!answers.emergency_contact_relation && !!answers.emergency_contact_phone,
+    required: () => !!answers.emergency_contact_name && !!answers.emergency_contact_relation && !!answers.emergency_contact_phone
+      && !!answers.emergency_contact2_name && !!answers.emergency_contact2_relation && !!answers.emergency_contact2_phone,
   },
   {
     title: 'ยืนยันและส่งข้อมูล', sub: 'ตรวจสอบก่อนกดส่ง',
@@ -572,9 +600,9 @@ async function submit() {
     'weight','height','criminal_record','health_condition','father_name','father_status','father_occupation',
     'father_address','mother_name','mother_status','mother_occupation','mother_address','military_status',
     'education_level','education_activities','favorite_subject','english_speak','english_read','english_write',
-    'other_language','computer_level','reference_name','reference_occupation','reference_phone','bank_name',
+    'other_language','computer_level','bank_name',
     'bank_account_number','bank_account_name','emergency_contact_name','emergency_contact_relation',
-    'emergency_contact_phone',
+    'emergency_contact_phone','emergency_contact2_name','emergency_contact2_relation','emergency_contact2_phone','father_phone','mother_phone',
   ];
   FIELD_KEYS.forEach(k => { payload[k] = answers[k] || ''; });
   payload.office_skills = (answers.office_skills || []).join(', ');
@@ -585,10 +613,23 @@ async function submit() {
   // รูปถ่าย (ถ้ามี) — {fileName, mimeType, base64Data} เซิร์ฟเวอร์เป็นคนอัพโหลดเข้า Drive จริง
   payload.id_card_photo = answers.id_card_photo || null;
   payload.house_registration_photo = answers.house_registration_photo || null;
+  payload.employee_photo = answers.employee_photo || null;
 
   try {
+    // รูปที่ค้างใน draft จากก่อนมีการย่อรูป (ใหญ่หลาย MB) ย่อซ้ำก่อนส่ง
+    for (const k of ['id_card_photo', 'house_registration_photo', 'employee_photo']) {
+      const ph = payload[k];
+      if (ph && ph.base64Data && ph.base64Data.length > 900000) {
+        const dataUrl = await compressToJpeg(`data:${ph.mimeType || 'image/jpeg'};base64,${ph.base64Data}`);
+        payload[k] = { fileName: String(ph.fileName || k).replace(/\.[^.]+$/, '') + '.jpg', mimeType: 'image/jpeg', base64Data: dataUrl.split(',')[1] || '' };
+      }
+    }
     const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const d = await r.json();
+    let d;
+    try { d = await r.json(); } catch (_) {
+      // เซิร์ฟเวอร์ตอบไม่ใช่ JSON (เช่น 413 ไฟล์ใหญ่เกิน) — ไม่ให้เด้งข้อความดิบของเบราว์เซอร์
+      throw new Error(r.status === 413 ? 'รูปที่แนบมีขนาดใหญ่เกินไป กรุณาเลือกรูปใหม่ (หรือถ่ายใหม่) แล้วลองส่งอีกครั้ง' : `ส่งไม่สำเร็จ (รหัส ${r.status}) กรุณาลองใหม่อีกครั้ง`);
+    }
     if (!d.success) throw new Error(d.error || 'ส่งไม่สำเร็จ');
     localStorage.removeItem(DRAFT_KEY);
     document.querySelector('.wrap').innerHTML = `

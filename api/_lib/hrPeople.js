@@ -109,7 +109,7 @@ async function opRestorePerson(req, res, sheetId) {
 // ที่เป็นช่องคำถามของฟอร์ม — ห้ามแตะ ประทับเวลา / ลิงก์รูปบัตร-ทะเบียนบ้าน / ยืนยันข้อมูล (3) ชื่อ-เบอร์โทร(-เลขบัตร)
 // ห้ามแก้ให้ว่าง (4) จดประวัติก่อน-หลังลงแท็บ hr_edit_log ไว้ย้อนดูได้
 const EDIT_LOG_HEADERS = ['edited_at', 'edited_by', 'source_view', 'name', 'timestamp', 'changes_json']
-const EDIT_PROTECTED_KEYS = new Set(['id_card_photo_url', 'house_registration_photo_url', 'confirmed'])
+const EDIT_PROTECTED_KEYS = new Set(['id_card_photo_url', 'house_registration_photo_url', 'employee_photo_url', 'confirmed'])
 async function opUpdatePerson(req, res, sheetId) {
   const { view, row, ts, changes } = req.body || {}
   const rowNo = Number(row)
@@ -200,6 +200,9 @@ export default async function opHrPeople(req, res) {
       res.setHeader('Cache-Control', 'private, max-age=0, no-store')
       return res.status(200).json({ success: true, configured: true, view, headers: ['วันที่ลบ', 'ลบโดย', 'ประเภท', 'ชื่อ', 'ประทับเวลาเดิม'], rows: delRows, count: delRows.length })
     }
+    // ฟอร์ม *_full: ซิงก์แถวหัวตารางก่อนอ่าน — คอลัมน์ใหม่ที่เพิ่มต่อท้าย (เช่น เบอร์บิดา) จะได้มีหัวทันที ไม่ต้องรอคนส่งฟอร์มคนถัดไป
+    if (view === 'employees_full') await ensureExternalSheet(sheetId, TAB.employees_full, EMPLOYEE_FULL_HEADERS)
+    if (view === 'applicants_full') await ensureExternalSheet(sheetId, TAB.applicants_full, APPLICANT_FULL_HEADERS)
     const values = await getExternalSheet(sheetId, `${TAB[view]}!A:ZZ`)
     const [headers = [], ...dataRows] = values
     const cleanHeaders = headers.map((h) => String(h ?? '').trim())
@@ -299,6 +302,9 @@ export const APPLICANT_FULL_FIELDS = [
   // เพิ่ม 2026-09-15 ตามที่บอสขอเพิ่ม (ต่อท้ายเสมอ ห้ามแทรกกลาง — กฎเดียวกับทุกชีตในระบบนี้)
   ['criminal_record', 'ประวัติอาชญากรรม'],
   ['health_condition', 'โรคประจำตัว/สุขภาพ'],
+  // เพิ่ม 2026-10-17 (บอส: บิดามารดาเพิ่มเบอร์โทร) — ต่อท้ายเสมอ
+  ['father_phone', 'เบอร์โทรบิดา'],
+  ['mother_phone', 'เบอร์โทรมารดา'],
 ]
 const APPLICANT_FULL_HEADERS = ['ประทับเวลา', ...APPLICANT_FULL_FIELDS.map(([, label]) => label)]
 
@@ -307,7 +313,7 @@ const clean = (v) => String(v ?? '').trim().slice(0, MAX_LEN)
 
 // เบอร์โทร/รหัสไปรษณีย์ ขึ้นต้นด้วย 0 — Sheets (valueInputOption USER_ENTERED) ตีความสตริงตัวเลข
 // ล้วนเป็นตัวเลขแล้วตัดเลข 0 นำหน้าทิ้ง (0812345678 -> 812345678) ต้องบังคับเป็นข้อความด้วย ' นำหน้า
-const TEXT_FORCE_KEYS = new Set(['mobile_phone', 'home_phone', 'postal_code', 'reference_phone'])
+const TEXT_FORCE_KEYS = new Set(['mobile_phone', 'home_phone', 'postal_code', 'reference_phone', 'father_phone', 'mother_phone'])
 const cleanField = (key, v) => {
   const s = clean(v)
   return TEXT_FORCE_KEYS.has(key) && /^\d+$/.test(s) ? `'${s}` : s
@@ -411,11 +417,20 @@ export const EMPLOYEE_FULL_FIELDS = [
   ['emergency_contact_relation', 'ความสัมพันธ์'],
   ['emergency_contact_phone', 'เบอร์โทรฉุกเฉิน'],
   ['confirmed', 'ยืนยันข้อมูลถูกต้อง'],
+  // เพิ่ม 2026-10-17 (บอส) — ต่อท้ายเสมอ: เบอร์บิดา-มารดา / ผู้ติดต่อฉุกเฉินคนที่ 2 / รูปถ่ายหน้าตรงพนักงาน
+  // (บุคคลอ้างอิงเอาออกจากฟอร์มพนักงานแล้ว แต่คอลัมน์ reference_* ด้านบนต้องคงไว้ ห้ามลบ ไม่งั้นคอลัมน์เลื่อน)
+  ['father_phone', 'เบอร์โทรบิดา'],
+  ['mother_phone', 'เบอร์โทรมารดา'],
+  ['emergency_contact2_name', 'ผู้ติดต่อฉุกเฉิน คนที่ 2 (ชื่อ)'],
+  ['emergency_contact2_relation', 'ผู้ติดต่อฉุกเฉิน คนที่ 2 (ความสัมพันธ์)'],
+  ['emergency_contact2_phone', 'ผู้ติดต่อฉุกเฉิน คนที่ 2 (เบอร์โทร)'],
+  ['employee_photo_url', 'รูปถ่ายพนักงาน (หน้าตรง)'],
 ]
 const EMPLOYEE_FULL_HEADERS = ['ประทับเวลา', ...EMPLOYEE_FULL_FIELDS.map(([, label]) => label)]
 const EMPLOYEE_TEXT_FORCE_KEYS = new Set([
   'mobile_phone', 'home_phone', 'postal_code', 'reference_phone',
   'id_card_number', 'bank_account_number', 'emergency_contact_phone',
+  'father_phone', 'mother_phone', 'emergency_contact2_phone',
 ])
 const cleanEmployeeField = (key, v) => {
   const s = clean(v)
@@ -449,11 +464,12 @@ export async function opSubmitEmployee(req, res) {
   }
 
   try {
-    const [idCardPhotoUrl, houseRegPhotoUrl] = await Promise.all([
+    const [idCardPhotoUrl, houseRegPhotoUrl, employeePhotoUrl] = await Promise.all([
       uploadEmployeePhoto(body.id_card_photo, `${fullName}-idcard`),
       uploadEmployeePhoto(body.house_registration_photo, `${fullName}-housereg`),
+      uploadEmployeePhoto(body.employee_photo, `${fullName}-photo`),
     ])
-    const values = { ...body, id_card_photo_url: idCardPhotoUrl, house_registration_photo_url: houseRegPhotoUrl }
+    const values = { ...body, id_card_photo_url: idCardPhotoUrl, house_registration_photo_url: houseRegPhotoUrl, employee_photo_url: employeePhotoUrl }
 
     await ensureExternalSheet(sheetId, TAB.employees_full, EMPLOYEE_FULL_HEADERS)
     const row = [new Date().toLocaleString('en-US'), ...EMPLOYEE_FULL_FIELDS.map(([key]) => cleanEmployeeField(key, values[key]))]

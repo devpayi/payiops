@@ -41,9 +41,9 @@
   ] };
   var PARENTS = { title: 'ข้อมูลบิดา-มารดา', rows: [
     [T('father_name', 'ชื่อบิดา'), T('father_status', 'สถานะบิดา / อาชีพ')],
-    [T('father_address', 'ที่อยู่/จังหวัดบิดา')],
+    [T('father_phone', 'เบอร์โทรบิดา'), T('father_address', 'ที่อยู่/จังหวัดบิดา', 2)],
     [T('mother_name', 'ชื่อมารดา'), T('mother_status', 'สถานะมารดา / อาชีพ')],
-    [T('mother_address', 'ที่อยู่/จังหวัดมารดา')],
+    [T('mother_phone', 'เบอร์โทรมารดา'), T('mother_address', 'ที่อยู่/จังหวัดมารดา', 2)],
   ] };
   var MILITARY = { title: 'สถานะทางการทหาร', rows: [[C('military_status', '', ['ได้รับการยกเว้น', 'ศึกษาวิชาทหาร (รด.)', 'ผ่านการเกณฑ์ทหารแล้ว', 'ไม่เกี่ยวข้อง/ไม่ระบุ'])]] };
   var EDUCATION = { title: 'ประวัติการศึกษา', rows: [
@@ -95,6 +95,7 @@
         [F('id_card_photo', 'รูปบัตรประชาชน')],
         [T('house_registration_address', 'ที่อยู่ตามทะเบียนบ้าน', 3)],
         [F('house_registration_photo', 'รูปทะเบียนบ้าน')],
+        [F('employee_photo', 'รูปถ่ายหน้าตรง')],
       ] },
       PERSONAL, SIBLINGS, CONTACT, FAMILY,
       { title: 'สุขภาพและประวัติ', rows: [
@@ -103,12 +104,11 @@
         [Y('criminal_record', 'ประวัติอาชญากรรม')], [Y('health_condition', 'โรคประจำตัว')],
       ] },
       PARENTS, MILITARY, EDUCATION, WORK, SKILLS,
-      { title: 'บุคคลอ้างอิง', rows: [
-        [T('reference_name', 'ชื่อบุคคลอ้างอิง / ความสัมพันธ์'), T('reference_occupation', 'อาชีพบุคคลอ้างอิง')],
-        [T('reference_phone', 'เบอร์โทรบุคคลอ้างอิง')],
-      ] },
       { title: 'บัญชีธนาคาร', rows: [[T('bank_name', 'ธนาคาร'), T('bank_account_number', 'เลขบัญชี'), T('bank_account_name', 'ชื่อบัญชี')]] },
-      { title: 'บุคคลที่ติดต่อได้กรณีฉุกเฉิน', rows: [[T('emergency_contact_name', 'ชื่อ'), T('emergency_contact_relation', 'ความสัมพันธ์'), T('emergency_contact_phone', 'เบอร์โทร')]] },
+      { title: 'บุคคลที่ติดต่อได้กรณีฉุกเฉิน (2 คน)', rows: [
+        [T('emergency_contact_name', 'คนที่ 1 - ชื่อ'), T('emergency_contact_relation', 'ความสัมพันธ์'), T('emergency_contact_phone', 'เบอร์โทร')],
+        [T('emergency_contact2_name', 'คนที่ 2 - ชื่อ'), T('emergency_contact2_relation', 'ความสัมพันธ์'), T('emergency_contact2_phone', 'เบอร์โทร')],
+      ] },
       { title: 'ยืนยันและส่งข้อมูล', rows: [[{ t: 'ok', key: 'confirmed', label: 'ข้าพเจ้าขอรับรองว่าข้อมูลที่กรอกเป็นความจริงทุกประการ' }]] },
     ],
   };
@@ -185,11 +185,23 @@
     return '';
   }
 
+  // รูปถ่ายพนักงาน: จากฟอร์ม (object base64) หรือจากชีต (ลิงก์ไฟล์ Drive -> ลิงก์ thumbnail ที่ใช้เป็น <img> ได้ถ้าไฟล์แชร์แบบมีลิงก์)
+  function photoSrc(v) {
+    if (v && typeof v === 'object' && v.base64Data) return 'data:' + (v.mimeType || 'image/jpeg') + ';base64,' + v.base64Data;
+    var u = typeof v === 'string' ? v.trim() : '';
+    var m = u.match(/\/d\/([\w-]+)/) || u.match(/[?&]id=([\w-]+)/);
+    return /^https?:/.test(u) && m ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w400' : '';
+  }
+  function photoBox(src) {
+    return '<div style="position:absolute;top:0;right:0;width:96px;height:120px;border:1px solid #333;display:flex;align-items:center;justify-content:center;text-align:center;font-size:' + (S.fs - 2) + 'px;color:#888;overflow:hidden;background:#fff">' +
+      (src ? '<img src="' + esc(src) + '" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">' : 'รูปถ่าย<br>หน้าตรง') + '</div>';
+  }
+
   function build(get, kind, override) {
     var isEmp = kind === 'employee';
     S = Object.assign({}, (override && override.blank ? BLANK_SCALES : SCALES)[isEmp ? 'employee' : 'applicant'], override || {});
     var out = '<div style="font-family:-apple-system,\'Noto Sans Thai\',Arial,sans-serif;color:#111;font-size:' + S.fs + 'px;line-height:' + S.lh + '">' +
-      '<div style="text-align:center;margin:0 0 ' + S.sec + 'px"><div style="font-size:' + (S.fs + 5) + 'px;font-weight:800">' + (isEmp ? 'ประวัติพนักงาน' : 'ใบสมัครงาน') + '</div>' +
+      '<div style="position:relative;text-align:center;margin:0 0 ' + S.sec + 'px;' + (isEmp ? 'min-height:120px;padding:0 110px;' : '') + '">' + (isEmp ? photoBox(photoSrc(get('employee_photo'))) : '') + '<div style="font-size:' + (S.fs + 5) + 'px;font-weight:800">' + (isEmp ? 'ประวัติพนักงาน' : 'ใบสมัครงาน') + '</div>' +
       '<div style="font-size:' + (S.fs - 1) + 'px;color:#333;font-weight:600">บริษัท ปลาใหญ่ มาร์เก็ตติ้ง จำกัด</div></div>';
     var secs = SECTIONS[isEmp ? 'employee' : 'applicant'];
     secs.forEach(function (sec, i) {

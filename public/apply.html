@@ -315,9 +315,11 @@ const steps = [
     render: (c) => {
       c.appendChild(field('ชื่อบิดา', textInput('father_name'), true));
       c.appendChild(field('สถานะบิดา / อาชีพ', textInput('father_status', 'text', 'เช่น มีชีวิตอยู่ / ถึงแก่กรรม, อาชีพ'), true));
+      c.appendChild(field('เบอร์โทรบิดา', textInput('father_phone', 'tel'), true));
       c.appendChild(field('ที่อยู่/จังหวัดบิดา', textInput('father_address'), true));
       c.appendChild(field('ชื่อมารดา', textInput('mother_name'), true));
       c.appendChild(field('สถานะมารดา / อาชีพ', textInput('mother_status'), true));
+      c.appendChild(field('เบอร์โทรมารดา', textInput('mother_phone', 'tel'), true));
       c.appendChild(field('ที่อยู่/จังหวัดมารดา', textInput('mother_address'), true));
     },
     required: () => true,
@@ -517,7 +519,7 @@ async function submit() {
     'birth_date','nationality','ethnicity','religion','hometown','siblings','birth_order','address',
     'sub_district','district','province','postal_code','home_phone','mobile_phone','email','residence_type',
     'residence_years','marital_status','spouse_name','spouse_occupation','children_count','father_name',
-    'father_status','father_occupation','father_address','mother_name','mother_status','mother_occupation',
+    'father_status','father_occupation','father_phone','father_address','mother_name','mother_status','mother_occupation','mother_phone',
     'mother_address','military_status','education_level','education_activities','favorite_subject',
     'english_speak','english_read','english_write','other_language','computer_level','reference_name',
     'reference_occupation','reference_phone','heard_from','criminal_record','health_condition',
