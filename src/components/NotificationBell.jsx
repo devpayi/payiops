@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bell } from 'lucide-react'
-
+import { AlertTriangle, Bell, CalendarClock, CheckCircle2, ChevronRight, Clock, PackageCheck, Sparkles } from 'lucide-react'
 import { CHANGELOG } from '../changelog.js'
 
 const REFRESH_MS = 5 * 60 * 1000
@@ -8,28 +7,34 @@ const SEEN_KEY = 'payi-changelog-seen'
 const readSeen = () => { try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')) } catch { return new Set() } }
 const writeSeen = (ids) => { try { localStorage.setItem(SEEN_KEY, JSON.stringify([...ids])) } catch { /* ignore */ } }
 
-// กระดิ่งแจ้งเตือน — ดึงจาก /api/sheet-tools?op=notifications (boss/dev เห็นงานค้าง role อื่นได้ list ว่าง)
+// ไอคอน + โทนสีต่อหมวดงานค้าง (key ตรงกับ groups[].key จาก op=notifications)
+const GROUP_STYLE = {
+  leave: { Icon: CalendarClock, fg: '#2563eb', bg: '#eaf3ff' },
+  arrival: { Icon: PackageCheck, fg: '#0d9f6e', bg: '#e8f8f1' },
+  overdue: { Icon: Clock, fg: '#d97706', bg: '#fff4e0' },
+  low: { Icon: AlertTriangle, fg: '#e5484d', bg: '#feecec' },
+}
+
+const fmtDate = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '')
+  if (!m) return iso || ''
+  const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+  return `${Number(m[3])} ${months[Number(m[2]) - 1]} ${Number(m[1]) + 543}`
+}
+
+// กระดิ่งแจ้งเตือน (dev + boss เท่านั้น — App.jsx ไม่ render ให้ role อื่น) :
+// แท็บ "งานค้าง" ดึงจาก /api/sheet-tools?op=notifications, แท็บ "มีอะไรใหม่" มาจาก src/changelog.js
 export default function NotificationBell({ color, onNavigate }) {
   const [data, setData] = useState({ total: 0, groups: [] })
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [tab, setTab] = useState('tasks')
   const wrapRef = useRef(null)
   const [seen, setSeen] = useState(readSeen)
   // ตอนเปิดกระดิ่ง จำไว้ว่าอันไหนยังใหม่ (ติดป้าย "ใหม่") แล้วค่อย mark ว่าอ่านแล้ว ปิดแล้วเปิดใหม่ป้ายหาย
   const [freshIds, setFreshIds] = useState(() => new Set())
   const unseenCount = CHANGELOG.filter((c) => !seen.has(c.id)).length
-
-  const toggle = () => {
-    if (!open) {
-      setFreshIds(new Set(CHANGELOG.filter((c) => !seen.has(c.id)).map((c) => c.id)))
-      const next = new Set([...seen, ...CHANGELOG.map((c) => c.id)])
-      setSeen(next)
-      writeSeen(next)
-      load()
-    }
-    setOpen((v) => !v)
-  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -55,67 +60,100 @@ export default function NotificationBell({ color, onNavigate }) {
   useEffect(() => {
     if (!open) return undefined
     const onDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
     document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
   }, [open])
 
+  const toggle = () => {
+    if (!open) {
+      const fresh = CHANGELOG.filter((c) => !seen.has(c.id)).map((c) => c.id)
+      setFreshIds(new Set(fresh))
+      // ไม่มีงานค้างแต่มีของใหม่ → เปิดแท็บ "มีอะไรใหม่" ให้เลย
+      setTab(data.total === 0 && fresh.length ? 'news' : 'tasks')
+      const next = new Set([...seen, ...CHANGELOG.map((c) => c.id)])
+      setSeen(next)
+      writeSeen(next)
+      load()
+    }
+    setOpen((v) => !v)
+  }
+
+  const badge = data.total + unseenCount
+
   return (
-    <div ref={wrapRef} style={{ position: 'relative' }}>
-      <button
-        title="การแจ้งเตือน"
-        aria-label="การแจ้งเตือน"
-        onClick={toggle}
-        style={{ position: 'relative', width: 40, height: 40, borderRadius: 999, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', border: '1px solid rgba(255,255,255,0.6)', display: 'grid', placeItems: 'center', boxShadow: '0 8px 20px rgba(16,24,40,0.06)', cursor: 'pointer' }}
-      >
+    <div ref={wrapRef} className="nb-wrap">
+      <button className="nb-bell" title="การแจ้งเตือน" aria-label="การแจ้งเตือน" aria-expanded={open} onClick={toggle}>
         <Bell size={18} color={color} />
-        {data.total + unseenCount > 0 && (
-          <span style={{ position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: 'var(--payi-danger, #e5484d)', color: '#fff', fontSize: 11, fontWeight: 800, display: 'grid', placeItems: 'center', boxSizing: 'border-box' }}>
-            {data.total + unseenCount > 99 ? '99+' : data.total + unseenCount}
-          </span>
-        )}
+        {badge > 0 && <span className="nb-badge">{badge > 99 ? '99+' : badge}</span>}
       </button>
+
       {open && (
-        <div style={{ position: 'absolute', top: 48, right: 0, width: 'min(340px, 92vw)', maxHeight: '70vh', overflowY: 'auto', background: '#fff', border: '1px solid var(--payi-border, #e5e7eb)', borderRadius: 16, boxShadow: '0 18px 40px rgba(16,24,40,0.16)', padding: 12, zIndex: 60 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8, color: 'var(--payi-text-strong)' }}>การแจ้งเตือน</div>
-          {failed ? (
-            <div style={{ fontSize: 13, color: 'var(--payi-text-muted)', padding: '8px 4px' }}>โหลดไม่สำเร็จ ลองกดใหม่อีกครั้ง</div>
-          ) : !data.groups.length ? (
-            <div style={{ fontSize: 13, color: 'var(--payi-text-muted)', padding: '8px 4px' }}>{loading ? 'กำลังโหลด…' : 'ไม่มีงานค้าง 🎉'}</div>
-          ) : data.groups.map((g) => (
-            <button
-              key={g.key}
-              onClick={() => { setOpen(false); onNavigate?.(g.tab) }}
-              style={{ display: 'block', width: '100%', textAlign: 'left', border: '1px solid var(--payi-border, #e5e7eb)', borderRadius: 12, background: '#fff', padding: '10px 12px', marginBottom: 8, cursor: 'pointer' }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--payi-text-strong)' }}>
-                <span>{g.title}</span>
-                <span style={{ color: 'var(--payi-danger, #e5484d)' }}>{g.count}</span>
-              </div>
-              {g.items.map((line, i) => (
-                <div key={i} style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line}</div>
-              ))}
-              {g.count > g.items.length && <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginTop: 3 }}>+ อีก {g.count - g.items.length} รายการ</div>}
+        <div className="nb-panel" role="dialog" aria-label="การแจ้งเตือน">
+          <div className="nb-head">
+            <div>
+              <div className="nb-title">การแจ้งเตือน</div>
+              <div className="nb-sub">{data.total > 0 ? `มีงานค้าง ${data.total} รายการ` : 'ไม่มีงานค้างตอนนี้'}</div>
+            </div>
+          </div>
+
+          <div className="nb-tabs" role="tablist">
+            <button role="tab" aria-selected={tab === 'tasks'} className={`nb-tab${tab === 'tasks' ? ' is-on' : ''}`} onClick={() => setTab('tasks')}>
+              งานค้าง{data.total > 0 && <span className="nb-tab-count">{data.total}</span>}
             </button>
-          ))}
-          {!!CHANGELOG.length && (
-            <>
-              <div style={{ fontSize: 13, fontWeight: 800, margin: '10px 0 8px', color: 'var(--payi-text-strong)' }}>มีอะไรใหม่</div>
-              {CHANGELOG.slice(0, 8).map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => { setOpen(false); if (c.tab) onNavigate?.(c.tab) }}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', border: '1px solid var(--payi-border, #e5e7eb)', borderRadius: 12, background: freshIds.has(c.id) ? 'var(--payi-mint-soft, #ecfdf5)' : '#fff', padding: '10px 12px', marginBottom: 8, cursor: c.tab ? 'pointer' : 'default' }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--payi-text-strong)' }}>
-                    <span>{c.title}</span>
-                    {freshIds.has(c.id) && <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', background: 'var(--payi-mint-strong, #10b981)', borderRadius: 999, padding: '1px 8px', flexShrink: 0 }}>ใหม่</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginTop: 3 }}>{c.detail}</div>
-                  <div style={{ fontSize: 11, color: 'var(--payi-text-muted)', marginTop: 3 }}>{c.date}</div>
+            <button role="tab" aria-selected={tab === 'news'} className={`nb-tab${tab === 'news' ? ' is-on' : ''}`} onClick={() => setTab('news')}>
+              มีอะไรใหม่{freshIds.size > 0 && <span className="nb-tab-count is-new">{freshIds.size}</span>}
+            </button>
+          </div>
+
+          <div className="nb-body">
+            {tab === 'tasks' && (
+              failed ? (
+                <div className="nb-empty"><div className="nb-empty-icon is-warn"><AlertTriangle size={22} /></div>โหลดไม่สำเร็จ ลองกดกระดิ่งใหม่อีกครั้ง</div>
+              ) : !data.groups.length ? (
+                <div className="nb-empty">
+                  <div className="nb-empty-icon"><CheckCircle2 size={24} /></div>
+                  {loading ? 'กำลังโหลด…' : 'เคลียร์หมดแล้ว ไม่มีงานค้าง'}
+                </div>
+              ) : data.groups.map((g) => {
+                const st = GROUP_STYLE[g.key] || GROUP_STYLE.leave
+                const Icon = st.Icon
+                return (
+                  <button key={g.key} className="nb-card" onClick={() => { setOpen(false); onNavigate?.(g.tab) }}>
+                    <span className="nb-ico" style={{ background: st.bg, color: st.fg }}><Icon size={18} /></span>
+                    <span className="nb-card-main">
+                      <span className="nb-card-top">
+                        <span className="nb-card-title">{g.title}</span>
+                        <span className="nb-pill" style={{ background: st.bg, color: st.fg }}>{g.count}</span>
+                      </span>
+                      {g.items.map((line, i) => <span key={i} className="nb-line">{line}</span>)}
+                      {g.count > g.items.length && <span className="nb-more">+ อีก {g.count - g.items.length} รายการ</span>}
+                    </span>
+                    <ChevronRight size={16} className="nb-chev" />
+                  </button>
+                )
+              })
+            )}
+
+            {tab === 'news' && (CHANGELOG.length ? CHANGELOG.slice(0, 10).map((c) => {
+              const fresh = freshIds.has(c.id)
+              return (
+                <button key={c.id} className={`nb-card nb-news${fresh ? ' is-fresh' : ''}`} style={{ cursor: c.tab ? 'pointer' : 'default' }} onClick={() => { if (c.tab) { setOpen(false); onNavigate?.(c.tab) } }}>
+                  <span className="nb-ico" style={{ background: '#f1ecff', color: '#7c5ce0' }}><Sparkles size={18} /></span>
+                  <span className="nb-card-main">
+                    <span className="nb-card-top">
+                      <span className="nb-card-title">{c.title}</span>
+                      {fresh && <span className="nb-new">ใหม่</span>}
+                    </span>
+                    <span className="nb-line is-wrap">{c.detail}</span>
+                    <span className="nb-date">{fmtDate(c.date)}</span>
+                  </span>
+                  {c.tab && <ChevronRight size={16} className="nb-chev" />}
                 </button>
-              ))}
-            </>
-          )}
+              )
+            }) : <div className="nb-empty">ยังไม่มีรายการใหม่</div>)}
+          </div>
         </div>
       )}
     </div>
