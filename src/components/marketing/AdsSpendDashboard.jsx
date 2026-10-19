@@ -16,10 +16,11 @@ export default function AdsSpendDashboard({reports,month,business,platform,shopI
   const currentPage=Math.min(page,Math.max(0,Math.ceil(products.length/10)-1))
   const shownProducts=products.slice(currentPage*10,currentPage*10+10)
   const selectedLabel=platform==='__all__'?'ทุกแพลตฟอร์ม':platform
+  const monthLabel=new Intl.DateTimeFormat('th-TH',{month:'long',year:'numeric',timeZone:'Asia/Bangkok'}).format(new Date(`${month}-01T00:00:00Z`))
   if(loading&&!data.reports)return <p className="mm-feedback" role="status">กำลังอ่านค่าแอดรายเดือน…</p>
   if(error)return null
   return <section className="ads-spend-dashboard" aria-label="สรุปค่าแอดรายสินค้า">
-    <header className="ads-spend-heading"><div><p>ค่าแอดเดือนนี้</p><h2>{money(data.spend)}</h2><span>{selectedLabel} · {business==='__all__'?'ทุกธุรกิจ':business} · เดือนปฏิทิน</span></div><div className="ads-spend-count"><strong>{data.products.length}</strong><span>รายการสินค้าจากรายงาน</span></div></header>
+    <header className="ads-spend-heading"><div><p>ค่าแอดรวม</p><h2>{money(data.spend)}</h2><span>{monthLabel} · {selectedLabel} · {business==='__all__'?'ทุกธุรกิจ':business}</span></div><div className="ads-spend-count"><strong>{data.products.length}</strong><span>รายการสินค้า</span></div></header>
     <div className="ads-spend-platforms" aria-label="สัดส่วนค่าแอดแต่ละแพลตฟอร์ม">
       {data.platforms.map(row=><button key={row.platform} className={`ads-spend-platform ads-tone-${tone(row.platform)}`} aria-pressed={platform===row.platform} onClick={()=>onPlatformChange(platform===row.platform?'__all__':row.platform)}>
         <span className="ads-spend-platform-name">{row.platform}<span>{percent(row.percent)}</span></span><strong>{money(row.spend)}</strong><span className="ads-spend-roas-line" title={row.sales===null?'ยังไม่มีข้อมูลยอดขายครบ':`ยอดขายจากแอด ${money(row.sales)} ÷ ค่าแอด ${money(row.spend)}`}><span>ROAS</span><b>{roas(row.roas)}</b></span><span className="ads-spend-track" aria-hidden="true"><i style={{width:`${row.percent||0}%`}}/></span><small>{row.spend===null?'ยังไม่มีรายงานเดือนนี้':'สัดส่วนจากค่าแอดทุกแพลตฟอร์ม'}</small>
