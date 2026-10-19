@@ -9,7 +9,7 @@ import {appendStoredReport,reportStoreConfigured} from '../api/_lib/marketingRep
 const args=process.argv.slice(2)
 const publish=args.includes('--publish')
 const option=name=>args[args.indexOf(name)+1]
-if(!args.includes('--platform')||!args.includes('--business')||!args.includes('--file'))throw Error('ระบุ --platform Shopee หรือ "TikTok Shop" --business Payi --file <ไฟล์> [--file <รายละเอียด>] [--publish]')
+if(!args.includes('--platform')||!args.includes('--business')||!args.includes('--file'))throw Error('ระบุ --platform Shopee หรือ "TikTok Shop" หรือ Lazada --business Payi --file <ไฟล์> [--file <รายละเอียด>] [--publish]')
 const paths=args.flatMap((value,index)=>value==='--file'?[args[index+1]]:[])
 if(paths.some(path=>!path||path.startsWith('--')))throw Error('ไม่พบชื่อไฟล์ต้นทาง')
 const files=await Promise.all(paths.map(async path=>({name:basename(path),text:await readFile(resolve(path),'utf8')})))

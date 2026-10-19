@@ -22,6 +22,18 @@ test('money sums decimal amounts exactly, including greater-than-satang precisio
   assert.equal(sumReportMoney(['1,000.01','0.99']), '1001')
   assert.throws(()=>sumReportMoney(['1,23']),/ตัวเลข/)
 })
+test('Shopee product ROAS inputs use standalone plus group members, without counting group sales twice',()=>{
+  const a=parse('overview',[['single','1','20','100'],['group','-','30','150']])
+  const b=parse('group-detail',[['group','-','30','150'],['same product','1','10','50'],['other','2','20','100']])
+  const result=build(a,b)
+  assert.equal(result.sales,'250')
+  assert.equal(result.products.find(row=>row.itemId==='1').sales,'150')
+  assert.equal(result.products.find(row=>row.itemId==='1').spend,'30')
+  const missing=parse('group-detail',[['group','-','30','150'],['same product','1','10',''],['other','2','20','0']])
+  const incomplete=build(a,missing)
+  assert.equal(incomplete.products.find(row=>row.itemId==='1').sales,null)
+  assert.equal(incomplete.products.find(row=>row.itemId==='2').sales,'0')
+})
 test('foreign currency or country is rejected, unknown marketplace cannot become THB silently',()=>{
   const source=file('overview',[['a','1','100','500']])
   assert.throws(()=>parseShopeeMonthlyReport(source.replace('Shop ID,123','Currency,USD\nShop ID,123')),/สกุลเงินบาท/)

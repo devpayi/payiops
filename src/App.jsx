@@ -828,7 +828,7 @@ function AppContent() {
     AdsChannels: {
       title: 'วิเคราะห์โฆษณา',
       eyebrow: 'Marketing',
-      subtitle: 'ค่าโฆษณา Shopee และ TikTok รายเดือน'
+      subtitle: 'ค่าโฆษณา Shopee, TikTok และ Lazada รายเดือน'
     },
     TikTokSales: {
       title: 'Dashboard สรุปยอดขาย',

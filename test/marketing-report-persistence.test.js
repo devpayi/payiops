@@ -18,7 +18,7 @@ test('source files are recalculated on the server, never trusting submitted resu
   const shopee=buildReportImport({platform:'Shopee',business:'Payi',files:[{name:'overview.csv',text:monthlyAdsExample.overview},{name:'detail.csv',text:monthlyAdsExample.detail}]})
   assert.equal(shopee.report.status,'reconciled')
   assert.equal(shopee.report.platform,'Shopee')
-  assert.throws(()=>buildReportImport(payload({platform:'Lazada'})),/ไม่รองรับ/)
+  assert.throws(()=>buildReportImport(payload({platform:'Unknown'})),/ไม่รองรับ/)
   assert.throws(()=>buildReportImport(payload({files:[{name:'bad.json',text:JSON.stringify({...input,totals:{}})}]})),/ขาดค่า/)
 })
 test('revision chunks round-trip Thai and emoji, retain raw source and validate every byte',()=>{

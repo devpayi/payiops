@@ -137,11 +137,11 @@ export function buildShopeeMonthlyReport(overview,detail=null,{business='',mappi
     const key=row.itemId
     if(!products.has(key))products.set(key,{itemId:key,name:row.name,spends:[],sources:[],familyKey:mappings[key]?.familyKey || null})
     const product=products.get(key)
-    product.spends.push(row.spend);product.sources.push({rowId:row.id,campaignName:row.campaignName,spend:row.spend})
+    product.spends.push(row.spend);product.sources.push({rowId:row.id,campaignName:row.campaignName,spend:row.spend,sales:row.sales})
   }
   return {schemaVersion:1,business,month:overview.month,dateFrom:overview.dateFrom,dateTo:overview.dateTo,shopId:overview.shopId,shopName:overview.shopName,
     sources:[overview,detail].filter(Boolean).map(r=>({kind:r.kind,filename:r.filename,exportedAt:r.exportedAt})),taxBasis:'unknown',
     spend,productSpend:leafSpend,sales:overview.rows.every(r=>r.sales!==null)?sumReportMoney(overview.rows.map(r=>r.sales)):null,
-    campaigns:overview.rows,products:[...products.values()].map(({spends,...p})=>({...p,spend:sumReportMoney(spends)})),
+    campaigns:overview.rows,products:[...products.values()].map(({spends,...p})=>({...p,spend:sumReportMoney(spends),sales:p.sources.every(source=>source.sales!==null)?sumReportMoney(p.sources.map(source=>source.sales)):null})),
     status:complete?'reconciled':'needs-review',issues,coverage:{dateRange:'full-month',productDetail:complete?'complete':'partial',adTypes:'product-ads-only',orders:'unknown'}}
 }

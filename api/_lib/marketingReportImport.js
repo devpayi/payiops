@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto'
 import {Buffer} from 'node:buffer'
 import {parseShopeeMonthlyReport,buildShopeeMonthlyReport} from '../../shared/monthlyAdsReports.js'
 import {buildTikTokMonthlyReport} from '../../shared/tiktokAdsReport.js'
+import {buildLazadaMonthlyReport} from '../../shared/lazadaAdsReport.js'
 import {requireManager,authEnabled} from './auth.js'
 import {reportStoreConfigured,appendStoredReport} from './marketingReportStore.js'
 
@@ -21,6 +22,9 @@ export function buildReportImport(body) {
   } else if(body.platform==='TikTok Shop') {
     if(files.length!==1)throw Error('เลือกรายงาน TikTok JSON หนึ่งไฟล์')
     report={...buildTikTokMonthlyReport(JSON.parse(files[0].text.replace(/^\uFEFF/,'')),{business:body.business}),fingerprints:[`seller-center-dashboard:${files[0].sha256}`]}
+  } else if(body.platform==='Lazada') {
+    if(files.length!==1)throw Error('เลือกรายงาน Lazada JSON หนึ่งไฟล์')
+    report={...buildLazadaMonthlyReport(JSON.parse(files[0].text.replace(/^\uFEFF/,'')),{business:body.business}),fingerprints:[`lazada-export-bundle:${files[0].sha256}`]}
   } else throw Error('ยังไม่รองรับรายงานแพลตฟอร์มนี้')
   if(report.status!=='reconciled')throw Error(`ยอดรายงานยังไม่ตรง: ${report.issues.join(' · ')}`)
   return {version:1,report,sourceFiles:files}
