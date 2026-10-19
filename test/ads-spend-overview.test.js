@@ -1,9 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {buildAdsSpendOverview,adsSpendPercent,adsRoas} from '../shared/adsSpendOverview.js'
+import {buildAdsSpendOverview,adsSpendPercent,adsRoas,adsRoasStatus} from '../shared/adsSpendOverview.js'
 
 const report=(platform,spend,products,extra={})=>({platform,month:'2026-09',business:'Payi',shopId:'123',shopName:'Example',status:'reconciled',spend,products:products.map(([itemId,name,cost])=>({itemId,name,spend:cost,sources:[]})),...extra})
 const scope={month:'2026-09',business:'Payi'}
+test('owner ROAS targets use exact boundaries: 4 acceptable, 6 target, missing is unassessed',()=>{
+  for(const value of [0,1,3.99,3.999999])assert.equal(adsRoasStatus(value).key,'below')
+  for(const value of [4,4.01,5.99,5.999999])assert.equal(adsRoasStatus(value).key,'acceptable')
+  for(const value of [6,6.01,100])assert.equal(adsRoasStatus(value).key,'target')
+  for(const value of [null,undefined,NaN,Infinity,-1])assert.equal(adsRoasStatus(value).key,'unavailable')
+  assert.equal(adsRoasStatus(adsRoas('0','10')).key,'below')
+  assert.equal(adsRoasStatus(adsRoas('100','0')).key,'unavailable')
+})
 test('platform shares and product shares use the actual selected spend, never sales or name mapping',()=>{
   const a=report('Shopee','0.3',[['1','Same name','0.1'],['2','Same name','0.2']])
   const b=report('Lazada','0.7',[['1','Same name','0.7']])

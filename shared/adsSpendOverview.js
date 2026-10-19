@@ -5,6 +5,13 @@ import {reportScope} from './marketingReadModels.js'
 export const ADS_PLATFORMS=['Shopee','TikTok Shop','Lazada']
 export const adsSpendPercent=(spend,total)=>Number(total)===0?null:Number(spend)/Number(total)*100
 export const adsRoas=(sales,spend)=>sales===null||sales===undefined||String(sales).trim()===''||spend===null||spend===undefined||String(spend).trim()===''||Number(spend)===0?null:Number(sales)/Number(spend)
+// Business targets set by the owner; compare actual ROAS before display rounding.
+export function adsRoasStatus(value) {
+  if(!Number.isFinite(value)||value<0)return {key:'unavailable',label:'ยังประเมินไม่ได้'}
+  if(value>=6)return {key:'target',label:'ถึงเป้า'}
+  if(value>=4)return {key:'acceptable',label:'รับได้'}
+  return {key:'below',label:'ต่ำกว่าเกณฑ์'}
+}
 const hasSales=row=>row.sales!==null&&row.sales!==undefined&&String(row.sales).trim()!==''
 const completeSales=rows=>rows.length&&rows.every(hasSales)?sumReportMoney(rows.map(row=>row.sales)):null
 const amount=value=>{

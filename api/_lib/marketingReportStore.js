@@ -19,6 +19,8 @@ function sheets() {
   },scopes:['https://www.googleapis.com/auth/spreadsheets']})})
   return client
 }
+// Same approved private report store; mappings use their own append-only tab.
+export const reportSheetsClient=()=>sheets()
 export async function readStoredReportRecords() {
   const response=await sheets().spreadsheets.values.get({spreadsheetId:process.env.MARKETING_REPORTS_SHEET_ID.trim(),range:`${TAB}!A:I`,valueRenderOption:'UNFORMATTED_VALUE'})
   return decodeReportRevisions(response.data.values || [])

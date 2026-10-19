@@ -8,9 +8,11 @@ import inputsHandler from './_lib/marketingInputs.js'
 import basketHandler from './_lib/marketingBasket.js'
 import monthlyReadHandler from './_lib/marketingMonthlyRead.js'
 import reportImportHandler from './_lib/marketingReportImport.js'
+import adProductMappingsHandler from './_lib/adProductMappings.js'
 
 export default async function handler(req, res) {
   const kind = String(req.query.kind || 'events')
+  if (kind === 'ad-product-mappings') return adProductMappingsHandler(req, res)
   if (kind === 'save-report') return reportImportHandler(req, res)
   if (kind === 'monthly-reports' || kind === 'sales-channels-read') return monthlyReadHandler(req, res)
   if (kind === 'inputs') return inputsHandler(req, res)

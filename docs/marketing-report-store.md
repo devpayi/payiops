@@ -28,6 +28,16 @@ accepts a JSON bundle prepared from the three verified export formats described 
 
 ## Revisions and failures
 
+### Product mappings
+
+`/api/marketing?kind=ad-product-mappings` is Dev/Boss only. GET reads mappings and the existing Ops product-family catalog, returning family names and keys without SKU-level options. POST validates each source against stored reports and its target against the same business's catalog.
+
+Mappings live in the separate `ad_product_mappings` tab of the approved private report spreadsheet, never in `product_aliases`, inventory, raw orders or `marketing_inputs`. The source identity is `[platform,business,shopId,itemId]`, with no month so mappings carry forward. Unmapped, deleted-target and cross-business records stay separate; similar names never merge automatically.
+
+Each save is one append-only batch of up to 50 changes in one literal JSON cell with SHA256. Every item carries its opened revision. The reader applies a batch only if all expected revisions match the current accepted state, so the first valid concurrent batch wins without partially applying a conflicting batch. Retry IDs are idempotent; unmapping keeps a tombstone revision and can be reversed by mapping again. POST reads back the accepted batch before reporting success. Failed or unconfirmed saves require a refresh before retrying.
+
+GET never creates the tab; it can be provisioned once or initialized by the first authorized POST. No new environment variable or public permission is needed. Costs stay unchanged by mapping. Product totals combine spend and shares; attributed sales and ROAS remain per platform to avoid treating potentially overlapping credits as unique revenue.
+
 Each import appends source text, hashes, normalized results and a commit marker in
 one atomic Sheets batch. Literal string cells prevent formula execution. Revisions
 remain in the journal; the reader selects the latest revision per platform,
