@@ -20,18 +20,27 @@ test('new mapping shows only unmapped sources while editing keeps its mapped sou
   assert.deepEqual(availableAdMappingSources(products,mappings,families,[],'tiktok').map(product=>product.name),['Unmapped'])
 })
 
-test('manual mapping combines product IDs across platforms while keeping revenue/ROAS per platform',()=>{
+test('manual mapping combines product IDs and computes spend-weighted ROAS across platforms',()=>{
   const products=[{...source(),name:'Same listing',spend:'10',sales:'50',percent:10},{...source('TikTok Shop'),name:'Other listing',spend:'20',sales:'100',percent:20},{...source('Lazada'),name:'Same listing',spend:'30',sales:'90',percent:30}]
   const original=structuredClone(products)
   const groups=groupAdProducts(products,[change(a),change(b)],families)
   assert.equal(groups.length,2)
   const group=groups.find(group=>group.mapped)
   assert.equal(group.name,'ถุงเท้าเจล 2in1');assert.equal(group.spend,'30');assert.equal(group.percent,30)
-  assert.equal(group.roas,null);assert.deepEqual(group.platforms.map(row=>row.roas),[5,5])
+  assert.equal(group.sales,'150');assert.equal(group.roas,5);assert.deepEqual(group.platforms.map(row=>row.roas),[5,5])
   assert.deepEqual(products,original)
   assert.equal(groupAdProducts(products,[],families).length,3)
   assert.equal(groupAdProducts(products,[change(a,'missing')],families).length,3)
   assert.equal(groupAdProducts(products,[change(a,'f2')],families).length,3)
+})
+test('combined ROAS uses summed attributed sales and spend, never averages platform ratios',()=>{
+  const products=[{...source(),name:'Shopee',spend:'10',sales:'80',percent:10},{...source('TikTok Shop'),name:'TikTok',spend:'90',sales:'180',percent:90}]
+  const mapped=[change(a),change(b)]
+  const group=groupAdProducts(products,mapped,families)[0]
+  assert.equal(group.sales,'260');assert.equal(group.spend,'100');assert.equal(group.roas,2.6)
+  assert.deepEqual(group.platforms.map(row=>row.roas),[8,2])
+  products[1].sales=null
+  assert.equal(groupAdProducts(products,mapped,families)[0].roas,null)
 })
 test('same product ID in different shops/businesses stays separate; same-platform mapped ROAS is weighted',()=>{
   const products=[{...source(),name:'One',spend:'1',sales:'10',percent:10},{...source('Shopee','456'),name:'Two',spend:'9',sales:'10',percent:90}]

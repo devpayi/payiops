@@ -17,10 +17,14 @@ test('history uses six calendar months and explicit mappings, preserving zero vs
   assert.deepEqual(result.points.map(row=>row.month),['2026-04','2026-05','2026-06','2026-07','2026-08','2026-09'])
   assert.equal(result.points[0].values.Shopee,null)
   assert.equal(result.points[3].values.Shopee,30)
+  assert.equal(result.points[3].roas.Shopee,2000/30)
   assert.equal(result.points[4].values.Shopee,0)
+  assert.equal(result.points[4].roas.Shopee,null)
   assert.equal(result.points[4].values['TikTok Shop'],null)
   assert.equal(result.points[5].values.Shopee,90)
   assert.equal(result.points[5].values['TikTok Shop'],25)
+  assert.equal(result.points[5].roas.Shopee,2000/90)
+  assert.equal(result.points[5].roas['TikTok Shop'],40)
   assert.deepEqual(reports,original)
 })
 
@@ -28,6 +32,7 @@ test('history excludes unverified and partial source sets, does not merge simila
   const reports=[report('2026-08','Shopee',[product('10','20')]),report('2026-09','Shopee',[product('10','40'),product('11','50'),product('99','100')]),{...report('2026-08','TikTok Shop',[product('20','15')]),status:'needs-review'}]
   const result=buildAdProductHistory(reports,options)
   assert.equal(result.points[4].values.Shopee,null)
+  assert.equal(result.points[4].roas.Shopee,null)
   assert.equal(result.points[4].incomplete.Shopee,true)
   assert.equal(result.points[5].values.Shopee,90)
   const raw=buildAdProductHistory(reports,{...options,groupKey:`unmapped:${source('Shopee','99')}`})

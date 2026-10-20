@@ -578,3 +578,34 @@ body:has(.ads-theme-active) .payi-sidebar-nav button[data-nav-id='AdsChannels'][
 .ads-roas-badge,
 .ad-platform-chip,
 .mm-page .ad-chart-button { border-radius: 10px; }
+
+/* Keep the product list focused on one comparable metric. Platform detail lives in the drawer. */
+.mm-page .ad-group-table>thead>tr>th:nth-child(3) { text-align: center; }
+.mm-page .ad-group-table>tbody>tr>.ads-total-roas-cell { min-width: 170px; text-align: center; font-variant-numeric: tabular-nums; }
+.ads-total-roas-cell .ads-roas-badge { display: inline-flex; justify-content: center; min-width: 78px; padding: 6px 10px; }
+.ads-total-roas-cell .ads-roas-badge strong { font-size: 15px; }
+.ads-total-roas-cell>small { display: block; margin-top: 6px; color: #64777e; font-size: 11px; line-height: 1.4; }
+.ad-product-drawer-summary { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 12px; margin: -10px 0 26px; padding: 15px 17px; border: 1px solid #d9e3e4; border-radius: 16px; background: #f5f9f8; }
+.ad-product-drawer-summary>span { font-weight: 700; }
+.ad-product-drawer-summary .ads-roas-badge { min-width: 72px; text-align: center; }
+.ad-product-drawer-summary>small { grid-column: 1 / -1; color: #626579; font-size: 12px; line-height: 1.5; }
+.ad-product-drawer-platforms { gap: 0; margin: -6px 0 28px; border: 1px solid #e0e6e8; border-radius: 15px; overflow: hidden; }
+.ad-product-drawer-platform { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #e7ecee; font-variant-numeric: tabular-nums; }
+.ad-product-drawer-platform:last-child { border-bottom: 0; }
+.ad-product-drawer-platform>span:nth-child(2) { font-size: 12px; text-align: right; }
+.ad-product-drawer-platform>span:nth-child(2)>small { display: block; color: #626579; font-size: 11px; }
+.ad-product-drawer-platform .ads-roas-badge { min-width: 67px; text-align: center; }
+.ad-product-chart-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.ad-product-drawer .ad-product-chart-heading h3 { margin: 0; }
+.ad-product-chart-heading>div { display: flex; gap: 4px; padding: 3px; border: 1px solid #ded9ec; border-radius: 11px; background: #f5f3fa; }
+.ad-product-drawer .ad-product-chart-heading button { min-height: 30px; padding: 4px 10px; border: 0; background: transparent; color: #625a77; font-size: 12px; }
+.ad-product-drawer .ad-product-chart-heading button[aria-pressed='true'] { background: #fff; color: #4c3697; box-shadow: 0 1px 4px #32275a1b; }
+@media(max-width:680px) {
+  .mm-page .ad-group-table>tbody>tr:not(.ads-row-expanded)>td.ads-total-roas-cell { grid-column: 1; grid-row: 2; text-align: left; }
+  .mm-page .ad-group-table>tbody>tr:not(.ads-row-expanded)>td.ads-actions-cell { grid-column: 2; grid-row: 2; }
+  .ads-total-roas-cell:before { content: attr(data-label); display: block; margin-bottom: 5px; color: #64777e; font-size: 10px; }
+  .ads-total-roas-cell>small { font-size: 10px; }
+  .ad-product-drawer-platform { grid-template-columns: 1fr auto; }
+  .ad-product-drawer-platform>span:nth-child(2) { grid-column: 1; grid-row: 2; text-align: left; }
+  .ad-product-drawer-platform .ads-roas-badge { grid-column: 2; grid-row: 1 / 3; }
+}

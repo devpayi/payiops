@@ -17,12 +17,13 @@ export function buildAdProductHistory(reports,{groupKey,month,business,platform,
   const platforms=[...new Set(sources.values())]
   return {platforms,points:months.map((value,index)=>{
     const group=grouped[index]
-    const point={month:value,values:{},incomplete:{}}
+    const point={month:value,values:{},roas:{},incomplete:{}}
     for(const name of platforms){
       const row=group?.platforms.find(row=>row.platform===name)
       const found=new Set((row?.rows||[]).map(adProductKey))
       const complete=[...sources].filter(([,platform])=>platform===name).every(([key])=>found.has(key))
       point.values[name]=row&&complete?Number(row.spend):null
+      point.roas[name]=row&&complete?row.roas:null
       point.incomplete[name]=Boolean(row&&!complete)
     }
     return point

@@ -46,8 +46,9 @@ export function groupAdProducts(products,mappings=[],catalog=[]) {
       const sales=rows.every(row=>row.sales!==null&&row.sales!==undefined&&String(row.sales).trim()!=='')?sumReportMoney(rows.map(row=>row.sales)):null
       return {platform,spend,sales,roas:adsRoas(sales,spend),rows}
     })
+    const sales=platforms.every(row=>row.sales!==null)?sumReportMoney(platforms.map(row=>row.sales)):null
     return {...group,spend,percent,platforms,
-      // Attributed sales across platforms can overlap. No cross-platform combined ROAS.
-      sales:platforms.length===1?platforms[0].sales:null,roas:platforms.length===1?platforms[0].roas:null}
+      // This is a spend-weighted summary of platform-attributed sales, not unique order revenue.
+      sales,roas:adsRoas(sales,spend)}
   }).sort((a,b)=>Number(b.spend)-Number(a.spend)||a.key.localeCompare(b.key))
 }
