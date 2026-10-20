@@ -1,4 +1,11 @@
+import {sumReportMoney} from './monthlyAdsReports.js'
+
 // Read models only. No tax conversion, inferred channel totals, or mutations.
+export function sumVerifiedReportMetric(reports,metric) {
+  const verified=reports.filter(report=>report.status==='reconciled')
+  if(!verified.length||verified.some(report=>report[metric]===null||report[metric]===undefined||String(report[metric]).trim()===''))return null
+  return sumReportMoney(verified.map(report=>report[metric]))
+}
 export function previousMarketingMonth(month) {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw Error('เดือนไม่ถูกต้อง')
   const [year, value] = month.split('-').map(Number)

@@ -933,7 +933,7 @@ function AppContent() {
   )
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f7fbff', fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif', color: 'var(--payi-text-strong)' }}>
+    <div className={activeTab === 'AdsChannels' ? 'ads-theme-active' : undefined} style={{ display: 'flex', minHeight: '100vh', background: '#f7fbff', fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif', color: 'var(--payi-text-strong)' }}>
       
       {/* SIDEBAR NAVIGATION — desktop เท่านั้น (ล็อคขยายไว้ตลอด) มือถือใช้ bottom tab bar แทนทั้งหมด
           เช็ค isMobileViewport ใน JS ตรงๆ ไม่พึ่ง CSS display:none ล้วนๆ — เจอ !important ไม่ยอม

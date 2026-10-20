@@ -7,7 +7,7 @@
     "dev": "cross-env NODE_OPTIONS=--use-system-ca vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node --test",
+    "test": "node --test test/*.test.js",
     "preview": "vite preview",
     "ops:start": "npm run local:trial --prefix backend/core",
     "ops:build": "npm run build --prefix backend/core && npm run build --prefix backend/core/apps/web",

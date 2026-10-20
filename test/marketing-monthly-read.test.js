@@ -8,9 +8,16 @@ import process from 'node:process'
 import {createMarketingMonthlyRead,readLocalMonthlyReports} from '../api/_lib/marketingMonthlyRead.js'
 import {signToken} from '../api/_lib/auth.js'
 import {canAccessTab} from '../shared/roles.js'
-import {legacyTikTokSales} from '../shared/marketingReadModels.js'
+import {legacyTikTokSales,sumVerifiedReportMetric} from '../shared/marketingReadModels.js'
 
 const response=()=>({code:200,headers:{},setHeader(k,v){this.headers[k]=v},status(code){this.code=code;return this},json(body){this.body=body;return this}})
+test('combined metrics include only reconciled reports and preserve unknown sales',()=>{
+  const rows=[{status:'reconciled',spend:'0.1',sales:'0'},{status:'reconciled',spend:'0.2',sales:null},{status:'pending',spend:'99',sales:'99'}]
+  assert.equal(sumVerifiedReportMetric(rows,'spend'),'0.3')
+  assert.equal(sumVerifiedReportMetric(rows,'sales'),null)
+  assert.equal(sumVerifiedReportMetric(rows.slice(0,1),'sales'),'0')
+  assert.equal(sumVerifiedReportMetric(rows.slice(2),'spend'),null)
+})
 test('private monthly reads enforce actual role guards and never write',async()=>{
   const original=process.env.AUTH_SECRET
   process.env.AUTH_SECRET='isolated-test-secret'
