@@ -126,9 +126,9 @@
 .ads-spend-platform .ads-spend-track>i { background: var(--ads-accent); }
 
 .ads-roas-badge { border-radius: 7px; }
-.ads-roas-target { background: #e2f5e6; color: #166a3e; border-color: #ccebd4; }
-.ads-roas-acceptable { background: #eef3d0; color: #53651b; border-color: #dbe5b4; }
-.ads-roas-below { background: #ffe8e8; color: #a9323b; border-color: #f2cdd0; }
+.ads-roas-target { background: #dcf5e5; color: #17643c; border-color: #a9d9bb; }
+.ads-roas-acceptable { background: #fff0b8; color: #795000; border-color: #eac978; }
+.ads-roas-below { background: #ffe7e7; color: #a52c3c; border-color: #f3b6be; }
 .ads-roas-unavailable { background: #efeff1; color: #606471; border-color: #e1e2e5; }
 
 .ads-spend-products {
@@ -518,9 +518,9 @@ body:has(.ads-theme-active) .mm-workspace-nav button[aria-pressed=true] { backgr
 .ads-card-name>small, .ads-card-share small, .ads-spend-roas-line>span:first-child { color: #687b82; }
 .ads-card-share strong { color: color-mix(in srgb,var(--ads-accent) 86%,#242344); }
 .ads-spend-platform .ads-spend-track { background: #e9eef0; }
-.ads-roas-target { background: #e7f5ec; color: #237047; border-color: #c9e8d3; }
-.ads-roas-acceptable { background: #edf2fa; color: #42648a; border-color: #d3dfef; }
-.ads-roas-below { background: #fff0ed; color: #b7444b; border-color: #f3d1ce; }
+.ads-roas-target { background: #dcf5e5; color: #17643c; border-color: #a9d9bb; }
+.ads-roas-acceptable { background: #fff0b8; color: #795000; border-color: #eac978; }
+.ads-roas-below { background: #ffe7e7; color: #a52c3c; border-color: #f3b6be; }
 
 .ads-spend-products { background: #fff; border-color: #dedce9; box-shadow: 0 9px 26px #3e316a17; }
 .ads-products-title>span { background: #eeeaff; color: #6b50c0; }
