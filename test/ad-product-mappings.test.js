@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {adProductKey,applyAdMappingBatches,groupAdProducts} from '../shared/adProductMappings.js'
+import {adProductKey,availableAdMappingSources,applyAdMappingBatches,groupAdProducts} from '../shared/adProductMappings.js'
 import {encodeAdMappingBatch,decodeAdMappingRows,AD_MAPPING_HEADERS} from '../api/_lib/adProductMappingStore.js'
 import {createAdProductMappingHandler} from '../api/_lib/adProductMappings.js'
 
@@ -11,6 +11,14 @@ const change=(sourceKey,familyKey='f1',expectedRevision=null)=>({sourceKey,famil
 const batch=(n,changes)=>({version:1,id:id(n),changes})
 const families=[{key:'f1',business:'Payi',name:'ถุงเท้าเจล 2in1'},{key:'f2',business:'กรอบรูป',name:'Frame'}]
 const response=()=>({code:200,setHeader(){},status(code){this.code=code;return this},json(body){this.body=body;return this}})
+
+test('new mapping shows only unmapped sources while editing keeps its mapped sources visible',()=>{
+  const products=[{...source(),name:'Mapped',shopName:'Main'},{...source('TikTok Shop'),name:'Unmapped',shopName:'Main'},{...source('Lazada'),name:'Revoked',shopName:'Main'},{...source('Shopee','456'),name:'Invalid target',shopName:'Main'}]
+  const mappings=[change(a),change(adProductKey(products[2]),null),change(adProductKey(products[3]),'f2')]
+  assert.deepEqual(availableAdMappingSources(products,mappings,families).map(product=>product.name),['Unmapped','Revoked','Invalid target'])
+  assert.deepEqual(availableAdMappingSources(products,mappings,families,[a]).map(product=>product.name),['Mapped','Unmapped','Revoked','Invalid target'])
+  assert.deepEqual(availableAdMappingSources(products,mappings,families,[],'tiktok').map(product=>product.name),['Unmapped'])
+})
 
 test('manual mapping combines product IDs across platforms while keeping revenue/ROAS per platform',()=>{
   const products=[{...source(),name:'Same listing',spend:'10',sales:'50',percent:10},{...source('TikTok Shop'),name:'Other listing',spend:'20',sales:'100',percent:20},{...source('Lazada'),name:'Same listing',spend:'30',sales:'90',percent:30}]

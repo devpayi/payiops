@@ -2,6 +2,16 @@ import {sumReportMoney} from './monthlyAdsReports.js'
 import {adsRoas} from './adsSpendOverview.js'
 
 export const adProductKey=source=>JSON.stringify([source.platform||'Shopee',source.business,source.shopId,source.itemId])
+export function availableAdMappingSources(products,mappings,families,initialKeys=[],query='') {
+  const links=new Map(mappings.map(mapping=>[mapping.sourceKey,mapping]))
+  const targets=new Map(families.map(family=>[family.key,family]))
+  const editing=new Set(initialKeys),term=query.trim().toLowerCase()
+  return products.filter(product=>{
+    const key=adProductKey(product),family=targets.get(links.get(key)?.familyKey)
+    const mapped=family?.business===product.business
+    return (!mapped||editing.has(key))&&`${product.name} ${product.itemId} ${product.platform} ${product.shopName}`.toLowerCase().includes(term)
+  })
+}
 export function applyAdMappingBatches(batches) {
   const latest=new Map(),seen=new Map(),accepted=[],conflicts=[]
   for(const batch of batches) {
