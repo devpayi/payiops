@@ -32,8 +32,7 @@ export const TANG_TABS = Object.freeze([...STAFF_TABS, 'Fulfillment'])
 // Workspace (2026-09-29, owner: "ปิดหน้านี้ ให้เห็นแค่ dev คนเดียว") — ต่างจาก CFO
 // ที่ non-dev ยังเห็น sidebar entry (แค่คลิกเข้าไปเจอ DevOnlyLock กลืนไปกับแท็บที่ยังไม่ทำ) อันนี้ตัด
 // ออกจาก sidebar ไปเลยสำหรับ non-dev ทุก role (รวม boss) เพราะ badge "ทดลอง" มันเด่นเกินจะกลืนแบบนั้น
-// Content OS remains a static prototype and is visible only to dev.
-const BOSS_HIDDEN_TABS = new Set(['Import Orders', 'Dev Hub', 'Settings', 'Workspace', 'ContentOS'])
+const BOSS_HIDDEN_TABS = new Set(['Import Orders', 'Dev Hub', 'Settings', 'Workspace'])
 const STAFF_TAB_SET = new Set(STAFF_TABS)
 const STOCK_TAB_SET = new Set(STOCK_TABS)
 const MARKETING_TAB_SET = new Set(MARKETING_TABS)
@@ -41,6 +40,8 @@ const FINANCE_TAB_SET = new Set(FINANCE_TABS)
 const TANG_TAB_SET = new Set(TANG_TABS)
 
 export function canAccessTab(role, tab) {
+  // Removed from Ops; content work now lives in the Marketing app.
+  if (tab === 'ContentOS') return false
   // Pricing uses a server-checked account allowlist; a broad role grants no access.
   if (tab === 'Pricing') return false
   const normalized = normalizeRole(role)

@@ -500,9 +500,9 @@ Sheets rate limits.
       given how many manual steps this feature already needed).
 - `LinksHub.jsx`, `DevHub.jsx` (static link/doc hubs — real content, no backend)
 - `Login.jsx`, `Settings.jsx` (auth screens, user management)
-- **`ContentOSPrototype.jsx`** ("Content OS Prototype") — **UI-only prototype, no API
-  calls, no backend.** Not usable yet. Visible only to dev (including legacy admin);
-  boss access was removed on 2026-10-21 through `shared/roles.js`.
+- **Content OS Prototype removed on 2026-10-21.** Deleted the page, menu, lazy import
+  and Workspace shortcuts for every role. Old ContentOS links fall back to Home.
+  Content work now belongs to the separate Marketing app.
 
 **Removed (2026-09-23):** `WorkforceOT.jsx` deleted — Manpower & OT left the sidebar
 earlier (commit `a6685a9`); its last entry point was a `?ot-preview` URL switch in
@@ -1114,11 +1114,7 @@ a new one.
       main-content+336px-aside split, and the 3-col link grid all used `minmax(150–230px,
       1fr)` with no upper collapse, forcing horizontal scroll on phones. Fixed with the
       shared classes above.
-    - `ContentOSPrototype.jsx` (explicitly a non-functional UI prototype, see its own note
-      above) has dense fixed grids too but no *hard* overflow bug at 375px since its
-      tracks mostly use `minmax(0, ...)` (shrinks instead of forcing scroll) — deliberately
-      left as-is given its prototype status, not worth a deep pass on unused UI.
-      `ManagerClaimsPrototype.jsx` and `HRMobile.jsx` are separate mobile-only routes
+    - `ManagerClaimsPrototype.jsx` and `HRMobile.jsx` are separate mobile-only routes
       (reached via URL query param, not the sidebar) — already mobile-first by design,
       out of scope for this pass.
 11. **NOT STARTED — LINE claim intake for เกด.** Idea only, agreed 2026-08-21, not built.

@@ -30,11 +30,8 @@ test('Staff sees only its operational pages', () => {
   assert.equal(canManageOperations('staff'), false)
 })
 
-test('Content OS prototype is accessible only to dev and legacy admin', () => {
-  for (const role of ['dev', 'admin']) {
-    assert.equal(canAccessTab(role, 'ContentOS'), true, role)
-  }
-  for (const role of ['boss', 'staff', 'stock', 'marketing', 'finance', 'tang', undefined]) {
+test('removed Content OS page is inaccessible to every role', () => {
+  for (const role of ['dev', 'admin', 'boss', 'staff', 'stock', 'marketing', 'finance', 'tang', undefined]) {
     assert.equal(canAccessTab(role, 'ContentOS'), false, role)
   }
 })

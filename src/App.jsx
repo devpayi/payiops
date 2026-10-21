@@ -34,7 +34,6 @@ const ProductDashboard = lazy(() => import('./pages/ProductDashboard'))
 const ProductTrends = lazy(() => import('./pages/ProductTrends'))
 const AdsChannels = lazy(() => import('./pages/MarketingWorkspace'))
 const TikTokSalesDashboard = lazy(() => import('./pages/TikTokSalesDashboard'))
-const ContentOSPrototype = lazy(() => import('./pages/ContentOSPrototype'))
 const Inventory = lazy(() => import('./pages/Inventory'))
 const StockMovement = lazy(() => import('./pages/StockMovement'))
 const ImportTracking = lazy(() => import('./pages/ImportTracking'))
@@ -95,7 +94,6 @@ const Icons = {
   Products: Package,
   ImportOrders: UploadCloud,
   AdsChannels: Megaphone,
-  ContentOS: Sparkles,
   Inventory: Boxes,
   StockMovement: ArrowLeftRight,
   ImportTracking: Ship,
@@ -114,7 +112,7 @@ const Icons = {
 
 const KNOWN_TABS = new Set([
   'Home', 'Workspace', 'Executive', 'Daily', 'Monthly', 'TikTokSales', 'Products', 'ProductTrends',
-  'AdsChannels', 'ContentOS', 'Inventory',
+  'AdsChannels', 'Inventory',
   'Import Tracking', 'WHT Cert', 'Stock Movement', 'HR', 'Workforce OT', 'HR People', 'CFO', 'Fulfillment',
   'Import Orders', 'Links Hub', 'Dev Hub', 'Settings', 'Pricing',
 ])
@@ -133,8 +131,7 @@ const menuGroups = [
     items: [
       { id: 'Pricing', label: 'ตั้งราคาและกำไร', renderIcon: Icons.Pricing },
       { id: 'Import Orders', label: 'Import Orders', renderIcon: Icons.ImportOrders, dotColor: 'var(--payi-success)' },
-      { id: 'AdsChannels', label: 'วิเคราะห์โฆษณา', renderIcon: Icons.AdsChannels },
-      { id: 'ContentOS', label: 'Content OS Prototype', renderIcon: Icons.ContentOS, dotColor: 'var(--payi-mint)' }
+      { id: 'AdsChannels', label: 'วิเคราะห์โฆษณา', renderIcon: Icons.AdsChannels }
     ]
   },
   {
@@ -860,11 +857,6 @@ function AppContent() {
       eyebrow: 'Operations Planning',
       subtitle: 'ประวัติรายการรับเข้า-เบิกออกสต็อกทั้งหมด'
     },
-    ContentOS: {
-      title: 'Content OS Prototype',
-      eyebrow: 'Marketing',
-      subtitle: 'Content Intelligence Prototype'
-    }
   }[activeTab] || {
     title: activeTab,
     eyebrow: menuGroups.find(group => group.items.some(item => item.id === activeTab))?.title || 'Workspace',
@@ -1496,7 +1488,6 @@ function AppContent() {
           ['Products', <ProductDashboard />],
           ['ProductTrends', <ProductTrends />],
           ['AdsChannels', canAccessTab(currentRole, 'AdsChannels') ? <AdsChannels active={activeTab==='AdsChannels'} /> : null],
-          ['ContentOS', canAccessTab(currentRole, 'ContentOS') ? <ContentOSPrototype /> : null],
           ['Inventory', <Inventory />],
           ['Import Tracking', ['dev', 'boss'].includes(currentRole) ? <ImportTracking /> : <DevOnlyLock label="ติดตามนำเข้า" />],
           ['WHT Cert', ['dev', 'boss'].includes(currentRole) ? <WhtCert /> : <DevOnlyLock label="ใบหัก ณ ที่จ่าย" />],

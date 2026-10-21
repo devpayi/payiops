@@ -11,6 +11,9 @@ test('shortcuts only list pages the person can actually open', () => {
   assert.deepEqual(profileFor('fah').links, ['Inventory', 'Stock Movement'])
   assert.equal(profileFor('toon').links.includes('CFO'), false)
   assert.deepEqual(profileFor('ked').links, []) // no Ops account yet
+  for (const person of PEOPLE) {
+    assert.equal(profileFor(person.key).links.includes('ContentOS'), false, person.key)
+  }
 })
 
 test('every board item has an owner and a known department', () => {
