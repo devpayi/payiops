@@ -943,6 +943,9 @@ function AppContent() {
       <div
         className="payi-sidebar-nav"
         style={{
+          '--sidebar-accent': getMeUser()?.avatar_emoji
+            ? (AVATAR_COLORS[getMeUser()?.avatar_color] || AVATAR_COLORS.mint).to
+            : 'var(--payi-mint-strong)',
           width: sidebarExpanded ? 240 : 68, height: '100vh', top: 0, background: '#ffffff', borderRight: '1px solid #e2e8f0',
           // แถบบนสุด — สีตามอวาตาร์ที่แต่ละคนเลือกไว้ (Settings ถูกย้ายไปหน้า Home แล้ว) ให้ theme ส่วนตัว
           // มีผลกับหน้าตาแอพจริง ไม่ใช่แค่ badge เล็กๆ มุมขวาบน แต่จงใจไม่แตะสี active menu item (ผูกกับ
@@ -984,27 +987,22 @@ function AppContent() {
                     key={item.id}
                     data-nav-id={item.id}
                     data-active={isActive ? 'true' : undefined}
+                    className="payi-sidebar-item"
+                    aria-current={isActive ? 'page' : undefined}
                     title={sidebarExpanded ? undefined : item.label}
                     onClick={() => setActiveTab(item.id)}
                     style={{
-                      display: 'flex', alignItems: 'center', justifyContent: sidebarExpanded ? 'space-between' : 'center', flex: '1 1 0', width: '100%', padding: sidebarExpanded ? '7px 9px' : '7px 0', minHeight: 32, border: 'none', borderRadius: 10,
-                      // สีไฮไลท์เมนู active — เดิมแยกสีตามหมวด (ฟ้า=Marketing, ม่วงชมพู=Inventory/Stock)
-                      // เปลี่ยนเป็นสีเดียวกันทุกหน้าตามธีมอวาตาร์ที่แต่ละคนเลือกไว้แทน (owner ขอ 2026-08-03
-                      // หลัง sidebar ดูไม่สม่ำเสมอ) ไม่ได้เลือกธีมไว้ก็ใช้ฟ้า-เขียวเดิมเป็นค่าเริ่มต้น
-                      background: isActive
-                        ? (getMeUser()?.avatar_emoji ? avatarGradient(getMeUser()?.avatar_color) : 'var(--payi-gradient-primary)')
-                        : 'transparent',
-                      boxShadow: isActive ? '0 6px 16px rgba(55,95,110,0.18)' : 'none',
-                      color: isActive ? '#fff' : '#0f172a', cursor: 'pointer', fontSize: '13.5px', lineHeight: 1.1, fontWeight: isActive ? '850' : '700', textAlign: 'left', transition: 'background 140ms ease, color 140ms ease'
+                      justifyContent: sidebarExpanded ? 'space-between' : 'center',
+                      padding: sidebarExpanded ? '7px 9px' : '7px 0',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                      <span style={{ color: isActive ? '#fff' : '#334155', display: 'flex', alignItems: 'center', flexShrink: 0 }}><item.renderIcon size={16} /></span>
+                      <span className="payi-sidebar-item-icon" style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}><item.renderIcon size={16} /></span>
                       {sidebarExpanded && (
                         <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
                           <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
                           {item.helper && (
-                            <span style={{ fontSize: 8.5, lineHeight: 1, color: isActive ? 'rgba(255,255,255,0.82)' : '#64748b', whiteSpace: 'nowrap' }}>{item.helper}</span>
+                            <span style={{ fontSize: 8.5, lineHeight: 1, color: 'var(--payi-text-muted)', whiteSpace: 'nowrap' }}>{item.helper}</span>
                           )}
                         </span>
                       )}

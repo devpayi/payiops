@@ -83,7 +83,7 @@
 .hr-page .hr-empty.is-success span { color: #4a7b25; background: #edf5e1; }
 .hr-page .hr-request-card { border-color: var(--hr-line); background: #fff; }
 .hr-page :is(button, input, select):focus-visible { outline: 3px solid #8058b9; outline-offset: 3px; }
-.payi-sidebar-nav [data-nav-id="HR"][data-active="true"] { background: linear-gradient(105deg, #523480, #70509c) !important; box-shadow: inset 3px 0 0 #b8e675, 0 4px 12px #56378b21 !important; }
+
 @media (hover: hover) and (pointer: fine) {
   .hr-page .hr-button.is-secondary:hover { background: #f3effa; border-color: #b5a0d4; }
   .hr-page .hr-balance-card:hover { border-color: #a8bc91; }
@@ -99,3 +99,6 @@
   .hr-page .hr-hero-copy p { max-width: 30ch; font-size: 13px; }
   .hr-page .hr-space-metrics .hr-metric { padding: 12px; gap: 8px; }
 }
+
+/* Retain the HR purple palette with the shared soft active state. */
+.payi-sidebar-nav .payi-sidebar-item[data-nav-id="HR"] { --sidebar-accent: #56378b; }

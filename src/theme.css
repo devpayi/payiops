@@ -92,6 +92,43 @@ body {
 }
 
 /* ---------- reusable surfaces ---------- */
+/* Shared sidebar geometry; page themes only override the color tokens. */
+.payi-sidebar-item {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 32px;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--payi-text-strong);
+  box-shadow: none;
+  cursor: pointer;
+  font-size: 13.5px;
+  line-height: 1.1;
+  font-weight: 700;
+  text-align: left;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+.payi-sidebar-item-icon { color: var(--payi-text); }
+.payi-sidebar-item[data-active='true'] {
+  background: var(--sidebar-active-bg, color-mix(in srgb, var(--sidebar-accent) 12%, white));
+  color: var(--sidebar-active-text, color-mix(in srgb, var(--sidebar-accent) 65%, var(--payi-ink)));
+  box-shadow: inset 3px 0 var(--sidebar-accent);
+}
+.payi-sidebar-item[data-active='true'] .payi-sidebar-item-icon { color: var(--sidebar-accent); }
+.payi-sidebar-item:focus-visible {
+  outline: 2px solid var(--sidebar-accent);
+  outline-offset: -2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .payi-sidebar-item:not([data-active='true']):hover { background: var(--payi-surface-muted); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .payi-sidebar-item { transition: none; }
+}
+
 .payi-sidebar {
   position: relative;
   background: rgba(255, 255, 255, 0.76);

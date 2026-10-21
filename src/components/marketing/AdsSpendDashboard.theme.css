@@ -242,7 +242,7 @@
 .mm-page:has(>.ads-spend-dashboard) .mm-import { border-color: #b7d9c0; color: #0e744e; }
 .mm-page:has(>.ads-spend-dashboard) :is(button,input,select,summary):focus-visible { outline-color: #0b8769; }
 body:has(.ads-theme-active) .mm-workspace-nav button[aria-pressed=true] { border-color: #b9dfc2; background: #e6f5ea; color: #0e744e; }
-body:has(.ads-theme-active) .payi-sidebar-nav button[data-nav-id='AdsChannels'][data-active='true'] { background: #0d8059!important; box-shadow: 0 6px 16px #0d805940!important; }
+
 body:has(.ads-theme-active) .payi-topbar>div:first-child>div:first-child { color: #0f7f57!important; }
 
 @media(min-width:681px) and (max-width:1350px) {
@@ -445,21 +445,14 @@ body:has(.ads-theme-active) .mm-workspace-nav { margin-bottom: 10px; }
 .mm-page .ad-chart-button:hover { background: #cdefd8; }
 .ad-product-drawer { background: #f9fcfa; }
 .ad-product-drawer-stats section { background: #ecf7ee; }
-body:has(.ads-theme-active) .payi-sidebar-nav button[data-nav-id='AdsChannels'][data-active='true'] {
-  background: #0d8059!important;
-  box-shadow: 0 6px 16px #0d805940!important;
-}
+
 
 /* Light finance palette for the active Ads page only. */
 .ads-theme-active,
 .ads-theme-active .payi-main-content { background: #f6f5fa!important; }
 .ads-theme-active .payi-sidebar-nav { background: #fff!important; }
-body:has(.ads-theme-active) .payi-sidebar-nav button[data-nav-id='AdsChannels'][data-active='true'] {
-  background: #eeeaff!important;
-  color: #453388!important;
-  box-shadow: inset 3px 0 #7159d2!important;
-}
-body:has(.ads-theme-active) .payi-sidebar-nav button[data-nav-id='AdsChannels'][data-active='true']>div>span:first-child { color: #654bc4!important; }
+
+
 body:has(.ads-theme-active) .payi-topbar>div:first-child>div:first-child { color: #6b4fc4!important; }
 .ads-theme-active .payi-bottom-tabbar { background: #ffffffeb; border-color: #dce4e5; box-shadow: 0 14px 32px #1c303820; }
 .ads-theme-active .payi-bottom-tab-icon { background: #f1eff8; color: #655d79; }
@@ -557,7 +550,7 @@ body:has(.ads-theme-active) .mm-workspace-nav button[aria-pressed=true] { backgr
 }
 
 /* Softer geometry without adding height above the product table. */
-body:has(.ads-theme-active) .payi-sidebar-nav button[data-nav-id='AdsChannels'][data-active='true'] { border-radius: 13px!important; }
+
 .ads-theme-active .mm-workspace-nav button,
 .mm-page:has(>.ads-spend-dashboard) .mm-filters select,
 .mm-page:has(>.ads-spend-dashboard) .mm-import,
@@ -610,4 +603,11 @@ body:has(.ads-theme-active) .payi-sidebar-nav button[data-nav-id='AdsChannels'][
   .ad-product-drawer-platform { grid-template-columns: 1fr auto; }
   .ad-product-drawer-platform-metrics { grid-column: 1; grid-row: 2; text-align: left; }
   .ad-product-drawer-platform .ads-roas-badge { grid-column: 2; grid-row: 1 / 3; }
+}
+
+/* Preserve Ads colors with the shared sidebar treatment. */
+.ads-theme-active .payi-sidebar-nav {
+  --sidebar-accent: #7159d2 !important;
+  --sidebar-active-bg: #eeeaff;
+  --sidebar-active-text: #453388;
 }
