@@ -32,7 +32,8 @@ export const TANG_TABS = Object.freeze([...STAFF_TABS, 'Fulfillment'])
 // Workspace (2026-09-29, owner: "ปิดหน้านี้ ให้เห็นแค่ dev คนเดียว") — ต่างจาก CFO
 // ที่ non-dev ยังเห็น sidebar entry (แค่คลิกเข้าไปเจอ DevOnlyLock กลืนไปกับแท็บที่ยังไม่ทำ) อันนี้ตัด
 // ออกจาก sidebar ไปเลยสำหรับ non-dev ทุก role (รวม boss) เพราะ badge "ทดลอง" มันเด่นเกินจะกลืนแบบนั้น
-const BOSS_HIDDEN_TABS = new Set(['Import Orders', 'Dev Hub', 'Settings', 'Workspace'])
+// Content OS remains a static prototype and is visible only to dev.
+const BOSS_HIDDEN_TABS = new Set(['Import Orders', 'Dev Hub', 'Settings', 'Workspace', 'ContentOS'])
 const STAFF_TAB_SET = new Set(STAFF_TABS)
 const STOCK_TAB_SET = new Set(STOCK_TABS)
 const MARKETING_TAB_SET = new Set(MARKETING_TABS)

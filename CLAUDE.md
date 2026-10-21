@@ -501,7 +501,8 @@ Sheets rate limits.
 - `LinksHub.jsx`, `DevHub.jsx` (static link/doc hubs — real content, no backend)
 - `Login.jsx`, `Settings.jsx` (auth screens, user management)
 - **`ContentOSPrototype.jsx`** ("Content OS Prototype") — **UI-only prototype, no API
-  calls, no backend.** Not usable yet.
+  calls, no backend.** Not usable yet. Visible only to dev (including legacy admin);
+  boss access was removed on 2026-10-21 through `shared/roles.js`.
 
 **Removed (2026-09-23):** `WorkforceOT.jsx` deleted — Manpower & OT left the sidebar
 earlier (commit `a6685a9`); its last entry point was a `?ot-preview` URL switch in

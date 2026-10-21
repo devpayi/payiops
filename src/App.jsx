@@ -1496,7 +1496,7 @@ function AppContent() {
           ['Products', <ProductDashboard />],
           ['ProductTrends', <ProductTrends />],
           ['AdsChannels', canAccessTab(currentRole, 'AdsChannels') ? <AdsChannels active={activeTab==='AdsChannels'} /> : null],
-          ['ContentOS', <ContentOSPrototype />],
+          ['ContentOS', canAccessTab(currentRole, 'ContentOS') ? <ContentOSPrototype /> : null],
           ['Inventory', <Inventory />],
           ['Import Tracking', ['dev', 'boss'].includes(currentRole) ? <ImportTracking /> : <DevOnlyLock label="ติดตามนำเข้า" />],
           ['WHT Cert', ['dev', 'boss'].includes(currentRole) ? <WhtCert /> : <DevOnlyLock label="ใบหัก ณ ที่จ่าย" />],
