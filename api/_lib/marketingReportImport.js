@@ -3,18 +3,26 @@ import {Buffer} from 'node:buffer'
 import {parseShopeeMonthlyReport,buildShopeeMonthlyReport} from '../../shared/monthlyAdsReports.js'
 import {buildTikTokMonthlyReport} from '../../shared/tiktokAdsReport.js'
 import {buildLazadaMonthlyReport} from '../../shared/lazadaAdsReport.js'
+import {buildAdsWorkbookReport} from '../../shared/adsWorkbookImport.js'
 import {requireManager,authEnabled} from './auth.js'
 import {reportStoreConfigured,appendStoredReport} from './marketingReportStore.js'
 
 export function buildReportImport(body) {
-  if(!body||!Array.isArray(body.files)||body.files.length<1||body.files.length>2)throw Error('เลือกรายงานหนึ่งหรือสองไฟล์')
+  if(!body||!Array.isArray(body.files)||body.files.length<1||body.files.length>25)throw Error('เลือกไฟล์รายงาน 1–25 ไฟล์')
   if(Buffer.byteLength(JSON.stringify(body),'utf8')>2_000_000)throw Error('ไฟล์รายงานรวมกันต้องไม่เกิน 2 MB')
   const files=body.files.map(file=>{
+    if(typeof file.name==='string'&&file.name.length<=255&&/\.xlsx$/i.test(file.name)&&typeof file.base64==='string')return {name:file.name,base64:file.base64,sha256:createHash('sha256').update(Buffer.from(file.base64,'base64')).digest('hex')}
     if(typeof file.text!=='string'||typeof file.name!=='string'||file.name.length>255)throw Error('รูปแบบไฟล์รายงานไม่ถูกต้อง')
     return {name:file.name,text:file.text,sha256:createHash('sha256').update(file.text).digest('hex')}
   })
   let report
-  if(body.platform==='Shopee') {
+  if(files.some(file=>file.base64!==undefined)) {
+    if(!files.every(file=>file.base64!==undefined))throw Error('เลือก Excel แยกจาก CSV / JSON')
+    report=buildAdsWorkbookReport(files,{business:body.business,shopId:body.shopId,shopName:body.shopName})
+    if(report.platform!==body.platform)throw Error('แพลตฟอร์มไม่ตรงกับไฟล์รายงาน')
+    report.fingerprints=files.map(file=>`xlsx:${file.sha256}`).sort()
+  } else if(body.platform==='Shopee') {
+    if(files.length>2)throw Error('Shopee เลือกได้ไม่เกินสองไฟล์')
     const parsed=files.map(file=>({...parseShopeeMonthlyReport(file.text,{filename:file.name}),fingerprint:file.sha256}))
     const overview=parsed.filter(item=>item.kind==='overview'),detail=parsed.filter(item=>item.kind==='group-detail')
     if(overview.length!==1||detail.length>1)throw Error('เลือกไฟล์ภาพรวมหนึ่งไฟล์และรายละเอียดกลุ่มได้อีกหนึ่งไฟล์')
