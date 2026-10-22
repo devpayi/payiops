@@ -36,3 +36,32 @@ test('missing, cross-business and mixed-family sales groups never claim one ad f
   assert.deepEqual(resolveSalesProductFamily([salesProductSkuKey('Payi',first.skus[0]),salesProductSkuKey('Payi',second.skus[0])],families),{familyKey:null,familyLinkStatus:'ambiguous'})
   assert.deepEqual(resolveSalesProductFamily(sources(first),null),{familyKey:null,familyLinkStatus:'unavailable'})
 })
+
+test('redirected 360 massage ball uses its canonical name without breaking existing family maps',()=>{
+  const aliases=[
+    {master_sku:'PY075',business:'Payi',display_name:'[Set คลายเส้น]'},
+    {master_sku:'PY077',business:'Payi',display_name:'บอลเทาปุ่ม'},
+    {master_sku:'PY077',business:'Payi Outlet',display_name:'บอลเทาปุ่ม'},
+    {master_sku:'PY029',business:'Payi',display_name:'ลูกบอลนวด 3in1'},
+  ]
+  const inventory=[{sku:'PY077',display_name:'บอลเทาปุ่ม(360)',active:'1'}]
+  const catalog=buildPricingCatalog({aliases,inventory,redirects:[{old_sku:'PY075',new_sku:'PY077'}]}).catalog
+  const groups=buildPricingFamilies(catalog,aliases)
+  const ball=groups.find(f=>f.business==='Payi'&&f.skus.includes('PY077'))
+  const legacyKey=JSON.stringify(['Payi','[setคลายเส้น]'])
+  assert.equal(ball.name,'บอลเทาปุ่ม(360)')
+  assert.equal(ball.key,legacyKey)
+  assert.deepEqual(ball.skus,['PY077'])
+  assert.equal(catalog.find(p=>p.business==='Payi'&&p.sku==='PY077').name,'บอลเทาปุ่ม(360)')
+  assert.deepEqual(resolveSalesProductFamily([salesProductSkuKey('Payi','PY077')],groups),{familyKey:legacyKey,familyLinkStatus:'linked'})
+  const ad={platform:'Shopee',business:'Payi',shopId:'shop',itemId:'46363283596',name:'ลูกบอล 360',spend:'10',sales:'60',percent:100}
+  const mapped=groupAdProducts([ad],[{sourceKey:adProductKey(ad),familyKey:legacyKey}],groups)[0]
+  assert.equal(mapped.mapped,true)
+  assert.equal(mapped.name,'บอลเทาปุ่ม(360)')
+  assert.equal(mapped.spend,'10')
+  assert.equal(mapped.roas,6)
+  assert.ok(groups.some(f=>f.name==='ลูกบอลนวด 3in1'&&f.skus.includes('PY029')&&f.key!==ball.key))
+  assert.equal(groups.find(f=>f.business==='Payi Outlet').name,'บอลเทาปุ่ม')
+  const explicit=buildPricingFamilies(catalog,[...aliases,{master_sku:'PY077',business:'Payi',product_group:'ชื่อกลุ่มที่ตั้งเอง'}])
+  assert.equal(explicit.find(f=>f.business==='Payi'&&f.skus.includes('PY077')).name,'ชื่อกลุ่มที่ตั้งเอง')
+})
