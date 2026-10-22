@@ -51,6 +51,14 @@ Do not manually edit journal rows. Use a new verified import to correct a report
 Disabling the approved-store flag hides report availability and retains the legacy
 manual ad-cost form. Source files and report JSON belong in ignored `reports/`
 or private storage, never Git, `public/`, or a client bundle.
+## ข้อมูลและประวัติในหน้าเว็บ
+
+หน้า วิเคราะห์โฆษณา → ข้อมูลและประวัติ แสดงชุดล่าสุดที่บันทึกแล้วแยกตามธุรกิจ แพลตฟอร์ม ร้าน และเดือน พร้อมช่วงวันที่ ชื่อไฟล์ ผู้บันทึก และเวลาไทย กรองดูทุกเดือนที่มีข้อมูลได้ ไฟล์ที่เปิดดูชั่วคราวไม่นับเป็นข้อมูลที่บันทึก
+
+ประวัติอ่าน commit ที่ตรวจ hash และโครงสร้างครบจาก `report_revisions` รวมชุดเก่าที่ถูกแทนที่แล้ว มีเพียง commit ล่าสุดต่อ scope ที่ขึ้นว่าใช้งานอยู่ แม้บันทึก A → B → A หรือส่งชุดเดิมซ้ำก็ไม่นับยอดเพิ่ม เวลาและผู้บันทึกใช้ค่าที่เก็บไว้จริง ไม่สร้างย้อนหลังให้ข้อมูลที่ไม่มีค่า
+
+`GET /api/marketing?kind=report-history` ใช้สิทธิ์เดียวกับรายงานรายเดือน คืนเฉพาะ metadata และชื่อไฟล์ ไม่ส่งเนื้อหาไฟล์ต้นฉบับหรือ base64 ออกมา ไม่บันทึกเหตุการณ์เปิด preview หรือความพยายามที่ล้มเหลว
+
 ## Lazada: เตรียมรายงานเดือนปฏิทิน
 
 ดาวน์โหลดจาก Seller Center ร้านเดียวกัน เดือนเดียวกันสามไฟล์: Storewide Overview, Sponsored Max → รายละเอียด → Campaign และ Promoted Product ต้องเลือกวันที่ 1 ถึงวันสุดท้ายของเดือนใหม่ในแต่ละแท็บ เพราะ Lazada ไม่คงตัวกรองข้ามแท็บ

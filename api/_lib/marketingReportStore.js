@@ -21,10 +21,12 @@ function sheets() {
 }
 // Same approved private report store; mappings use their own append-only tab.
 export const reportSheetsClient=()=>sheets()
-export async function readStoredReportRecords() {
+async function readRevisionRows() {
   const response=await sheets().spreadsheets.values.get({spreadsheetId:process.env.MARKETING_REPORTS_SHEET_ID.trim(),range:`${TAB}!A:I`,valueRenderOption:'UNFORMATTED_VALUE'})
-  return decodeReportRevisions(response.data.values || [])
+  return response.data.values || []
 }
+export const readStoredReportRecords=async()=>decodeReportRevisions(await readRevisionRows())
+export const readStoredReportHistory=async()=>decodeReportRevisions(await readRevisionRows(),{history:true})
 export async function readStoredReports() {
   return (await readStoredReportRecords()).map(record=>({...record.report,revisionId:record.revisionId,savedAt:record.savedAt,savedBy:record.savedBy,localOnly:false,persisted:true}))
 }

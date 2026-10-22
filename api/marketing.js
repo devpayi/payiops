@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   const kind = String(req.query.kind || 'events')
   if (kind === 'ad-product-mappings') return adProductMappingsHandler(req, res)
   if (kind === 'save-report') return reportImportHandler(req, res)
-  if (kind === 'monthly-reports' || kind === 'sales-channels-read') return monthlyReadHandler(req, res)
+  if (kind === 'monthly-reports' || kind === 'report-history' || kind === 'sales-channels-read') return monthlyReadHandler(req, res)
   if (kind === 'inputs') return inputsHandler(req, res)
   if (kind === 'basket') return basketHandler(req, res)
   return eventsHandler(req, res)

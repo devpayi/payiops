@@ -5,7 +5,7 @@ import process from 'node:process'
 import {requireManager,authEnabled} from './auth.js'
 import {getSheet} from './sheets.js'
 import {reportScope} from '../../shared/marketingReadModels.js'
-import {reportStoreConfigured,readStoredReports} from './marketingReportStore.js'
+import {reportStoreConfigured,readStoredReports,readStoredReportHistory} from './marketingReportStore.js'
 
 // Local review data never enters the client bundle, public directory, or Sheets.
 export async function readLocalMonthlyReports(directory=process.env.MARKETING_REPORTS_LOCAL_DIR) {
@@ -30,14 +30,16 @@ export async function readLocalMonthlyReports(directory=process.env.MARKETING_RE
 
 export const reportsAvailable=()=>reportStoreConfigured()||(Boolean(process.env.MARKETING_REPORTS_LOCAL_DIR) && !(process.env.VERCEL || process.env.NODE_ENV==='production'))
 const readConfiguredReports=()=>reportStoreConfigured()?readStoredReports():readLocalMonthlyReports()
+const readConfiguredHistory=()=>reportStoreConfigured()?readStoredReportHistory():[]
 
-export function createMarketingMonthlyRead({authorize=requireManager,available=reportsAvailable,persistent=reportStoreConfigured,readReports=readConfiguredReports,readInputs=()=>getSheet('marketing_inputs'),production=()=>Boolean(process.env.VERCEL || process.env.NODE_ENV==='production'),hasAuth=authEnabled}={}) {
+export function createMarketingMonthlyRead({authorize=requireManager,available=reportsAvailable,persistent=reportStoreConfigured,readReports=readConfiguredReports,readHistory=readConfiguredHistory,readInputs=()=>getSheet('marketing_inputs'),production=()=>Boolean(process.env.VERCEL || process.env.NODE_ENV==='production'),hasAuth=authEnabled}={}) {
   return async function handler(req,res) {
     if(production() && !hasAuth())return res.status(503).json({success:false,error:'ต้องตั้งค่าการเข้าสู่ระบบก่อนเปิดรายงานส่วนตัว'})
     if(!authorize(req,res))return
     res.setHeader('Cache-Control','no-store')
     if(req.method!=='GET')return res.status(405).json({success:false,error:'รายงานนี้เปิดให้อ่านอย่างเดียว'})
     try {
+      if(req.query.kind==='report-history')return res.status(200).json({success:true,history:await readHistory()})
       if(req.query.kind==='monthly-reports')return res.status(200).json({success:true,reports:await readReports(),storage:persistent()?'private-sheets':'local-read-only',available:Boolean(available()),writeAvailable:Boolean(persistent()&&hasAuth())})
       // Deliberately no ensureSheet, append, update, or migration on GET.
       const source=await readInputs()
