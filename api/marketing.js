@@ -7,13 +7,13 @@ import eventsHandler from './_lib/marketingEvents.js'
 import inputsHandler from './_lib/marketingInputs.js'
 import basketHandler from './_lib/marketingBasket.js'
 import monthlyReadHandler from './_lib/marketingMonthlyRead.js'
-import reportImportHandler from './_lib/marketingReportImport.js'
+import reportActionsHandler from './_lib/marketingReportActions.js'
 import adProductMappingsHandler from './_lib/adProductMappings.js'
 
 export default async function handler(req, res) {
   const kind = String(req.query.kind || 'events')
   if (kind === 'ad-product-mappings') return adProductMappingsHandler(req, res)
-  if (kind === 'save-report') return reportImportHandler(req, res)
+  if (['save-report','review-report','report-action'].includes(kind)) return reportActionsHandler(req, res)
   if (kind === 'monthly-reports' || kind === 'report-history' || kind === 'sales-channels-read') return monthlyReadHandler(req, res)
   if (kind === 'inputs') return inputsHandler(req, res)
   if (kind === 'basket') return basketHandler(req, res)

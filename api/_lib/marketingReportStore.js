@@ -1,7 +1,7 @@
 import {google} from 'googleapis'
 import process from 'node:process'
 import {pricingSheetId} from './pricingStore.js'
-import {REPORT_HEADERS,decodeReportRevisions,encodeReportRevision} from './marketingReportRevisions.js'
+import {REPORT_HEADERS,decodeReportRevisions,decodeReportState,encodeReportRevision} from './marketingReportRevisions.js'
 
 const TAB='report_revisions'
 let client
@@ -27,8 +27,9 @@ async function readRevisionRows() {
 }
 export const readStoredReportRecords=async()=>decodeReportRevisions(await readRevisionRows())
 export const readStoredReportHistory=async()=>decodeReportRevisions(await readRevisionRows(),{history:true})
+export const readStoredReportState=async()=>decodeReportState(await readRevisionRows())
 export async function readStoredReports() {
-  return (await readStoredReportRecords()).map(record=>({...record.report,revisionId:record.revisionId,savedAt:record.savedAt,savedBy:record.savedBy,localOnly:false,persisted:true}))
+  return (await readStoredReportRecords()).map(record=>({...record.report,eventId:record.eventId,revisionId:record.revisionId,savedAt:record.savedAt,savedBy:record.savedBy,localOnly:false,persisted:true}))
 }
 export async function appendStoredReport(record,by) {
   const api=sheets(),spreadsheetId=process.env.MARKETING_REPORTS_SHEET_ID.trim()
