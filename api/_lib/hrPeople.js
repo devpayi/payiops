@@ -155,6 +155,7 @@ async function opUpdatePerson(req, res, sheetId) {
     }
     const nameCol = headers.indexOf('ชื่อ-นามสกุล')
     let photoResult = null
+    let photoWarning = ''
     if (photo) {
       const labelOf = (k) => fields.find(([key]) => key === k)?.[1]
       const urlCol = headers.indexOf(labelOf('employee_photo_url'))
@@ -162,19 +163,21 @@ async function opUpdatePerson(req, res, sheetId) {
       if (urlCol < 0 || thumbCol < 0) return res.status(400).json({ success: false, error: 'ชีตยังไม่มีคอลัมน์รูป กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง' })
       const who = nameCol >= 0 ? String(cells[nameCol] ?? '').trim() : ''
       const url = await uploadEmployeePhoto({ base64Data: photo.base64Data, mimeType: 'image/jpeg' }, `${who || 'employee'}-photo`)
-      if (!url) return res.status(502).json({ success: false, error: 'อัปโหลดรูปไม่สำเร็จ ลองใหม่อีกครั้ง' }) // ยังไม่เขียนอะไรลงชีต
       const thumb = cleanEmployeeField('employee_photo_thumb', photo.thumb)
-      toWrite[urlCol] = url
-      toWrite[thumbCol] = thumb
-      log[labelOf('employee_photo_url')] = { from: String(cells[urlCol] ?? '').trim(), to: url }
-      photoResult = { url, thumb }
+      // Drive ล่ม/ไม่ได้ตั้งรหัส (เช่นรันในเครื่อง) ต้องไม่ล็อกทั้งการบันทึก: PDF ใช้รูปย่อในชีตอยู่แล้ว — บันทึกรูปย่อ + ข้อมูลอื่นไป
+      // แล้วเตือนว่ารูปเต็มไม่ได้เข้า Drive (ลิงก์เดิมไม่ถูกแตะ) ถ้าไม่มีทั้งลิงก์ใหม่และรูปย่อที่ใช้ได้ถึงจะไม่บันทึก
+      if (!url && !thumb) return res.status(502).json({ success: false, error: 'อัปโหลดรูปไม่สำเร็จ ลองใหม่อีกครั้ง' }) // ยังไม่เขียนอะไรลงชีต
+      if (url) { toWrite[urlCol] = url; log[labelOf('employee_photo_url')] = { from: String(cells[urlCol] ?? '').trim(), to: url } }
+      if (thumb || url) toWrite[thumbCol] = thumb // อัปโหลดสำเร็จแต่รูปย่อใช้ไม่ได้ = ล้างรูปย่อเก่า (PDF จะถอยไปใช้ลิงก์ใหม่) ไม่ให้ PDF โชว์รูปเก่า
+      if (!url) photoWarning = 'อัปโหลดรูปเต็มเข้า Drive ไม่สำเร็จ — บันทึกรูปย่อสำหรับ PDF และข้อมูลอื่นแล้ว (กด "เปลี่ยนรูป" อีกครั้งภายหลังเพื่ออัปโหลดรูปเต็ม)'
+      photoResult = { url: url || String(cells[urlCol] ?? '').trim(), thumb: thumb || (url ? '' : String(cells[thumbCol] ?? '')) }
     }
     if (!Object.keys(toWrite).length) return res.status(200).json({ success: true, changed: 0 })
     await ensureExternalSheet(sheetId, 'hr_edit_log', EDIT_LOG_HEADERS)
     // จดประวัติก่อนแก้จริง — พลาดครึ่งทางอย่างมากได้ log เกิน ไม่มีทางแก้แล้วไม่มีร่องรอย
     await appendExternalRows(sheetId, 'hr_edit_log', [[new Date().toISOString(), actorName(req), view, nameCol >= 0 ? String(cells[nameCol] ?? '') : '', String(ts ?? '').trim(), JSON.stringify(log).slice(0, 45000)]])
     await updateExternalCells(sheetId, tab, rowNo, toWrite)
-    return res.status(200).json({ success: true, changed: Object.keys(toWrite).length, photo: photoResult })
+    return res.status(200).json({ success: true, changed: Object.keys(toWrite).length, photo: photoResult, warning: photoWarning || undefined })
   } catch (e) {
     console.error('opUpdatePerson:', e.message)
     return res.status(500).json({ success: false, error: 'บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง' })

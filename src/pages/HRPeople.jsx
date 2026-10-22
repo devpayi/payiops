@@ -132,6 +132,18 @@ function LinkOrText({ value }) {
   return <>{value || <span style={{ color: 'var(--payi-text-faint)' }}>—</span>}</>
 }
 
+// รูปหน้าพนักงาน (รูปย่อในชีต) ไว้ดูว่าใครเป็นใครในตาราง/รายละเอียด — บอส 2026-10-22: บางทีไม่รู้ชื่อจริง จำหน้าได้เท่านั้น
+// ไม่มีรูป = วงกลมตัวอักษรแรกของชื่อ (แถวเก่าก่อนมีฟอร์มรูป)
+function PersonAvatar({ src, name, w = 34, h = 42 }) {
+  const box = { width: w, height: h, borderRadius: Math.round(w / 5), flexShrink: 0 }
+  if (src && /^data:image\//.test(src)) return <img src={src} alt={name || 'รูปพนักงาน'} style={{ ...box, objectFit: 'cover', border: '1px solid var(--payi-border)', display: 'block' }} />
+  return (
+    <div title="ยังไม่มีรูป" style={{ ...box, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--payi-surface-muted, #eef2f7)', color: 'var(--payi-text-muted)', fontWeight: 700, fontSize: Math.round(w / 2.4), border: '1px solid var(--payi-border)' }}>
+      {String(name || '?').trim().charAt(0) || '?'}
+    </div>
+  )
+}
+
 // ==================== แก้ไขข้อมูล ====================
 // ฟอร์มแก้ไขสร้างจากรายการคำถามชุดเดียวกับ PDF/wizard (window.HRPdfForm.sections จาก public/hr-pdf-form.js)
 // — เพิ่ม/แก้คำถามที่ SECTIONS ที่เดียว ฟอร์มแก้ไข + PDF + ฟอร์มเปล่า ตามกันหมด ส่งขึ้นไปเฉพาะช่องที่แก้จริง
@@ -438,6 +450,16 @@ function DetailDrawer({ row, headers, kind, onClose, onDelete, onRestore, onSave
             <button onClick={editing ? () => setEditing(false) : onClose} title={editing ? 'ยกเลิกการแก้ไข' : 'ปิด'} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--payi-text-muted)' }}><X size={20} /></button>
           </div>
         </div>
+        {!editing && (kind === 'employee' || row[THUMB_HEADER]) && (
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 18 }}>
+            <PersonAvatar src={row[THUMB_HEADER]} name={row['ชื่อ-นามสกุล']} w={72} h={90} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--payi-text-strong)', wordBreak: 'break-word' }}>{[row['คำนำหน้า'], row['ชื่อ-นามสกุล']].filter(Boolean).join('') || '—'}</div>
+              {row['ชื่อเล่น'] && <div style={{ fontSize: 13, color: 'var(--payi-text-muted)' }}>ชื่อเล่น: {row['ชื่อเล่น']}</div>}
+              {row['ตำแหน่งงาน'] && <div style={{ fontSize: 13, color: 'var(--payi-text-muted)' }}>{row['ตำแหน่งงาน']}</div>}
+            </div>
+          </div>
+        )}
         {editing ? (
           <RecordEditor row={row} headers={headers} kind={kind} onCancel={() => setEditing(false)}
             onSave={async (changes, photo) => { await onSave(changes, photo); setEditing(false) }} />
@@ -518,6 +540,7 @@ export default function HRPeople() {
     const photoCells = d.photo ? { 'รูปถ่ายพนักงาน (หน้าตรง)': d.photo.url, [THUMB_HEADER]: d.photo.thumb } : {}
     setSelected((s) => ({ ...s, ...changes, ...photoCells }))
     load()
+    if (d.warning) window.alert(d.warning) // บันทึกสำเร็จ แต่รูปเต็มไม่ได้เข้า Drive
   }
   const restoreRow = async (row) => {
     if (!window.confirm(`กู้คืน "${row['ชื่อ'] || 'รายการนี้'}" กลับไปที่เดิม?`)) return
@@ -540,6 +563,7 @@ export default function HRPeople() {
   const summaryDef = SUMMARY_COLUMNS[view]
   const tableCols = summaryDef ? summaryDef.filter((h) => headers.includes(h)) : headers
   const isSummaryView = !!summaryDef
+  const showAvatar = view === 'employees_full' // ตารางพนักงานโชว์รูปหน้าไว้ดูว่าใครเป็นใคร
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase()
@@ -614,6 +638,7 @@ export default function HRPeople() {
             <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 720, fontSize: 13 }}>
               <thead>
                 <tr>
+                  {showAvatar && <th style={{ padding: '10px 12px', borderBottom: '1px solid var(--payi-border)', width: 44 }} />}
                   {tableCols.map((h) => (
                     <th key={h} style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '1px solid var(--payi-border)', color: 'var(--payi-text-muted)', fontWeight: 700, whiteSpace: 'nowrap', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.03em' }}>{displayLabel(h)}</th>
                   ))}
@@ -626,6 +651,7 @@ export default function HRPeople() {
                     style={{ cursor: 'pointer', borderBottom: '1px solid var(--payi-border)' }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--payi-surface-muted)')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+                    {showAvatar && <td style={{ padding: '6px 12px' }}><PersonAvatar src={row[THUMB_HEADER]} name={row['ชื่อ-นามสกุล']} /></td>}
                     {tableCols.map((h) => (
                       <td key={h} style={{ padding: '9px 12px', color: 'var(--payi-text-strong)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: h === nameCol ? 700 : 400 }}>
                         {parseJsonRows(row[h])
@@ -652,7 +678,7 @@ export default function HRPeople() {
                   </tr>
                 ))}
                 {!loading && !filtered.length && (
-                  <tr><td colSpan={Math.max(tableCols.length, 1)} style={{ padding: 24, textAlign: 'center', color: 'var(--payi-text-muted)' }}>ไม่มีข้อมูล</td></tr>
+                  <tr><td colSpan={Math.max(tableCols.length + (showAvatar ? 1 : 0), 1)} style={{ padding: 24, textAlign: 'center', color: 'var(--payi-text-muted)' }}>ไม่มีข้อมูล</td></tr>
                 )}
               </tbody>
             </table>
