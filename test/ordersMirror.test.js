@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { createClient } from '@libsql/client'
 import {
   __setDepsForTests, mirrorRows, mirrorDeleteLot, resyncTab, reconcile, listDirtyTabs, markDirty, fingerprint, toRow,
-  mirrorStatus, RAW_HEADERS, TABLE,
+  mirrorStatus, RAW_HEADERS, TABLE, mirrorRowsBatch, createMirrorContext, createMirrorFetch,
 } from '../api/_lib/ordersMirror.js'
 
 const TAB = 'raw_orders_2026_09'
@@ -166,6 +166,7 @@ test('ปิดกระจก (TURSO_MIRROR ไม่เปิด) = ไม่�
   const trap = new Proxy({}, { get() { throw new Error('ไม่ควรแตะ client') } })
   __setDepsForTests({ client: trap, enabled: false, sheets: sheets.api })
   assert.deepEqual(await mirrorRows(TAB, [sheetRow()]), { skipped: true })
+  assert.deepEqual(await mirrorRowsBatch([{ tab: TAB, rows: [sheetRow()] }]), [{ skipped: true }])
   assert.deepEqual(await mirrorDeleteLot('IMP1', 1, [TAB]), { skipped: true })
   assert.deepEqual(await reconcile(), { enabled: false })
   assert.deepEqual(await mirrorStatus(), { enabled: false })
@@ -199,42 +200,160 @@ test('reconcile ค่าเริ่มต้น: เลือก 2 เดื�
   assert.deepEqual(out2.report.map((r) => r.tab).sort(), ['raw_orders_2026_07', 'raw_orders_2026_08', 'raw_orders_2026_09', 'raw_orders_2026_10'])
 })
 
-test('Turso ค้าง (ไม่ตอบ): mirrorRows คืนเร็วภายในงบเวลา, ติดธง, เบรกเกอร์ทำให้ครั้งถัดไปข้ามทันที', async () => {
+// นาฬิกาจำลองทำให้ assertion ไม่ขึ้นกับความเร็ว/scheduler ของเครื่อง
+async function drain() { for (let i = 0; i < 100; i++) await Promise.resolve() }
+function clock(t) { t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 }) }
+const never = () => new Promise(() => {})
+
+test('Turso ค้าง: timeout และเบรกเกอร์ข้ามครั้งถัดไปโดยไม่ส่ง SQL', async (t) => {
+  clock(t)
   const sheets = fakeSheets({})
-  const hang = () => new Promise(() => {}) // ไม่ resolve ไม่ reject
-  __setDepsForTests({ client: { batch: hang, execute: hang }, enabled: true, sheets: sheets.api, timeoutMs: 50, budgetMs: 200, breakerMs: 60000 })
-  const t0 = Date.now()
-  const r1 = await mirrorRows(TAB, [sheetRow()])
-  assert.equal(r1.ok, false); assert.ok(Date.now() - t0 < 1000, 'ต้องไม่รอเกินงบเวลา')
-  const t1 = Date.now()
-  const r2 = await mirrorRows(TAB, [sheetRow({ order_key: 'Shopee:A9:L1' })])
-  assert.equal(r2.error, 'breaker open'); assert.ok(Date.now() - t1 < 100, 'เบรกเกอร์เปิดต้องข้ามทันที')
-  const r3 = await mirrorDeleteLot('IMP1', 1, [TAB])
-  assert.equal(r3.error, 'breaker open')
+  let calls = 0
+  __setDepsForTests({ client: { batch: () => { calls++; return never() } }, enabled: true, sheets: sheets.api, timeoutMs: 50, budgetMs: 200 })
+  const pending = mirrorRows(TAB, [sheetRow()])
+  await drain(); t.mock.timers.tick(50); await drain()
+  assert.equal((await pending).ok, false)
+  assert.equal((await mirrorRows(TAB, [sheetRow()])).error, 'breaker open')
+  assert.equal((await mirrorDeleteLot('IMP1', 1, [TAB])).error, 'breaker open')
+  assert.equal(calls, 1)
   assert.deepEqual(await listDirtyTabs(), [TAB])
 })
 
-test('งบเวลารวมหมดกลางทาง (หลาย chunk): หยุด ติดธง ไม่วนรอทุก chunk', async () => {
+test('หลาย chunk ใช้งบร่วม: ไม่เริ่ม SQL ถัดไปหลัง deadline', async (t) => {
+  clock(t)
   const sheets = fakeSheets({})
   let writes = 0
-  const slow = { execute: async () => ({ rows: [[0]] }), batch: async () => { writes++; await new Promise((r) => setTimeout(r, 120)); return [] } }
+  const slow = { execute: async () => ({ rows: [[0]] }), batch: async (stmts) => {
+    if (typeof stmts[0] === 'string') return [] // schema ผ่าน ไม่รวมในตัวนับ write
+    writes++; await new Promise((r) => setTimeout(r, 120)); return []
+  } }
   __setDepsForTests({ client: slow, enabled: true, sheets: sheets.api, timeoutMs: 5000, budgetMs: 250 })
   const rows = Array.from({ length: 1000 }, (_, i) => sheetRow({ order_key: `Shopee:X${i}:L1`, order_id: `'X${i}` })) // 5 chunk
-  const r = await mirrorRows(TAB, rows)
-  assert.equal(r.ok, false); assert.match(r.error, /budget|timeout/) // ขึ้นกับว่างบหมดระหว่างรอ chunk หรือกลาง chunk
-  assert.ok(writes < 5, `ต้องหยุดก่อนครบ chunk (เขียนไป ${writes})`)
+  const pending = mirrorRows(TAB, rows)
+  await drain(); t.mock.timers.tick(120); await drain()
+  t.mock.timers.tick(68); await drain() // deadline 187.5ms หลังกันเวลา dirty
+  const r = await pending
+  assert.equal(r.ok, false); assert.match(r.error, /budget|timeout/)
+  assert.equal(writes, 2)
+  t.mock.timers.tick(1000); await drain() // write ที่เลิกรอจบทีหลังได้ แต่ต้องไม่มี chunk ถัดไป
+  assert.equal(writes, 2)
   assert.deepEqual(await listDirtyTabs(), [TAB])
 })
 
-test('คำสั่งเดียวค้างกลางทาง: รอไม่เกินงบเวลารวม (ไม่ใช่ timeout เต็มของคำสั่ง)', async () => {
+test('ค้างที่ write จริง: schema/dupcheck ผ่าน และหมดงบก่อน timeout เต็ม', async (t) => {
+  clock(t)
   const sheets = fakeSheets({})
-  const hangWrite = { execute: async () => ({ rows: [[0]] }), batch: (stmts) => (stmts.length > 5 ? new Promise(() => {}) : Promise.resolve([])) }
-  __setDepsForTests({ client: hangWrite, enabled: true, sheets: sheets.api, timeoutMs: 10000, budgetMs: 150 })
+  let writes = 0
+  const hangWrite = { execute: async () => ({ rows: [[0]] }), batch: (stmts) => {
+    if (typeof stmts[0] === 'string') return Promise.resolve([])
+    writes++; return never()
+  } }
+  __setDepsForTests({ client: hangWrite, enabled: true, sheets: sheets.api, timeoutMs: 10000, budgetMs: 200 })
   const rows = Array.from({ length: 50 }, (_, i) => sheetRow({ order_key: `Shopee:H${i}:L1`, order_id: `'H${i}` }))
-  const t0 = Date.now()
-  const r = await mirrorRows(TAB, rows)
+  const pending = mirrorRows(TAB, rows)
+  await drain(); assert.equal(writes, 1)
+  t.mock.timers.tick(150); await drain()
+  const r = await pending
   assert.equal(r.ok, false)
-  assert.ok(Date.now() - t0 < 1500, `รอ ${Date.now() - t0}ms เกินงบ (ควร ~150ms ไม่ใช่ 10s+)`)
+  assert.match(r.error, /write timeout/)
+  assert.equal(r.dirtyRecorded, true)
+})
+
+test('ติดธงค้าง: จำกัด ensure + append และไม่ append หลัง ensure จบช้า', async (t) => {
+  clock(t)
+  const ensure = Promise.withResolvers()
+  let appends = 0
+  const sheets = { ensureSheet: () => ensure.promise, appendRows: async () => { appends++ } }
+  __setDepsForTests({ client: { batch: async () => { throw new Error('down') } }, enabled: true, sheets, budgetMs: 200, dirtyBudgetMs: 50 })
+  const pending = mirrorRows(TAB, [sheetRow()])
+  await drain(); t.mock.timers.tick(50); await drain()
+  assert.equal((await pending).dirtyRecorded, false)
+  ensure.resolve(); await drain()
+  assert.equal(appends, 0)
+})
+
+test('append ธงค้าง: คืนผลภายในงบและรายงานว่ายังไม่ยืนยันธง', async (t) => {
+  clock(t)
+  __setDepsForTests({ client: { batch: async () => { throw new Error('down') } }, enabled: true,
+    sheets: { ensureSheet: async () => {}, appendRows: never }, budgetMs: 200, dirtyBudgetMs: 50 })
+  const pending = mirrorRows(TAB, [sheetRow()])
+  await drain(); t.mock.timers.tick(50); await drain()
+  assert.equal((await pending).dirtyRecorded, false)
+})
+
+test('หลายเดือน: งบเดียวและบันทึกธงทุกเดือนใน append เดียว', async (t) => {
+  clock(t)
+  const sheets = fakeSheets({})
+  let calls = 0, appends = 0
+  const append = sheets.api.appendRows
+  sheets.api.appendRows = async (...args) => { appends++; return append(...args) }
+  __setDepsForTests({ client: { batch: () => { calls++; return never() } }, enabled: true, sheets: sheets.api, timeoutMs: 10000, budgetMs: 200 })
+  const pending = mirrorRowsBatch([TAB, 'raw_orders_2026_08', 'raw_orders_2026_07'].map((tab) => ({ tab, rows: [sheetRow()] })))
+  await drain(); t.mock.timers.tick(150); await drain()
+  const result = await pending
+  assert.ok(result.every((r) => r.ok === false && r.dirtyRecorded))
+  assert.equal(calls, 1); assert.equal(appends, 1)
+  assert.equal((await listDirtyTabs()).length, 3)
+})
+
+test('ลบล็อต: schema + delete + ธงอยู่ในงบเดียว ไม่คูณตามเดือน', async (t) => {
+  clock(t)
+  const sheets = fakeSheets({})
+  let deletes = 0
+  const client = { batch: () => new Promise((resolve) => setTimeout(resolve, 100)), execute: () => { deletes++; return never() } }
+  __setDepsForTests({ client, enabled: true, sheets: sheets.api, timeoutMs: 10000, budgetMs: 200 })
+  const pending = mirrorDeleteLot('IMP1', 5, [TAB, 'raw_orders_2026_08'])
+  await drain(); t.mock.timers.tick(100); await drain()
+  assert.equal(deletes, 1)
+  t.mock.timers.tick(50); await drain()
+  const result = await pending
+  assert.equal(result.ok, false); assert.equal(result.dirtyRecorded, true)
+  assert.equal((await listDirtyTabs()).length, 2)
+})
+
+test('request เลย 45s: ไม่เริ่ม Turso และไม่รอ dirty ต่อ', async (t) => {
+  clock(t)
+  const context = createMirrorContext()
+  t.mock.timers.tick(45000)
+  let calls = 0
+  __setDepsForTests({ client: { batch: async () => { calls++ } }, enabled: true, sheets: fakeSheets({}).api })
+  const result = await mirrorRowsBatch([{ tab: TAB, rows: [sheetRow()] }], 'import', context)
+  assert.equal(calls, 0)
+  assert.equal(result[0].ok, false); assert.equal(result[0].dirtyRecorded, false)
+})
+
+test('หลายร้าน: context เดียว งบหมดไม่เริ่ม SQL แม้ไม่มีเบรกเกอร์', async (t) => {
+  clock(t)
+  const context = createMirrorContext()
+  const sheets = fakeSheets({})
+  __setDepsForTests({ client: { batch: never }, enabled: true, sheets: sheets.api, timeoutMs: 10000, budgetMs: 200 })
+  const first = mirrorRowsBatch([{ tab: TAB, rows: [sheetRow()] }], 'ingest', context)
+  await drain(); t.mock.timers.tick(150); await drain(); await first
+  t.mock.timers.tick(50)
+  let calls = 0
+  __setDepsForTests({ client: { batch: async () => { calls++ } }, enabled: true, sheets: sheets.api, budgetMs: 200 })
+  const second = await mirrorRowsBatch([{ tab: TAB, rows: [sheetRow()] }], 'ingest', context)
+  assert.equal(calls, 0); assert.equal(second[0].ok, false)
+})
+
+test('HTTP transport ถูก abort เมื่อ timeout ไม่ใช่แค่เลิกรอ Promise', async (t) => {
+  clock(t)
+  let aborted = 0, sent = 0
+  const transport = createMirrorFetch((_request, { signal }) => {
+    sent++
+    return new Promise((_, reject) => {
+      signal.addEventListener('abort', () => { aborted++; reject(signal.reason) }, { once: true })
+    })
+  })
+  const { createClient: createHttpClient } = await import('@libsql/client/http')
+  const client = createHttpClient({ url: 'https://mirror-test.invalid', fetch: transport })
+  t.after(() => client.close())
+  __setDepsForTests({ client, enabled: true, sheets: fakeSheets({}).api, timeoutMs: 50, budgetMs: 200 })
+  const pending = mirrorRows(TAB, [sheetRow()])
+  await drain(); assert.equal(sent, 1)
+  t.mock.timers.tick(50); await drain()
+  assert.equal((await pending).ok, false)
+  assert.equal(aborted, 1)
 })
 
 test('reconcile ค่าเริ่มต้น: เดือนเก่าถูกหมุนตรวจวันละ 1 เดือน ครบทุกเดือนภายในไม่กี่วัน', async () => {

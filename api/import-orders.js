@@ -4,7 +4,7 @@
 //   DELETE ?importId=IMPxxxx      → ลบล็อตไฟล์นี้ออกจาก raw_orders_* ทุก tab ที่เกี่ยวข้อง
 import { requireDev } from './_lib/auth.js'
 import { getSheet, appendRows, batchGetValues, batchUpdateValues, overwriteSheet, getMeta, ensureSheet } from './_lib/sheets.js'
-import { mirrorRows, mirrorDeleteLot } from './_lib/ordersMirror.js'
+import { createMirrorContext, mirrorRowsBatch, mirrorDeleteLot } from './_lib/ordersMirror.js'
 import { isoDate } from './_lib/dates.js'
 import ZIP_TO_PROVINCE from './_lib/zipToProvince.js'
 import { createHash } from 'node:crypto'
@@ -59,6 +59,7 @@ function genImportId() {
 }
 
 export default async function handler(req, res) {
+  const mirrorContext = createMirrorContext()
   if (!requireDev(req, res)) return
   try {
     if (req.method === 'GET' && (req.query.view || 'log') === 'log') {
@@ -110,9 +111,6 @@ export default async function handler(req, res) {
         await overwriteSheet(tab, headers, kept)
       }
 
-      // สำเนา Turso ทำตามผลที่ Sheets ลบจริง (ไม่ throw — ถ้าพังจะติดธง turso_dirty แล้ว reconcile ซ่อมให้)
-      await mirrorDeleteLot(importId, deleted, tabs)
-
       // soft-delete: เก็บ log ไว้แต่เปลี่ยน status กันโผล่ในประวัติ/กันนำ importId ซ้ำมาลบวนซ้ำ
       const statusIdx = logHeaders.indexOf('status')
       const deletedAtIdx = logHeaders.indexOf('deleted_at')
@@ -126,6 +124,8 @@ export default async function handler(req, res) {
         return next
       })
       await overwriteSheet('import_log', logHeaders, updatedLog)
+      // ประวัติการลบต้องเสร็จก่อนรอสำเนา
+      await mirrorDeleteLot(importId, deleted, tabs, 'delete-lot', mirrorContext)
 
       return res.status(200).json({ success: true, deleted, tabs })
     }
@@ -331,6 +331,7 @@ export default async function handler(req, res) {
     // (อัพไฟล์ซ้ำหลังเพิ่ม alias จะแก้ master_sku/display_name ของแถวที่เคยไม่จับคู่ให้ด้วย)
     const CMP_COLS = [6, 7, 8, 9, 10, 11, 12, 13, 17, 18, 19, 20, 21]
     const stripQuote = (v) => String(v ?? '').replace(/^'/, '')
+    const mirrorChanges = []
     for (const tab of tabs) {
       await ensureSheet(tab, RAW_HEADERS)
       let rows = []
@@ -367,14 +368,16 @@ export default async function handler(req, res) {
       }
       if (updates.length) await batchUpdateValues(updates)
       if (newRows.length) { await appendRows(tab, newRows); imported += newRows.length }
-      // สำเนา Turso: ส่งเฉพาะแถวที่ Sheets เขียนจริงรอบนี้ (แถวที่ข้าม/กำกวมไม่ส่ง) — ไม่ throw, พังแล้วติดธง turso_dirty
-      await mirrorRows(tab, [...updates.map((u) => u.values[0]), ...newRows], 'import')
+      mirrorChanges.push({ tab, rows: [...updates.map((u) => u.values[0]), ...newRows] })
     }
 
     // ---- บันทึก import_log ----
     try {
       await appendRows('import_log', [[importId, fileName, bizSel || (byMonth.size ? '' : ''), platformSel === 'auto' ? '' : platformSel, imported, mapped, imported - mapped, importedAt, tabs.join(','), 'active']])
     } catch { /* ignore */ }
+
+    // งบเดียวครอบทุกเดือน + การติดธง หลังบันทึกประวัติหลักแล้ว
+    await mirrorRowsBatch(mirrorChanges, 'import', mirrorContext)
 
     res.status(200).json({ success: true, importId, imported, updated, mapped, skipped: skippedDup + skippedInvalid, skippedDup, skippedInvalid, skippedAmbiguous, ambiguousOrders, unmappedSamples, tabs })
   } catch (e) {
