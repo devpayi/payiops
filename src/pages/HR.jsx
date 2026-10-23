@@ -79,6 +79,7 @@ export default function HR() {
   const [showAddEmployee, setShowAddEmployee] = useState(false)
   const [editEmployees, setEditEmployees] = useState(false)
   const [balanceDrafts, setBalanceDrafts] = useState({})
+  const [quotaDrafts, setQuotaDrafts] = useState({}) // โควตาพักร้อนต่อปี (ตัวเลขหลัง "/") แก้ตรงๆ ได้ ไม่ต้องคำนวณจากยอดเหลือ
   const [dayOffDrafts, setDayOffDrafts] = useState({}) // { [code]: { weekday, from } } — วันหยุดประจำ+วันที่เริ่มมีผล ต้องกรอกคู่กันแล้วกดบันทึกทีเดียว
   const [editingBalanceCode, setEditingBalanceCode] = useState('')
   const [editingLeave, setEditingLeave] = useState(null)
@@ -167,8 +168,16 @@ export default function HR() {
 
   const setLeaveBalance = async (item) => {
     const remaining = Number(balanceDrafts[item.code] ?? item.remaining)
+    const quota = Number(quotaDrafts[item.code] ?? item.quota)
+    // แก้ช่อง "โควตา" → ตั้งโควตาตรงๆ ; แก้แค่ช่อง "เหลือ" → ตั้งยอดเหลือเหมือนเดิม
+    const quotaChanged = quota !== Number(item.quota)
     setSaving(true); setError('')
-    try { await postAction({ action: 'set-leave-balance', code: item.code, remaining }, 'แก้ยอดคงเหลือไม่สำเร็จ'); setBalanceDrafts((current) => ({ ...current, [item.code]: remaining })); setEditingBalanceCode(''); await load() }
+    try {
+      await postAction(quotaChanged ? { action: 'set-leave-balance', code: item.code, quota } : { action: 'set-leave-balance', code: item.code, remaining }, 'แก้วันลาไม่สำเร็จ')
+      setBalanceDrafts((current) => { const next = { ...current }; delete next[item.code]; return next })
+      setQuotaDrafts((current) => { const next = { ...current }; delete next[item.code]; return next })
+      setEditingBalanceCode(''); await load()
+    }
     catch (e) { setError(e.message) } finally { setSaving(false) }
   }
 
@@ -288,7 +297,7 @@ export default function HR() {
             <div className="hr-balance-card-top"><div className="hr-avatar is-small" aria-hidden="true">{item.name?.trim().slice(0, 1) || '?'}</div><div><strong>{item.name}</strong><span>{item.group}</span></div>{isBoss && <div className="hr-balance-card-actions"><button type="button" className={`hr-balance-pencil ${editingBalanceCode === item.code ? 'is-active' : ''}`} onClick={() => setEditingBalanceCode((code) => code === item.code ? '' : item.code)} aria-label={`แก้วันลาคงเหลือของ ${item.name}`} title="แก้วันลาคงเหลือ"><Pencil size={14} /></button>{editEmployees && <button className="hr-remove-button" onClick={() => removeEmployee(item.code, item.group, item.name)} aria-label={`ลบ ${item.name}`}><X size={15} /></button>}</div>}</div>
             <div className="hr-balance-value"><strong>{item.remaining}</strong><span>/ {item.quota} วัน</span></div>
             <div className="hr-progress" aria-label={`เหลือ ${item.remaining} จาก ${item.quota} วัน`}><span style={{ width: `${percentage}%` }} /></div>
-            {isBoss && (editEmployees || editingBalanceCode === item.code) && <div className="hr-balance-edit"><input type="number" min="0" max="365" step="0.5" aria-label={`วันลาคงเหลือของ ${item.name}`} value={balanceDrafts[item.code] ?? item.remaining} onChange={(e) => setBalanceDrafts((current) => ({ ...current, [item.code]: e.target.value }))} /><button type="button" disabled={saving} onClick={() => setLeaveBalance(item)} aria-label={`บันทึกยอดของ ${item.name}`}><Check size={15} /></button></div>}
+            {isBoss && (editEmployees || editingBalanceCode === item.code) && <div className="hr-balance-edit"><label>เหลือ<input type="number" min="0" max="365" step="0.5" aria-label={`วันลาคงเหลือของ ${item.name}`} value={balanceDrafts[item.code] ?? item.remaining} onChange={(e) => setBalanceDrafts((current) => ({ ...current, [item.code]: e.target.value }))} /></label><label>โควตา/ปี<input type="number" min="0" max="365" step="0.5" aria-label={`โควตาวันลาต่อปีของ ${item.name}`} value={quotaDrafts[item.code] ?? item.quota} onChange={(e) => setQuotaDrafts((current) => ({ ...current, [item.code]: e.target.value }))} /></label><button type="button" disabled={saving} onClick={() => setLeaveBalance(item)} aria-label={`บันทึกวันลาของ ${item.name}`}><Check size={15} /></button></div>}
             {isBoss && editEmployees && <select aria-label={`กลุ่มของ ${item.name}`} value={item.group} onChange={(e) => editEmployeeGroup(item.code, e.target.value)}>{EMPLOYEE_GROUPS.map((value) => <option key={value}>{value}</option>)}</select>}
             {isBoss && editEmployees && (() => {
               const draft = dayOffDrafts[item.code] ?? { weekday: item.day_off_weekday || '', from: item.day_off_effective_from || today() }

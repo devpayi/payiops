@@ -2926,15 +2926,18 @@ async function opHrInner(req, res) {
   if (action === 'set-leave-balance') {
     if (!requireAdmin(req, res)) return
     const code = String(body.code || '').trim().toUpperCase()
-    const remaining = Number(body.remaining)
+    // ตั้งได้ 2 แบบ: body.quota = ตั้งโควตาต่อปีตรงๆ (เหลือ = โควตา − ที่ใช้ไป) หรือ body.remaining = ตั้งยอดเหลือ (โควตา = ใช้ไป + เหลือ)
+    const setByQuota = body.quota !== undefined && body.quota !== null && body.quota !== ''
+    const value = Number(setByQuota ? body.quota : body.remaining)
     const person = code ? await findHrPerson(code) : null
     if (!person) return res.status(404).json({ success: false, error: 'ไม่พบพนักงานนี้' })
     if (!hasVacationBenefit(person.group)) return res.status(400).json({ success: false, error: `${person.group}ไม่มีสิทธิ์วันลาพักร้อน` })
-    if (!Number.isFinite(remaining) || remaining < 0 || remaining > 365 || Math.round(remaining * 2) !== remaining * 2) {
-      return res.status(400).json({ success: false, error: 'ยอดคงเหลือต้องเป็น 0–365 วัน และเพิ่มทีละครึ่งวันได้ค่ะ' })
+    if (!Number.isFinite(value) || value < 0 || value > 365 || Math.round(value * 2) !== value * 2) {
+      return res.status(400).json({ success: false, error: `${setByQuota ? 'โควตา' : 'ยอดคงเหลือ'}ต้องเป็น 0–365 วัน และเพิ่มทีละครึ่งวันได้ค่ะ` })
     }
     const balance = await vacationBalanceFor(code)
-    const quota = balance.used + remaining
+    const quota = setByQuota ? value : balance.used + value
+    const remaining = Math.max(0, quota - balance.used)
     const current = await getSheet('hr_leave_quota')
     const existing = current.find((row) => String(row.code).toUpperCase() === code)
     const now = new Date().toISOString()

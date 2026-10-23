@@ -170,7 +170,8 @@
 .hr-progress span { display: block; height: 100%; border-radius: inherit; background: var(--hr-mint); }
 .hr-balance-card.is-empty .hr-progress span { background: var(--hr-red); }
 .hr-balance-card select { min-height: 34px; padding: 0 7px; font-size: 10px; }
-.hr-balance-edit { display: flex; align-items: center; gap: 6px; }
+.hr-balance-edit { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 6px; }
+.hr-balance-edit label { display: flex; flex-direction: column; gap: 2px; font-size: 10px; font-weight: 700; color: var(--hr-muted, #64748b); }
 .hr-balance-edit input { width: 68px; min-height: 36px; padding: 0 8px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .hr-balance-edit button { min-width: 44px; min-height: 36px; border: 0; border-radius: 9px; background: var(--hr-navy); color: #fff; cursor: pointer; }
 
