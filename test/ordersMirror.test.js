@@ -192,10 +192,11 @@ test('reconcile ค่าเริ่มต้น: เลือก 2 เดื�
   const client = createClient({ url: ':memory:' })
   __setDepsForTests({ client, enabled: true, sheets: sheets.api, now: () => '2026-09-10T05:00:00Z' })
   const out = await reconcile({ repair: false })
-  assert.deepEqual(out.report.map((r) => r.tab).sort(), ['raw_orders_2026_08', 'raw_orders_2026_09'])
-  await markDirty('raw_orders_2026_07', 'x')
+  // 2 เดือนล่าสุด (08, 09) + เดือนเก่าหมุนเวียน 1 เดือน (มีแค่ 07) — ไม่เอาแท็บอนาคต 10/11 ที่ว่าง
+  assert.deepEqual(out.report.map((r) => r.tab).sort(), ['raw_orders_2026_07', 'raw_orders_2026_08', 'raw_orders_2026_09'])
+  await markDirty('raw_orders_2026_10', 'x') // แท็บที่ติดธงถูกเพิ่มเข้ามาเสมอ
   const out2 = await reconcile({ repair: false })
-  assert.deepEqual(out2.report.map((r) => r.tab).sort(), ['raw_orders_2026_07', 'raw_orders_2026_08', 'raw_orders_2026_09'])
+  assert.deepEqual(out2.report.map((r) => r.tab).sort(), ['raw_orders_2026_07', 'raw_orders_2026_08', 'raw_orders_2026_09', 'raw_orders_2026_10'])
 })
 
 test('Turso ค้าง (ไม่ตอบ): mirrorRows คืนเร็วภายในงบเวลา, ติดธง, เบรกเกอร์ทำให้ครั้งถัดไปข้ามทันที', async () => {
@@ -234,4 +235,22 @@ test('คำสั่งเดียวค้างกลางทาง: รอ
   const r = await mirrorRows(TAB, rows)
   assert.equal(r.ok, false)
   assert.ok(Date.now() - t0 < 1500, `รอ ${Date.now() - t0}ms เกินงบ (ควร ~150ms ไม่ใช่ 10s+)`)
+})
+
+test('reconcile ค่าเริ่มต้น: เดือนเก่าถูกหมุนตรวจวันละ 1 เดือน ครบทุกเดือนภายในไม่กี่วัน', async () => {
+  const mk = (k) => [sheetRow({ order_key: `Shopee:${k}:L1`, date: `2026-${k}-01` })]
+  const tabs = { raw_orders_2026_01: mk('01'), raw_orders_2026_02: mk('02'), raw_orders_2026_03: mk('03'), raw_orders_2026_04: mk('04'), raw_orders_2026_05: mk('05') }
+  const seen = new Set()
+  for (let day = 0; day < 6; day++) {
+    const sheets = fakeSheets(tabs)
+    const client = createClient({ url: ':memory:' })
+    const now = new Date(Date.UTC(2026, 4, 10 + day, 5)).toISOString() // 10–15 พ.ค.
+    __setDepsForTests({ client, enabled: true, sheets: sheets.api, now: () => now })
+    const out = await reconcile({ repair: false })
+    const names = out.report.map((r) => r.tab)
+    assert.ok(names.includes('raw_orders_2026_04') && names.includes('raw_orders_2026_05'), '2 เดือนล่าสุดต้องอยู่เสมอ')
+    assert.equal(names.length, 3)
+    for (const n of names) seen.add(n)
+  }
+  assert.equal(seen.size, 5, 'ทุกเดือนต้องถูกตรวจอย่างน้อยหนึ่งรอบ')
 })

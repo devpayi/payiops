@@ -271,7 +271,12 @@ export async function reconcile({ tabs, repair = true, budgetMs = 45000 } = {}) 
     // แท็บของเดือนอนาคต (สร้างล่วงหน้า/ว่าง) ไม่นับ — เอา 2 เดือนล่าสุดที่ไม่เกินเดือนปัจจุบัน (เวลาไทย)
     const bkk = new Date(Date.parse(nowIso()) + 7 * 3600 * 1000).toISOString().slice(0, 7)
     const all = meta.sheets.map((s) => s.properties.title).filter((t) => tabYm(t) && tabYm(t) <= bkk)
-    list = [...new Set([...all.sort().slice(-2), ...dirty])]
+    all.sort()
+    // เดือนเก่าหมุนเวียนวันละ 1 เดือน (ตามเลขวัน) — ทุกเดือนถูกตรวจซ้ำเป็นรอบ ไม่ใช่แค่ 2 เดือนล่าสุด
+    // แต่ไม่อ่านทั้งปีในครั้งเดียว (อ่านชีต+Turso ทั้งหมดไม่ทันเพดาน 60 วินาที)
+    const older = all.slice(0, -2)
+    const rotating = older.length ? [older[Math.floor(Date.parse(nowIso()) / 86400000) % older.length]] : []
+    list = [...new Set([...all.slice(-2), ...rotating, ...dirty])]
   }
   const report = []
   for (const tab of list) {
