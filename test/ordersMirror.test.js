@@ -311,10 +311,23 @@ test('ลบล็อต: schema + delete + ธงอยู่ในงบเด
   assert.equal((await listDirtyTabs()).length, 2)
 })
 
-test('request เลย 45s: ไม่เริ่ม Turso และไม่รอ dirty ต่อ', async (t) => {
+test('request เลย 55s: ไม่เริ่ม Turso แต่ยังพยายามเขียนธง (ไม่ให้เงียบ)', async (t) => {
   clock(t)
   const context = createMirrorContext()
-  t.mock.timers.tick(45000)
+  t.mock.timers.tick(55000)
+  let calls = 0
+  const sheets = fakeSheets({})
+  __setDepsForTests({ client: { batch: async () => { calls++ } }, enabled: true, sheets: sheets.api })
+  const result = await mirrorRowsBatch([{ tab: TAB, rows: [sheetRow()] }], 'import', context)
+  assert.equal(calls, 0)
+  assert.equal(result[0].ok, false); assert.equal(result[0].dirtyRecorded, true)
+  assert.deepEqual(await listDirtyTabs(), [TAB])
+})
+
+test('request เลย 58s: ไม่ทำอะไรเลย ไม่ให้เกินเพดาน 60s ของ Vercel', async (t) => {
+  clock(t)
+  const context = createMirrorContext()
+  t.mock.timers.tick(59000)
   let calls = 0
   __setDepsForTests({ client: { batch: async () => { calls++ } }, enabled: true, sheets: fakeSheets({}).api })
   const result = await mirrorRowsBatch([{ tab: TAB, rows: [sheetRow()] }], 'import', context)

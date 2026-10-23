@@ -51,7 +51,10 @@ export function createMirrorFetch(fetchImpl = globalThis.fetch) {
 // หนึ่ง context ต่อ HTTP request (TikTok หลายร้านต้องใช้ตัวเดียวกัน)
 // เริ่มนับงบ mirror เมื่อเริ่มใช้ แต่ไม่รอเลย 45s นับจากต้น request เพื่อเหลือเวลาตอบ/เขียน log อื่น
 export function createMirrorContext() {
-  return { requestDeadline: Date.now() + 45000, deadline: null }
+  // ซ้อมบนสำเนา (23 ต.ค.): ลบล็อตของเดือนใหญ่ (37k แถว) กินเวลา Sheets ~45 วินาทีแล้ว — เพดานเดิม 45s ทำให้ mirror
+  // ถูกข้ามเงียบๆ และไม่ติดธง ตอนนี้ mirror เริ่มได้ถึง 55s และเขียนธงได้ถึง 58s (Vercel ฆ่าที่ 60s)
+  const now = Date.now()
+  return { requestDeadline: now + 55000, hardLimit: now + 58000, deadline: null }
 }
 function startRun(context = createMirrorContext()) {
   context.deadline ??= Math.min(Date.now() + budgetMs(), context.requestDeadline)
@@ -98,7 +101,9 @@ async function flushDirty(run) {
   const s = sheetsApi()
   const records = [...run.dirty].map(([tab, reason]) => [tab, 'dirty', nowIso(), String(reason).slice(0, 300)])
   try {
-    await within(run.context.deadline, deps?.dirtyBudgetMs ?? DIRTY_BUDGET_MS, 'dirty flag', async (signal) => {
+    // ธงสำคัญกว่างบ mirror: งบหมดแล้วก็ยังพยายามเขียนธงขั้นต่ำ 1.5s (แต่ไม่เกิน hardLimit ก่อนเพดาน 60s)
+    const flagDeadline = Math.min(Math.max(run.context.deadline, Date.now() + 1500), run.context.hardLimit)
+    await within(flagDeadline, deps?.dirtyBudgetMs ?? DIRTY_BUDGET_MS, 'dirty flag', async (signal) => {
       await s.ensureSheet(DIRTY_SHEET, DIRTY_HEADERS)
       signal.throwIfAborted()
       await s.appendRows(DIRTY_SHEET, records)
