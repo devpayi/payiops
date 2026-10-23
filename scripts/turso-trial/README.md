@@ -7,6 +7,7 @@
 
 ## เครื่องมือดูแล (ใช้จริง)
 - `backfill.mjs` — เทียบ/โหลดสำเนา `raw_orders` ใน Turso จาก Sheets รันซ้ำได้ (แท็บที่ตรงแล้วไม่เขียนใหม่) `--dry` = เทียบอย่างเดียว
+- `rehearse-copy.mjs` — ซ้อมทั้งวงจรบน **ชีตสำเนา** (นำเข้า → นำเข้าซ้ำ → แก้สถานะ → ลบล็อต → จำลอง Turso ล่ม → reconcile ซ่อม) รัน handler จริงในเครื่อง เขียนเฉพาะสำเนา + ตาราง Turso `raw_orders_rehearsal` มี guard กันชี้ชีตจริง: `REHEARSAL_SHEET_ID=<id สำเนา> node --use-system-ca --env-file=.env scripts/turso-trial/rehearse-copy.mjs` (ต้องแชร์สำเนาให้ service account แบบ Editor และชื่อไฟล์มี copy/สำเนา/rehearsal/test) ทิ้งตารางซ้อมได้ทีหลัง: `DROP TABLE raw_orders_rehearsal`
 - `restore-drill.mjs` — ซ้อมสำรอง→กู้คืนลงไฟล์ libSQL ในเครื่อง แล้วเทียบ fingerprint ต่อแท็บ
 
 ## สคริปต์ทดลอง (ตามลำดับที่ใช้)

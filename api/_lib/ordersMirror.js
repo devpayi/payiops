@@ -14,7 +14,8 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { appendRows, batchGetValues, ensureSheet, getSheet, getMeta } from './sheets.js'
 
 export const RAW_HEADERS = ['order_key', 'order_id', 'order_item_id', 'date', 'platform', 'business', 'sku_platform', 'product_name', 'variation_name', 'master_sku', 'display_name', 'qty', 'revenue', 'order_status', 'imported_at', 'source_file', 'import_id', 'alias_key', 'province', 'shipping_option', 'fulfillment_type', 'buyer_hash']
-export const TABLE = 'raw_orders'
+// TURSO_ORDERS_TABLE ใช้เฉพาะตอนซ้อมบนชีตสำเนา (scripts/turso-trial/rehearse-copy.mjs) ให้เขียนตารางแยก — production ไม่ตั้ง
+export const TABLE = /^[A-Za-z_][A-Za-z0-9_]*$/.test(process.env.TURSO_ORDERS_TABLE || '') ? process.env.TURSO_ORDERS_TABLE : 'raw_orders'
 export const DIRTY_SHEET = 'turso_dirty'
 const DIRTY_HEADERS = ['tab', 'event', 'at', 'reason']
 
