@@ -220,7 +220,18 @@ test('งบเวลารวมหมดกลางทาง (หลาย ch
   __setDepsForTests({ client: slow, enabled: true, sheets: sheets.api, timeoutMs: 5000, budgetMs: 250 })
   const rows = Array.from({ length: 1000 }, (_, i) => sheetRow({ order_key: `Shopee:X${i}:L1`, order_id: `'X${i}` })) // 5 chunk
   const r = await mirrorRows(TAB, rows)
-  assert.equal(r.ok, false); assert.match(r.error, /budget/)
+  assert.equal(r.ok, false); assert.match(r.error, /budget|timeout/) // ขึ้นกับว่างบหมดระหว่างรอ chunk หรือกลาง chunk
   assert.ok(writes < 5, `ต้องหยุดก่อนครบ chunk (เขียนไป ${writes})`)
   assert.deepEqual(await listDirtyTabs(), [TAB])
+})
+
+test('คำสั่งเดียวค้างกลางทาง: รอไม่เกินงบเวลารวม (ไม่ใช่ timeout เต็มของคำสั่ง)', async () => {
+  const sheets = fakeSheets({})
+  const hangWrite = { execute: async () => ({ rows: [[0]] }), batch: (stmts) => (stmts.length > 5 ? new Promise(() => {}) : Promise.resolve([])) }
+  __setDepsForTests({ client: hangWrite, enabled: true, sheets: sheets.api, timeoutMs: 10000, budgetMs: 150 })
+  const rows = Array.from({ length: 50 }, (_, i) => sheetRow({ order_key: `Shopee:H${i}:L1`, order_id: `'H${i}` }))
+  const t0 = Date.now()
+  const r = await mirrorRows(TAB, rows)
+  assert.equal(r.ok, false)
+  assert.ok(Date.now() - t0 < 1500, `รอ ${Date.now() - t0}ms เกินงบ (ควร ~150ms ไม่ใช่ 10s+)`)
 })

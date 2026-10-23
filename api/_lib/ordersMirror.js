@@ -170,9 +170,11 @@ export async function mirrorRows(tab, rows22, reason = 'import') {
   if (!mirrorEnabled() || !rows22?.length) return { skipped: true }
   if (breakerOpen()) { await markDirty(tab, `${reason}: skipped, turso failed recently`); return { ok: false, error: 'breaker open' } }
   const deadline = Date.now() + budgetMs()
+  // ทุกคำสั่งรอได้ไม่เกิน "เวลาที่เหลือในงบ" — กันคำสั่งเดียวที่ค้างกินเกินงบ (เดิมรอได้ถึง 8s+16s ต่อ chunk)
+  const remain = () => Math.max(50, deadline - Date.now())
   try {
     const client = await getClient()
-    await withTimeout(ensureSchema(client), timeoutMs(), 'schema')
+    await withTimeout(ensureSchema(client), Math.min(timeoutMs(), remain()), 'schema')
     const rows = rows22.map((a) => toRow(a, tab)).filter(Boolean)
     let dupKeyTouched = 0
     for (let i = 0; i < rows.length; i += CHUNK) {
@@ -181,9 +183,9 @@ export async function mirrorRows(tab, rows22, reason = 'import') {
       const keys = [...new Set(part.map((r) => r.order_key))]
       const ph = keys.map(() => '?').join(',')
       // key ซ้ำอยู่แล้วในสำเนา = ข้อมูลเก่าที่ชีตจัดการต่างจากเรา — ไม่เดา ปล่อยให้ซ่อมทั้งเดือน
-      const dup = await withTimeout(client.execute({ sql: `SELECT count(*) n FROM (SELECT order_key FROM ${TABLE} WHERE order_key IN (${ph}) GROUP BY order_key HAVING count(*)>1)`, args: keys }), timeoutMs(), 'dupcheck')
+      const dup = await withTimeout(client.execute({ sql: `SELECT count(*) n FROM (SELECT order_key FROM ${TABLE} WHERE order_key IN (${ph}) GROUP BY order_key HAVING count(*)>1)`, args: keys }), Math.min(timeoutMs(), remain()), 'dupcheck')
       dupKeyTouched += Number(dup.rows[0][0])
-      await withTimeout(client.batch([{ sql: `DELETE FROM ${TABLE} WHERE order_key IN (${ph})`, args: keys }, ...part.map(insertStmt)], 'write'), timeoutMs() * 2, 'write')
+      await withTimeout(client.batch([{ sql: `DELETE FROM ${TABLE} WHERE order_key IN (${ph})`, args: keys }, ...part.map(insertStmt)], 'write'), Math.min(timeoutMs() * 2, remain()), 'write')
     }
     if (dupKeyTouched) {
       await markDirty(tab, `duplicate-key in mirror (${dupKeyTouched} keys) after ${reason}`)
