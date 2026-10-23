@@ -2403,8 +2403,11 @@ async function getCalendarPresence(personMap, overrideScopeCodes = Object.keys(p
       baseRows = [...baseRows, ...filler]
     }
   }
-  baseRows = applyScheduleOverrides({ baseRows, overrideRows, personMap, overrideScopeCodes, officeCodes, dayOffMap })
+  // ตัดวันนักขัตก่อนใส่ override — คนที่หัวหน้าติ๊กเลือก/โอทีวันในวันนักขัตเองต้องไม่ถูกตัดทิ้งตามไปด้วย
+  // แต่ override ที่บันทึกก่อนกฎวันหยุด (1 ต.ค.) บนวันนักขัต เป็นตารางเก่า/ค่าเริ่มต้น ไม่ใช่การติ๊กเอง — ข้าม (ตาม payi-floor)
   baseRows = baseRows.filter((r) => !holidayDates.has(r.date))
+  const effectiveOverrides = overrideRows.filter((o) => !holidayDates.has(String(o.date || '')) || String(o.updated_at || '') >= '2026-10-01')
+  baseRows = applyScheduleOverrides({ baseRows, overrideRows: effectiveOverrides, personMap, overrideScopeCodes, officeCodes, dayOffMap })
   // applyScheduleOverrides แทนที่รายชื่อทั้งวันด้วย entries_json ของ override (ไม่รู้จัก swapBackMap เลย) — ถ้า
   // override วันนั้นถูกบันทึกไว้ก่อนคำขอสลับวันหยุดจะได้รับอนุมัติ (หรือถูกแก้ซ้ำทีหลังโดยไม่รู้เรื่องสลับ) คนที่ควร
   // กลับมาทำงานวันนั้นจะหายไปอีกเหมือนเดิม ทั้งที่ baseRows ชั้นก่อนหน้าคำนวณถูกแล้ว (เจอจริง 2026-08-10 กรณีมี่
