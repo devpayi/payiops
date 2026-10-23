@@ -18,6 +18,10 @@ export const DIRTY_SHEET = 'turso_dirty'
 const DIRTY_HEADERS = ['tab', 'event', 'at', 'reason']
 
 const WRITE_TIMEOUT_MS = 8000
+// เพดานเวลารวมของ mirrorRows 1 ครั้ง + เบรกเกอร์: Vercel ฆ่าฟังก์ชันที่ 60 วินาที ถ้า Turso ค้าง (ไม่ error แค่ไม่ตอบ)
+// แล้วเราวนรอทุก chunk การนำเข้าจะตายหลัง Sheets เขียนแล้วแต่ก่อนบันทึก import_log — จึงต้องหยุดรอเร็วและข้ามที่เหลือ
+const MIRROR_BUDGET_MS = 12000
+const BREAKER_MS = 60000
 const CHUNK = 200       // แถวต่อ batch ตอนเพิ่ม/แก้ตามคำสั่งนำเข้า
 const BULK_CHUNK = 500  // แถวต่อ batch ตอนซ่อมทั้งเดือน
 
@@ -25,7 +29,12 @@ const BULK_CHUNK = 500  // แถวต่อ batch ตอนซ่อมทั�
 let deps = null
 let realClient = null
 let schemaReady = new WeakSet()
-export function __setDepsForTests(d) { deps = d; schemaReady = new WeakSet() }
+export function __setDepsForTests(d) { deps = d; schemaReady = new WeakSet(); breakerUntil = 0 }
+let breakerUntil = 0
+const timeoutMs = () => deps?.timeoutMs ?? WRITE_TIMEOUT_MS
+const budgetMs = () => deps?.budgetMs ?? MIRROR_BUDGET_MS
+const breakerOpen = () => Date.now() < breakerUntil
+const tripBreaker = () => { breakerUntil = Date.now() + (deps?.breakerMs ?? BREAKER_MS) }
 
 export function mirrorEnabled() {
   if (deps?.enabled !== undefined) return deps.enabled
@@ -159,19 +168,22 @@ export async function listDirtyTabs() {
 // ทำซ้ำกี่ครั้งผลเท่าเดิม: ลบตาม order_key ก่อนแล้วค่อยใส่
 export async function mirrorRows(tab, rows22, reason = 'import') {
   if (!mirrorEnabled() || !rows22?.length) return { skipped: true }
+  if (breakerOpen()) { await markDirty(tab, `${reason}: skipped, turso failed recently`); return { ok: false, error: 'breaker open' } }
+  const deadline = Date.now() + budgetMs()
   try {
     const client = await getClient()
-    await withTimeout(ensureSchema(client), WRITE_TIMEOUT_MS, 'schema')
+    await withTimeout(ensureSchema(client), timeoutMs(), 'schema')
     const rows = rows22.map((a) => toRow(a, tab)).filter(Boolean)
     let dupKeyTouched = 0
     for (let i = 0; i < rows.length; i += CHUNK) {
+      if (Date.now() > deadline) throw new Error(`mirror time budget ${budgetMs()}ms exceeded at ${i}/${rows.length}`)
       const part = rows.slice(i, i + CHUNK)
       const keys = [...new Set(part.map((r) => r.order_key))]
       const ph = keys.map(() => '?').join(',')
       // key ซ้ำอยู่แล้วในสำเนา = ข้อมูลเก่าที่ชีตจัดการต่างจากเรา — ไม่เดา ปล่อยให้ซ่อมทั้งเดือน
-      const dup = await withTimeout(client.execute({ sql: `SELECT count(*) n FROM (SELECT order_key FROM ${TABLE} WHERE order_key IN (${ph}) GROUP BY order_key HAVING count(*)>1)`, args: keys }), WRITE_TIMEOUT_MS, 'dupcheck')
+      const dup = await withTimeout(client.execute({ sql: `SELECT count(*) n FROM (SELECT order_key FROM ${TABLE} WHERE order_key IN (${ph}) GROUP BY order_key HAVING count(*)>1)`, args: keys }), timeoutMs(), 'dupcheck')
       dupKeyTouched += Number(dup.rows[0][0])
-      await withTimeout(client.batch([{ sql: `DELETE FROM ${TABLE} WHERE order_key IN (${ph})`, args: keys }, ...part.map(insertStmt)], 'write'), WRITE_TIMEOUT_MS * 2, 'write')
+      await withTimeout(client.batch([{ sql: `DELETE FROM ${TABLE} WHERE order_key IN (${ph})`, args: keys }, ...part.map(insertStmt)], 'write'), timeoutMs() * 2, 'write')
     }
     if (dupKeyTouched) {
       await markDirty(tab, `duplicate-key in mirror (${dupKeyTouched} keys) after ${reason}`)
@@ -179,6 +191,7 @@ export async function mirrorRows(tab, rows22, reason = 'import') {
     }
     return { ok: true, written: rows.length }
   } catch (e) {
+    tripBreaker()
     await markDirty(tab, `${reason}: ${e?.message}`)
     return { ok: false, error: e?.message }
   }
@@ -187,10 +200,11 @@ export async function mirrorRows(tab, rows22, reason = 'import') {
 // ลบล็อตตาม import_id (ลบข้ามทุกแท็บในครั้งเดียว) — expected = จำนวนแถวที่ Sheets ลบจริง
 export async function mirrorDeleteLot(importId, expected, tabs = [], reason = 'delete-lot') {
   if (!mirrorEnabled() || !importId) return { skipped: true }
+  if (breakerOpen()) { for (const t of tabs) await markDirty(t, `${reason} ${importId}: skipped, turso failed recently`); return { ok: false, error: 'breaker open' } }
   try {
     const client = await getClient()
-    await withTimeout(ensureSchema(client), WRITE_TIMEOUT_MS, 'schema')
-    const rs = await withTimeout(client.execute({ sql: `DELETE FROM ${TABLE} WHERE import_id = ?`, args: [importId] }), WRITE_TIMEOUT_MS, 'delete')
+    await withTimeout(ensureSchema(client), timeoutMs(), 'schema')
+    const rs = await withTimeout(client.execute({ sql: `DELETE FROM ${TABLE} WHERE import_id = ?`, args: [importId] }), timeoutMs(), 'delete')
     const removed = Number(rs.rowsAffected)
     if (removed !== Number(expected)) {
       for (const t of tabs) await markDirty(t, `${reason}: removed ${removed} but sheets removed ${expected} (import ${importId})`)
@@ -198,6 +212,7 @@ export async function mirrorDeleteLot(importId, expected, tabs = [], reason = 'd
     }
     return { ok: true, removed }
   } catch (e) {
+    tripBreaker()
     for (const t of tabs) await markDirty(t, `${reason} ${importId}: ${e?.message}`)
     return { ok: false, error: e?.message }
   }

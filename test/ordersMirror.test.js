@@ -197,3 +197,30 @@ test('reconcile ค่าเริ่มต้น: เลือก 2 เดื�
   const out2 = await reconcile({ repair: false })
   assert.deepEqual(out2.report.map((r) => r.tab).sort(), ['raw_orders_2026_07', 'raw_orders_2026_08', 'raw_orders_2026_09'])
 })
+
+test('Turso ค้าง (ไม่ตอบ): mirrorRows คืนเร็วภายในงบเวลา, ติดธง, เบรกเกอร์ทำให้ครั้งถัดไปข้ามทันที', async () => {
+  const sheets = fakeSheets({})
+  const hang = () => new Promise(() => {}) // ไม่ resolve ไม่ reject
+  __setDepsForTests({ client: { batch: hang, execute: hang }, enabled: true, sheets: sheets.api, timeoutMs: 50, budgetMs: 200, breakerMs: 60000 })
+  const t0 = Date.now()
+  const r1 = await mirrorRows(TAB, [sheetRow()])
+  assert.equal(r1.ok, false); assert.ok(Date.now() - t0 < 1000, 'ต้องไม่รอเกินงบเวลา')
+  const t1 = Date.now()
+  const r2 = await mirrorRows(TAB, [sheetRow({ order_key: 'Shopee:A9:L1' })])
+  assert.equal(r2.error, 'breaker open'); assert.ok(Date.now() - t1 < 100, 'เบรกเกอร์เปิดต้องข้ามทันที')
+  const r3 = await mirrorDeleteLot('IMP1', 1, [TAB])
+  assert.equal(r3.error, 'breaker open')
+  assert.deepEqual(await listDirtyTabs(), [TAB])
+})
+
+test('งบเวลารวมหมดกลางทาง (หลาย chunk): หยุด ติดธง ไม่วนรอทุก chunk', async () => {
+  const sheets = fakeSheets({})
+  let writes = 0
+  const slow = { execute: async () => ({ rows: [[0]] }), batch: async () => { writes++; await new Promise((r) => setTimeout(r, 120)); return [] } }
+  __setDepsForTests({ client: slow, enabled: true, sheets: sheets.api, timeoutMs: 5000, budgetMs: 250 })
+  const rows = Array.from({ length: 1000 }, (_, i) => sheetRow({ order_key: `Shopee:X${i}:L1`, order_id: `'X${i}` })) // 5 chunk
+  const r = await mirrorRows(TAB, rows)
+  assert.equal(r.ok, false); assert.match(r.error, /budget/)
+  assert.ok(writes < 5, `ต้องหยุดก่อนครบ chunk (เขียนไป ${writes})`)
+  assert.deepEqual(await listDirtyTabs(), [TAB])
+})
