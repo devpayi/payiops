@@ -4,6 +4,7 @@
 //   DELETE ?importId=IMPxxxx      → ลบล็อตไฟล์นี้ออกจาก raw_orders_* ทุก tab ที่เกี่ยวข้อง
 import { requireDev } from './_lib/auth.js'
 import { getSheet, appendRows, batchGetValues, batchUpdateValues, overwriteSheet, getMeta, ensureSheet } from './_lib/sheets.js'
+import { mirrorRows, mirrorDeleteLot } from './_lib/ordersMirror.js'
 import { isoDate } from './_lib/dates.js'
 import ZIP_TO_PROVINCE from './_lib/zipToProvince.js'
 import { createHash } from 'node:crypto'
@@ -108,6 +109,9 @@ export default async function handler(req, res) {
         deleted += values.length - 1 - kept.length
         await overwriteSheet(tab, headers, kept)
       }
+
+      // สำเนา Turso ทำตามผลที่ Sheets ลบจริง (ไม่ throw — ถ้าพังจะติดธง turso_dirty แล้ว reconcile ซ่อมให้)
+      await mirrorDeleteLot(importId, deleted, tabs)
 
       // soft-delete: เก็บ log ไว้แต่เปลี่ยน status กันโผล่ในประวัติ/กันนำ importId ซ้ำมาลบวนซ้ำ
       const statusIdx = logHeaders.indexOf('status')
@@ -363,6 +367,8 @@ export default async function handler(req, res) {
       }
       if (updates.length) await batchUpdateValues(updates)
       if (newRows.length) { await appendRows(tab, newRows); imported += newRows.length }
+      // สำเนา Turso: ส่งเฉพาะแถวที่ Sheets เขียนจริงรอบนี้ (แถวที่ข้าม/กำกวมไม่ส่ง) — ไม่ throw, พังแล้วติดธง turso_dirty
+      await mirrorRows(tab, [...updates.map((u) => u.values[0]), ...newRows], 'import')
     }
 
     // ---- บันทึก import_log ----

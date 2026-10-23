@@ -13,6 +13,7 @@
 //   fulfillment_type, buyer_hash, business
 import { getSheet, appendRows, batchGetValues, batchUpdateValues, ensureSheet } from './sheets.js'
 import { isoDate } from './dates.js'
+import { mirrorRows } from './ordersMirror.js'
 
 const normalize = (s) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
 const num = (v) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0
@@ -146,6 +147,8 @@ export async function ingestOrders(rows, { platform, businessDefault = '', fileN
     }
     if (updates.length) await batchUpdateValues(updates)
     if (newRows.length) { await appendRows(tab, newRows); imported += newRows.length }
+    // สำเนา Turso — เหมือน import-orders.js (ไม่ throw, พังแล้วติดธง turso_dirty)
+    await mirrorRows(tab, [...updates.map((u) => u.values[0]), ...newRows], 'ingest')
   }
 
   // ---- import_log ----
