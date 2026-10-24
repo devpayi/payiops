@@ -262,7 +262,7 @@ export async function computeLowStockList() {
     const sales = salesBySku.get(sku) || allocatedSales.get(sku)
     const dailyAvg = (sales?.dailyAverage || 0) * (1 + (it.growth_temp_percent || 0) / 100)
     const leadTimeTotal = (it.lead_time_production || 0) + (it.lead_time_transport || 0)
-    const computedSafety = calcSuggestedSafety(dailyAvg, leadTimeTotal, it.ship_freight)
+    const computedSafety = calcSuggestedSafety(dailyAvg, leadTimeTotal, true) // ทุกสินค้าคำนวณแบบเรือเหมือนชีต/หน้าเว็บ
     // ขั้นต่ำอย่างน้อย 1 เสมอ (เหมือนหน้าเว็บ) ยกเว้น ZZ เลิกขาย
     const rawSafety = computedSafety !== null ? computedSafety : it.safety_stock
     const effectiveSafety = /^ZZ/i.test(sku) ? rawSafety : Math.max(1, Number(rawSafety) || 0)

@@ -174,6 +174,8 @@ const labelStyle = { fontSize: 12, fontWeight: 700, color: 'var(--payi-text-mute
 
 // SS = ยอดขายเฉลี่ย/วัน × (lead time total + ครึ่งนึงถ้าเป็นของเรือ) — สูตรจากไฟล์ Safety UP177 เดิม
 // เรือใช้เวลานานและแปรผัน เผื่อเพิ่มอีกครึ่งของ lead time ไปเลย (ROP รวมอยู่ใน SS ตัวนี้แล้ว ไม่แยกช่อง)
+// สินค้าทุกตัวคำนวณแบบเรือ (lead time + ครึ่งหนึ่ง) ตรงกับชีต Safety (E = V×(M+O), O = M/2) — owner ขอ 2026-10-24
+// ยกเว้นวัสดุแพ็คเกจจิ้งที่เผื่อ % แยกต่างหากเอง (ยังใช้ธง ship_freight ตามเดิม)
 const calcSuggestedSafety = (dailyAvg, leadTimeTotal, shipFreight) => {
   if (!dailyAvg || !leadTimeTotal) return null
   const days = leadTimeTotal + (shipFreight ? leadTimeTotal / 2 : 0)
@@ -364,12 +366,12 @@ export default function Inventory() {
       const abc = sales?.abc || null
       const salesEstimated = Boolean(sales?.estimated)
       const leadTimeTotal = (it.lead_time_production || 0) + (it.lead_time_transport || 0)
-      const computedSafety = calcSuggestedSafety(dailyAvg, leadTimeTotal, it.ship_freight)
+      const computedSafety = calcSuggestedSafety(dailyAvg, leadTimeTotal, isPackaging ? it.ship_freight : true)
       const effectiveSafety = withMinSafety(sku, computedSafety !== null ? computedSafety : it.safety_stock)
       // กำลังปรับ lead time ชั่วคราวอยู่ — คำนวณ "ขั้นต่ำปกติ" คู่กันไว้ด้วย (จาก lead time ตัวจริงที่สำรองไว้)
       // จะได้เทียบเห็นว่าต่างจากตอนนี้แค่ไหน ไม่ใช่เห็นแค่เลขเดียวแล้วไม่รู้ว่าค่าไหนคือของจริง (owner ขอ)
       const normalLeadTimeTotal = it.lead_time_temp_active ? (it.lead_time_production_saved || 0) + (it.lead_time_transport_saved || 0) : leadTimeTotal
-      const normalComputedSafety = it.lead_time_temp_active ? calcSuggestedSafety(dailyAvg, normalLeadTimeTotal, it.ship_freight) : computedSafety
+      const normalComputedSafety = it.lead_time_temp_active ? calcSuggestedSafety(dailyAvg, normalLeadTimeTotal, isPackaging ? it.ship_freight : true) : computedSafety
       const normalSafety = it.lead_time_temp_active ? withMinSafety(sku, normalComputedSafety !== null ? normalComputedSafety : it.safety_stock) : effectiveSafety
       // วัสดุแพ็คเกจจิ้ง — ไม่ track ยอดคงเหลือจริง (คนหน้างานเช็คสต็อกเอง) ระบบเก็บแค่ขั้นต่ำ/lead time
       // ไว้อ้างอิง ไม่คำนวณสถานะหมด/ใกล้หมดจากยอด balance ที่ไม่มีความหมาย (นิ่งอยู่ 0 ตลอด)
@@ -1178,7 +1180,7 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
 
   // แก้ lead time/ทางเรือแล้ว คำนวณขั้นต่ำแนะนำให้ใหม่อัตโนมัติ (ยังแก้เลขเองทับได้เสมอ)
   const leadTimeTotal = (Number(leadProd) || 0) + (Number(leadTransport) || 0)
-  const suggestedSafety = calcSuggestedSafety(dailyAvg, leadTimeTotal, shipFreight)
+  const suggestedSafety = calcSuggestedSafety(dailyAvg, leadTimeTotal, isPackaging ? shipFreight : true)
   // ขั้นต่ำ "ไม่เผื่อ" ล้วนๆ (ก่อนคูณ % เผื่อ) — ไว้โชว์แยกจากตัวที่เผื่อแล้ว ให้เห็นชัดว่าเลขไหนมาจากไหน
   const baseSafety = isPackaging ? calcSuggestedSafety(dailyAvgBase, leadTimeTotal, shipFreight) : null
   const effectiveBufferPercent = bufferPercent !== '' ? Number(bufferPercent) : (bufferPercentUsed ?? suggestedBufferPercent)
@@ -1350,12 +1352,6 @@ function ItemModal({ initial, newCategory, dailyAvg, dailyAvgBase = 0, bufferPer
                 <label style={labelStyle}>ขนส่ง (วัน)</label>
                 <input type="number" value={leadTransport} onChange={(e) => setLeadTransport(e.target.value)} style={inputStyle} placeholder="0" />
               </div>
-              {!isPackaging && (
-                <label title="เผื่อเวลาเพิ่มอีกครึ่งของ lead time" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', cursor: 'pointer', whiteSpace: 'nowrap', paddingBottom: 10 }}>
-                  <input type="checkbox" checked={shipFreight} onChange={(e) => setShipFreight(e.target.checked)} style={{ margin: 0 }} />
-                  ส่งทางเรือ
-                </label>
-              )}
             </div>
             {isEdit && (onApplyTempLeadTime || onRevertTempLeadTime) && (
               <div style={{ borderTop: '1px dashed var(--payi-border)', paddingTop: 8, marginTop: 2 }}>
