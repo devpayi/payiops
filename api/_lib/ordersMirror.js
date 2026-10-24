@@ -99,7 +99,9 @@ function withTimeout(work, ms, label) {
 async function flushDirty(run) {
   if (!run.dirty.size) return true
   const s = sheetsApi()
-  const records = [...run.dirty].map(([tab, reason]) => [tab, 'dirty', nowIso(), String(reason).slice(0, 300)])
+  const records = [...run.dirty].filter(([tab]) => !run.context.preparedDirty?.has(tab))
+    .map(([tab, reason]) => [tab, 'dirty', nowIso(), String(reason).slice(0, 300)])
+  if (!records.length) return true // ธงถูกบันทึกก่อนเขียน Sheets แล้ว ไม่ต้องรอเพิ่มเมื่อ request ใกล้หมดเวลา
   try {
     // ธงสำคัญกว่างบ mirror: งบหมดแล้วก็ยังพยายามเขียนธงขั้นต่ำ 1.5s (แต่ไม่เกิน hardLimit ก่อนเพดาน 60s)
     const flagDeadline = Math.min(Math.max(run.context.deadline, Date.now() + 1500), run.context.hardLimit)
@@ -113,6 +115,20 @@ async function flushDirty(run) {
     console.error('[ordersMirror] dirty flag not confirmed', [...run.dirty.keys()], e?.message)
     return false // ไม่อ้างว่าติดธงสำเร็จ; reconcile หมุนตรวจทุกเดือนแม้ไม่มีธง
   }
+}
+
+// บันทึกเจตนาซิงก์ก่อนเริ่มแก้ Sheets: ถ้า request ตาย/งาน Sheets ช้า ยังมีธงถาวรให้ซ่อม
+// ไม่ปลดธงจาก hook แม้ mirror สำเร็จ ให้ reconcile ตรวจข้อมูลจริงก่อนปลด
+export async function prepareMirrorChanges(tabs, context, reason = 'import') {
+  if (!mirrorEnabled() || !tabs.length) return { skipped: true }
+  const deadline = Math.min(Date.now() + (deps?.dirtyBudgetMs ?? DIRTY_BUDGET_MS), context.hardLimit)
+  const dirty = new Map(tabs.map((tab) => [tab, `${reason}: pending before Sheets write`]))
+  const dirtyRecorded = await flushDirty({ context: { deadline, hardLimit: context.hardLimit }, dirty })
+  if (dirtyRecorded) {
+    context.preparedDirty ??= new Set()
+    for (const tab of tabs) context.preparedDirty.add(tab)
+  }
+  return { dirtyRecorded }
 }
 
 // ---------- schema ----------

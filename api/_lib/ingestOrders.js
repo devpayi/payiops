@@ -13,7 +13,7 @@
 //   fulfillment_type, buyer_hash, business
 import { getSheet, appendRows, batchGetValues, batchUpdateValues, ensureSheet } from './sheets.js'
 import { isoDate } from './dates.js'
-import { createMirrorContext, mirrorRowsBatch } from './ordersMirror.js'
+import { createMirrorContext, prepareMirrorChanges, mirrorRowsBatch } from './ordersMirror.js'
 
 const normalize = (s) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
 const num = (v) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0
@@ -125,6 +125,7 @@ export async function ingestOrders(rows, { platform, businessDefault = '', fileN
   const CMP_COLS = [6, 7, 8, 9, 10, 11, 12, 13, 17, 18, 19, 20, 21]
   const stripQuote = (v) => String(v ?? '').replace(/^'/, '')
   const mirrorChanges = []
+  await prepareMirrorChanges(tabs, mirrorContext, 'ingest')
   for (const tab of tabs) {
     await ensureSheet(tab, RAW_HEADERS)
     let rows = []

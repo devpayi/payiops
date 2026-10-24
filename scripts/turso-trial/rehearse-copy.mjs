@@ -76,6 +76,15 @@ const sheetFp = async () => {
 }
 const fpStr = (f) => `${f.count} แถว/${(f.cents / 100).toFixed(2)} บาท/${f.hash}`
 const same = (a, b) => a.count === b.count && a.cents === b.cents && a.qty === b.qty && a.hash === b.hash
+async function checkMirrorAfterDelete(label) {
+  if (!same(await sheetFp(), await tursoFp())) {
+    // ลบเดือนใหญ่ใน Sheets อาจกินเวลาทั้ง request จน mirror ต้องเลื่อนงาน
+    // ยอมรับได้เฉพาะมีธงถาวรแล้ว และซ่อมจาก Sheets ได้ตรงจริง
+    check((await dirtyLast()) === 'dirty', `${label}: มีธงรอซ่อมถาวรเมื่อ mirror ถูกเลื่อน`)
+    await mirror.reconcile({ tabs: [TAB], repair: true, budgetMs: 120000 })
+  }
+  check(same(await sheetFp(), await tursoFp()), `${label}: Sheets = Turso`)
+}
 async function tursoFp() {
   const { createClient } = await import('@libsql/client/http')
   const c = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN })
@@ -111,13 +120,14 @@ if (phase === 'main') {
   // แถวที่ถูกแก้ถือ import_id ของล็อตที่แก้ (2 แถว) ที่เหลือ 8 แถวยังถือล็อตแรก
   const d2 = await call('DELETE', { importId: id2 })
   check(d2.body?.success && d2.body.deleted === 2, 'ลบล็อตที่ 2 (แถวที่ถูกแก้)', JSON.stringify(d2.body))
-  check(same(await sheetFp(), await tursoFp()), 'หลังลบล็อต 2: Sheets = Turso')
+  await checkMirrorAfterDelete('หลังลบล็อต 2')
   const d1 = await call('DELETE', { importId: id1 })
   check(d1.body?.success && d1.body.deleted === 8, 'ลบล็อตที่ 1 (ที่เหลือ 8 แถว)', JSON.stringify(d1.body))
+  await checkMirrorAfterDelete('หลังลบหมด')
   const end = await sheetFp()
-  check(same(end, await tursoFp()), 'หลังลบหมด: Sheets = Turso')
   check(same(end, base), 'กลับเท่าฐานเทียบ (ข้อมูลอื่นไม่หาย)', fpStr(end))
-  check((await dirtyLast()) !== 'dirty', 'ไม่มีธง dirty ค้างจากรอบปกติ')
+  await mirror.reconcile({ tabs: [TAB], repair: true, budgetMs: 120000 })
+  check((await dirtyLast()) !== 'dirty', 'ตรวจแล้วไม่มีธง dirty ค้างจากรอบปกติ')
 } else if (phase === 'down') {
   console.log('[down] Turso ถูกจำลองให้ล่ม (URL ผิด) — นำเข้าต้องสำเร็จ')
   const rows = mkRows('D')
@@ -147,7 +157,7 @@ if (phase === 'main') {
   check(again.report[0].match, 'reconcile รอบสองตรงโดยไม่ต้องซ่อม')
   const d = await call('DELETE', { importId })
   check(d.body?.success && d.body.deleted === 10, 'ลบล็อตที่เหลือ', JSON.stringify(d.body))
-  check(same(await sheetFp(), await tursoFp()), 'หลังลบ: Sheets = Turso')
+  await checkMirrorAfterDelete('หลังลบ')
   console.log('  หมายเหตุ: ขั้น main ตรวจ "กลับเท่าฐานเทียบ" ไปแล้ว ขั้นนี้ตรวจ Sheets = Turso หลังลบ')
 }
 console.log(failed ? `[${phase}] ไม่ผ่าน ${failed} ข้อ` : `[${phase}] ผ่านทุกข้อ`)

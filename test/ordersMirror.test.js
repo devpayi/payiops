@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { createClient } from '@libsql/client'
 import {
   __setDepsForTests, mirrorRows, mirrorDeleteLot, resyncTab, reconcile, listDirtyTabs, markDirty, fingerprint, toRow,
-  mirrorStatus, RAW_HEADERS, TABLE, mirrorRowsBatch, createMirrorContext, createMirrorFetch,
+  mirrorStatus, RAW_HEADERS, TABLE, mirrorRowsBatch, createMirrorContext, createMirrorFetch, prepareMirrorChanges,
 } from '../api/_lib/ordersMirror.js'
 
 const TAB = 'raw_orders_2026_09'
@@ -204,6 +204,21 @@ test('reconcile ค่าเริ่มต้น: เลือก 2 เดื�
 async function drain() { for (let i = 0; i < 100; i++) await Promise.resolve() }
 function clock(t) { t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 }) }
 const never = () => new Promise(() => {})
+
+test('เตรียมธงก่อน Sheets: แม้ทำงานเกิน hard limit ยังมีธงถาวรและไม่ต้องเขียนธงซ้ำ', async (t) => {
+  clock(t)
+  const sheets = fakeSheets({})
+  const trap = new Proxy({}, { get() { throw new Error('ต้องไม่แตะ Turso') } })
+  __setDepsForTests({ client: trap, enabled: true, sheets: sheets.api })
+  const context = createMirrorContext()
+  assert.equal((await prepareMirrorChanges([TAB], context)).dirtyRecorded, true)
+  assert.deepEqual(await listDirtyTabs(), [TAB])
+  t.mock.timers.tick(60000)
+  const [result] = await mirrorRowsBatch([{ tab: TAB, rows: [sheetRow()] }], 'import', context)
+  assert.equal(result.ok, false)
+  assert.equal(result.dirtyRecorded, true)
+  assert.equal(sheets.store.dirtyLog.length, 1)
+})
 
 test('Turso ค้าง: timeout และเบรกเกอร์ข้ามครั้งถัดไปโดยไม่ส่ง SQL', async (t) => {
   clock(t)

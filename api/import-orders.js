@@ -4,7 +4,7 @@
 //   DELETE ?importId=IMPxxxx      → ลบล็อตไฟล์นี้ออกจาก raw_orders_* ทุก tab ที่เกี่ยวข้อง
 import { requireDev } from './_lib/auth.js'
 import { getSheet, appendRows, batchGetValues, batchUpdateValues, overwriteSheet, getMeta, ensureSheet } from './_lib/sheets.js'
-import { createMirrorContext, mirrorRowsBatch, mirrorDeleteLot } from './_lib/ordersMirror.js'
+import { createMirrorContext, prepareMirrorChanges, mirrorRowsBatch, mirrorDeleteLot } from './_lib/ordersMirror.js'
 import { isoDate } from './_lib/dates.js'
 import ZIP_TO_PROVINCE from './_lib/zipToProvince.js'
 import { createHash } from 'node:crypto'
@@ -96,6 +96,7 @@ export default async function handler(req, res) {
         tabs = meta.sheets.map((s) => s.properties.title).filter((t) => t.startsWith('raw_orders'))
       }
 
+      await prepareMirrorChanges(tabs, mirrorContext, 'delete-lot')
       let deleted = 0
       for (const tab of tabs) {
         const vr = await batchGetValues([`${tab}!A:Z`])
@@ -332,6 +333,7 @@ export default async function handler(req, res) {
     const CMP_COLS = [6, 7, 8, 9, 10, 11, 12, 13, 17, 18, 19, 20, 21]
     const stripQuote = (v) => String(v ?? '').replace(/^'/, '')
     const mirrorChanges = []
+    await prepareMirrorChanges(tabs, mirrorContext, 'import')
     for (const tab of tabs) {
       await ensureSheet(tab, RAW_HEADERS)
       let rows = []
