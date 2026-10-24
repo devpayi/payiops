@@ -391,12 +391,15 @@ export default function Inventory() {
   const lowStockCount = useMemo(() => activeEnriched.filter((it) => it.category !== 'packaging' && it.effectiveStatus !== 'ปกติ').length, [activeEnriched])
   // จำนวน "สินค้า" (นับตามกลุ่มสินค้า ไม่ใช่ SKU) — ปลาใหญ่ = A, A+B (บอสถามบ่อยว่ามีสินค้ากี่ตัว)
   const productCounts = useMemo(() => {
-    const prods = activeEnriched.filter((it) => it.category !== 'packaging')
+    // กรอบรูป (KT*: เรซิน/ถุงทอง) แยกออกจากสินค้า Payi — ไม่ได้ track สต็อกจริง (ซ่อนไว้) นับรวมทุกตัวที่มีในรายการ
+    const isFrame = (it) => /^KT/i.test(String(it.sku))
+    const prods = activeEnriched.filter((it) => it.category !== 'packaging' && !isFrame(it))
     const fam = (list) => new Set(list.map((it) => it.product_family || it.sku)).size
-    const a = prods.filter((it) => it.abc === 'A')
-    const ab = prods.filter((it) => it.abc === 'A' || it.abc === 'B')
-    return { all: fam(prods), allSku: prods.length, a: fam(a), aSku: a.length, ab: fam(ab), abSku: ab.length }
-  }, [activeEnriched])
+    const byClass = (k) => prods.filter((it) => (k === '-' ? !it.abc : it.abc === k))
+    const cell = (list) => ({ p: fam(list), sku: list.length })
+    const frame = enriched.filter((it) => it.category !== 'packaging' && isFrame(it))
+    return { all: cell(prods), a: cell(byClass('A')), b: cell(byClass('B')), c: cell(byClass('C')), none: cell(byClass('-')), frame: cell(frame) }
+  }, [activeEnriched, enriched])
   const leadtimeTempActiveItems = useMemo(() => activeEnriched.filter((it) => it.lead_time_temp_active), [activeEnriched])
   const leadtimeTempActiveCount = leadtimeTempActiveItems.length
   const growthActiveCount = useMemo(() => activeEnriched.filter((it) => it.growthPercent > 0).length, [activeEnriched])
@@ -679,8 +682,8 @@ export default function Inventory() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>{categoryTab === 'packaging' ? 'วัสดุแพ็คเกจจิ้ง' : 'สินค้า'} ({filtered.length} รายการ)</div>
           {categoryTab !== 'packaging' && (
-            <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginTop: 3, fontWeight: 600 }}>
-              ทั้งหมด <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.all} สินค้า</b> ({productCounts.allSku} SKU) · ปลาใหญ่ A <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.a} สินค้า</b> ({productCounts.aSku} SKU) · A+B <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.ab} สินค้า</b> ({productCounts.abSku} SKU)
+            <div title="ตัวเลขในวงเล็บ = จำนวน SKU / สินค้าเดียวกันที่มีหลายไซส์อาจอยู่คนละกลุ่ม A/B/C จึงรวมกันแล้วเกินจำนวนสินค้าทั้งหมดได้" style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginTop: 3, fontWeight: 600 }}>
+              สินค้า Payi <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.all.p} สินค้า</b> ({productCounts.all.sku} SKU) — ปลาใหญ่ A <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.a.p}</b> ({productCounts.a.sku}) · B <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.b.p}</b> ({productCounts.b.sku}) · C <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.c.p}</b> ({productCounts.c.sku}) · ยังไม่มียอดขาย <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.none.p}</b> ({productCounts.none.sku}) · กรอบรูป (เรซิน/ถุงทอง) <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.frame.p} สินค้า</b> ({productCounts.frame.sku} SKU)
             </div>
           )}
           <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
