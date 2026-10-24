@@ -8,6 +8,7 @@ import { isoDate } from './dates.js'
 import { getSkuRedirectMap, resolveRedirect } from './skuMapping.js'
 import { canManageOperations } from '../../shared/roles.js'
 import { authEnabled } from './auth.js'
+import { deriveGroup, buildOverrideMap } from '../../shared/productGroup.js'
 import { computeSalesStats } from '../planner-sales.js'
 import {
   loadQtyRules, loadComboRules, upsertQtyRule, deleteQtyRule, upsertComboRule, deleteComboRule, computeBoxDemand,
@@ -1255,6 +1256,15 @@ export default async function opInventory(req, res) {
         return res.status(200).json({ success: true, ...result })
       }
       const data = await loadItemsWithBalance({ includeHidden: req.query.includeHidden === '1' })
+      // product_family = "สินค้า" (ไม่ใช่ SKU) ตัวเดียวกับที่หน้าสินค้า/Dashboard ใช้จัดกลุ่ม — ไว้ให้หน้า Inventory
+      // นับจำนวนสินค้า (บอสถามบ่อยว่ามีกี่ตัว) override ตาม SKU > SKU หลัก (ตัด -X ท้าย) > จับจากชื่อ
+      const overrideMap = buildOverrideMap(await getSheet('product_aliases'))
+      for (const it of data.items) {
+        const sku = String(it.sku)
+        const base = sku.replace(/-[A-Z]$/, '')
+        const ov = overrideMap.has(sku) ? sku : (overrideMap.has(base) ? base : sku)
+        it.product_family = deriveGroup(it.display_name, ov, overrideMap).label
+      }
       return res.status(200).json({ success: true, ...data, skuHints: await loadSkuHints() })
     }
 

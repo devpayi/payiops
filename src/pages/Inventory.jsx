@@ -389,7 +389,15 @@ export default function Inventory() {
   // เพราะอันนั้นนับจาก safety_stock ที่เซฟไว้ในชีตเท่านั้น จะไม่ตรงกับสถานะที่โชว์ในตาราง
   const activeEnriched = useMemo(() => enriched.filter((it) => it.active), [enriched])
   const lowStockCount = useMemo(() => activeEnriched.filter((it) => it.category !== 'packaging' && it.effectiveStatus !== 'ปกติ').length, [activeEnriched])
-  const leadtimeTempActiveItems = useMemo(() => activeEnriched.filter((it) => it.lead_time_temp_active), [activeEnriched])
+  // จำนวน "สินค้า" (นับตามกลุ่มสินค้า ไม่ใช่ SKU) — ปลาใหญ่ = A, A+B (บอสถามบ่อยว่ามีสินค้ากี่ตัว)
+  const productCounts = useMemo(() => {
+    const prods = activeEnriched.filter((it) => it.category !== 'packaging')
+    const fam = (list) => new Set(list.map((it) => it.product_family || it.sku)).size
+    const a = prods.filter((it) => it.abc === 'A')
+    const ab = prods.filter((it) => it.abc === 'A' || it.abc === 'B')
+    return { all: fam(prods), allSku: prods.length, a: fam(a), aSku: a.length, ab: fam(ab), abSku: ab.length }
+  }, [activeEnriched])
+  const leadtimeTempActiveItems = useMemo(() => () => activeEnriched.filter((it) => it.lead_time_temp_active), [activeEnriched])
   const leadtimeTempActiveCount = leadtimeTempActiveItems.length
   const growthActiveCount = useMemo(() => activeEnriched.filter((it) => it.growthPercent > 0).length, [activeEnriched])
   // ค่าที่เปิดอยู่ตอนนี้ (% ที่พบบ่อยสุด + กลุ่ม ABC ที่มีรายการเปิด) — ใช้เติมค่าในหน้าต่าง + โชว์สรุป
@@ -670,6 +678,11 @@ export default function Inventory() {
       <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 20, padding: 20, boxShadow: '0 14px 36px rgba(15,23,42,0.05)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>{categoryTab === 'packaging' ? 'วัสดุแพ็คเกจจิ้ง' : 'สินค้า'} ({filtered.length} รายการ)</div>
+          {categoryTab !== 'packaging' && (
+            <div style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginTop: 3, fontWeight: 600 }}>
+              ทั้งหมด <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.all} สินค้า</b> ({productCounts.allSku} SKU) · ปลาใหญ่ A <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.a} สินค้า</b> ({productCounts.aSku} SKU) · A+B <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.ab} สินค้า</b> ({productCounts.abSku} SKU)
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
             {categoryTab !== 'packaging' && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 7, height: 38, boxSizing: 'border-box', fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
