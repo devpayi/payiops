@@ -13,6 +13,7 @@
 //   fulfillment_type, buyer_hash, business
 import { getSheet, appendRows, batchGetValues, batchUpdateValues, ensureSheet } from './sheets.js'
 import { isoDate } from './dates.js'
+import { createMirrorContext, prepareMirrorChanges, mirrorRowsBatch } from './ordersMirror.js'
 
 const normalize = (s) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
 const num = (v) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0
@@ -43,7 +44,7 @@ export function genImportId(prefix = 'IMP') {
 // rows: แถว object (ดู key ที่รองรับด้านบน)
 // opts: { platform, businessDefault, fileName, importId }
 // คืน { importId, imported, mapped, skippedInvalid, skippedDup, unmappedSamples, tabs }
-export async function ingestOrders(rows, { platform, businessDefault = '', fileName = 'api-sync', importId } = {}) {
+export async function ingestOrders(rows, { platform, businessDefault = '', fileName = 'api-sync', importId, mirrorContext = createMirrorContext() } = {}) {
   if (!platform) throw new Error('ingestOrders: ต้องระบุ platform')
   if (!Array.isArray(rows) || rows.length === 0) {
     return { importId: importId || genImportId(), imported: 0, mapped: 0, skippedInvalid: 0, skippedDup: 0, unmappedSamples: [], tabs: [] }
@@ -123,6 +124,8 @@ export async function ingestOrders(rows, { platform, businessDefault = '', fileN
   // เทียบทุกคอลัมน์ ยกเว้น 0-5 (ระบุตัวตนแถว ไม่มีทางเปลี่ยน) และ 14-16 (meta การนำเข้า ต่างทุกครั้ง)
   const CMP_COLS = [6, 7, 8, 9, 10, 11, 12, 13, 17, 18, 19, 20, 21]
   const stripQuote = (v) => String(v ?? '').replace(/^'/, '')
+  const mirrorChanges = []
+  await prepareMirrorChanges(tabs, mirrorContext, 'ingest')
   for (const tab of tabs) {
     await ensureSheet(tab, RAW_HEADERS)
     let rows = []
@@ -146,12 +149,15 @@ export async function ingestOrders(rows, { platform, businessDefault = '', fileN
     }
     if (updates.length) await batchUpdateValues(updates)
     if (newRows.length) { await appendRows(tab, newRows); imported += newRows.length }
+    mirrorChanges.push({ tab, rows: [...updates.map((u) => u.values[0]), ...newRows] })
   }
 
   // ---- import_log ----
   try {
     await appendRows('import_log', [[importId, fileName, businessDefault, platform, imported, mapped, imported - mapped, importedAt, tabs.join(','), 'active']])
   } catch { /* ignore */ }
+
+  await mirrorRowsBatch(mirrorChanges, 'ingest', mirrorContext)
 
   return { importId, imported, updated, mapped, skippedInvalid, skippedDup, unmappedSamples, tabs }
 }

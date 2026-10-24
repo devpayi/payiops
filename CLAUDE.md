@@ -123,6 +123,15 @@ derivable from `raw_orders`). `marketing.js` still has `?kind=events` and `?kind
 the Radar removal (2026-09-30)** — kept on purpose (owner: keep backend + data for now);
 only `?kind=inputs` is live (Ads & Channels, MonthlyDashboard).
 
+**Turso mirror of raw_orders (2026-10-23, phase 0 — nothing reads from it yet).** Sheets stays the source
+of truth; `api/_lib/ordersMirror.js` copies every write (import POST/DELETE in `import-orders.js`, TikTok sync via
+`ingestOrders.js`) into a Turso table `raw_orders`. **Off by default** (`TURSO_MIRROR=on` + `TURSO_DATABASE_URL` +
+`TURSO_AUTH_TOKEN`); failures never fail an import — they mark the tab dirty in the `turso_dirty` sheet and
+`reconcile` (`sheet-tools.js?op=orders-mirror`, dev only) re-syncs the month. `op=append`/`op=overwrite` now reject
+`raw_orders*` tabs. **Anything else that writes raw_orders (hand edits, one-off scripts) bypasses the mirror — run
+`resync` for that month afterwards.** Details, ops commands, quota notes, reader/writer inventory:
+`docs/orders-turso-mirror.th.md`; trial + backfill scripts: `scripts/turso-trial/`.
+
 Conventions: **exclude cancelled orders** (`order_status` contains "ยกเลิก"/"cancel");
 aggregate server-side and set `Cache-Control` s-maxage / in-memory cache
 (`cacheable()`, since per-user auth forces `no-store` on the HTTP layer) so we don't hit
