@@ -52,6 +52,7 @@ test('missing reports are not zero; zero reports stay explicit; unchecked totals
   assert.equal(data.spend,'0');assert.equal(data.products[0].percent,null)
   assert.equal(data.unverified,1)
   assert.equal(data.platforms.find(p=>p.platform==='Lazada').spend,null)
+  assert.equal(data.platforms.find(p=>p.platform==='Lazada').sales,null)
   assert.equal(buildAdsSpendOverview([],scope).spend,null)
   assert.equal(adsSpendPercent('0','0'),null)
   assert.throws(()=>buildAdsSpendOverview([report('Shopee',null,[])],scope),/ขาด/)

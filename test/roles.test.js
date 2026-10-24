@@ -30,6 +30,12 @@ test('Staff sees only its operational pages', () => {
   assert.equal(canManageOperations('staff'), false)
 })
 
+test('removed Content OS page is inaccessible to every role', () => {
+  for (const role of ['dev', 'admin', 'boss', 'staff', 'stock', 'marketing', 'finance', 'tang', undefined]) {
+    assert.equal(canAccessTab(role, 'ContentOS'), false, role)
+  }
+})
+
 test('Stock role sees only Inventory/Stock Movement', () => {
   assert.equal(canAccessTab('stock', 'Inventory'), true)
   assert.equal(canAccessTab('stock', 'Stock Movement'), true)

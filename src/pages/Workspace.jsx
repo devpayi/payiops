@@ -19,7 +19,7 @@ const chip = (bg, fg) => ({ display: 'inline-flex', alignItems: 'center', gap: 4
 const TAB_LABELS = {
   Executive: 'Dashboard สรุปยอดขาย', Products: 'Dashboard สินค้า', Fulfillment: 'Fulfillment', CFO: 'CFO Dashboard',
   AdsChannels: 'วิเคราะห์โฆษณา',
-  ContentOS: 'Content OS', Inventory: 'Inventory', 'Stock Movement': 'Stock Movement', 'WHT Cert': 'ใบหัก ณ ที่จ่าย',
+  Inventory: 'Inventory', 'Stock Movement': 'Stock Movement', 'WHT Cert': 'ใบหัก ณ ที่จ่าย',
 }
 
 const CI = {

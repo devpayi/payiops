@@ -19,15 +19,30 @@ export function buildPricingCatalog({ aliases = [], inventory = [], recipes = []
   }
   const metadata = new Map(master.map(p => [text(p.sku).toUpperCase(), p]))
   const stock = new Map(inventory.filter(p => text(p.active) !== '0' && p.category !== 'packaging').map(p => [text(p.sku).toUpperCase(), p]))
+  const canonicalNames = new Map()
+  for (const alias of aliases) {
+    const sku = text(alias.master_sku).toUpperCase()
+    if (sku && canonical(sku, text(alias.alias_variation)) === sku && text(alias.display_name)) {
+      const key = pricingProductKey(text(alias.business) || 'Payi', sku)
+      if (!canonicalNames.has(key)) canonicalNames.set(key, text(alias.display_name))
+    }
+  }
   const catalog = new Map()
   function add(sku, business, name, variation = '', platform = '') {
+    const sourceSku = text(sku).toUpperCase()
     sku = canonical(sku, variation)
     if (!sku) return
     business = text(business) || 'Payi'
     const key = pricingProductKey(business, sku)
     if (!catalog.has(key)) {
       const m = metadata.get(sku) || {}, item = stock.get(sku) || {}
-      catalog.set(key, { key, sku, business, name: text(name) || text(item.display_name) || text(m.name_th || m.name_en) || sku,
+      const originalName = text(name) || text(item.display_name) || text(m.name_th || m.name_en) || sku
+      // An old SKU's listing name may describe a retired set, not the target product.
+      const canonicalName = sourceSku !== sku
+        ? text(item.display_name) || canonicalNames.get(key) || text(m.name_th || m.name_en)
+        : ''
+      catalog.set(key, { key, sku, business, name: canonicalName || originalName,
+        ...(canonicalName && canonicalName !== originalName ? { legacyGroupName: originalName } : {}),
         color: text(m.color || item.color), size: text(m.size || item.size), variations: [], platforms: [],
         referencePrice: positivePrice(item.retail_price), referencePriceSource: positivePrice(item.retail_price) === null ? null : 'inventory_items.retail_price', recipeVariations: [] })
     }

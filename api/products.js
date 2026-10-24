@@ -7,6 +7,8 @@ import { requireAuth, cacheable } from './_lib/auth.js'
 import { getMetaCached, batchGetValues, getSheet } from './_lib/sheets.js'
 import { deriveGroup, buildOverrideMap } from './_lib/productGroup.js'
 import { getSkuRedirectMap, getSetRecipeKeySet, resolveSalesSku, SET_RECIPES_SHEET } from './_lib/skuMapping.js'
+import { readProductFamilies } from './_lib/productFamilyCatalog.js'
+import { resolveSalesProductFamily, salesProductSkuKey } from '../shared/productFamilyBridge.js'
 
 const isCancelled = (s = '') => s.includes('ยกเลิก') || s.toLowerCase().includes('cancel')
 const isReturned = (s = '') => s.toLowerCase().includes('return')
@@ -37,6 +39,7 @@ export default async function handler(req, res) {
   }
 
   try {
+    const familiesPromise = readProductFamilies().catch(() => null)
     // override รายชื่อกลุ่มจาก product_aliases (คอลัมน์ product_group ถ้ามี) — ไม่มีก็ข้าม
     let overrideMap = new Map()
     let aliasRows = []
@@ -102,9 +105,10 @@ export default async function handler(req, res) {
         if (!g) groups.set(key, (g = { key, label, skus: new Map(), monthly: new Map() }))
 
         let gm = g.monthly.get(ym)
-        if (!gm) g.monthly.set(ym, (gm = { revenue: 0, units: 0, unitsFromSet: 0, orderIds: new Set(), platforms: new Map() }))
+        if (!gm) g.monthly.set(ym, (gm = { revenue: 0, units: 0, unitsFromSet: 0, orderIds: new Set(), platforms: new Map(), sourceKeys: new Set() }))
         if (orderId) gm.orderIds.add(orderId)
         if (!excluded) {
+          gm.sourceKeys.add(salesProductSkuKey(biz, masterSku))
           gm.revenue += rev; gm.units += qty
           if (plat) gm.platforms.set(plat, (gm.platforms.get(plat) || 0) + rev)
         }
@@ -121,7 +125,8 @@ export default async function handler(req, res) {
               let cg = groups.get(ck)
               if (!cg) groups.set(ck, (cg = { key: ck, label: cl, skus: new Map(), monthly: new Map() }))
               let cgm = cg.monthly.get(ym)
-              if (!cgm) cg.monthly.set(ym, (cgm = { revenue: 0, units: 0, unitsFromSet: 0, orderIds: new Set(), platforms: new Map() }))
+              if (!cgm) cg.monthly.set(ym, (cgm = { revenue: 0, units: 0, unitsFromSet: 0, orderIds: new Set(), platforms: new Map(), sourceKeys: new Set() }))
+              cgm.sourceKeys.add(salesProductSkuKey(biz, comp.componentSku))
               cgm.unitsFromSet += qty * comp.qty
             }
           }
@@ -149,16 +154,17 @@ export default async function handler(req, res) {
     // ค่าดิบของกลุ่ม g ที่เดือน ym — ym = null หมายถึง "ทั้งหมด" (รวมทุกเดือน)
     const monthRaw = (g, ym) => {
       if (ym === null) {
-        const acc = { revenue: 0, units: 0, unitsFromSet: 0, orderIds: new Set(), platforms: new Map() }
+        const acc = { revenue: 0, units: 0, unitsFromSet: 0, orderIds: new Set(), platforms: new Map(), sourceKeys: new Set() }
         for (const gm of g.monthly.values()) {
           acc.revenue += gm.revenue; acc.units += gm.units; acc.unitsFromSet += gm.unitsFromSet || 0
           for (const id of gm.orderIds) acc.orderIds.add(id)
           for (const [p, v] of gm.platforms) acc.platforms.set(p, (acc.platforms.get(p) || 0) + v)
+          for (const key of gm.sourceKeys) acc.sourceKeys.add(key)
         }
-        return { revenue: acc.revenue, units: acc.units, unitsFromSet: acc.unitsFromSet, orders: acc.orderIds.size, platforms: acc.platforms }
+        return { revenue: acc.revenue, units: acc.units, unitsFromSet: acc.unitsFromSet, orders: acc.orderIds.size, platforms: acc.platforms, sourceKeys: acc.sourceKeys }
       }
       const gm = ym ? g.monthly.get(ym) : null
-      return gm ? { revenue: gm.revenue, units: gm.units, unitsFromSet: gm.unitsFromSet || 0, orders: gm.orderIds.size, platforms: gm.platforms } : { revenue: 0, units: 0, unitsFromSet: 0, orders: 0, platforms: new Map() }
+      return gm ? { revenue: gm.revenue, units: gm.units, unitsFromSet: gm.unitsFromSet || 0, orders: gm.orderIds.size, platforms: gm.platforms, sourceKeys: gm.sourceKeys } : { revenue: 0, units: 0, unitsFromSet: 0, orders: 0, platforms: new Map(), sourceKeys: new Set() }
     }
     // ผลรวมของสมาชิก SKU ในกลุ่ม g ที่ ym — null = รวมทุกเดือน
     const memberRaw = (m, ym) => {
@@ -170,6 +176,7 @@ export default async function handler(req, res) {
       return m.monthly.get(ym) || { revenue: 0, units: 0 }
     }
 
+    const families = await familiesPromise
     const groupArr = [...groups.values()]
       .map((g) => {
         const cur = monthRaw(g, selectedMonth)
@@ -190,6 +197,7 @@ export default async function handler(req, res) {
         return {
           key: g.key,
           label: g.label,
+          ...resolveSalesProductFamily(cur.sourceKeys, families),
           revenue: round2(cur.revenue),
           units: curUnits,
           directUnits: cur.units,

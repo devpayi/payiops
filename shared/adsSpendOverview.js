@@ -13,7 +13,7 @@ export function adsRoasStatus(value) {
   return {key:'below',label:'ต่ำกว่าเกณฑ์'}
 }
 const hasSales=row=>row.sales!==null&&row.sales!==undefined&&String(row.sales).trim()!==''
-const completeSales=rows=>rows.length&&rows.every(hasSales)?sumReportMoney(rows.map(row=>row.sales)):null
+const completeSales=rows=>rows.length>0&&rows.every(hasSales)?sumReportMoney(rows.map(row=>row.sales)):null
 const amount=value=>{
   if(value===undefined||value===null||String(value).trim()==='')throw Error('รายงานขาดค่าแอด')
   return sumReportMoney([value])

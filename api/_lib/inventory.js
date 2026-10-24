@@ -3,11 +3,12 @@
 // เพื่อกันเพี้ยนแบบไฟล์ Excel เดิม (คงเหลือแยกชีตต้องพิมพ์เชื่อมมือทุกเดือน)
 // นับสต็อกระดับ SKU จริง (master_sku) ไม่ใช่ product-family group — M/L/สี คือของคนละถังจริง
 // ต้องแยกนับ ไม่รวมแบบ deriveGroup ที่ใช้กับหน้า Products/Claims (นั่นไว้แค่ดูภาพรวมยอดขาย)
-import { getSheet, appendRows, overwriteSheet, ensureSheets } from './sheets.js'
+import { getSheet, appendRows, overwriteSheet, ensureSheets, clearSheetCache } from './sheets.js'
 import { isoDate } from './dates.js'
 import { getSkuRedirectMap, resolveRedirect } from './skuMapping.js'
 import { canManageOperations } from '../../shared/roles.js'
 import { authEnabled } from './auth.js'
+import { deriveGroup, buildOverrideMap } from '../../shared/productGroup.js'
 import { computeSalesStats } from '../planner-sales.js'
 import {
   loadQtyRules, loadComboRules, upsertQtyRule, deleteQtyRule, upsertComboRule, deleteComboRule, computeBoxDemand,
@@ -1217,6 +1218,8 @@ export default async function opInventory(req, res) {
 
     if (req.method === 'GET') {
       const view = String(req.query.view || 'items')
+      // fresh=1 — หน้าเว็บขออ่านสดทันทีหลังบันทึก (กันเห็นค่าเก่าจากแคช 5 นาทีของอีก instance)
+      if (req.query.fresh === '1') clearSheetCache([ITEMS_SHEET, MOVEMENTS_SHEET, STOCK_IN_REQUESTS_SHEET])
       if (view === 'stock-in-requests') {
         const rows = await loadStockInRequests({ status: req.query.status, role })
         return res.status(200).json({ success: true, requests: rows })
@@ -1253,6 +1256,15 @@ export default async function opInventory(req, res) {
         return res.status(200).json({ success: true, ...result })
       }
       const data = await loadItemsWithBalance({ includeHidden: req.query.includeHidden === '1' })
+      // product_family = "สินค้า" (ไม่ใช่ SKU) ตัวเดียวกับที่หน้าสินค้า/Dashboard ใช้จัดกลุ่ม — ไว้ให้หน้า Inventory
+      // นับจำนวนสินค้า (บอสถามบ่อยว่ามีกี่ตัว) override ตาม SKU > SKU หลัก (ตัด -X ท้าย) > จับจากชื่อ
+      const overrideMap = buildOverrideMap(await getSheet('product_aliases'))
+      for (const it of data.items) {
+        const sku = String(it.sku)
+        const base = sku.replace(/-[A-Z]$/, '')
+        const ov = overrideMap.has(sku) ? sku : (overrideMap.has(base) ? base : sku)
+        it.product_family = deriveGroup(it.display_name, ov, overrideMap).label
+      }
       return res.status(200).json({ success: true, ...data, skuHints: await loadSkuHints() })
     }
 

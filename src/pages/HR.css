@@ -170,8 +170,11 @@
 .hr-progress span { display: block; height: 100%; border-radius: inherit; background: var(--hr-mint); }
 .hr-balance-card.is-empty .hr-progress span { background: var(--hr-red); }
 .hr-balance-card select { min-height: 34px; padding: 0 7px; font-size: 10px; }
-.hr-balance-edit { display: flex; align-items: center; gap: 6px; }
-.hr-balance-edit input { width: 68px; min-height: 36px; padding: 0 8px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hr-balance-edit { display: grid; grid-template-columns: 1fr 1fr; align-items: end; gap: 6px; }
+.hr-balance-edit label { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 10px; font-weight: 700; white-space: nowrap; color: var(--hr-muted, #64748b); }
+.hr-balance-edit button { grid-column: 1 / -1; }
+.hr-balance-card-top span { white-space: nowrap; }
+.hr-balance-edit input { width: 100%; min-height: 36px; padding: 0 8px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .hr-balance-edit button { min-width: 44px; min-height: 36px; border: 0; border-radius: 9px; background: var(--hr-navy); color: #fff; cursor: pointer; }
 
 .hr-edit-overlay { --hr-navy: var(--payi-mint-strong, #0b63d8); --hr-blue: var(--payi-mint, #2563eb); --hr-blue-soft: #eaf2ff; --hr-ink: #17243b; --hr-muted: #66758d; --hr-line: #e3eaf2; --hr-red: #c94747; position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; background: rgba(18, 42, 70, .34); backdrop-filter: blur(5px); }
@@ -535,14 +538,7 @@
 }
 
 /* HR navigation and hero composition */
-.payi-sidebar-nav [data-nav-id="HR"][data-active="true"] {
-  background:
-    radial-gradient(circle at 84% 18%, rgba(255, 255, 255, .7) 0 1px, transparent 3px),
-    linear-gradient(135deg, #8060a1 0%, #a774c4 54%, #d49cda 100%) !important;
-  box-shadow:
-    0 7px 18px rgba(142, 91, 170, .3),
-    0 0 17px rgba(211, 159, 239, .35) !important;
-}
+
 
 .payi-main-content:has(> .hr-page) > .payi-topbar {
   align-items: center !important;
@@ -1225,12 +1221,7 @@ body:has(.hr-page) .payi-main-content > .payi-topbar > div:last-child {
 }
 
 /* Small toy-color accents: decorative only; data/status colors stay unchanged. */
-.payi-sidebar-nav [data-nav-id="HR"][data-active="true"] {
-  background: linear-gradient(110deg, #168861 0%, #247b70 52%, #69508c 100%) !important;
-  box-shadow:
-    0 6px 16px rgba(43, 103, 88, .2),
-    inset 0 1px 0 rgba(255, 255, 255, .18) !important;
-}
+
 
 .hr-dashboard-hero {
   border-color: rgba(184, 232, 216, .7);

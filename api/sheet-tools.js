@@ -4,6 +4,7 @@
 import { requireAuth, cacheable, authEnabled, verifyToken } from './_lib/auth.js'
 import { canManageOperations, normalizeRole } from '../shared/roles.js'
 import { getMetaCached, batchGetValues, getSheet, appendRows, appendRowsVerified, overwriteSheet, ensureSheet, ensureSheets } from './_lib/sheets.js'
+import { mirrorEnabled, mirrorStatus, reconcile, resyncTab, tabYm } from './_lib/ordersMirror.js'
 import { verifySignature, pushMessage, pushMessageWithFallback, replyMessage, linkRichMenuToUser } from './_lib/line.js'
 import {
   MIN_LOWER_HOUSE_HEADCOUNT, buildCoveragePlan, leaveAbsenceDates, leaveAbsenceSlots,
@@ -2929,15 +2930,18 @@ async function opHrInner(req, res) {
   if (action === 'set-leave-balance') {
     if (!requireAdmin(req, res)) return
     const code = String(body.code || '').trim().toUpperCase()
-    const remaining = Number(body.remaining)
+    // ตั้งได้ 2 แบบ: body.quota = ตั้งโควตาต่อปีตรงๆ (เหลือ = โควตา − ที่ใช้ไป) หรือ body.remaining = ตั้งยอดเหลือ (โควตา = ใช้ไป + เหลือ)
+    const setByQuota = body.quota !== undefined && body.quota !== null && body.quota !== ''
+    const value = Number(setByQuota ? body.quota : body.remaining)
     const person = code ? await findHrPerson(code) : null
     if (!person) return res.status(404).json({ success: false, error: 'ไม่พบพนักงานนี้' })
     if (!hasVacationBenefit(person.group)) return res.status(400).json({ success: false, error: `${person.group}ไม่มีสิทธิ์วันลาพักร้อน` })
-    if (!Number.isFinite(remaining) || remaining < 0 || remaining > 365 || Math.round(remaining * 2) !== remaining * 2) {
-      return res.status(400).json({ success: false, error: 'ยอดคงเหลือต้องเป็น 0–365 วัน และเพิ่มทีละครึ่งวันได้ค่ะ' })
+    if (!Number.isFinite(value) || value < 0 || value > 365 || Math.round(value * 2) !== value * 2) {
+      return res.status(400).json({ success: false, error: `${setByQuota ? 'โควตา' : 'ยอดคงเหลือ'}ต้องเป็น 0–365 วัน และเพิ่มทีละครึ่งวันได้ค่ะ` })
     }
     const balance = await vacationBalanceFor(code)
-    const quota = balance.used + remaining
+    const quota = setByQuota ? value : balance.used + value
+    const remaining = Math.max(0, quota - balance.used)
     const current = await getSheet('hr_leave_quota')
     const existing = current.find((row) => String(row.code).toUpperCase() === code)
     const now = new Date().toISOString()
@@ -3267,11 +3271,15 @@ async function opSheet(req, res) {
   }
 }
 
+// raw_orders_* มีสำเนาใน Turso — ทางเขียนทั่วไป (append/overwrite) ห้ามแตะ ไม่งั้นสำเนาไม่เห็นการเปลี่ยนแปลง
+const isRawOrdersTab = (name) => /^raw_orders/i.test(String(name || '').trim().replace(/^'|'$/g, ''))
+
 // ── op=append: เขียนต่อท้าย body { sheetName, rows } ──
 async function opAppend(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
   const { sheetName, rows } = req.body || {}
   if (!sheetName || !Array.isArray(rows)) return res.status(400).json({ error: 'ต้องส่ง sheetName และ rows (array)' })
+  if (isRawOrdersTab(sheetName)) return res.status(403).json({ error: 'raw_orders_* เขียนผ่าน /api/import-orders เท่านั้น (สำเนา Turso ต้องเห็นทุกการเปลี่ยนแปลง)' })
   try {
     await appendRows(sheetName, rows)
     res.status(200).json({ ok: true, appended: rows.length })
@@ -3287,6 +3295,7 @@ async function opOverwrite(req, res) {
   if (!sheetName || !Array.isArray(headers) || !Array.isArray(rows)) {
     return res.status(400).json({ error: 'ต้องส่ง sheetName, headers (array) และ rows (array)' })
   }
+  if (isRawOrdersTab(sheetName)) return res.status(403).json({ error: 'raw_orders_* เขียนผ่าน /api/import-orders เท่านั้น (สำเนา Turso ต้องเห็นทุกการเปลี่ยนแปลง)' })
   try {
     await overwriteSheet(sheetName, headers, rows)
     res.status(200).json({ ok: true, written: rows.length })
@@ -4148,6 +4157,36 @@ async function opLineWebhook(req, res) {
   return res.status(200).end()
 }
 
+// ── op=orders-mirror: ดู/ตรวจ/ซ่อมสำเนา raw_orders ใน Turso (dev เท่านั้น) ──
+//   GET  ?op=orders-mirror                       → สถานะ (จำนวนแถวต่อแท็บ + แท็บที่ติดธง dirty)
+//   GET  ?op=orders-mirror&action=reconcile      → เทียบ Sheets↔Turso 2 เดือนล่าสุด + แท็บติดธง (repair=0 = ดูเฉยๆ)
+//   POST ?op=orders-mirror&action=resync&tab=raw_orders_2026_09  → โหลดแท็บนั้นใหม่จาก Sheets
+// cron=orders-mirror (Vercel Cron, ต้องมี CRON_SECRET): reconcile รายวัน — เปิดใน vercel.json เมื่อพร้อมเท่านั้น
+async function opOrdersMirror(req, res, { cron = false } = {}) {
+  try {
+    const action = String(req.query.action || (cron ? 'reconcile' : 'status'))
+    if (action === 'status') return res.status(200).json({ success: true, ...(await mirrorStatus()) })
+    if (action === 'reconcile') {
+      const repair = req.query.repair !== '0'
+      const out = await reconcile({ repair, budgetMs: 45000 })
+      // cron: ถ้ายังมีแท็บที่ไม่ตรง/ซ่อมไม่ครบ/ติดธง → ตอบ 500 ให้ Vercel ทำเครื่องหมายว่า cron ล้มเหลว (เห็นในหน้า Cron Jobs/Logs)
+      const problems = (out.report || []).filter((r) => r.skipped || (!r.match && !(r.repair && r.repair.done)))
+      const stillDirty = out.enabled ? (await mirrorStatus()).dirty : []
+      if (cron && (problems.length || stillDirty.length)) return res.status(500).json({ success: false, problems, stillDirty, ...out })
+      return res.status(200).json({ success: true, ...out })
+    }
+    if (action === 'resync') {
+      if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'POST only' })
+      const tab = String(req.query.tab || '')
+      if (!tabYm(tab)) return res.status(400).json({ success: false, error: 'ต้องระบุ tab=raw_orders_YYYY_MM' })
+      return res.status(200).json({ success: true, ...(await resyncTab(tab, { reason: 'manual', deadlineMs: 50000 })) })
+    }
+    return res.status(400).json({ success: false, error: 'action ต้องเป็น status|reconcile|resync' })
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e.message })
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     await readRawBody(req)
@@ -4169,6 +4208,13 @@ export default async function handler(req, res) {
   if (op === 'inventory' && req.query.cron === 'low-stock') return opLowStockCron(req, res)
   if (op === 'workforce' && req.query.cron === 'holiday-reminder') return opHolidayReminderCron(req, res)
   if (op === 'import-tracking' && req.query.cron === 'lot-stale') return opLotStaleCron(req, res)
+  if (op === 'orders-mirror' && req.query.cron === 'orders-mirror') {
+    // ปิดกระจกอยู่ = ไม่มีอะไรให้ทำ ตอบ 200 เฉยๆ (ไม่ให้ cron ขึ้นว่าล้มเหลวทุกวันก่อนเปิดใช้จริง)
+    if (!mirrorEnabled()) return res.status(200).json({ success: true, enabled: false })
+    // ต่างจาก cron อื่น: ไม่ยอมให้รันถ้าไม่ได้ตั้ง CRON_SECRET (งานนี้เขียนฐานข้อมูล)
+    if (!process.env.CRON_SECRET || (req.headers.authorization || '') !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ error: 'unauthorized' })
+    return opOrdersMirror(req, res, { cron: true })
+  }
   if (!requireAuth(req, res)) return
   if (op === 'pricing') return opPricing(req, res)
   // CFO / Demographic / Import Tracking — เปิดให้เฉพาะ DEV เท่านั้น (owner ขอ 2026-09-01)
@@ -4185,6 +4231,12 @@ export default async function handler(req, res) {
       return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงส่วนนี้' })
     }
     return opDemographic(req, res)
+  }
+  if (op === 'orders-mirror') {
+    if (authEnabled() && normalizeRole(req.user?.role) !== 'dev') {
+      return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงส่วนนี้' })
+    }
+    return opOrdersMirror(req, res)
   }
   if (op === 'import-tracking') {
     // ติดตามนำเข้าแบบล็อต — เปิดให้ dev + boss (พี่หยก/Lady = boss)

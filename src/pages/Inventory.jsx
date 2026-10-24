@@ -208,11 +208,11 @@ export default function Inventory() {
   const [bulkLeadtimeModal, setBulkLeadtimeModal] = useState(false)
   const [growthModal, setGrowthModal] = useState(false)
 
-  const load = useCallback(() => {
+  const load = useCallback((fresh = false) => {
     setLoading(true)
     setError('')
     Promise.all([
-      fetch('/api/sheet-tools?op=inventory&view=items&includeHidden=1').then((r) => r.json()),
+      fetch(`/api/sheet-tools?op=inventory&view=items&includeHidden=1${fresh === true ? '&fresh=1' : ''}`).then((r) => r.json()),
       fetch('/api/planner-sales?days=30').then((r) => r.json()).catch(() => null),
       fetch('/api/sheet-tools?op=inventory&view=packaging-recipes').then((r) => r.json()).catch(() => null),
       fetch('/api/sheet-tools?op=inventory&view=box-demand&days=30').then((r) => r.json()).catch(() => null),
@@ -389,9 +389,30 @@ export default function Inventory() {
   // เพราะอันนั้นนับจาก safety_stock ที่เซฟไว้ในชีตเท่านั้น จะไม่ตรงกับสถานะที่โชว์ในตาราง
   const activeEnriched = useMemo(() => enriched.filter((it) => it.active), [enriched])
   const lowStockCount = useMemo(() => activeEnriched.filter((it) => it.category !== 'packaging' && it.effectiveStatus !== 'ปกติ').length, [activeEnriched])
+  // จำนวน "สินค้า" (นับตามกลุ่มสินค้า ไม่ใช่ SKU) — ปลาใหญ่ = A, A+B (บอสถามบ่อยว่ามีสินค้ากี่ตัว)
+  const productCounts = useMemo(() => {
+    // กรอบรูป (KT*: เรซิน/ถุงทอง) แยกออกจากสินค้า Payi — ไม่ได้ track สต็อกจริง (ซ่อนไว้) นับรวมทุกตัวที่มีในรายการ
+    const isFrame = (it) => /^KT/i.test(String(it.sku))
+    const prods = activeEnriched.filter((it) => it.category !== 'packaging' && !isFrame(it))
+    const fam = (list) => new Set(list.map((it) => it.product_family || it.sku)).size
+    const byClass = (k) => prods.filter((it) => (k === '-' ? !it.abc : it.abc === k))
+    const cell = (list) => ({ p: fam(list), sku: list.length })
+    const frame = enriched.filter((it) => it.category !== 'packaging' && isFrame(it))
+    return { all: cell(prods), a: cell(byClass('A')), b: cell(byClass('B')), c: cell(byClass('C')), none: cell(byClass('-')), frame: cell(frame) }
+  }, [activeEnriched, enriched])
   const leadtimeTempActiveItems = useMemo(() => activeEnriched.filter((it) => it.lead_time_temp_active), [activeEnriched])
   const leadtimeTempActiveCount = leadtimeTempActiveItems.length
   const growthActiveCount = useMemo(() => activeEnriched.filter((it) => it.growthPercent > 0).length, [activeEnriched])
+  // ค่าที่เปิดอยู่ตอนนี้ (% ที่พบบ่อยสุด + กลุ่ม ABC ที่มีรายการเปิด) — ใช้เติมค่าในหน้าต่าง + โชว์สรุป
+  const growthCurrent = useMemo(() => {
+    const on = activeEnriched.filter((it) => it.growthPercent > 0)
+    if (!on.length) return null
+    const byPercent = new Map()
+    for (const it of on) byPercent.set(it.growthPercent, (byPercent.get(it.growthPercent) || 0) + 1)
+    const percent = [...byPercent.entries()].sort((a, b) => b[1] - a[1])[0][0]
+    const classes = ['A', 'B', 'C'].filter((k) => on.some((it) => it.abc === k))
+    return { percent, classes, percents: [...byPercent.keys()].sort((a, b) => a - b) }
+  }, [activeEnriched])
   // วันที่ใกล้สุดที่จะกลับปกติเอง (ในบรรดารายการที่ตั้งวันไว้) — โชว์เป็น hint ในป็อปอัพปรับทั้งหมด
   const leadtimeSoonestUntil = useMemo(() => {
     const dates = leadtimeTempActiveItems.map((it) => it.lead_time_temp_until).filter(Boolean).sort()
@@ -540,7 +561,7 @@ export default function Inventory() {
       if (!json.success) throw new Error(json.error || 'ปรับไม่สำเร็จ')
       if (closeModal) setGrowthModal(false)
       setItemModal(null)
-      await load()
+      await load(true)
     } catch (e) { setError(e.message) } finally { setSaving(false) }
   }
   // ส่งแจ้งเตือนของที่ต้องสั่งเข้าไลน์ตอนนี้เลย (เหมือน cron 17:00 แต่กดเองได้ ส่งซ้ำในวันเดียวกันได้)
@@ -660,6 +681,11 @@ export default function Inventory() {
       <div style={{ background: 'var(--payi-surface)', border: '1px solid var(--payi-border)', borderRadius: 20, padding: 20, boxShadow: '0 14px 36px rgba(15,23,42,0.05)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--payi-text-strong)' }}>{categoryTab === 'packaging' ? 'วัสดุแพ็คเกจจิ้ง' : 'สินค้า'} ({filtered.length} รายการ)</div>
+          {categoryTab !== 'packaging' && (
+            <div title="ตัวเลขในวงเล็บ = จำนวน SKU / สินค้าเดียวกันที่มีหลายไซส์อาจอยู่คนละกลุ่ม A/B/C จึงรวมกันแล้วเกินจำนวนสินค้าทั้งหมดได้" style={{ fontSize: 12, color: 'var(--payi-text-muted)', marginTop: 3, fontWeight: 600 }}>
+              สินค้า Payi <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.all.p} สินค้า</b> ({productCounts.all.sku} SKU) — ปลาใหญ่ A <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.a.p}</b> ({productCounts.a.sku}) · B <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.b.p}</b> ({productCounts.b.sku}) · C <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.c.p}</b> ({productCounts.c.sku}) · ยังไม่มียอดขาย <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.none.p}</b> ({productCounts.none.sku}) · กรอบรูป (เรซิน/ถุงทอง) <b style={{ color: 'var(--payi-text-strong)' }}>{productCounts.frame.p} สินค้า</b> ({productCounts.frame.sku} SKU)
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
             {categoryTab !== 'packaging' && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 7, height: 38, boxSizing: 'border-box', fontSize: 12, fontWeight: 700, color: 'var(--payi-text-muted)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -952,6 +978,7 @@ export default function Inventory() {
       {growthModal && (
         <GrowthBufferModal
           activeCount={growthActiveCount}
+          current={growthCurrent}
           saving={saving}
           onClose={() => setGrowthModal(false)}
           onApply={applyGrowthBulk}
@@ -1006,9 +1033,9 @@ const iconBtnStyle = (color) => ({
 
 // ปรับ lead time ชั่วคราวทีเดียวทั้งหมด (owner ขอ 2026-09-18 — เผื่อวันหยุดยาวเช่นตรุษจีน โรงงาน/ขนส่ง
 // ปิดพร้อมกันหมดทุกสินค้า) — บวก "จำนวนวันเพิ่ม" บนฐานเดิมของแต่ละสินค้า ไม่ใช่ตั้งให้ทุกตัวเท่ากัน
-function GrowthBufferModal({ activeCount, saving, onClose, onApply, onRevert }) {
-  const [percent, setPercent] = useState('30')
-  const [classes, setClasses] = useState({ A: true, B: true, C: false })
+function GrowthBufferModal({ activeCount, current, saving, onClose, onApply, onRevert }) {
+  const [percent, setPercent] = useState(String(current?.percent || 30))
+  const [classes, setClasses] = useState({ A: current ? current.classes.includes('A') : true, B: current ? current.classes.includes('B') : true, C: current ? current.classes.includes('C') : false })
   const picked = Object.keys(classes).filter((k) => classes[k])
   return (
     <Modal title="เพิ่มสต็อกชั่วคราว (เผื่อยอดโต)" onClose={onClose}>
@@ -1019,7 +1046,7 @@ function GrowthBufferModal({ activeCount, saving, onClose, onApply, onRevert }) 
         </div>
         {activeCount > 0 && (
           <div style={{ fontSize: 12, fontWeight: 700, color: '#166534', background: '#dcfce7', borderRadius: 8, padding: '8px 10px' }}>
-            📈 ตอนนี้มี {activeCount} รายการเพิ่มสต็อกชั่วคราวอยู่ (ปุ่มนี้จะตั้งค่าใหม่ทับตัวที่อยู่ในกลุ่มที่เลือก)
+            📈 ตอนนี้เปิดอยู่ {activeCount} รายการ: กลุ่ม {current?.classes?.join(' + ') || '-'} เพิ่ม {current?.percents?.map((p) => `${p}%`).join(', ') || '-'} (ปุ่มด้านล่างจะตั้งค่าใหม่ทับตัวที่อยู่ในกลุ่มที่เลือก)
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

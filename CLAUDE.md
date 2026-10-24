@@ -123,6 +123,15 @@ derivable from `raw_orders`). `marketing.js` still has `?kind=events` and `?kind
 the Radar removal (2026-09-30)** — kept on purpose (owner: keep backend + data for now);
 only `?kind=inputs` is live (Ads & Channels, MonthlyDashboard).
 
+**Turso mirror of raw_orders (2026-10-23, phase 0 — nothing reads from it yet).** Sheets stays the source
+of truth; `api/_lib/ordersMirror.js` copies every write (import POST/DELETE in `import-orders.js`, TikTok sync via
+`ingestOrders.js`) into a Turso table `raw_orders`. **Off by default** (`TURSO_MIRROR=on` + `TURSO_DATABASE_URL` +
+`TURSO_AUTH_TOKEN`); failures never fail an import — they mark the tab dirty in the `turso_dirty` sheet and
+`reconcile` (`sheet-tools.js?op=orders-mirror`, dev only) re-syncs the month. `op=append`/`op=overwrite` now reject
+`raw_orders*` tabs. **Anything else that writes raw_orders (hand edits, one-off scripts) bypasses the mirror — run
+`resync` for that month afterwards.** Details, ops commands, quota notes, reader/writer inventory:
+`docs/orders-turso-mirror.th.md`; trial + backfill scripts: `scripts/turso-trial/`.
+
 Conventions: **exclude cancelled orders** (`order_status` contains "ยกเลิก"/"cancel");
 aggregate server-side and set `Cache-Control` s-maxage / in-memory cache
 (`cacheable()`, since per-user auth forces `no-store` on the HTTP layer) so we don't hit
@@ -500,8 +509,9 @@ Sheets rate limits.
       given how many manual steps this feature already needed).
 - `LinksHub.jsx`, `DevHub.jsx` (static link/doc hubs — real content, no backend)
 - `Login.jsx`, `Settings.jsx` (auth screens, user management)
-- **`ContentOSPrototype.jsx`** ("Content OS Prototype") — **UI-only prototype, no API
-  calls, no backend.** Not usable yet.
+- **Content OS Prototype removed on 2026-10-21.** Deleted the page, menu, lazy import
+  and Workspace shortcuts for every role. Old ContentOS links fall back to Home.
+  Content work now belongs to the separate Marketing app.
 
 **Removed (2026-09-23):** `WorkforceOT.jsx` deleted — Manpower & OT left the sidebar
 earlier (commit `a6685a9`); its last entry point was a `?ot-preview` URL switch in
@@ -1113,11 +1123,7 @@ a new one.
       main-content+336px-aside split, and the 3-col link grid all used `minmax(150–230px,
       1fr)` with no upper collapse, forcing horizontal scroll on phones. Fixed with the
       shared classes above.
-    - `ContentOSPrototype.jsx` (explicitly a non-functional UI prototype, see its own note
-      above) has dense fixed grids too but no *hard* overflow bug at 375px since its
-      tracks mostly use `minmax(0, ...)` (shrinks instead of forcing scroll) — deliberately
-      left as-is given its prototype status, not worth a deep pass on unused UI.
-      `ManagerClaimsPrototype.jsx` and `HRMobile.jsx` are separate mobile-only routes
+    - `ManagerClaimsPrototype.jsx` and `HRMobile.jsx` are separate mobile-only routes
       (reached via URL query param, not the sidebar) — already mobile-first by design,
       out of scope for this pass.
 11. **NOT STARTED — LINE claim intake for เกด.** Idea only, agreed 2026-08-21, not built.

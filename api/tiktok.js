@@ -19,6 +19,7 @@ import {
   listOrderIds, getOrderDetails, ordersToRows, config,
 } from './_lib/tiktokApi.js'
 import { ingestOrders } from './_lib/ingestOrders.js'
+import { createMirrorContext } from './_lib/ordersMirror.js'
 
 const TOKENS_SHEET = 'platform_tokens'
 const TOKENS_HEADERS = ['platform', 'shop_name', 'shop_id', 'shop_cipher', 'access_token', 'access_expires_at', 'refresh_token', 'refresh_expires_at', 'connected_at', 'last_sync_at', 'status']
@@ -64,6 +65,7 @@ async function upsertToken(patch) {
 const htmlPage = (title, body) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><body style="font-family:system-ui,sans-serif;max-width:520px;margin:40px auto;padding:0 20px;line-height:1.6;color:#16181d"><h2>${title}</h2>${body}</body>`
 
 export default async function handler(req, res) {
+  const mirrorContext = createMirrorContext()
   // TikTok เด้งกลับพร้อม ?code= (บางกรณี query 'action' หายถ้า redirect URL ที่ตั้งไว้ไม่มี ?action=callback)
   const action = String(req.query.action || (req.query.cron ? 'cron' : (req.query.code || req.query.auth_code ? 'callback' : '')))
 
@@ -146,7 +148,7 @@ export default async function handler(req, res) {
           if (ids.length) {
             const orders = await getOrderDetails({ accessToken, shopCipher: row.shop_cipher, ids })
             summary = await ingestOrders(ordersToRows(orders), {
-              platform: 'TikTok Shop', businessDefault: row.shop_name || '', fileName: `tiktok-sync:${row.shop_name || row.shop_id}`,
+              platform: 'TikTok Shop', businessDefault: row.shop_name || '', fileName: `tiktok-sync:${row.shop_name || row.shop_id}`, mirrorContext,
             })
           }
           await upsertToken({ shop_id: row.shop_id, last_sync_at: new Date().toISOString() })

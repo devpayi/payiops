@@ -43,6 +43,46 @@ test('append-only revisions retain latest per scope, A B A and concurrent identi
   assert.equal(latest.length,2)
   assert.equal(latest.find(row=>row.report.platform==='TikTok Shop').report.spend,'10')
 })
+
+test('upload history retains all commits, marks only the last occurrence active, and excludes file contents',()=>{
+  const a=buildReportImport(payload()),b=structuredClone(a),other=structuredClone(a)
+  b.report.spend='11';other.report.shopId='456'
+  const rows=[REPORT_HEADERS,
+    ...encodeReportRevision(a,{by:'first',now:'2026-10-01T00:00:00Z'}),
+    ...encodeReportRevision(b,{by:'second',now:'2026-10-02T00:00:00Z'}),
+    ...encodeReportRevision(other,{by:'other-shop',now:'2026-10-03T00:00:00Z'}),
+    ...encodeReportRevision(a,{by:'restore',now:'2026-10-04T00:00:00Z'}),
+    ...encodeReportRevision(a,{by:'retry',now:'2026-10-05T00:00:00Z'})]
+  const events=decodeReportRevisions(rows,{history:true})
+  assert.equal(events.length,5)
+  assert.equal(events.filter(row=>row.current).length,2)
+  assert.equal(new Set(events.map(row=>row.eventId)).size,5)
+  assert.deepEqual(events.map(row=>row.action),['repeated','replaced','created','replaced','created'])
+  assert.equal(events[0].savedBy,'retry');assert.equal(events[0].savedAt,'2026-10-05T00:00:00Z')
+  assert.deepEqual(events[0].files,['report.json'])
+  assert.equal(events[0].month,'2026-09');assert.equal(events[0].shopId,'123')
+  assert.equal(events[0].sourceFiles,undefined);assert.equal(events[0].report,undefined)
+  assert.ok(!JSON.stringify(events).includes('=source name'))
+  assert.equal(decodeReportRevisions(rows).length,2)
+  assert.throws(()=>decodeReportRevisions(rows.slice(0,-1),{history:true}),/ยังไม่ยืนยัน/)
+  const broken=structuredClone(rows);broken[1][8]+='x'
+  assert.throws(()=>decodeReportRevisions(broken,{history:true}),/เปลี่ยน/)
+})
+
+test('history read uses the same auth and GET-only guard without reading raw reports or legacy inputs',async()=>{
+  let reads=0
+  const make=over=>createMarketingMonthlyRead({authorize:()=>true,production:()=>true,hasAuth:()=>true,readHistory:async()=>{reads++;return [{eventId:'one',current:true}]},readReports:()=>{throw Error('raw reports must not be read')},readInputs:()=>{throw Error('legacy must not be read')},...over})
+  const res=response();await make()({method:'GET',query:{kind:'report-history'}},res)
+  assert.equal(res.code,200);assert.equal(res.body.history[0].eventId,'one');assert.equal(res.headers['Cache-Control'],'no-store')
+  for(const [handler,request,code] of [
+    [make({hasAuth:()=>false}),{method:'GET',query:{kind:'report-history'}},503],
+    [make({authorize:(req,res)=>{res.status(403).json({success:false});return false}}),{method:'GET',query:{kind:'report-history'}},403],
+    [make(),{method:'POST',query:{kind:'report-history'}},405]
+  ]){const denied=response();await handler(request,denied);assert.equal(denied.code,code)}
+  assert.equal(reads,1)
+  const failed=response();await make({readHistory:()=>{throw Error('unavailable')}})({method:'GET',query:{kind:'report-history'}},failed)
+  assert.equal(failed.code,500);assert.equal(failed.body.history,undefined)
+})
 test('report storage is opt-in and cannot target operational, HR, archive or pricing sheets',()=>{
   const base={MARKETING_REPORTS_SHEET_ID:'private-reports',MARKETING_REPORTS_STORE_APPROVED:'true'}
   assert.equal(reportStoreConfigured(base),true)

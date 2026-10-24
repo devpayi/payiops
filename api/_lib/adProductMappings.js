@@ -1,18 +1,13 @@
 import {Buffer} from 'node:buffer'
 import process from 'node:process'
 import {requireManager,authEnabled} from './auth.js'
-import {loadPricingCatalog} from './pricingData.js'
+import {readProductFamilies} from './productFamilyCatalog.js'
 import {reportStoreConfigured,readStoredReports} from './marketingReportStore.js'
 import {readAdProductMappings,appendAdMappingBatch,encodeAdMappingBatch} from './adProductMappingStore.js'
 import {adProductKey} from '../../shared/adProductMappings.js'
 
-let catalogCache
 async function readFamilies() {
-  const key=process.env.SHEET_ID
-  if(catalogCache?.key===key&&Date.now()-catalogCache.at<60000)return catalogCache.families
-  const {productGroups}=await loadPricingCatalog()
-  const families=productGroups.map(({key,business,name})=>({key,business,name}))
-  catalogCache={key,at:Date.now(),families};return families
+  return (await readProductFamilies()).map(({key,business,name})=>({key,business,name}))
 }
 const uuid=value=>typeof value==='string'&&/^[a-f\d]{8}-(?:[a-f\d]{4}-){3}[a-f\d]{12}$/i.test(value)
 const conflict=res=>res.status(409).json({success:false,error:'มีการเปลี่ยน Map จากอีกหน้าต่างแล้ว กรุณาโหลดข้อมูลล่าสุดก่อนบันทึก'})

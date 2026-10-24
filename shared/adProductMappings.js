@@ -2,6 +2,16 @@ import {sumReportMoney} from './monthlyAdsReports.js'
 import {adsRoas} from './adsSpendOverview.js'
 
 export const adProductKey=source=>JSON.stringify([source.platform||'Shopee',source.business,source.shopId,source.itemId])
+export function availableAdMappingSources(products,mappings,families,initialKeys=[],query='') {
+  const links=new Map(mappings.map(mapping=>[mapping.sourceKey,mapping]))
+  const targets=new Map(families.map(family=>[family.key,family]))
+  const editing=new Set(initialKeys),term=query.trim().toLowerCase()
+  return products.filter(product=>{
+    const key=adProductKey(product),family=targets.get(links.get(key)?.familyKey)
+    const mapped=family?.business===product.business
+    return (!mapped||editing.has(key))&&`${product.name} ${product.itemId} ${product.platform} ${product.shopName}`.toLowerCase().includes(term)
+  })
+}
 export function applyAdMappingBatches(batches) {
   const latest=new Map(),seen=new Map(),accepted=[],conflicts=[]
   for(const batch of batches) {
@@ -36,8 +46,9 @@ export function groupAdProducts(products,mappings=[],catalog=[]) {
       const sales=rows.every(row=>row.sales!==null&&row.sales!==undefined&&String(row.sales).trim()!=='')?sumReportMoney(rows.map(row=>row.sales)):null
       return {platform,spend,sales,roas:adsRoas(sales,spend),rows}
     })
+    const sales=platforms.every(row=>row.sales!==null)?sumReportMoney(platforms.map(row=>row.sales)):null
     return {...group,spend,percent,platforms,
-      // Attributed sales across platforms can overlap. No cross-platform combined ROAS.
-      sales:platforms.length===1?platforms[0].sales:null,roas:platforms.length===1?platforms[0].roas:null}
+      // This is a spend-weighted summary of platform-attributed sales, not unique order revenue.
+      sales,roas:adsRoas(sales,spend)}
   }).sort((a,b)=>Number(b.spend)-Number(a.spend)||a.key.localeCompare(b.key))
 }

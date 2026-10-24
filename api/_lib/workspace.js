@@ -66,7 +66,7 @@ export const PENDING_SLOTS = {
 const DEPT_LINKS = {
   CEO: ['Executive', 'Products', 'Fulfillment', 'CFO'],
   CMO: ['Products', 'AdsChannels'],
-  Content: ['ContentOS'],
+  Content: [],
   Floor: ['Inventory', 'Stock Movement', 'Fulfillment'],
   Management: [],
   Finance: ['CFO', 'Fulfillment', 'WHT Cert'],

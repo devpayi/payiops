@@ -6,6 +6,8 @@ export const pricingFamilyCostKey = key => `family:${key}`
 // Pricing plans share a price across shoe sizes/colors. Keep the model name,
 // and leave grouping used by other Ops pages unchanged.
 function pricingGroup(product, overrides) {
+  // Keep stored family IDs stable when correcting a redirected SKU's display name.
+  if (product.legacyGroupName) return pricingGroup({...product,name:product.legacyGroupName,legacyGroupName:undefined},overrides)
   if (!overrides.has(product.sku) && ['Payi','Payi Outlet'].includes(product.business) && /^รองเท้า/.test(product.name)) {
     const sizeSuffix = /\s+(\d{2}(?:[\s/-]+\d{2})*)$/
     const sizes = product.name.match(sizeSuffix)
@@ -32,6 +34,10 @@ export function buildPricingFamilies(catalog, aliases = []) {
     family.skus.push(p.sku);family.members.push(p)
   }
   for(const f of families.values()) {
+    const member = f.members[0]
+    if (f.kind === 'single' && f.skus.length === 1 && member.legacyGroupName && !overrides.get(f.business).has(member.sku)) {
+      f.name = member.name
+    }
     const prices=[...new Set(f.members.map(p=>p.referencePrice).filter(p=>p!==null && p!==undefined))]
     f.referencePrice=prices.length===1?prices[0]:null
     f.priceConflict=prices.length>1

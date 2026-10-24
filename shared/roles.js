@@ -40,6 +40,8 @@ const FINANCE_TAB_SET = new Set(FINANCE_TABS)
 const TANG_TAB_SET = new Set(TANG_TABS)
 
 export function canAccessTab(role, tab) {
+  // Removed from Ops; content work now lives in the Marketing app.
+  if (tab === 'ContentOS') return false
   // Pricing uses a server-checked account allowlist; a broad role grants no access.
   if (tab === 'Pricing') return false
   const normalized = normalizeRole(role)

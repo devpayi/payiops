@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {adProductKey,applyAdMappingBatches,groupAdProducts} from '../shared/adProductMappings.js'
+import {adProductKey,availableAdMappingSources,applyAdMappingBatches,groupAdProducts} from '../shared/adProductMappings.js'
 import {encodeAdMappingBatch,decodeAdMappingRows,AD_MAPPING_HEADERS} from '../api/_lib/adProductMappingStore.js'
 import {createAdProductMappingHandler} from '../api/_lib/adProductMappings.js'
 
@@ -12,18 +12,35 @@ const batch=(n,changes)=>({version:1,id:id(n),changes})
 const families=[{key:'f1',business:'Payi',name:'ถุงเท้าเจล 2in1'},{key:'f2',business:'กรอบรูป',name:'Frame'}]
 const response=()=>({code:200,setHeader(){},status(code){this.code=code;return this},json(body){this.body=body;return this}})
 
-test('manual mapping combines product IDs across platforms while keeping revenue/ROAS per platform',()=>{
+test('new mapping shows only unmapped sources while editing keeps its mapped sources visible',()=>{
+  const products=[{...source(),name:'Mapped',shopName:'Main'},{...source('TikTok Shop'),name:'Unmapped',shopName:'Main'},{...source('Lazada'),name:'Revoked',shopName:'Main'},{...source('Shopee','456'),name:'Invalid target',shopName:'Main'}]
+  const mappings=[change(a),change(adProductKey(products[2]),null),change(adProductKey(products[3]),'f2')]
+  assert.deepEqual(availableAdMappingSources(products,mappings,families).map(product=>product.name),['Unmapped','Revoked','Invalid target'])
+  assert.deepEqual(availableAdMappingSources(products,mappings,families,[a]).map(product=>product.name),['Mapped','Unmapped','Revoked','Invalid target'])
+  assert.deepEqual(availableAdMappingSources(products,mappings,families,[],'tiktok').map(product=>product.name),['Unmapped'])
+})
+
+test('manual mapping combines product IDs and computes spend-weighted ROAS across platforms',()=>{
   const products=[{...source(),name:'Same listing',spend:'10',sales:'50',percent:10},{...source('TikTok Shop'),name:'Other listing',spend:'20',sales:'100',percent:20},{...source('Lazada'),name:'Same listing',spend:'30',sales:'90',percent:30}]
   const original=structuredClone(products)
   const groups=groupAdProducts(products,[change(a),change(b)],families)
   assert.equal(groups.length,2)
   const group=groups.find(group=>group.mapped)
   assert.equal(group.name,'ถุงเท้าเจล 2in1');assert.equal(group.spend,'30');assert.equal(group.percent,30)
-  assert.equal(group.roas,null);assert.deepEqual(group.platforms.map(row=>row.roas),[5,5])
+  assert.equal(group.sales,'150');assert.equal(group.roas,5);assert.deepEqual(group.platforms.map(row=>row.roas),[5,5])
   assert.deepEqual(products,original)
   assert.equal(groupAdProducts(products,[],families).length,3)
   assert.equal(groupAdProducts(products,[change(a,'missing')],families).length,3)
   assert.equal(groupAdProducts(products,[change(a,'f2')],families).length,3)
+})
+test('combined ROAS uses summed attributed sales and spend, never averages platform ratios',()=>{
+  const products=[{...source(),name:'Shopee',spend:'10',sales:'80',percent:10},{...source('TikTok Shop'),name:'TikTok',spend:'90',sales:'180',percent:90}]
+  const mapped=[change(a),change(b)]
+  const group=groupAdProducts(products,mapped,families)[0]
+  assert.equal(group.sales,'260');assert.equal(group.spend,'100');assert.equal(group.roas,2.6)
+  assert.deepEqual(group.platforms.map(row=>row.roas),[8,2])
+  products[1].sales=null
+  assert.equal(groupAdProducts(products,mapped,families)[0].roas,null)
 })
 test('same product ID in different shops/businesses stays separate; same-platform mapped ROAS is weighted',()=>{
   const products=[{...source(),name:'One',spend:'1',sales:'10',percent:10},{...source('Shopee','456'),name:'Two',spend:'9',sales:'10',percent:90}]
