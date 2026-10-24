@@ -283,7 +283,7 @@ body {
 /* Manpower & OT is an operational screen viewed from a distance.
  * Keep the larger type scoped to this page so the rest of Payi Ops is unchanged. */
 .workforce-page {
-  font-size: 15px;
+  font-size: 13px;
 }
 
 .workforce-page button,
@@ -291,20 +291,20 @@ body {
 .workforce-page select,
 .workforce-page textarea,
 .workforce-page table {
-  font-size: 15px !important;
+  font-size: 13px !important;
 }
 
-.workforce-page [style*="font-size: 8px"] { font-size: 11px !important; }
-.workforce-page [style*="font-size: 9px"] { font-size: 12px !important; }
-.workforce-page [style*="font-size: 10px"] { font-size: 13px !important; }
-.workforce-page [style*="font-size: 11px"] { font-size: 14px !important; }
-.workforce-page [style*="font-size: 12px"] { font-size: 15px !important; }
-.workforce-page [style*="font-size: 13px"] { font-size: 15px !important; }
-.workforce-page [style*="font-size: 14px"] { font-size: 16px !important; }
-.workforce-page [style*="font-size: 17px"] { font-size: 20px !important; }
-.workforce-page [style*="font-size: 18px"] { font-size: 21px !important; }
+.workforce-page [style*="font-size: 8px"] { font-size: 10px !important; }
+.workforce-page [style*="font-size: 9px"] { font-size: 11px !important; }
+.workforce-page [style*="font-size: 10px"] { font-size: 12px !important; }
+.workforce-page [style*="font-size: 11px"] { font-size: 12px !important; }
+.workforce-page [style*="font-size: 12px"] { font-size: 13px !important; }
+.workforce-page [style*="font-size: 13px"] { font-size: 13px !important; }
+.workforce-page [style*="font-size: 14px"] { font-size: 14px !important; }
+.workforce-page [style*="font-size: 17px"] { font-size: 17px !important; }
+.workforce-page [style*="font-size: 18px"] { font-size: 18px !important; }
 .workforce-page .calendar-manpower-text {
-  font-size: 11px !important;
+  font-size: 10px !important;
   line-height: 1.15;
   letter-spacing: -0.35px;
 }
