@@ -42,6 +42,8 @@ npm test            # node:test
 
 ## Deploy แบบฟรีทั้งหมด
 
+ก่อนปล่อยการแก้ Manpower/OT หรือกฎวันลา ให้รัน `npm run check:workforce-drift` โดยมี checkout ของ `payi-floor` อยู่ข้างโปรเจกต์นี้ ดูขอบเขตและการระบุ path ใน [คู่มือตรวจ drift](docs/workforce-drift.md) คำสั่งนี้เป็นการตรวจ source แบบ manual ไม่ได้รันใน Vercel build
+
 ### 1. Push ขึ้น GitHub
 
 ```bash

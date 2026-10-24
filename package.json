@@ -8,6 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "test": "node --test",
+    "check:workforce-drift": "node scripts/check-workforce-drift.mjs",
     "preview": "vite preview",
     "ops:start": "npm run local:trial --prefix backend/core",
     "ops:build": "npm run build --prefix backend/core && npm run build --prefix backend/core/apps/web",
@@ -36,6 +37,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@babel/parser": "7.29.7",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
     "@types/react": "^19.2.14",
