@@ -397,7 +397,7 @@ export default function Inventory() {
     const ab = prods.filter((it) => it.abc === 'A' || it.abc === 'B')
     return { all: fam(prods), allSku: prods.length, a: fam(a), aSku: a.length, ab: fam(ab), abSku: ab.length }
   }, [activeEnriched])
-  const leadtimeTempActiveItems = useMemo(() => () => activeEnriched.filter((it) => it.lead_time_temp_active), [activeEnriched])
+  const leadtimeTempActiveItems = useMemo(() => activeEnriched.filter((it) => it.lead_time_temp_active), [activeEnriched])
   const leadtimeTempActiveCount = leadtimeTempActiveItems.length
   const growthActiveCount = useMemo(() => activeEnriched.filter((it) => it.growthPercent > 0).length, [activeEnriched])
   // ค่าที่เปิดอยู่ตอนนี้ (% ที่พบบ่อยสุด + กลุ่ม ABC ที่มีรายการเปิด) — ใช้เติมค่าในหน้าต่าง + โชว์สรุป
