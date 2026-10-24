@@ -208,11 +208,11 @@ export default function Inventory() {
   const [bulkLeadtimeModal, setBulkLeadtimeModal] = useState(false)
   const [growthModal, setGrowthModal] = useState(false)
 
-  const load = useCallback(() => {
+  const load = useCallback((fresh = false) => {
     setLoading(true)
     setError('')
     Promise.all([
-      fetch('/api/sheet-tools?op=inventory&view=items&includeHidden=1').then((r) => r.json()),
+      fetch(`/api/sheet-tools?op=inventory&view=items&includeHidden=1${fresh === true ? '&fresh=1' : ''}`).then((r) => r.json()),
       fetch('/api/planner-sales?days=30').then((r) => r.json()).catch(() => null),
       fetch('/api/sheet-tools?op=inventory&view=packaging-recipes').then((r) => r.json()).catch(() => null),
       fetch('/api/sheet-tools?op=inventory&view=box-demand&days=30').then((r) => r.json()).catch(() => null),
@@ -540,7 +540,7 @@ export default function Inventory() {
       if (!json.success) throw new Error(json.error || 'ปรับไม่สำเร็จ')
       if (closeModal) setGrowthModal(false)
       setItemModal(null)
-      await load()
+      await load(true)
     } catch (e) { setError(e.message) } finally { setSaving(false) }
   }
   // ส่งแจ้งเตือนของที่ต้องสั่งเข้าไลน์ตอนนี้เลย (เหมือน cron 17:00 แต่กดเองได้ ส่งซ้ำในวันเดียวกันได้)

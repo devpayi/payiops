@@ -13,6 +13,11 @@ const sheetCache = new Map()
 const sheetInflight = new Map()
 const sheetVersion = new Map()
 
+// ให้ endpoint ล้างแคชของชีทเองได้ (เช่นหน้าเว็บขออ่านสดหลังบันทึก — Vercel มีหลาย instance แคช 5 นาทีไม่แชร์กัน)
+export function clearSheetCache(names) {
+  for (const n of names) invalidateSheet(n)
+}
+
 function invalidateSheet(sheetName) {
   sheetCache.delete(sheetName)
   sheetInflight.delete(sheetName)
