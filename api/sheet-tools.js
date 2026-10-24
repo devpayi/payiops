@@ -2372,12 +2372,12 @@ function generateCalendarPresence(personMap, leaveRows, dayOffMap = {}, onlyCode
 }
 // ปฏิทินบ้านล่างใช้ตารางพนักงานปี 2026 ในระบบ และกรองแถวออฟฟิศออกด้วย roster บ้านล่าง
 // ถ้ามีคำขอลาอนุมัติผ่านระบบ ให้ยึด hr_leave แทนตารางตั้งต้น
+const HOLIDAY_RULE_SINCE = '2026-10-01'
 async function getCalendarPresence(personMap, overrideScopeCodes = Object.keys(personMap), applyLeaves = true, officeCodes = []) {
   const [snapshotRows, overrideRows, leaveRows, dayOffMap, holidayRows] = await Promise.all([
     getSheet('workforce_schedule_snapshot'), getSheet('workforce_schedule_overrides'), getSheet('hr_leave'), getDayOffMap(), getHolidayRows(),
   ])
-  // วันนักขัตฤกษ์ = วันหยุดของทุกคน (owner, ตาม payi-floor 2026-10-01) — ตัดคนออกจากทุกวันที่อยู่ใน workforce_holidays
-  // ทั้งแถวปกติ override และ swap-back ส่วนข้อความ "X ชนวันหยุด" (getHolidaysWithConflicts) ยังเป็นแค่ป้ายแจ้งเตือน
+  // ตาม payi-floor: วันนักขัตหยุดตามปกติ แต่หัวหน้าเลือกคนมาทำงานผ่าน override ได้
   const holidayDates = new Set(holidayRows.map((h) => h.date).filter(Boolean))
   const swapBackMap = buildSwapBackDates(leaveRows)
   let baseRows = (snapshotRows.length ? snapshotRows : generateCalendarPresence(personMap, [], dayOffMap, null, swapBackMap))
@@ -2404,8 +2404,11 @@ async function getCalendarPresence(personMap, overrideScopeCodes = Object.keys(p
       baseRows = [...baseRows, ...filler]
     }
   }
-  baseRows = applyScheduleOverrides({ baseRows, overrideRows, personMap, overrideScopeCodes, officeCodes, dayOffMap })
+  // ตัดตารางปกติก่อน แล้วค่อยใส่รายชื่อที่หัวหน้าเลือกหลังเริ่มใช้กฎวันหยุด
+  // override เก่าบนวันนักขัตเป็นตารางตั้งต้น จึงไม่ถือว่าเรียกมาทำงานพิเศษ
   baseRows = baseRows.filter((r) => !holidayDates.has(r.date))
+  const effectiveOverrides = overrideRows.filter((o) => !holidayDates.has(String(o.date || '')) || String(o.updated_at || '') >= HOLIDAY_RULE_SINCE)
+  baseRows = applyScheduleOverrides({ baseRows, overrideRows: effectiveOverrides, personMap, overrideScopeCodes, officeCodes, dayOffMap })
   // applyScheduleOverrides แทนที่รายชื่อทั้งวันด้วย entries_json ของ override (ไม่รู้จัก swapBackMap เลย) — ถ้า
   // override วันนั้นถูกบันทึกไว้ก่อนคำขอสลับวันหยุดจะได้รับอนุมัติ (หรือถูกแก้ซ้ำทีหลังโดยไม่รู้เรื่องสลับ) คนที่ควร
   // กลับมาทำงานวันนั้นจะหายไปอีกเหมือนเดิม ทั้งที่ baseRows ชั้นก่อนหน้าคำนวณถูกแล้ว (เจอจริง 2026-08-10 กรณีมี่
