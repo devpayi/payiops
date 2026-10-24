@@ -392,6 +392,16 @@ export default function Inventory() {
   const leadtimeTempActiveItems = useMemo(() => activeEnriched.filter((it) => it.lead_time_temp_active), [activeEnriched])
   const leadtimeTempActiveCount = leadtimeTempActiveItems.length
   const growthActiveCount = useMemo(() => activeEnriched.filter((it) => it.growthPercent > 0).length, [activeEnriched])
+  // ค่าที่เปิดอยู่ตอนนี้ (% ที่พบบ่อยสุด + กลุ่ม ABC ที่มีรายการเปิด) — ใช้เติมค่าในหน้าต่าง + โชว์สรุป
+  const growthCurrent = useMemo(() => {
+    const on = activeEnriched.filter((it) => it.growthPercent > 0)
+    if (!on.length) return null
+    const byPercent = new Map()
+    for (const it of on) byPercent.set(it.growthPercent, (byPercent.get(it.growthPercent) || 0) + 1)
+    const percent = [...byPercent.entries()].sort((a, b) => b[1] - a[1])[0][0]
+    const classes = ['A', 'B', 'C'].filter((k) => on.some((it) => it.abc === k))
+    return { percent, classes, percents: [...byPercent.keys()].sort((a, b) => a - b) }
+  }, [activeEnriched])
   // วันที่ใกล้สุดที่จะกลับปกติเอง (ในบรรดารายการที่ตั้งวันไว้) — โชว์เป็น hint ในป็อปอัพปรับทั้งหมด
   const leadtimeSoonestUntil = useMemo(() => {
     const dates = leadtimeTempActiveItems.map((it) => it.lead_time_temp_until).filter(Boolean).sort()
@@ -952,6 +962,7 @@ export default function Inventory() {
       {growthModal && (
         <GrowthBufferModal
           activeCount={growthActiveCount}
+          current={growthCurrent}
           saving={saving}
           onClose={() => setGrowthModal(false)}
           onApply={applyGrowthBulk}
@@ -1006,9 +1017,9 @@ const iconBtnStyle = (color) => ({
 
 // ปรับ lead time ชั่วคราวทีเดียวทั้งหมด (owner ขอ 2026-09-18 — เผื่อวันหยุดยาวเช่นตรุษจีน โรงงาน/ขนส่ง
 // ปิดพร้อมกันหมดทุกสินค้า) — บวก "จำนวนวันเพิ่ม" บนฐานเดิมของแต่ละสินค้า ไม่ใช่ตั้งให้ทุกตัวเท่ากัน
-function GrowthBufferModal({ activeCount, saving, onClose, onApply, onRevert }) {
-  const [percent, setPercent] = useState('30')
-  const [classes, setClasses] = useState({ A: true, B: true, C: false })
+function GrowthBufferModal({ activeCount, current, saving, onClose, onApply, onRevert }) {
+  const [percent, setPercent] = useState(String(current?.percent || 30))
+  const [classes, setClasses] = useState({ A: current ? current.classes.includes('A') : true, B: current ? current.classes.includes('B') : true, C: current ? current.classes.includes('C') : false })
   const picked = Object.keys(classes).filter((k) => classes[k])
   return (
     <Modal title="เพิ่มสต็อกชั่วคราว (เผื่อยอดโต)" onClose={onClose}>
@@ -1019,7 +1030,7 @@ function GrowthBufferModal({ activeCount, saving, onClose, onApply, onRevert }) 
         </div>
         {activeCount > 0 && (
           <div style={{ fontSize: 12, fontWeight: 700, color: '#166534', background: '#dcfce7', borderRadius: 8, padding: '8px 10px' }}>
-            📈 ตอนนี้มี {activeCount} รายการเพิ่มสต็อกชั่วคราวอยู่ (ปุ่มนี้จะตั้งค่าใหม่ทับตัวที่อยู่ในกลุ่มที่เลือก)
+            📈 ตอนนี้เปิดอยู่ {activeCount} รายการ: กลุ่ม {current?.classes?.join(' + ') || '-'} เพิ่ม {current?.percents?.map((p) => `${p}%`).join(', ') || '-'} (ปุ่มด้านล่างจะตั้งค่าใหม่ทับตัวที่อยู่ในกลุ่มที่เลือก)
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
